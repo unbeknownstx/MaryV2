@@ -1,16 +1,25 @@
 """
-MaryV2 Root Application
+MaryV2 - Root Application
 
 Mary is the root object of the system.
 
-This class intentionally does NOT contain the responsibilities of the old
-MaryV1 Brain. Mary owns the system's major components and lifecycle, while
-specialized subsystems remain responsible for their own domains.
+Mary owns the system's major components and lifecycle,
+while specialized subsystems remain responsible for
+their own domains.
 """
 
 from .config import Config
 from .identity import Identity
 from .lifecycle import Lifecycle
+
+from ..personality.personality import Personality
+from ..personality.values import Values
+from ..personality.character import Character
+
+from ..relationship.user import UserModel
+from ..learning.learner import Learner
+from ..knowledge.manager import KnowledgeManager
+from ..memory.manager import MemoryManager
 
 
 class Mary:
@@ -22,7 +31,12 @@ class Mary:
         self,
         config: Config | None = None,
         identity: Identity | None = None,
-    ):
+    ) -> None:
+
+        # ========================================================
+        # CORE CONFIGURATION
+        # ========================================================
+
         self.config = (
             config
             if config is not None
@@ -40,17 +54,53 @@ class Mary:
 
         self.lifecycle = Lifecycle()
 
-        # Subsystems will be attached here as V2 develops.
-        #
-        # They are intentionally not constructed yet.
+        # ========================================================
+        # PERSONALITY
+        # ========================================================
+
+        self.personality = Personality(
+            name=self.identity.name
+        )
+
+        self.values = Values()
+
+        self.character = Character()
+
+        # ========================================================
+        # RELATIONSHIP
+        # ========================================================
+
+        self.relationship = UserModel(
+            creator_id=self.identity.creator
+        )
+
+        # ========================================================
+        # LEARNING
+        # ========================================================
+
+        self.learning = Learner()
+
+        # ========================================================
+        # KNOWLEDGE
+        # ========================================================
+
+        self.knowledge = KnowledgeManager()
+
+        # ========================================================
+        # MEMORY
+        # ========================================================
+
+        self.memory = MemoryManager()
+
+        # ========================================================
+        # FUTURE SUBSYSTEMS
+        # ========================================================
+
+        # These will be attached as MaryV2 develops.
         #
         # self.cognition = ...
-        # self.memory = ...
-        # self.relationship = ...
-        # self.personality = ...
+        # self.development = ...
         # self.agency = ...
-        # self.learning = ...
-        # self.knowledge = ...
         # self.tools = ...
         # self.llm = ...
         # self.perception = ...
@@ -59,27 +109,38 @@ class Mary:
         # self.voice = ...
         # self.avatar = ...
 
-    def initialize(self):
+    # ============================================================
+    # LIFECYCLE
+    # ============================================================
+
+    def initialize(self) -> None:
         """
         Initialize Mary's foundational environment.
 
-        Later this method will initialize the individual subsystems through
-        their own lifecycle interfaces.
+        Later this will initialize individual subsystems
+        through their own lifecycle interfaces.
         """
 
         self.lifecycle.initialize()
 
         self.config.ensure_directories()
 
+        # Initialize memory and other subsystems that support it.
+        self.memory.initialize()
+
         self.lifecycle.ready()
 
-    def wake(self):
-        """Wake Mary after initialization."""
+    def wake(self) -> None:
+        """
+        Wake Mary after initialization.
+        """
 
         self.lifecycle.wake()
 
-    def start(self):
-        """Start Mary's active runtime."""
+    def start(self) -> None:
+        """
+        Start Mary's active runtime.
+        """
 
         if self.lifecycle.state.value == "created":
             self.initialize()
@@ -89,14 +150,22 @@ class Mary:
 
         self.lifecycle.start()
 
-    def shutdown(self):
-        """Shut Mary down cleanly."""
+    def shutdown(self) -> None:
+        """
+        Shut Mary down cleanly.
+        """
 
         self.lifecycle.shutdown()
         self.lifecycle.stop()
 
+    # ============================================================
+    # STATUS
+    # ============================================================
+
     def status(self) -> dict:
-        """Return a snapshot of Mary's current system state."""
+        """
+        Return a snapshot of Mary's current system state.
+        """
 
         return {
             "name": self.identity.name,
@@ -105,6 +174,10 @@ class Mary:
             "state": self.lifecycle.state.value,
             "running": self.lifecycle.is_running,
         }
+
+    # ============================================================
+    # REPRESENTATION
+    # ============================================================
 
     def __repr__(self) -> str:
         return (
