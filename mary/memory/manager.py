@@ -1,17 +1,18 @@
+
 """
 MaryV2 - Memory Manager
 
 The MemoryManager is the public interface for Mary's memory system.
 
 It coordinates:
-    - Episodic memory
-    - Semantic memory
-    - Working memory
-    - Retrieval
-    - Consolidation
+- Episodic memory
+- Semantic memory
+- Working memory
+- Retrieval
+- Consolidation
 
-The manager does not implement the internal storage logic of those
-systems. Each subsystem remains responsible for its own behavior.
+The manager does not implement internal storage logic.
+Each subsystem remains responsible for its own behavior.
 """
 
 from __future__ import annotations
@@ -22,6 +23,9 @@ from typing import Any, Dict, List, Optional
 class MemoryManager:
     """
     Unified interface for Mary's memory architecture.
+
+    The manager provides a stable boundary between cognition
+    and the individual memory subsystems.
     """
 
     def __init__(
@@ -45,9 +49,6 @@ class MemoryManager:
     def initialize(self) -> None:
         """
         Initialize available memory subsystems.
-
-        Subsystems are intentionally optional so Mary can be
-        constructed incrementally during development.
         """
 
         systems = (
@@ -62,14 +63,14 @@ class MemoryManager:
             if system is None:
                 continue
 
-            initialize = getattr(
+            initializer = getattr(
                 system,
                 "initialize",
                 None,
             )
 
-            if callable(initialize):
-                initialize()
+            if callable(initializer):
+                initializer()
 
     # ============================================================
     # REMEMBER
@@ -87,10 +88,19 @@ class MemoryManager:
         Store a new memory in the appropriate subsystem.
         """
 
+        if content is None:
+            return None
+
+        content = str(content).strip()
+
         if not content:
             return None
 
-        metadata = metadata or {}
+        metadata = dict(metadata or {})
+
+        memory_type = str(
+            memory_type
+        ).strip().lower()
 
         if memory_type == "episodic":
             return self._store_episodic(
@@ -147,37 +157,56 @@ class MemoryManager:
         if self.episodic is None:
             return None
 
-        # Support the current implementation while keeping
-        # the manager independent from its exact API.
-        if hasattr(self.episodic, "add"):
+        add = getattr(
+            self.episodic,
+            "add",
+            None,
+        )
+
+        if callable(add):
             try:
-                return self.episodic.add(
+                return add(
                     content=content,
                     importance=importance,
                     metadata=metadata,
                 )
             except TypeError:
-                return self.episodic.add(
-                    content
-                )
+                return add(content)
 
-        if hasattr(self.episodic, "add_memory"):
+        add_memory = getattr(
+            self.episodic,
+            "add_memory",
+            None,
+        )
+
+        if callable(add_memory):
             try:
-                return self.episodic.add_memory(
+                return add_memory(
                     content,
                     importance=importance,
                     metadata=metadata,
                 )
             except TypeError:
-                return self.episodic.add_memory(
-                    content
-                )
+                return add_memory(content)
 
-        if hasattr(self.episodic, "store"):
-            return self.episodic.store(
-                content,
-                metadata=metadata,
-            )
+        store = getattr(
+            self.episodic,
+            "store",
+            None,
+        )
+
+        if callable(store):
+            try:
+                return store(
+                    content,
+                    importance=importance,
+                    metadata=metadata,
+                )
+            except TypeError:
+                return store(
+                    content,
+                    metadata=metadata,
+                )
 
         return None
 
@@ -192,7 +221,7 @@ class MemoryManager:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
-        Store durable factual/semantic information.
+        Store durable factual or semantic information.
         """
 
         return self.remember(
@@ -210,33 +239,50 @@ class MemoryManager:
         if self.semantic is None:
             return None
 
-        if hasattr(self.semantic, "add"):
+        add = getattr(
+            self.semantic,
+            "add",
+            None,
+        )
+
+        if callable(add):
             try:
-                return self.semantic.add(
+                return add(
                     content=content,
                     metadata=metadata,
                 )
             except TypeError:
-                return self.semantic.add(
-                    content
-                )
+                return add(content)
 
-        if hasattr(self.semantic, "add_memory"):
+        add_memory = getattr(
+            self.semantic,
+            "add_memory",
+            None,
+        )
+
+        if callable(add_memory):
             try:
-                return self.semantic.add_memory(
+                return add_memory(
                     content,
                     metadata=metadata,
                 )
             except TypeError:
-                return self.semantic.add_memory(
-                    content
-                )
+                return add_memory(content)
 
-        if hasattr(self.semantic, "store"):
-            return self.semantic.store(
-                content,
-                metadata=metadata,
-            )
+        store = getattr(
+            self.semantic,
+            "store",
+            None,
+        )
+
+        if callable(store):
+            try:
+                return store(
+                    content,
+                    metadata=metadata,
+                )
+            except TypeError:
+                return store(content)
 
         return None
 
@@ -269,33 +315,50 @@ class MemoryManager:
         if self.working is None:
             return None
 
-        if hasattr(self.working, "add"):
+        add = getattr(
+            self.working,
+            "add",
+            None,
+        )
+
+        if callable(add):
             try:
-                return self.working.add(
+                return add(
                     content=content,
                     metadata=metadata,
                 )
             except TypeError:
-                return self.working.add(
-                    content
-                )
+                return add(content)
 
-        if hasattr(self.working, "add_memory"):
+        add_memory = getattr(
+            self.working,
+            "add_memory",
+            None,
+        )
+
+        if callable(add_memory):
             try:
-                return self.working.add_memory(
+                return add_memory(
                     content,
                     metadata=metadata,
                 )
             except TypeError:
-                return self.working.add_memory(
-                    content
-                )
+                return add_memory(content)
 
-        if hasattr(self.working, "store"):
-            return self.working.store(
-                content,
-                metadata=metadata,
-            )
+        store = getattr(
+            self.working,
+            "store",
+            None,
+        )
+
+        if callable(store):
+            try:
+                return store(
+                    content,
+                    metadata=metadata,
+                )
+            except TypeError:
+                return store(content)
 
         return None
 
@@ -311,45 +374,73 @@ class MemoryManager:
     ) -> List[Any]:
         """
         Retrieve relevant memories.
-
-        Retrieval owns the search strategy. The manager simply
-        provides the unified interface.
         """
 
-        if not query:
+        if query is None:
+            return []
+
+        query = str(query).strip()
+
+        if not query or limit <= 0:
             return []
 
         if self.retrieval is not None:
 
-            if hasattr(self.retrieval, "search"):
-                result = self.retrieval.search(
-                    query,
-                    limit=limit,
-                )
+            search = getattr(
+                self.retrieval,
+                "search",
+                None,
+            )
+
+            if callable(search):
+                try:
+                    result = search(
+                        query,
+                        limit=limit,
+                    )
+                except TypeError:
+                    result = search(query)
 
                 return self._normalize_results(
                     result
                 )
 
-            if hasattr(self.retrieval, "retrieve"):
-                result = self.retrieval.retrieve(
-                    query,
-                    limit=limit,
-                )
+            retrieve = getattr(
+                self.retrieval,
+                "retrieve",
+                None,
+            )
+
+            if callable(retrieve):
+                try:
+                    result = retrieve(
+                        query,
+                        limit=limit,
+                    )
+                except TypeError:
+                    result = retrieve(query)
 
                 return self._normalize_results(
                     result
                 )
 
-        # Fallback to semantic memory if a retrieval layer
-        # has not been connected yet.
+        # Fallback to semantic memory.
         if self.semantic is not None:
 
-            if hasattr(self.semantic, "search"):
-                result = self.semantic.search(
-                    query,
-                    limit=limit,
-                )
+            search = getattr(
+                self.semantic,
+                "search",
+                None,
+            )
+
+            if callable(search):
+                try:
+                    result = search(
+                        query,
+                        limit=limit,
+                    )
+                except TypeError:
+                    result = search(query)
 
                 return self._normalize_results(
                     result
@@ -371,15 +462,21 @@ class MemoryManager:
         if self.consolidation is None:
             return 0
 
-        if hasattr(
+        consolidate = getattr(
             self.consolidation,
             "consolidate_and_promote",
-        ):
-            return int(
-                self.consolidation.consolidate_and_promote()
-            )
+            None,
+        )
 
-        return 0
+        if not callable(consolidate):
+            return 0
+
+        try:
+            return int(
+                consolidate()
+            )
+        except (TypeError, ValueError):
+            return 0
 
     # ============================================================
     # CONTEXT
@@ -392,10 +489,7 @@ class MemoryManager:
         limit: int = 5,
     ) -> Dict[str, Any]:
         """
-        Build a structured memory context for cognition.
-
-        This gives the cognition layer a stable interface without
-        requiring it to know how memories are stored.
+        Build structured memory context for cognition.
         """
 
         recalled = self.recall(
@@ -413,43 +507,58 @@ class MemoryManager:
 
     def _get_working_memory(self) -> List[Any]:
         """
-        Safely retrieve the current working-memory contents.
+        Safely retrieve current working-memory contents.
         """
 
         if self.working is None:
             return []
 
-        methods = (
+        for method_name in (
+            "all",
             "get_all",
             "get_memories",
-            "all",
             "list_memories",
-        )
-
-        for method_name in methods:
-
+        ):
             method = getattr(
                 self.working,
                 method_name,
                 None,
             )
 
-            if callable(method):
+            if not callable(method):
+                continue
 
-                try:
-                    result = method()
+            try:
+                result = method()
 
-                    if result is None:
-                        return []
-
-                    if isinstance(
-                        result,
-                        list,
-                    ):
-                        return result
-
-                except Exception:
+                if result is None:
                     return []
+
+                if isinstance(
+                    result,
+                    list,
+                ):
+                    return result
+
+                if isinstance(
+                    result,
+                    tuple,
+                ):
+                    return list(result)
+
+            except Exception:
+                return []
+
+        # Direct access fallback for the current WorkingMemory
+        # implementation.
+        items = getattr(
+            self.working,
+            "items",
+            None,
+        )
+
+        if isinstance(items, list):
+            return list(items)
 
         return []
 
@@ -459,7 +568,7 @@ class MemoryManager:
 
     @staticmethod
     def _normalize_results(
-        result,
+        result: Any,
     ) -> List[Any]:
         """
         Normalize retrieval results into a list.
