@@ -1,13 +1,14 @@
+
 """
 MaryV2 - Personality System
 
 Defines Mary's core personality.
 
 The personality system is intentionally separated into:
-    personality.py  -> core traits and behavioral style
-    values.py       -> principles and priorities
-    preferences.py  -> likes, dislikes, and interaction preferences
-    development.py  -> long-term personality development
+personality.py  -> core traits and behavioral style
+values.py       -> principles and priorities
+preferences.py  -> likes, dislikes, and interaction preferences
+development.py  -> long-term personality development
 
 Personality should provide stable foundations while still allowing
 controlled development over time.
@@ -16,7 +17,7 @@ controlled development over time.
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 class Personality:
@@ -125,6 +126,9 @@ class Personality:
     ) -> float:
         """
         Adjust a personality trait relative to its current value.
+
+        Results are rounded to avoid floating-point representation
+        artifacts when personality traits are adjusted incrementally.
         """
 
         current = self.get_trait(
@@ -134,7 +138,10 @@ class Personality:
 
         return self.set_trait(
             trait,
-            current + float(amount),
+            round(
+                current + float(amount),
+                10,
+            ),
         )
 
     def set_traits(

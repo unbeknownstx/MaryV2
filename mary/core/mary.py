@@ -190,11 +190,13 @@ class Mary:
     ):
         """
         Propose a controlled personality change.
+
+        The proposal is not applied automatically.
         """
 
         return self.personality_development.propose_change(
             trait=trait,
-            requested_change=amount,
+            change=amount,
             reason=reason,
             confidence=confidence,
             source=source,
@@ -202,14 +204,32 @@ class Mary:
 
     def apply_personality_change(
         self,
-        development_id: str,
+        proposal: Dict[str, Any],
     ) -> bool:
         """
-        Apply a previously proposed personality change.
+        Apply a previously created personality-development
+        proposal.
+
+        The development system expects the complete proposal,
+        rather than only its ID.
         """
 
-        return self.personality_development.apply_change(
-            development_id,
+        return self.personality_development.apply(
+            proposal,
+        )
+
+    def reject_personality_change(
+        self,
+        proposal: Dict[str, Any],
+        reason: str = "",
+    ) -> bool:
+        """
+        Reject a personality-development proposal.
+        """
+
+        return self.personality_development.reject(
+            proposal,
+            reason=reason,
         )
 
     # ============================================================
