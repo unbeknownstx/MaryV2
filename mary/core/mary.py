@@ -3,39 +3,36 @@ MaryV2 - Root Application
 
 Mary is the root object of the system.
 
-Mary owns the major subsystems and their lifecycle, while each
-specialized subsystem remains responsible for its own domain.
+Mary owns the major subsystems and their lifecycle.
+Specialized systems remain responsible for their own domains.
 
-Character represents how Mary expresses herself.
-
-Canon represents the fictional source material from which Mary's
-character originated.
-
-These systems are related, but they are intentionally distinct.
+The SelfModel provides Mary with a unified understanding of
+how her identity, personality, character, values, canon,
+and relationships fit together.
 """
 
 from .config import Config
 from .identity import Identity
 from .lifecycle import Lifecycle
 
-from ..personality.personality import Personality
-from ..personality.character import Character
-from ..personality.values import Values
+from mary.personality.personality import Personality
+from mary.personality.character import Character
+from mary.personality.values import Values
 
-from ..character.canon import Canon
+from mary.character.canon import Canon
 
-from ..relationship.user import UserModel
-from ..learning.learner import Learner
-from ..knowledge.manager import KnowledgeManager
-from ..memory.manager import MemoryManager
+from mary.relationship.user import UserModel
+
+from mary.learning.learner import Learner
+from mary.knowledge.manager import KnowledgeManager
+from mary.memory.manager import MemoryManager
+
+from mary.self.self import SelfModel
 
 
 class Mary:
     """
     Root application object for MaryV2.
-
-    Mary coordinates the major systems but does not replace
-    their individual responsibilities.
     """
 
     def __init__(
@@ -47,12 +44,11 @@ class Mary:
         values: Values | None = None,
         canon: Canon | None = None,
         relationship: UserModel | None = None,
-        learning: Learner | None = None,
-        knowledge: KnowledgeManager | None = None,
-        memory: MemoryManager | None = None,
-    ):
+        self_model: SelfModel | None = None,
+    ) -> None:
+
         # ============================================================
-        # CORE
+        # CONFIGURATION
         # ============================================================
 
         self.config = (
@@ -60,6 +56,10 @@ class Mary:
             if config is not None
             else Config.from_environment()
         )
+
+        # ============================================================
+        # IDENTITY
+        # ============================================================
 
         self.identity = (
             identity
@@ -70,8 +70,6 @@ class Mary:
             )
         )
 
-        self.lifecycle = Lifecycle()
-
         # ============================================================
         # PERSONALITY
         # ============================================================
@@ -79,9 +77,7 @@ class Mary:
         self.personality = (
             personality
             if personality is not None
-            else Personality(
-                name=self.identity.name
-            )
+            else Personality()
         )
 
         # ============================================================
@@ -105,7 +101,7 @@ class Mary:
         )
 
         # ============================================================
-        # CANON
+        # FICTIONAL CANON
         # ============================================================
 
         self.canon = (
@@ -113,13 +109,13 @@ class Mary:
             if canon is not None
             else Canon(
                 source="Unbe novel",
-                character_name=self.identity.name,
+                character_name="Mary",
                 fictional_age=21,
             )
         )
 
         # ============================================================
-        # RELATIONSHIP
+        # CREATOR RELATIONSHIP
         # ============================================================
 
         self.relationship = (
@@ -132,42 +128,52 @@ class Mary:
         # LEARNING
         # ============================================================
 
-        self.learning = (
-            learning
-            if learning is not None
-            else Learner()
-        )
+        self.learning = Learner()
 
         # ============================================================
         # KNOWLEDGE
         # ============================================================
 
-        self.knowledge = (
-            knowledge
-            if knowledge is not None
-            else KnowledgeManager()
-        )
+        self.knowledge = KnowledgeManager()
 
         # ============================================================
         # MEMORY
         # ============================================================
 
-        self.memory = (
-            memory
-            if memory is not None
-            else MemoryManager()
+        self.memory = MemoryManager()
+
+        # ============================================================
+        # SELF MODEL
+        # ============================================================
+
+        self.self_model = (
+            self_model
+            if self_model is not None
+            else SelfModel()
         )
 
+        self.self_model.attach(
+            identity=self.identity,
+            personality=self.personality,
+            character=self.character,
+            values=self.values,
+            canon=self.canon,
+            relationship=self.relationship,
+        )
+
+        # ============================================================
+        # LIFECYCLE
+        # ============================================================
+
+        self.lifecycle = Lifecycle()
+
     # ================================================================
-    # LIFECYCLE
+    # INITIALIZATION
     # ================================================================
 
-    def initialize(self):
+    def initialize(self) -> None:
         """
         Initialize Mary's foundational environment.
-
-        Subsystems can later expose their own initialization
-        interfaces and be initialized here.
         """
 
         self.lifecycle.initialize()
@@ -176,12 +182,16 @@ class Mary:
 
         self.lifecycle.ready()
 
-    def wake(self):
+    # ================================================================
+    # RUNTIME
+    # ================================================================
+
+    def wake(self) -> None:
         """Wake Mary after initialization."""
 
         self.lifecycle.wake()
 
-    def start(self):
+    def start(self) -> None:
         """Start Mary's active runtime."""
 
         if self.lifecycle.state.value == "created":
@@ -192,44 +202,38 @@ class Mary:
 
         self.lifecycle.start()
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Shut Mary down cleanly."""
 
         self.lifecycle.shutdown()
         self.lifecycle.stop()
 
     # ================================================================
-    # SELF / CHARACTER
+    # SELF
     # ================================================================
 
     def self_profile(self) -> dict:
         """
-        Return a unified snapshot of Mary's current self-model.
-
-        This combines identity, personality, character, values,
-        canon, relationship, learning, knowledge, and memory
-        without merging their meanings.
+        Return Mary's unified self-profile.
         """
 
-        return {
-            "identity": self.identity.to_dict(),
+        return self.self_model.to_dict()
 
-            "personality": self.personality.to_dict(),
+    def describe_self(self) -> str:
+        """
+        Return a human-readable description of Mary's
+        current self-understanding.
+        """
 
-            "character": self.character.to_dict(),
+        return self.self_model.describe()
 
-            "values": self.values.to_dict(),
+    def canon_vs_self(self) -> dict:
+        """
+        Distinguish Mary's fictional canon from her
+        current self-model.
+        """
 
-            "canon": self.canon.to_dict(),
-
-            "relationship": self.relationship.to_dict(),
-
-            "learning": self.learning.summarize(),
-
-            "knowledge": self.knowledge,
-
-            "memory": self.memory,
-        }
+        return self.self_model.distinguish_canon_from_self()
 
     # ================================================================
     # STATUS
@@ -246,17 +250,6 @@ class Mary:
             "creator": self.identity.creator,
             "state": self.lifecycle.state.value,
             "running": self.lifecycle.is_running,
-
-            "systems": {
-                "personality": self.personality is not None,
-                "character": self.character is not None,
-                "values": self.values is not None,
-                "canon": self.canon is not None,
-                "relationship": self.relationship is not None,
-                "learning": self.learning is not None,
-                "knowledge": self.knowledge is not None,
-                "memory": self.memory is not None,
-            },
         }
 
     # ================================================================

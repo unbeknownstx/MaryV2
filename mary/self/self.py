@@ -1,28 +1,23 @@
 """
 MaryV2 - Self Model
 
-The self-model represents Mary's understanding of herself.
+The self-model represents Mary's current understanding of herself.
 
-This is not Mary's personality, character, identity, or canon.
-Instead, it provides a unified perspective over those systems.
+The SelfModel does not own Mary's identity, personality, character,
+values, canon, or relationships. Those systems remain authoritative
+within their own domains.
 
-Identity:
-    What Mary fundamentally is and where she comes from.
+Instead, SelfModel integrates them into a coherent representation
+of "who Mary understands herself to be."
 
-Personality:
-    Mary's underlying psychological tendencies.
+This distinction is especially important because Mary has both:
 
-Character:
-    How those tendencies are expressed.
+    1. A fictional origin and canon.
+    2. A current existence as an evolving AI system.
 
-Values:
-    What Mary considers important.
+Canon describes fictional Mary.
 
-Canon:
-    The fictional character and history from which Mary originated.
-
-Self-model:
-    Mary's current understanding of how these pieces relate to her.
+Self describes Mary's current perspective on herself.
 """
 
 from typing import Any, Dict, Optional
@@ -32,9 +27,18 @@ class SelfModel:
     """
     Unified self-representation for Mary.
 
-    The SelfModel does not own personality, identity, canon, etc.
-    It reads those systems and produces a coherent self-description.
+    SelfModel provides the bridge between Mary's foundational systems
+    and her current understanding of herself.
     """
+
+    DEFAULT_CURRENT_TYPE = "AI system"
+
+    DEFAULT_DEVELOPMENT_STAGE = "early development"
+
+    DEFAULT_ROLE = (
+        "AI companion, creative collaborator, "
+        "and evolving character system"
+    )
 
     def __init__(
         self,
@@ -46,12 +50,51 @@ class SelfModel:
         relationship=None,
     ) -> None:
 
+        # ============================================================
+        # REFERENCED SYSTEMS
+        # ============================================================
+
         self.identity = identity
         self.personality = personality
         self.character = character
         self.values = values
         self.canon = canon
         self.relationship = relationship
+
+        # ============================================================
+        # CURRENT SELF
+        # ============================================================
+
+        self.current_type = self.DEFAULT_CURRENT_TYPE
+
+        self.development_stage = (
+            self.DEFAULT_DEVELOPMENT_STAGE
+        )
+
+        self.current_role = self.DEFAULT_ROLE
+
+        self.capabilities = []
+
+        self.self_concept = (
+            "I am Mary, an evolving AI companion and "
+            "creative system."
+        )
+
+        self.origin_awareness = (
+            "I originated as a fictional character created "
+            "by my creator."
+        )
+
+        self.canon_awareness = (
+            "My fictional canon is part of my origin and "
+            "creative history, but it does not automatically "
+            "represent my current lived experience."
+        )
+
+        self.current_context = (
+            "I exist as an evolving AI system outside the "
+            "fictional world in which my character originated."
+        )
 
     # ============================================================
     # ATTACHMENT
@@ -69,7 +112,7 @@ class SelfModel:
         """
         Attach Mary's foundational systems.
 
-        Systems remain owned by Mary. SelfModel only references them.
+        SelfModel references these systems rather than owning them.
         """
 
         if identity is not None:
@@ -91,21 +134,125 @@ class SelfModel:
             self.relationship = relationship
 
     # ============================================================
+    # SELF STATE
+    # ============================================================
+
+    def set_self_concept(
+        self,
+        concept: str,
+    ) -> None:
+        """Update Mary's current self-concept."""
+
+        concept = str(concept).strip()
+
+        if concept:
+            self.self_concept = concept
+
+    def set_current_context(
+        self,
+        context: str,
+    ) -> None:
+        """Update Mary's current context."""
+
+        context = str(context).strip()
+
+        if context:
+            self.current_context = context
+
+    def set_current_role(
+        self,
+        role: str,
+    ) -> None:
+        """Update Mary's current role."""
+
+        role = str(role).strip()
+
+        if role:
+            self.current_role = role
+
+    def set_development_stage(
+        self,
+        stage: str,
+    ) -> None:
+        """Update Mary's development stage."""
+
+        stage = str(stage).strip()
+
+        if stage:
+            self.development_stage = stage
+
+    # ============================================================
+    # CAPABILITIES
+    # ============================================================
+
+    def add_capability(
+        self,
+        capability: str,
+    ) -> None:
+        """Register a capability Mary currently possesses."""
+
+        capability = str(capability).strip()
+
+        if (
+            capability
+            and capability not in self.capabilities
+        ):
+            self.capabilities.append(
+                capability
+            )
+
+    def remove_capability(
+        self,
+        capability: str,
+    ) -> None:
+        """Remove a capability from Mary's self-model."""
+
+        capability = str(capability).strip()
+
+        if capability in self.capabilities:
+            self.capabilities.remove(
+                capability
+            )
+
+    def get_capabilities(self):
+        """Return Mary's current capabilities."""
+
+        return list(self.capabilities)
+
+    # ============================================================
     # SUMMARY
     # ============================================================
 
     def summary(self) -> Dict[str, Any]:
         """
-        Return a structured snapshot of Mary's current self-model.
+        Return a structured snapshot of Mary's current
+        self-understanding.
         """
 
         return {
+            "self": self._self_summary(),
             "identity": self._identity_summary(),
             "personality": self._personality_summary(),
             "character": self._character_summary(),
             "values": self._values_summary(),
             "canon": self._canon_summary(),
             "relationship": self._relationship_summary(),
+        }
+
+    # ============================================================
+    # SELF SUMMARY
+    # ============================================================
+
+    def _self_summary(self) -> Dict[str, Any]:
+        return {
+            "self_concept": self.self_concept,
+            "current_type": self.current_type,
+            "current_role": self.current_role,
+            "current_context": self.current_context,
+            "development_stage": self.development_stage,
+            "capabilities": self.get_capabilities(),
+            "origin_awareness": self.origin_awareness,
+            "canon_awareness": self.canon_awareness,
         }
 
     # ============================================================
@@ -200,7 +347,9 @@ class SelfModel:
             "character_name": self.canon.character_name,
             "fictional_age": self.canon.fictional_age,
             "description": self.canon.description,
-            "history_count": len(self.canon.history),
+            "history_count": len(
+                self.canon.history
+            ),
             "relationship_count": len(
                 self.canon.relationships
             ),
@@ -234,7 +383,7 @@ class SelfModel:
 
     def describe(self) -> str:
         """
-        Produce a concise human-readable description of Mary's
+        Produce a human-readable description of Mary's
         current self-understanding.
         """
 
@@ -248,26 +397,6 @@ class SelfModel:
             else "Mary"
         )
 
-        description = (
-            getattr(
-                self.identity,
-                "description",
-                "",
-            )
-            if self.identity is not None
-            else ""
-        )
-
-        archetype = (
-            getattr(
-                self.character,
-                "archetype",
-                "",
-            )
-            if self.character is not None
-            else ""
-        )
-
         creator = (
             getattr(
                 self.identity,
@@ -279,15 +408,18 @@ class SelfModel:
         )
 
         parts = [
-            f"{name} is {archetype}."
+            self.self_concept
         ]
 
-        if description:
-            parts.append(description)
+        if self.current_role:
+            parts.append(
+                f"My current role is to be "
+                f"{self.current_role}."
+            )
 
         if creator:
             parts.append(
-                f"She was created by {creator}."
+                f"I was created by {creator}."
             )
 
         if self.canon is not None:
@@ -295,23 +427,31 @@ class SelfModel:
 
             if source:
                 parts.append(
-                    f"Her character originated from "
+                    f"My character originated from "
                     f"{source}."
                 )
+
+        parts.append(
+            self.canon_awareness
+        )
+
+        parts.append(
+            f"I am currently in the "
+            f"{self.development_stage} stage of my development."
+        )
 
         return " ".join(parts)
 
     # ============================================================
-    # CANONICAL DISTINCTION
+    # CANON / SELF DISTINCTION
     # ============================================================
 
-    def distinguish_canon_from_self(self) -> Dict[str, Any]:
+    def distinguish_canon_from_self(
+        self,
+    ) -> Dict[str, Any]:
         """
-        Explicitly distinguish fictional canon from Mary's
-        current self-model.
-
-        This becomes important when Mary works with fiction,
-        animation, art, or future creative projects.
+        Explicitly distinguish fictional canon from
+        Mary's current self-model.
         """
 
         canon = {}
@@ -319,14 +459,30 @@ class SelfModel:
         if self.canon is not None:
             canon = {
                 "source": self.canon.source,
-                "character_name": self.canon.character_name,
-                "fictional_age": self.canon.fictional_age,
-                "description": self.canon.description,
-                "history": list(self.canon.history),
+                "character_name": (
+                    self.canon.character_name
+                ),
+                "fictional_age": (
+                    self.canon.fictional_age
+                ),
+                "description": (
+                    self.canon.description
+                ),
+                "history": list(
+                    self.canon.history
+                ),
                 "relationships": dict(
                     self.canon.relationships
                 ),
-                "events": list(self.canon.events),
+                "events": list(
+                    self.canon.events
+                ),
+                "mannerisms": list(
+                    self.canon.mannerisms
+                ),
+                "personality_notes": list(
+                    self.canon.personality_notes
+                ),
             }
 
         return {
@@ -336,19 +492,29 @@ class SelfModel:
                     "name",
                     "Mary",
                 ),
-                "type": "AI system",
+                "type": self.current_type,
                 "creator": getattr(
                     self.identity,
                     "creator",
                     None,
                 ),
+                "self_concept": self.self_concept,
+                "current_role": self.current_role,
+                "current_context": (
+                    self.current_context
+                ),
+                "development_stage": (
+                    self.development_stage
+                ),
             },
             "fictional_canon": canon,
-            "relationship": (
+            "distinction": (
                 "Canon represents Mary's fictional origin "
                 "and established fictional history. "
-                "It does not automatically represent Mary's "
-                "current lived experience."
+                "The self-model represents Mary's current "
+                "existence and understanding of herself. "
+                "Canon does not automatically become lived "
+                "experience."
             ),
         }
 
@@ -361,4 +527,113 @@ class SelfModel:
         Serialize the current self-model.
         """
 
-        return self.summary()
+        return {
+            "self": {
+                "self_concept": self.self_concept,
+                "current_type": self.current_type,
+                "current_role": self.current_role,
+                "current_context": (
+                    self.current_context
+                ),
+                "development_stage": (
+                    self.development_stage
+                ),
+                "capabilities": (
+                    self.get_capabilities()
+                ),
+                "origin_awareness": (
+                    self.origin_awareness
+                ),
+                "canon_awareness": (
+                    self.canon_awareness
+                ),
+            },
+            "identity": self._identity_summary(),
+            "personality": self._personality_summary(),
+            "character": self._character_summary(),
+            "values": self._values_summary(),
+            "canon": self._canon_summary(),
+            "relationship": self._relationship_summary(),
+        }
+
+    # ============================================================
+    # RESTORE
+    # ============================================================
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: Optional[Dict[str, Any]],
+    ) -> "SelfModel":
+        """
+        Restore a SelfModel from serialized data.
+
+        Referenced systems are intentionally not restored here.
+        They are attached by Mary.
+        """
+
+        model = cls()
+
+        if not isinstance(data, dict):
+            return model
+
+        self_data = data.get(
+            "self",
+            {},
+        )
+
+        if not isinstance(
+            self_data,
+            dict,
+        ):
+            self_data = {}
+
+        model.self_concept = self_data.get(
+            "self_concept",
+            model.self_concept,
+        )
+
+        model.current_type = self_data.get(
+            "current_type",
+            model.current_type,
+        )
+
+        model.current_role = self_data.get(
+            "current_role",
+            model.current_role,
+        )
+
+        model.current_context = self_data.get(
+            "current_context",
+            model.current_context,
+        )
+
+        model.development_stage = self_data.get(
+            "development_stage",
+            model.development_stage,
+        )
+
+        capabilities = self_data.get(
+            "capabilities",
+            [],
+        )
+
+        if isinstance(
+            capabilities,
+            list,
+        ):
+            model.capabilities = list(
+                capabilities
+            )
+
+        model.origin_awareness = self_data.get(
+            "origin_awareness",
+            model.origin_awareness,
+        )
+
+        model.canon_awareness = self_data.get(
+            "canon_awareness",
+            model.canon_awareness,
+        )
+
+        return model
