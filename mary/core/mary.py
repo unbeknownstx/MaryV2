@@ -1,158 +1,128 @@
 """
-MaryV2 - Root Application
+MaryV2 - Mary Core
 
-Mary is the root object of the system.
+Central coordinator for Mary's foundational systems.
 
-Mary owns the major subsystems and their lifecycle.
-Specialized systems remain responsible for their own domains.
+Mary owns and coordinates the major subsystems.
 
-The SelfModel provides Mary with a unified understanding of
-how her identity, personality, character, values, canon,
-and relationships fit together.
+The individual systems remain responsible for their own data:
+
+    Identity
+    Personality
+    Character
+    Values
+    Preferences
+    Canon
+    Relationship/User Model
+    SelfModel
+    PersonalityDevelopment
 """
 
-from .config import Config
-from .identity import Identity
-from .lifecycle import Lifecycle
+from typing import Any, Dict
+
+
+# ============================================================
+# CORE
+# ============================================================
+
+from mary.core.identity import Identity
+
+
+# ============================================================
+# CHARACTER / CANON
+# ============================================================
+
+from mary.character.canon import Canon
+
+
+# ============================================================
+# PERSONALITY
+# ============================================================
 
 from mary.personality.personality import Personality
 from mary.personality.character import Character
 from mary.personality.values import Values
+from mary.personality.preferences import Preferences
+from mary.personality.development import PersonalityDevelopment
 
-from mary.character.canon import Canon
+
+# ============================================================
+# RELATIONSHIP
+# ============================================================
 
 from mary.relationship.user import UserModel
 
-from mary.learning.learner import Learner
-from mary.knowledge.manager import KnowledgeManager
-from mary.memory.manager import MemoryManager
+
+# ============================================================
+# SELF
+# ============================================================
 
 from mary.self.self import SelfModel
 
 
 class Mary:
     """
-    Root application object for MaryV2.
+    Central representation of Mary.
+
+    Mary coordinates the systems that make up her
+    current identity and developing self-model.
     """
 
-    def __init__(
-        self,
-        config: Config | None = None,
-        identity: Identity | None = None,
-        personality: Personality | None = None,
-        character: Character | None = None,
-        values: Values | None = None,
-        canon: Canon | None = None,
-        relationship: UserModel | None = None,
-        self_model: SelfModel | None = None,
-    ) -> None:
+    VERSION = "2.0.0"
 
-        # ============================================================
-        # CONFIGURATION
-        # ============================================================
+    # ========================================================
+    # INITIALIZATION
+    # ========================================================
 
-        self.config = (
-            config
-            if config is not None
-            else Config.from_environment()
-        )
+    def __init__(self) -> None:
 
-        # ============================================================
-        # IDENTITY
-        # ============================================================
+        # ----------------------------------------------------
+        # Identity
+        # ----------------------------------------------------
 
-        self.identity = (
-            identity
-            if identity is not None
-            else Identity(
-                name=self.config.application_name,
-                version=self.config.version,
-            )
-        )
+        self.identity = Identity()
 
-        # ============================================================
-        # PERSONALITY
-        # ============================================================
+        # ----------------------------------------------------
+        # Personality
+        # ----------------------------------------------------
 
-        self.personality = (
-            personality
-            if personality is not None
-            else Personality()
-        )
+        self.personality = Personality()
 
-        # ============================================================
-        # CHARACTER
-        # ============================================================
+        # ----------------------------------------------------
+        # Character
+        # ----------------------------------------------------
 
-        self.character = (
-            character
-            if character is not None
-            else Character()
-        )
+        self.character = Character()
 
-        # ============================================================
-        # VALUES
-        # ============================================================
+        # ----------------------------------------------------
+        # Values
+        # ----------------------------------------------------
 
-        self.values = (
-            values
-            if values is not None
-            else Values()
-        )
+        self.values = Values()
 
-        # ============================================================
-        # FICTIONAL CANON
-        # ============================================================
+        # ----------------------------------------------------
+        # Preferences
+        # ----------------------------------------------------
 
-        self.canon = (
-            canon
-            if canon is not None
-            else Canon(
-                source="Unbe novel",
-                character_name="Mary",
-                fictional_age=21,
-            )
-        )
+        self.preferences = Preferences()
 
-        # ============================================================
-        # CREATOR RELATIONSHIP
-        # ============================================================
+        # ----------------------------------------------------
+        # Fictional Canon
+        # ----------------------------------------------------
 
-        self.relationship = (
-            relationship
-            if relationship is not None
-            else UserModel()
-        )
+        self.canon = Canon()
 
-        # ============================================================
-        # LEARNING
-        # ============================================================
+        # ----------------------------------------------------
+        # Creator / Relationship Model
+        # ----------------------------------------------------
 
-        self.learning = Learner()
+        self.relationship = UserModel()
 
-        # ============================================================
-        # KNOWLEDGE
-        # ============================================================
+        # ----------------------------------------------------
+        # Unified Self Model
+        # ----------------------------------------------------
 
-        self.knowledge = KnowledgeManager()
-
-        # ============================================================
-        # MEMORY
-        # ============================================================
-
-        self.memory = MemoryManager()
-
-        # ============================================================
-        # SELF MODEL
-        # ============================================================
-
-        self.self_model = (
-            self_model
-            if self_model is not None
-            else SelfModel()
-        )
-
-        self.self_model.attach(
+        self.self_model = SelfModel(
             identity=self.identity,
             personality=self.personality,
             character=self.character,
@@ -161,105 +131,177 @@ class Mary:
             relationship=self.relationship,
         )
 
-        # ============================================================
-        # LIFECYCLE
-        # ============================================================
+        # ----------------------------------------------------
+        # Personality Development
+        # ----------------------------------------------------
 
-        self.lifecycle = Lifecycle()
+        self.personality_development = (
+            PersonalityDevelopment(
+                personality=self.personality,
+                values=self.values,
+                preferences=self.preferences,
+            )
+        )
 
-    # ================================================================
-    # INITIALIZATION
-    # ================================================================
+        # ----------------------------------------------------
+        # Runtime State
+        # ----------------------------------------------------
 
-    def initialize(self) -> None:
-        """
-        Initialize Mary's foundational environment.
-        """
+        self.state = "created"
+        self.running = False
 
-        self.lifecycle.initialize()
-
-        self.config.ensure_directories()
-
-        self.lifecycle.ready()
-
-    # ================================================================
-    # RUNTIME
-    # ================================================================
-
-    def wake(self) -> None:
-        """Wake Mary after initialization."""
-
-        self.lifecycle.wake()
-
-    def start(self) -> None:
-        """Start Mary's active runtime."""
-
-        if self.lifecycle.state.value == "created":
-            self.initialize()
-
-        if self.lifecycle.state.value == "ready":
-            self.wake()
-
-        self.lifecycle.start()
-
-    def shutdown(self) -> None:
-        """Shut Mary down cleanly."""
-
-        self.lifecycle.shutdown()
-        self.lifecycle.stop()
-
-    # ================================================================
+    # ========================================================
     # SELF
-    # ================================================================
+    # ========================================================
 
-    def self_profile(self) -> dict:
+    def self_profile(self) -> Dict[str, Any]:
         """
         Return Mary's unified self-profile.
         """
 
-        return self.self_model.to_dict()
+        profile = self.self_model.to_dict()
+
+        profile["development"] = (
+            self.personality_development.summary()
+        )
+
+        return profile
 
     def describe_self(self) -> str:
         """
-        Return a human-readable description of Mary's
-        current self-understanding.
+        Return a human-readable description of Mary.
         """
 
         return self.self_model.describe()
 
-    def canon_vs_self(self) -> dict:
+    def canon_vs_self(self) -> Dict[str, Any]:
         """
-        Distinguish Mary's fictional canon from her
-        current self-model.
+        Distinguish Mary's current self from her fictional
+        canonical origin.
         """
 
         return self.self_model.distinguish_canon_from_self()
 
-    # ================================================================
-    # STATUS
-    # ================================================================
+    # ========================================================
+    # PERSONALITY DEVELOPMENT
+    # ========================================================
 
-    def status(self) -> dict:
+    def personality_development_summary(
+        self,
+    ) -> Dict[str, Any]:
         """
-        Return a snapshot of Mary's current system state.
+        Return the current personality-development summary.
+        """
+
+        return self.personality_development.summary()
+
+    def propose_personality_change(
+        self,
+        trait: str,
+        change: float,
+        reason: str,
+        confidence: float = 0.5,
+        source: str = "experience",
+    ) -> Dict[str, Any]:
+        """
+        Create a personality-development proposal.
+
+        Creating a proposal does not immediately change
+        Mary's personality.
+        """
+
+        return self.personality_development.propose_change(
+            trait=trait,
+            change=change,
+            reason=reason,
+            confidence=confidence,
+            source=source,
+        )
+
+    def apply_personality_change(
+        self,
+        proposal: Dict[str, Any],
+    ) -> bool:
+        """
+        Apply a personality-development proposal.
+        """
+
+        return self.personality_development.apply(
+            proposal
+        )
+
+    def reject_personality_change(
+        self,
+        proposal: Dict[str, Any],
+        reason: str = "",
+    ) -> bool:
+        """
+        Reject a personality-development proposal.
+        """
+
+        return self.personality_development.reject(
+            proposal,
+            reason=reason,
+        )
+
+    # ========================================================
+    # STATUS
+    # ========================================================
+
+    def status(self) -> Dict[str, Any]:
+        """
+        Return Mary's current runtime status.
         """
 
         return {
-            "name": self.identity.name,
-            "version": self.identity.version,
-            "creator": self.identity.creator,
-            "state": self.lifecycle.state.value,
-            "running": self.lifecycle.is_running,
+            "name": getattr(
+                self.identity,
+                "name",
+                "Mary",
+            ),
+            "version": self.VERSION,
+            "creator": getattr(
+                self.identity,
+                "creator",
+                None,
+            ),
+            "state": self.state,
+            "running": self.running,
         }
 
-    # ================================================================
-    # REPRESENTATION
-    # ================================================================
+    # ========================================================
+    # LIFECYCLE
+    # ========================================================
 
-    def __repr__(self) -> str:
-        return (
-            f"<Mary "
-            f"name={self.identity.name!r} "
-            f"version={self.identity.version!r} "
-            f"state={self.lifecycle.state.value!r}>"
-        )
+    def start(self) -> None:
+        """
+        Start Mary.
+        """
+
+        self.running = True
+        self.state = "running"
+
+    def stop(self) -> None:
+        """
+        Stop Mary.
+        """
+
+        self.running = False
+        self.state = "stopped"
+
+    # ========================================================
+    # SERIALIZATION
+    # ========================================================
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Serialize Mary's current foundational state.
+        """
+
+        return {
+            "status": self.status(),
+            "self": self.self_profile(),
+            "personality_development": (
+                self.personality_development.to_dict()
+            ),
+        }
