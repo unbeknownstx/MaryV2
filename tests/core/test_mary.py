@@ -85,9 +85,11 @@ def test_mary_can_remember():
         "Mary's core integration test was successful.",
     )
 
-    # The MemoryManager currently has no storage subsystem
-    # connected, so returning None is expected at this stage.
-    assert result is None
+    assert result is not None
+    assert result.content == (
+        "Mary's core integration test was successful."
+    )
+    assert result.importance == 0.5
 
 
 def test_mary_can_propose_personality_change():
