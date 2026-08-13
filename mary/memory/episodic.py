@@ -14,7 +14,6 @@ This module is responsible for representing and storing episodic memories.
 
 It does NOT handle:
     - semantic knowledge
-    - memory retrieval/search
     - working memory
     - memory consolidation
     - relationships
@@ -260,6 +259,65 @@ class EpisodicMemoryStore:
         return list(
             self._memories
         )
+
+    def search(
+        self,
+        query: str,
+        limit: int = 5,
+    ) -> list[EpisodicMemory]:
+        """
+        Search episodic memories using simple lexical matching.
+        """
+
+        if not query or not str(query).strip():
+            return []
+
+        if limit <= 0:
+            return []
+
+        query_terms = {
+            term.lower()
+            for term in str(query).split()
+            if term.strip()
+        }
+
+        if not query_terms:
+            return []
+
+        matches: list[tuple[int, EpisodicMemory]] = []
+
+        for memory in self._memories:
+
+            content = memory.content.lower()
+
+            matched_terms = sum(
+                1
+                for term in query_terms
+                if term in content
+            )
+
+            if matched_terms > 0:
+
+                matches.append(
+                    (
+                        matched_terms,
+                        memory,
+                    )
+                )
+
+        matches.sort(
+            key=lambda item: (
+                item[0],
+                item[1].importance,
+                item[1].timestamp,
+            ),
+            reverse=True,
+        )
+
+        return [
+            memory
+            for _, memory in matches[:limit]
+        ]
 
     def count(self) -> int:
         """
