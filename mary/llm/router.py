@@ -3,8 +3,8 @@ MaryV2 LLM Router
 
 Routes language-model requests to the configured provider.
 
-Providers are loaded lazily so importing Mary does not require every
-provider SDK to be installed.
+Providers are loaded lazily so importing and initializing Mary does not
+require every provider SDK to be installed.
 """
 
 from __future__ import annotations
@@ -138,6 +138,8 @@ class LLMRouter:
     ) -> LLMResponse:
         """
         Generate a response using the selected provider.
+
+        This is the point where the actual provider is loaded.
         """
 
         selected_provider = self.get_provider(
@@ -168,6 +170,9 @@ class LLMRouter:
     ) -> bool:
         """
         Check whether the selected provider is available.
+
+        This does require loading the provider because availability
+        depends on the provider implementation.
         """
 
         return self.get_provider(
@@ -179,21 +184,38 @@ class LLMRouter:
         provider: str | None = None,
     ) -> str:
         """
-        Return the selected provider's name.
+        Return the configured provider name without loading
+        the provider SDK.
         """
 
-        return self.get_provider(
+        return (
             provider
-        ).provider_name()
+            or self.config.llm.provider
+        )
 
     def model_name(
         self,
         provider: str | None = None,
     ) -> str:
         """
-        Return the selected provider's model name.
+        Return the configured model name without loading
+        the provider SDK.
         """
 
-        return self.get_provider(
-            provider
-        ).model_name()
+        if provider == "groq":
+
+            return (
+                self.config.llm.model
+                if self.config.llm.provider == "groq"
+                else "openai/gpt-oss-20b"
+            )
+
+        if provider == "openai":
+
+            return (
+                self.config.llm.model
+                if self.config.llm.provider == "openai"
+                else "gpt-4.1-mini"
+            )
+
+        return self.config.llm.model
