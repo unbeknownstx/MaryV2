@@ -210,13 +210,12 @@ class PipelineContext:
 
 # ================================================================
 # PIPELINE STAGE RESULT
-# ================================================================
 
 
 @dataclass
 class StageResult:
     """
-    Result returned by an individual stage.
+    Result returned by an individual pipeline stage.
     """
 
     success: bool = True
@@ -246,9 +245,7 @@ class StageResult:
         """
 
         if self.output is not None:
-            context.output_data = (
-                self.output
-            )
+            context.output_data = self.output
 
         context.values.update(
             self.values
@@ -264,42 +261,44 @@ class StageResult:
 # ================================================================
 
 
-class PipelineStage(ABC):
+class PipelineStage:
     """
-    Abstract processing stage.
+    General runtime pipeline stage.
 
-    Each stage should perform one clearly defined responsibility.
+    A stage can be created directly with a handler.
     """
 
-    name: str = "stage"
+    def __init__(
+        self,
+        name: str = "stage",
+        handler: Callable[
+            [PipelineContext],
+            Any,
+        ] | None = None,
+        *,
+        required: bool = True,
+        enabled: bool = True,
+    ) -> None:
 
-    required: bool = True
+        if handler is None:
+            raise PipelineConfigurationError(
+                f"PipelineStage '{name}' requires a handler."
+            )
 
-    enabled: bool = True
+        self.name = name
+        self.handler = handler
+        self.required = required
+        self.enabled = enabled
 
-    # ============================================================
-    # PROCESS
-    # ============================================================
-
-    @abstractmethod
     def process(
         self,
         context: PipelineContext,
     ) -> StageResult | Any:
         """
-        Process the current pipeline context.
-
-        Implementations may return:
-
-            StageResult
-            any other value
-
-        A non-StageResult value is treated as the stage output.
+        Execute the stage handler.
         """
 
-    # ============================================================
-    # OPTIONAL HOOK
-    # ============================================================
+        return self.handler(context)
 
     def before(
         self,
@@ -333,22 +332,33 @@ class PipelineStage(ABC):
 # ================================================================
 
 
-@dataclass
 class CallbackStage(PipelineStage):
     """
     Lightweight stage adapter for existing functions.
+
+    Uses an explicit constructor instead of a dataclass because
+    PipelineStage already defines default-valued fields.
     """
 
-    name: str
+    def __init__(
+        self,
+        name: str,
+        callback: Callable[
+            [PipelineContext],
+            Any,
+        ],
+        *,
+        required: bool = True,
+        enabled: bool = True,
+    ) -> None:
 
-    callback: Callable[
-        [PipelineContext],
-        Any,
-    ]
+        super().__init__(
+            name=name,
+            required=required,
+            enabled=enabled,
+        )
 
-    required: bool = True
-
-    enabled: bool = True
+        self.callback = callback
 
     def process(
         self,
@@ -456,6 +466,22 @@ class PipelineResult:
             self.status
             == PipelineStatus.COMPLETED
         )
+
+    @property
+    def success(self) -> bool:
+        """
+        Compatibility alias for successful.
+        """
+
+        return self.successful
+
+    @property
+    def output(self) -> Any:
+        """
+        Compatibility alias for output_data.
+        """
+
+        return self.output_data
 
     @property
     def failed(self) -> bool:
@@ -680,6 +706,30 @@ class Pipeline:
     # EXECUTE
     # ============================================================
 
+    def run(
+        self,
+        input_data: Any = None,
+        *,
+        turn_id: str | None = None,
+        metadata: Mapping[
+            str,
+            Any,
+        ]
+        | None = None,
+    ) -> PipelineResult:
+        """
+        Execute the pipeline.
+
+        This is the primary convenience interface for callers.
+        It delegates to the existing execute() implementation.
+        """
+
+        return self.execute(
+            input_data=input_data,
+            turn_id=turn_id,
+            metadata=metadata,
+        )
+
     def execute(
         self,
         input_data: Any = None,
@@ -899,7 +949,7 @@ class Pipeline:
                     PipelineStatus.COMPLETED
                 )
 
-            self.runtime_state.record_turn()
+            self.runtime_state.increment_turn()
 
             return result
 
