@@ -1,8 +1,8 @@
-modules = ["python-3.12"]
+modules = ["python-3.11"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["python313Packages.pytest_7"]
+packages = ["python311Packages.pytest_7"]
 
 [agent]
 expertMode = true

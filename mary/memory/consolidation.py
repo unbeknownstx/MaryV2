@@ -11,8 +11,9 @@ It coordinates consolidation between memory components.
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class MemoryConsolidator:
@@ -20,8 +21,7 @@ class MemoryConsolidator:
     Converts useful experiences into durable memory candidates.
 
     The consolidator intentionally remains independent from the
-    storage implementation. This allows V2 to evolve from simple
-    JSON-backed memory into databases/vector stores later.
+    storage implementation.
     """
 
     def __init__(
@@ -43,9 +43,6 @@ class MemoryConsolidator:
     def consolidate(self) -> List[Dict[str, Any]]:
         """
         Review available memories and return consolidation candidates.
-
-        This method does not automatically destroy or rewrite memories.
-        It identifies memories that appear important enough to preserve.
         """
 
         memories = self._collect_memories()
@@ -56,11 +53,15 @@ class MemoryConsolidator:
         candidates = []
 
         for memory in memories:
+
             if not isinstance(memory, dict):
                 continue
 
             if self._should_consolidate(memory):
-                candidate = self._create_candidate(memory)
+
+                candidate = self._create_candidate(
+                    memory
+                )
 
                 if candidate is not None:
                     candidates.append(candidate)
@@ -81,7 +82,9 @@ class MemoryConsolidator:
         if not self._should_consolidate(memory):
             return None
 
-        return self._create_candidate(memory)
+        return self._create_candidate(
+            memory
+        )
 
     def promote(
         self,
@@ -90,7 +93,14 @@ class MemoryConsolidator:
         """
         Promote a consolidation candidate into semantic memory.
 
-        Returns True when promotion succeeds.
+        The current SemanticMemory architecture stores facts as:
+
+            subject
+            predicate
+            value
+
+        Therefore consolidation candidates must contain enough
+        structured information to create a semantic fact.
         """
 
         if not isinstance(candidate, dict):
@@ -99,39 +109,87 @@ class MemoryConsolidator:
         if self.semantic_memory is None:
             return False
 
-        content = candidate.get("content")
+        content = candidate.get(
+            "content"
+        )
 
         if not content:
             return False
 
-        # Support multiple possible semantic-memory APIs so the
-        # consolidation layer remains loosely coupled.
-        if hasattr(self.semantic_memory, "add"):
+        metadata = candidate.get(
+            "metadata",
+            {},
+        )
+
+        if not isinstance(
+            metadata,
+            dict,
+        ):
+            metadata = {}
+
+        subject = metadata.get(
+            "subject"
+        )
+
+        predicate = metadata.get(
+            "predicate"
+        )
+
+        value = metadata.get(
+            "value"
+        )
+
+        # If the original memory already contains semantic
+        # structure, preserve it.
+        if subject is None:
+            subject = candidate.get(
+                "subject"
+            )
+
+        if predicate is None:
+            predicate = candidate.get(
+                "predicate"
+            )
+
+        if value is None:
+            value = candidate.get(
+                "value"
+            )
+
+        # V2 does not invent semantic facts from arbitrary
+        # episodic prose. Without enough structure, promotion
+        # is intentionally rejected.
+        if subject is None or predicate is None:
+            return False
+
+        if value is None:
+            value = content
+
+        try:
+
             self.semantic_memory.add(
-                content=content,
-                metadata=candidate.get("metadata", {}),
+                subject=subject,
+                predicate=predicate,
+                value=value,
+                confidence=metadata.get(
+                    "confidence",
+                    1.0,
+                ),
+                source=metadata.get(
+                    "source",
+                    "memory_consolidation",
+                ),
             )
+
             return True
 
-        if hasattr(self.semantic_memory, "add_memory"):
-            self.semantic_memory.add_memory(
-                content,
-                metadata=candidate.get("metadata", {}),
-            )
-            return True
-
-        if hasattr(self.semantic_memory, "store"):
-            self.semantic_memory.store(
-                content,
-                metadata=candidate.get("metadata", {}),
-            )
-            return True
-
-        return False
+        except Exception:
+            return False
 
     def consolidate_and_promote(self) -> int:
         """
-        Consolidate available memories and promote successful candidates.
+        Consolidate available memories and promote successful
+        candidates.
 
         Returns the number of memories successfully promoted.
         """
@@ -141,6 +199,7 @@ class MemoryConsolidator:
         promoted = 0
 
         for candidate in candidates:
+
             if self.promote(candidate):
                 promoted += 1
 
@@ -150,7 +209,9 @@ class MemoryConsolidator:
     # MEMORY COLLECTION
     # ============================================================
 
-    def _collect_memories(self) -> List[Dict[str, Any]]:
+    def _collect_memories(
+        self,
+    ) -> List[Dict[str, Any]]:
         """
         Collect candidate memories from available memory systems.
         """
@@ -158,6 +219,7 @@ class MemoryConsolidator:
         memories: List[Dict[str, Any]] = []
 
         if self.episodic_memory is not None:
+
             memories.extend(
                 self._extract_memories(
                     self.episodic_memory
@@ -165,6 +227,7 @@ class MemoryConsolidator:
             )
 
         if self.working_memory is not None:
+
             memories.extend(
                 self._extract_memories(
                     self.working_memory
@@ -178,7 +241,11 @@ class MemoryConsolidator:
         memory_system,
     ) -> List[Dict[str, Any]]:
         """
-        Extract memories without requiring a specific storage backend.
+        Extract memories from different memory-system
+        representations.
+
+        Supports both dictionaries and dataclass-based
+        memory objects such as EpisodicMemory.
         """
 
         methods = (
@@ -189,28 +256,70 @@ class MemoryConsolidator:
         )
 
         for method_name in methods:
+
             method = getattr(
                 memory_system,
                 method_name,
                 None,
             )
 
-            if callable(method):
-                try:
-                    result = method()
+            if not callable(method):
+                continue
 
-                    if result is None:
-                        return []
+            try:
 
-                    if isinstance(result, list):
-                        return [
-                            item
-                            for item in result
-                            if isinstance(item, dict)
-                        ]
+                result = method()
 
-                except Exception:
-                    return []
+            except Exception:
+                return []
+
+            if result is None:
+                return []
+
+            if not isinstance(
+                result,
+                list,
+            ):
+                return []
+
+            normalized = []
+
+            for item in result:
+
+                if isinstance(
+                    item,
+                    dict,
+                ):
+                    normalized.append(
+                        dict(item)
+                    )
+
+                elif is_dataclass(item):
+                    normalized.append(
+                        asdict(item)
+                    )
+
+                elif hasattr(
+                    item,
+                    "to_dict",
+                ):
+
+                    try:
+
+                        converted = item.to_dict()
+
+                        if isinstance(
+                            converted,
+                            dict,
+                        ):
+                            normalized.append(
+                                converted
+                            )
+
+                    except Exception:
+                        continue
+
+            return normalized
 
         return []
 
@@ -223,68 +332,91 @@ class MemoryConsolidator:
         memory: Dict[str, Any],
     ) -> bool:
         """
-        Determine whether a memory is important enough to preserve.
-
-        V2 currently uses simple deterministic heuristics.
-
-        Later this can be expanded with:
-        - LLM evaluation
-        - importance scoring
-        - repetition detection
-        - emotional significance
-        - relationship significance
-        - goal relevance
-        - novelty
-        - contradiction detection
+        Determine whether a memory is important enough
+        to preserve.
         """
 
-        content = memory.get("content")
+        content = memory.get(
+            "content"
+        )
 
         if not content:
             return False
 
-        # Explicitly marked important memories should always qualify.
-        if memory.get("important") is True:
+        if memory.get(
+            "important"
+        ) is True:
             return True
 
-        if memory.get("consolidate") is True:
+        if memory.get(
+            "consolidate"
+        ) is True:
             return True
 
-        importance = memory.get("importance", 0)
+        importance = memory.get(
+            "importance",
+            0,
+        )
 
         try:
-            importance = float(importance)
-        except (TypeError, ValueError):
+
+            importance = float(
+                importance
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
             importance = 0
 
         if importance >= 0.7:
             return True
 
-        # Emotional significance can make an experience worth keeping.
         emotional_weight = memory.get(
             "emotional_weight",
-            memory.get("emotional_importance", 0),
+            memory.get(
+                "emotional_importance",
+                0,
+            ),
         )
 
         try:
+
             emotional_weight = float(
                 emotional_weight
             )
-        except (TypeError, ValueError):
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
             emotional_weight = 0
 
         if emotional_weight >= 0.7:
             return True
 
-        # Repeated memories are candidates for consolidation.
         repetition = memory.get(
             "repetition",
-            memory.get("access_count", 0),
+            memory.get(
+                "access_count",
+                0,
+            ),
         )
 
         try:
-            repetition = int(repetition)
-        except (TypeError, ValueError):
+
+            repetition = int(
+                repetition
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
             repetition = 0
 
         if repetition >= 3:
@@ -301,29 +433,54 @@ class MemoryConsolidator:
         memory: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """
-        Convert an episodic memory into a semantic-memory candidate.
+        Convert a memory into a consolidation candidate.
         """
 
-        content = memory.get("content")
+        content = memory.get(
+            "content"
+        )
 
         if not content:
             return None
 
         return {
             "type": "consolidation_candidate",
-            "content": str(content).strip(),
-            "source_memory_id": memory.get("id"),
+
+            "content": str(
+                content
+            ).strip(),
+
+            "source_memory_id": memory.get(
+                "id"
+            ),
+
             "created_at": datetime.now().isoformat(),
+
+            "subject": memory.get(
+                "subject"
+            ),
+
+            "predicate": memory.get(
+                "predicate"
+            ),
+
+            "value": memory.get(
+                "value"
+            ),
+
             "metadata": {
                 "source": "memory_consolidation",
+
                 "memory_type": memory.get(
                     "type",
                     "episodic",
                 ),
+
                 "importance": memory.get(
                     "importance",
                     0,
                 ),
+
                 "emotional_weight": memory.get(
                     "emotional_weight",
                     memory.get(
@@ -331,9 +488,27 @@ class MemoryConsolidator:
                         0,
                     ),
                 ),
+
                 "tags": memory.get(
                     "tags",
                     [],
+                ),
+
+                "subject": memory.get(
+                    "subject"
+                ),
+
+                "predicate": memory.get(
+                    "predicate"
+                ),
+
+                "value": memory.get(
+                    "value"
+                ),
+
+                "confidence": memory.get(
+                    "confidence",
+                    1.0,
                 ),
             },
         }
@@ -342,7 +517,9 @@ class MemoryConsolidator:
     # UTILITY
     # ============================================================
 
-    def count_candidates(self) -> int:
+    def count_candidates(
+        self,
+    ) -> int:
         """
         Return the number of memories currently eligible
         for consolidation.
