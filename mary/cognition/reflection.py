@@ -10,14 +10,6 @@ Reasoning asks:
 
 Reflection asks:
     "Is this reasoning/result good enough?"
-
-This creates the foundation for future:
-    - self-evaluation
-    - response revision
-    - uncertainty handling
-    - learning from mistakes
-    - goal evaluation
-    - autonomous improvement
 """
 
 from dataclasses import dataclass, field
@@ -28,12 +20,11 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent
 from mary.cognition.reasoning import ReasoningResult
 from mary.llm.router import LLMRouter
+from mary.llm.interface import LLMMessage
 
 
 class ReflectionDecision(str, Enum):
-    """
-    Decision produced by the reflection system.
-    """
+    """Decision produced by the reflection system."""
 
     ACCEPT = "accept"
     REVISE = "revise"
@@ -42,9 +33,7 @@ class ReflectionDecision(str, Enum):
 
 @dataclass
 class ReflectionResult:
-    """
-    Structured result of a reflection cycle.
-    """
+    """Structured result of a reflection cycle."""
 
     decision: ReflectionDecision
 
@@ -65,9 +54,7 @@ class ReflectionResult:
     )
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Convert the reflection result into a serializable dictionary.
-        """
+        """Convert the reflection result into a serializable dictionary."""
 
         return {
             "decision": self.decision.value,
@@ -82,9 +69,6 @@ class ReflectionResult:
 class ReflectionEngine:
     """
     Evaluates reasoning results.
-
-    The reflection engine is intentionally independent from the final
-    response system and from any specific LLM provider.
     """
 
     def __init__(
@@ -100,9 +84,7 @@ class ReflectionEngine:
         reasoning: ReasoningResult,
         intent: Intent | None = None,
     ) -> ReflectionResult:
-        """
-        Evaluate a reasoning result.
-        """
+        """Evaluate a reasoning result."""
 
         prompt = self._build_prompt(
             context=context,
@@ -111,12 +93,33 @@ class ReflectionEngine:
         )
 
         response = self.llm.generate(
-            prompt=prompt,
+            messages=[
+                LLMMessage(
+                    role="system",
+                    content=(
+                        "You are Mary's reflection system. "
+                        "Evaluate the proposed response objectively."
+                    ),
+                ),
+                LLMMessage(
+                    role="user",
+                    content=prompt,
+                ),
+            ],
         )
 
-        return self._parse_response(
-            response=response,
+        result = self._parse_response(
+            response=response.content,
         )
+
+        result.metadata.update({
+            "provider": response.provider,
+            "model": response.model,
+            "finish_reason": response.finish_reason,
+            "usage": response.usage,
+        })
+
+        return result
 
     def _build_prompt(
         self,
@@ -124,9 +127,6 @@ class ReflectionEngine:
         reasoning: ReasoningResult,
         intent: Intent | None,
     ) -> str:
-        """
-        Build the reflection prompt.
-        """
 
         intent_text = (
             intent.intent_type.value
@@ -164,12 +164,6 @@ class ReflectionEngine:
         self,
         response: str,
     ) -> ReflectionResult:
-        """
-        Parse the LLM's reflection into a structured result.
-
-        The parser is deliberately defensive because an LLM may not always
-        follow the requested format perfectly.
-        """
 
         decision = ReflectionDecision.ACCEPT
         confidence = 0.5
@@ -183,10 +177,7 @@ class ReflectionEngine:
 
             stripped = line.strip()
 
-            if not stripped:
-                continue
-
-            if ":" not in stripped:
+            if not stripped or ":" not in stripped:
                 continue
 
             key, value = stripped.split(
@@ -201,11 +192,11 @@ class ReflectionEngine:
 
                 normalized = value.upper()
 
-                if "REVISE" in normalized:
-                    decision = ReflectionDecision.REVISE
-
-                elif "ESCALATE" in normalized:
+                if "ESCALATE" in normalized:
                     decision = ReflectionDecision.ESCALATE
+
+                elif "REVISE" in normalized:
+                    decision = ReflectionDecision.REVISE
 
                 else:
                     decision = ReflectionDecision.ACCEPT
@@ -213,31 +204,23 @@ class ReflectionEngine:
             elif key == "CONFIDENCE":
 
                 try:
-
-                    confidence = float(
-                        value
-                    )
-
                     confidence = max(
                         0.0,
                         min(
                             1.0,
-                            confidence,
+                            float(value),
                         ),
                     )
 
                 except ValueError:
-
                     confidence = 0.5
 
             elif key == "ASSESSMENT":
-
                 assessment = value
 
             elif key == "ISSUES":
 
                 if value.upper() != "NONE":
-
                     issues = [
                         item.strip()
                         for item in value.split(",")
@@ -247,7 +230,6 @@ class ReflectionEngine:
             elif key == "SUGGESTIONS":
 
                 if value.upper() != "NONE":
-
                     suggestions = [
                         item.strip()
                         for item in value.split(",")

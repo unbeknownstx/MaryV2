@@ -21,6 +21,7 @@ from typing import Any
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent
 from mary.llm.router import LLMRouter
+from mary.llm.interface import LLMMessage
 
 
 @dataclass
@@ -93,17 +94,36 @@ class ReasoningEngine:
         )
 
         response = self.llm.generate(
-            prompt=prompt,
+            messages=[
+                LLMMessage(
+                    role="system",
+                    content=(
+                        "You are Mary, an AI assistant. "
+                        "Respond naturally, directly, and consistently "
+                        "with the supplied cognitive context."
+                    ),
+                ),
+                LLMMessage(
+                    role="user",
+                    content=prompt,
+                ),
+            ],
         )
 
         return ReasoningResult(
-            response=response,
+            response=response.content,
             intent=intent,
             reasoning_type=(
                 intent.intent_type.value
                 if intent is not None
                 else "general"
             ),
+            metadata={
+                "provider": response.provider,
+                "model": response.model,
+                "finish_reason": response.finish_reason,
+                "usage": response.usage,
+            },
         )
 
     def _build_prompt(
@@ -113,18 +133,9 @@ class ReasoningEngine:
     ) -> str:
         """
         Build the cognitive prompt sent to the LLM.
-
-        This is intentionally kept simple for now.
-
-        As V2 develops, prompt construction can become its own subsystem
-        without changing the reasoning interface.
         """
 
         sections: list[str] = []
-
-        sections.append(
-            "You are Mary, an AI assistant."
-        )
 
         sections.append(
             f"Current user input:\n{context.input_text}"
@@ -163,6 +174,13 @@ class ReasoningEngine:
             sections.append(
                 "Relevant knowledge:\n"
                 f"{context.relevant_knowledge}"
+            )
+
+        if context.entities:
+
+            sections.append(
+                "Relevant entities:\n"
+                f"{context.entities}"
             )
 
         if context.user_context:
