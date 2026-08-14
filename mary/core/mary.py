@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from mary.core.identity import Identity
+from mary.core.config import Config
 
 from mary.personality.personality import Personality
 from mary.personality.development import PersonalityDevelopment
@@ -22,6 +23,13 @@ from mary.learning.learner import Learner
 
 from mary.memory.manager import MemoryManager
 
+from mary.cognition.orchestrator import (
+    CognitiveOrchestrator,
+    CognitiveCycleResult,
+)
+from mary.cognition.reasoning import ReasoningEngine
+from mary.cognition.reflection import ReflectionEngine
+
 
 class Mary:
     """
@@ -29,6 +37,12 @@ class Mary:
     """
 
     def __init__(self) -> None:
+
+        # ========================================================
+        # CONFIGURATION
+        # ========================================================
+
+        self.config = Config()
 
         # ========================================================
         # IDENTITY
@@ -66,6 +80,85 @@ class Mary:
 
         self.memory = MemoryManager()
 
+        # ========================================================
+        # COGNITION
+        # ========================================================
+
+        self.llm = self._create_llm_router()
+
+        self.reasoning = ReasoningEngine(
+            llm=self.llm,
+        )
+
+        self.reflection = ReflectionEngine(
+            llm=self.llm,
+        )
+
+        self.cognition = CognitiveOrchestrator(
+            reasoning_engine=self.reasoning,
+            reflection_engine=self.reflection,
+        )
+
+    # ============================================================
+    # COGNITION
+    # ============================================================
+
+    def process(
+        self,
+        input_text: str,
+    ) -> CognitiveCycleResult:
+        """
+        Process one complete cognitive cycle.
+
+        This is Mary's primary cognitive entry point.
+
+        The method gathers relevant information from Mary's systems,
+        passes it into cognition, and returns the complete structured
+        cognitive-cycle result.
+        """
+
+        if not input_text or not str(input_text).strip():
+
+            raise ValueError(
+                "input_text cannot be empty."
+            )
+
+        input_text = str(input_text).strip()
+
+        # --------------------------------------------------------
+        # MEMORY CONTEXT
+        # --------------------------------------------------------
+
+        memory_context = self.memory.build_context(
+            input_text,
+        )
+
+        # --------------------------------------------------------
+        # USER CONTEXT
+        # --------------------------------------------------------
+
+        user_context = self._safe_user_context()
+
+        # --------------------------------------------------------
+        # PERSONALITY CONTEXT
+        # --------------------------------------------------------
+
+        personality_context = self._safe_personality_context()
+
+        # --------------------------------------------------------
+        # COGNITIVE CYCLE
+        # --------------------------------------------------------
+
+        return self.cognition.process(
+            input_text=input_text,
+            memories=memory_context.get(
+                "relevant_memories",
+                [],
+            ),
+            user_context=user_context,
+            personality_context=personality_context,
+        )
+
     # ============================================================
     # STATUS
     # ============================================================
@@ -85,6 +178,12 @@ class Mary:
             "user": self.user_model.get_identity(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),
+            "cognition": {
+                "reasoning": True,
+                "reflection": True,
+                "llm": self.llm.provider_name(),
+                "model": self.llm.model_name(),
+            },
         }
 
     # ============================================================
@@ -209,9 +308,6 @@ class Mary:
         """
         Apply a previously created personality-development
         proposal.
-
-        The development system expects the complete proposal,
-        rather than only its ID.
         """
 
         return self.personality_development.apply(
@@ -236,6 +332,20 @@ class Mary:
     # INTERNAL
     # ============================================================
 
+    def _create_llm_router(self):
+        """
+        Create Mary's LLM router.
+
+        The router remains the only layer that knows which
+        provider is being used.
+        """
+
+        from mary.llm.router import LLMRouter
+
+        return LLMRouter(
+            config=self.config,
+        )
+
     def _safe_identity(self) -> Dict[str, Any]:
         """
         Safely serialize Mary's identity regardless of the
@@ -243,12 +353,14 @@ class Mary:
         """
 
         if hasattr(self.identity, "to_dict"):
+
             result = self.identity.to_dict()
 
             if isinstance(result, dict):
                 return result
 
         if hasattr(self.identity, "describe"):
+
             return {
                 "description": self.identity.describe()
             }
@@ -256,3 +368,41 @@ class Mary:
         return {
             "type": type(self.identity).__name__
         }
+
+    def _safe_user_context(self) -> Dict[str, Any]:
+        """
+        Safely expose the current user model to cognition.
+        """
+
+        if hasattr(self.user_model, "to_dict"):
+
+            result = self.user_model.to_dict()
+
+            if isinstance(result, dict):
+                return result
+
+        if hasattr(self.user_model, "get_identity"):
+
+            result = self.user_model.get_identity()
+
+            if isinstance(result, dict):
+                return result
+
+        return {}
+
+    def _safe_personality_context(self) -> Dict[str, Any]:
+        """
+        Safely expose Mary's personality state to cognition.
+        """
+
+        if hasattr(
+            self.personality,
+            "get_traits",
+        ):
+
+            result = self.personality.get_traits()
+
+            if isinstance(result, dict):
+                return result
+
+        return {}

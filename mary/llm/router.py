@@ -1,13 +1,15 @@
 """
 MaryV2 LLM Router
 
-Selects and manages language-model providers.
+Routes language-model requests to the configured provider.
 
-The router prevents the rest of Mary from needing to know whether a request
-is being handled by Groq, OpenAI, or another provider added in the future.
+Providers are loaded lazily so importing Mary does not require every
+provider SDK to be installed.
 """
 
-from ..core.config import Config
+from __future__ import annotations
+
+from mary.core.config import Config
 
 from .interface import (
     LLMInterface,
@@ -15,19 +17,20 @@ from .interface import (
     LLMResponse,
 )
 
-from .providers.groq import GroqProvider
-from .providers.openai import OpenAIProvider
-
 
 class LLMRouter:
     """
     Routes LLM requests to the configured provider.
+
+    Provider SDKs are intentionally imported only when the provider
+    is actually needed.
     """
 
     def __init__(
         self,
         config: Config,
-    ):
+    ) -> None:
+
         self.config = config
 
         self.providers: dict[
@@ -35,35 +38,57 @@ class LLMRouter:
             LLMInterface,
         ] = {}
 
-        self._register_default_providers()
+    # ============================================================
+    # PROVIDERS
+    # ============================================================
 
-    def _register_default_providers(self):
-        """Register the providers currently supported by MaryV2."""
+    def _create_provider(
+        self,
+        name: str,
+    ) -> LLMInterface:
+        """
+        Create a provider only when it is actually requested.
+        """
 
-        self.providers["groq"] = GroqProvider(
-            model=self.config.llm.model
-            if self.config.llm.provider == "groq"
-            else "openai/gpt-oss-20b"
-        )
+        if name == "groq":
 
-        self.providers["openai"] = OpenAIProvider(
-            model=(
+            from .providers.groq import GroqProvider
+
+            model = (
+                self.config.llm.model
+                if self.config.llm.provider == "groq"
+                else "openai/gpt-oss-20b"
+            )
+
+            return GroqProvider(
+                model=model,
+            )
+
+        if name == "openai":
+
+            from .providers.openai import OpenAIProvider
+
+            model = (
                 self.config.llm.model
                 if self.config.llm.provider == "openai"
                 else "gpt-4.1-mini"
             )
+
+            return OpenAIProvider(
+                model=model,
+            )
+
+        raise ValueError(
+            f"Unknown LLM provider: {name}"
         )
 
     def register_provider(
         self,
         name: str,
         provider: LLMInterface,
-    ):
+    ) -> None:
         """
-        Register a custom LLM provider.
-
-        This allows future providers—including local models—to be added
-        without modifying the router's core logic.
+        Register a custom provider.
         """
 
         self.providers[name] = provider
@@ -72,6 +97,12 @@ class LLMRouter:
         self,
         name: str | None = None,
     ) -> LLMInterface:
+        """
+        Return the requested provider.
+
+        The provider is created lazily if it has not already
+        been registered.
+        """
 
         provider_name = (
             name
@@ -83,12 +114,20 @@ class LLMRouter:
         )
 
         if provider is None:
-            raise ValueError(
-                f"Unknown LLM provider: "
-                f"{provider_name}"
+
+            provider = self._create_provider(
+                provider_name
             )
 
+            self.providers[
+                provider_name
+            ] = provider
+
         return provider
+
+    # ============================================================
+    # GENERATION
+    # ============================================================
 
     def generate(
         self,
@@ -119,11 +158,17 @@ class LLMRouter:
             ),
         )
 
+    # ============================================================
+    # STATUS
+    # ============================================================
+
     def is_available(
         self,
         provider: str | None = None,
     ) -> bool:
-        """Check whether the selected provider is available."""
+        """
+        Check whether the selected provider is available.
+        """
 
         return self.get_provider(
             provider
@@ -133,7 +178,9 @@ class LLMRouter:
         self,
         provider: str | None = None,
     ) -> str:
-        """Return the selected provider's name."""
+        """
+        Return the selected provider's name.
+        """
 
         return self.get_provider(
             provider
@@ -143,7 +190,9 @@ class LLMRouter:
         self,
         provider: str | None = None,
     ) -> str:
-        """Return the selected provider's model name."""
+        """
+        Return the selected provider's model name.
+        """
 
         return self.get_provider(
             provider
