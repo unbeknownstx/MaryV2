@@ -1,17 +1,41 @@
 """
 MaryV2 - Memory Consolidation
 
-Consolidation reviews Mary's temporary and episodic experiences and
-identifies information that is important enough to become durable knowledge.
+Memory consolidation converts experiences into durable knowledge.
 
-Consolidation does not own memory storage.
+Architecture:
 
-It coordinates:
-    - episodic memory
-    - working memory
-    - semantic memory
+    Episodic / Working Memory
+              |
+              v
+       Memory Consolidator
+              |
+              v
+        Semantic Memory
 
-The actual storage behavior remains inside each memory system.
+The consolidator does NOT own memory storage.
+
+Its responsibilities are:
+
+    1. Find memories worth preserving.
+    2. Normalize memory content.
+    3. Extract durable semantic structure when possible.
+    4. Create consolidation candidates.
+    5. Promote candidates into semantic memory.
+    6. Prevent duplicate semantic promotion.
+
+V2 intentionally uses deterministic rules.
+
+Future versions can add:
+
+    - repetition analysis
+    - emotional significance
+    - relationship significance
+    - goal relevance
+    - novelty
+    - contradiction detection
+    - temporal reasoning
+    - LLM-assisted semantic extraction
 """
 
 from __future__ import annotations
@@ -22,18 +46,8 @@ from typing import Any
 
 class MemoryConsolidator:
     """
-    Reviews memories and creates candidates for long-term retention.
-
-    V2 uses deterministic rules for now.
-
-    Future versions can incorporate:
-        - repetition
-        - emotional significance
-        - relationship significance
-        - goal relevance
-        - novelty
-        - contradiction detection
-        - LLM evaluation
+    Coordinates conversion of temporary/episodic experience
+    into durable semantic knowledge.
     """
 
     def __init__(
@@ -57,7 +71,7 @@ class MemoryConsolidator:
         """
         Review available memories and return consolidation candidates.
 
-        Memories are not removed or modified by this operation.
+        Memories are never removed or modified here.
         """
 
         memories = self._collect_memories()
@@ -75,9 +89,7 @@ class MemoryConsolidator:
             if not self._should_consolidate(memory):
                 continue
 
-            candidate = self._create_candidate(
-                memory
-            )
+            candidate = self._create_candidate(memory)
 
             if candidate is not None:
                 candidates.append(candidate)
@@ -92,21 +104,15 @@ class MemoryConsolidator:
         Evaluate one memory and create a consolidation candidate.
         """
 
-        normalized = self._normalize_memory(
-            memory
-        )
+        normalized = self._normalize_memory(memory)
 
         if normalized is None:
             return None
 
-        if not self._should_consolidate(
-            normalized
-        ):
+        if not self._should_consolidate(normalized):
             return None
 
-        return self._create_candidate(
-            normalized
-        )
+        return self._create_candidate(normalized)
 
     # ============================================================
     # PROMOTION
@@ -117,17 +123,9 @@ class MemoryConsolidator:
         candidate: dict[str, Any],
     ) -> bool:
         """
-        Promote a consolidation candidate into semantic memory.
+        Promote one consolidation candidate into semantic memory.
 
-        Semantic memory stores facts as:
-
-            subject
-            predicate
-            value
-
-        When a candidate does not contain an explicit semantic
-        structure, Mary stores the experience as a durable fact
-        describing that Mary remembers the information.
+        Duplicate semantic facts are not inserted again.
         """
 
         if not isinstance(candidate, dict):
@@ -173,12 +171,14 @@ class MemoryConsolidator:
             ),
         )
 
-        confidence = metadata.get(
-            "confidence",
+        confidence = self._safe_float(
             metadata.get(
-                "importance",
-                0.5,
-            ),
+                "confidence",
+                metadata.get(
+                    "importance",
+                    0.5,
+                ),
+            )
         )
 
         source = metadata.get(
@@ -186,13 +186,24 @@ class MemoryConsolidator:
             "memory_consolidation",
         )
 
+        # --------------------------------------------------------
+        # DUPLICATE PROTECTION
+        # --------------------------------------------------------
+
+        if self._semantic_exists(
+            subject=subject,
+            predicate=predicate,
+            value=value,
+        ):
+            return False
+
         try:
 
             self.semantic_memory.add(
                 subject=str(subject),
                 predicate=str(predicate),
                 value=value,
-                confidence=float(confidence),
+                confidence=confidence,
                 source=source,
             )
 
@@ -210,7 +221,7 @@ class MemoryConsolidator:
         """
         Consolidate eligible memories and promote them.
 
-        Returns the number of successfully promoted memories.
+        Returns the number of newly promoted memories.
         """
 
         candidates = self.consolidate()
@@ -265,7 +276,7 @@ class MemoryConsolidator:
         """
         Extract memories from a memory system.
 
-        Supports both dictionary-based memory and dataclass/object
+        Supports list-returning memory APIs and object/dataclass
         memory representations.
         """
 
@@ -321,9 +332,7 @@ class MemoryConsolidator:
                 )
 
                 if memory is not None:
-                    normalized.append(
-                        memory
-                    )
+                    normalized.append(memory)
 
             return normalized
 
@@ -339,8 +348,7 @@ class MemoryConsolidator:
         memory_type: str | None = None,
     ) -> dict[str, Any] | None:
         """
-        Convert a memory object into the dictionary representation
-        used internally by the consolidation system.
+        Convert a memory object into a dictionary representation.
         """
 
         if memory is None:
@@ -391,7 +399,53 @@ class MemoryConsolidator:
                 memory_type,
             )
 
+        # Normalize content where possible.
+        if "content" in result:
+
+            result["content"] = self._normalize_content(
+                result["content"]
+            )
+
         return result
+
+    # ============================================================
+    # CONTENT NORMALIZATION
+    # ============================================================
+
+    @staticmethod
+    def _normalize_content(
+        content: Any,
+    ) -> str:
+        """
+        Normalize remembered text.
+
+        Examples:
+
+            "that I love anime"
+                -> "I love anime"
+
+            "That I love anime"
+                -> "I love anime"
+
+            "I love anime"
+                -> "I love anime"
+        """
+
+        if content is None:
+            return ""
+
+        text = str(content).strip()
+
+        if not text:
+            return ""
+
+        lowered = text.lower()
+
+        if lowered.startswith("that "):
+
+            text = text[5:].strip()
+
+        return text
 
     # ============================================================
     # CONSOLIDATION DECISION
@@ -402,7 +456,8 @@ class MemoryConsolidator:
         memory: dict[str, Any],
     ) -> bool:
         """
-        Determine whether a memory is important enough to preserve.
+        Determine whether a memory is important enough
+        to become durable knowledge.
         """
 
         content = memory.get(
@@ -415,21 +470,21 @@ class MemoryConsolidator:
         if not str(content).strip():
             return False
 
-        # Explicit request to consolidate.
+        # Explicit request.
         if memory.get(
             "consolidate"
         ) is True:
 
             return True
 
-        # Explicitly marked important.
+        # Explicit importance.
         if memory.get(
             "important"
         ) is True:
 
             return True
 
-        # Standard importance score.
+        # Importance score.
         importance = self._safe_float(
             memory.get(
                 "importance",
@@ -454,7 +509,7 @@ class MemoryConsolidator:
         if emotional_weight >= 0.7:
             return True
 
-        # Repeated/accessed memories.
+        # Repetition/access frequency.
         repetition = self._safe_int(
             memory.get(
                 "repetition",
@@ -479,19 +534,19 @@ class MemoryConsolidator:
         memory: dict[str, Any],
     ) -> dict[str, Any] | None:
         """
-        Convert a memory into a consolidation candidate.
+        Convert an eligible memory into a consolidation candidate.
         """
 
-        content = memory.get(
+        raw_content = memory.get(
             "content"
         )
 
-        if content is None:
+        if raw_content is None:
             return None
 
-        content = str(
-            content
-        ).strip()
+        content = self._normalize_content(
+            raw_content
+        )
 
         if not content:
             return None
@@ -532,18 +587,54 @@ class MemoryConsolidator:
             ),
         }
 
-        # Preserve semantic structure if the source memory
-        # already contains it.
-        for key in (
-            "subject",
-            "predicate",
-            "value",
+        # --------------------------------------------------------
+        # SEMANTIC EXTRACTION
+        # --------------------------------------------------------
+
+        semantic = self._extract_semantic_fact(
+            content
+        )
+
+        if semantic is not None:
+
+            subject = semantic["subject"]
+            predicate = semantic["predicate"]
+            value = semantic["value"]
+
+            metadata.update(
+                {
+                    "subject": subject,
+                    "predicate": predicate,
+                    "value": value,
+                    "semantic_extraction": "deterministic_v2",
+                }
+            )
+
+        else:
+
+            # Preserve explicit semantic structure if the source
+            # memory already contains one.
+            for key in (
+                "subject",
+                "predicate",
+                "value",
+                "confidence",
+            ):
+
+                if key in memory:
+                    metadata[key] = memory[key]
+
+        confidence = self._safe_float(
+            memory.get(
+                "confidence",
+                importance,
+            )
+        )
+
+        metadata.setdefault(
             "confidence",
-        ):
-
-            if key in memory:
-
-                metadata[key] = memory[key]
+            confidence,
+        )
 
         candidate = {
             "type": "consolidation_candidate",
@@ -557,26 +648,204 @@ class MemoryConsolidator:
             "metadata": metadata,
         }
 
-        # Expose semantic fields at the candidate level as well.
-        if "subject" in memory:
-            candidate["subject"] = memory[
+        # --------------------------------------------------------
+        # EXPOSE SEMANTIC FIELDS
+        # --------------------------------------------------------
+
+        if "subject" in metadata:
+
+            candidate["subject"] = metadata[
                 "subject"
             ]
 
-        if "predicate" in memory:
-            candidate["predicate"] = memory[
+        if "predicate" in metadata:
+
+            candidate["predicate"] = metadata[
                 "predicate"
             ]
 
-        if "value" in memory:
-            candidate["value"] = memory[
+        if "value" in metadata:
+
+            candidate["value"] = metadata[
                 "value"
             ]
 
         return candidate
 
     # ============================================================
-    # UTILITY
+    # SEMANTIC EXTRACTION
+    # ============================================================
+
+    def _extract_semantic_fact(
+        self,
+        content: str,
+    ) -> dict[str, Any] | None:
+        """
+        Extract a simple durable fact from natural-language memory.
+
+        V2 deliberately uses deterministic patterns.
+
+        Examples:
+
+            "I don't like shrimp"
+                -> creator / dislikes / shrimp
+
+            "I love anime"
+                -> creator / likes / anime
+
+            "I like pizza"
+                -> creator / likes / pizza
+
+            "I hate spiders"
+                -> creator / dislikes / spiders
+
+        Returns None when no safe deterministic interpretation
+        can be made.
+        """
+
+        text = content.strip()
+
+        if not text:
+            return None
+
+        lowered = text.lower()
+
+        # --------------------------------------------------------
+        # NEGATIVE PREFERENCE
+        # --------------------------------------------------------
+
+        negative_prefixes = (
+            "i don't like ",
+            "i do not like ",
+            "i dislike ",
+            "i hate ",
+            "i can't stand ",
+            "i cannot stand ",
+        )
+
+        for prefix in negative_prefixes:
+
+            if lowered.startswith(prefix):
+
+                value = text[len(prefix):].strip()
+
+                if not value:
+                    return None
+
+                return {
+                    "subject": "creator",
+                    "predicate": "dislikes",
+                    "value": value,
+                }
+
+        # --------------------------------------------------------
+        # POSITIVE PREFERENCE
+        # --------------------------------------------------------
+
+        positive_prefixes = (
+            "i like ",
+            "i love ",
+            "i enjoy ",
+            "i prefer ",
+        )
+
+        for prefix in positive_prefixes:
+
+            if lowered.startswith(prefix):
+
+                value = text[len(prefix):].strip()
+
+                if not value:
+                    return None
+
+                return {
+                    "subject": "creator",
+                    "predicate": "likes",
+                    "value": value,
+                }
+
+        return None
+
+    # ============================================================
+    # DUPLICATE DETECTION
+    # ============================================================
+
+    def _semantic_exists(
+        self,
+        subject: Any,
+        predicate: Any,
+        value: Any,
+    ) -> bool:
+        """
+        Determine whether an equivalent semantic fact already exists.
+        """
+
+        if self.semantic_memory is None:
+            return False
+
+        try:
+
+            existing = self.semantic_memory.all()
+
+        except Exception:
+            return False
+
+        if not existing:
+            return False
+
+        normalized_subject = str(
+            subject
+        ).strip().lower()
+
+        normalized_predicate = str(
+            predicate
+        ).strip().lower()
+
+        normalized_value = str(
+            value
+        ).strip().lower()
+
+        for item in existing:
+
+            if not isinstance(item, dict):
+                continue
+
+            existing_subject = str(
+                item.get(
+                    "subject",
+                    "",
+                )
+            ).strip().lower()
+
+            existing_predicate = str(
+                item.get(
+                    "predicate",
+                    "",
+                )
+            ).strip().lower()
+
+            existing_value = str(
+                item.get(
+                    "value",
+                    "",
+                )
+            ).strip().lower()
+
+            if (
+                existing_subject
+                == normalized_subject
+                and existing_predicate
+                == normalized_predicate
+                and existing_value
+                == normalized_value
+            ):
+
+                return True
+
+        return False
+
+    # ============================================================
+    # CANDIDATE COUNT
     # ============================================================
 
     def count_candidates(
@@ -591,11 +860,17 @@ class MemoryConsolidator:
             self.consolidate()
         )
 
+    # ============================================================
+    # UTILITIES
+    # ============================================================
+
     @staticmethod
     def _safe_float(
         value: Any,
     ) -> float:
-        """Safely convert a value to float."""
+        """
+        Safely convert a value to float.
+        """
 
         try:
 
@@ -614,7 +889,9 @@ class MemoryConsolidator:
     def _safe_int(
         value: Any,
     ) -> int:
-        """Safely convert a value to integer."""
+        """
+        Safely convert a value to integer.
+        """
 
         try:
 

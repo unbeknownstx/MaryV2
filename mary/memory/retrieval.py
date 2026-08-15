@@ -5,12 +5,29 @@ Responsible for retrieving relevant memories from Mary's
 different memory systems.
 
 Retrieval does not own memory storage.
-It asks memory systems for candidates and ranks them
-for the cognition layer.
+
+It interprets the user's query, retrieves candidates from
+working, episodic, and semantic memory, and ranks those
+candidates according to the meaning of the query.
+
+Important distinction:
+
+    Semantic memory:
+        Durable facts such as:
+            creator likes anime
+            creator dislikes shrimp
+
+    Episodic memory:
+        Experiences such as:
+            creator told Mary that he dislikes shrimp
+
+Retrieval should prefer durable semantic knowledge when a
+semantic fact directly answers the user's question.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 
@@ -18,10 +35,15 @@ class MemoryRetriever:
     """
     Retrieves relevant memories from Mary's memory systems.
 
-    The retriever is intentionally lightweight.
+    The retriever does not own memory storage.
 
-    Storage and memory-specific behavior remain inside
-    their respective memory modules.
+    Its responsibilities are:
+
+        1. Interpret the query.
+        2. Retrieve candidates.
+        3. Apply query-specific relevance signals.
+        4. Rank candidates.
+        5. Remove duplicates.
     """
 
     def __init__(
@@ -46,8 +68,22 @@ class MemoryRetriever:
         """
         Retrieve the most relevant memories for a query.
 
-        Results from working, episodic, and semantic memory
-        are combined into a single ranked list.
+        The query is first interpreted so that natural-language
+        questions such as:
+
+            "what do I like?"
+
+        can target the semantic predicate:
+
+            likes
+
+        and:
+
+            "what don't I like?"
+
+        can target:
+
+            dislikes
         """
 
         if not query or not str(query).strip():
@@ -57,6 +93,8 @@ class MemoryRetriever:
             return []
 
         query = str(query).strip()
+
+        query_intent = self._interpret_query(query)
 
         candidates: List[Dict[str, Any]] = []
 
@@ -73,11 +111,119 @@ class MemoryRetriever:
         )
 
         ranked = self._rank_results(
-            query,
-            candidates,
+            query=query,
+            candidates=candidates,
+            query_intent=query_intent,
         )
 
         return ranked[:limit]
+
+    # ============================================================
+    # QUERY INTERPRETATION
+    # ============================================================
+
+    def _interpret_query(
+        self,
+        query: str,
+    ) -> Dict[str, Any]:
+        """
+        Interpret the broad semantic meaning of a memory query.
+
+        This is intentionally deterministic for now.
+
+        Later, this layer can be expanded or replaced with a
+        more sophisticated query-understanding system.
+        """
+
+        normalized = self._normalize_query(query)
+
+        result: Dict[str, Any] = {
+            "type": "general",
+            "predicate": None,
+            "subject": None,
+            "concepts": self._extract_concepts(query),
+        }
+
+        # --------------------------------------------------------
+        # DISLIKE / NEGATIVE PREFERENCE
+        # --------------------------------------------------------
+
+        negative_patterns = (
+            "what don't i like",
+            "what do i dislike",
+            "what i don't like",
+            "what i dislike",
+            "things i don't like",
+            "things i dislike",
+            "what are my dislikes",
+            "what is something i don't like",
+            "what is something i dislike",
+        )
+
+        if any(
+            pattern in normalized
+            for pattern in negative_patterns
+        ):
+            result["type"] = "preference"
+            result["predicate"] = "dislikes"
+            result["subject"] = "creator"
+
+            return result
+
+        # --------------------------------------------------------
+        # LIKE / POSITIVE PREFERENCE
+        # --------------------------------------------------------
+
+        positive_patterns = (
+            "what do i like",
+            "what i like",
+            "things i like",
+            "what are my likes",
+            "what do i love",
+            "what i love",
+            "things i love",
+        )
+
+        if any(
+            pattern in normalized
+            for pattern in positive_patterns
+        ):
+            result["type"] = "preference"
+            result["predicate"] = "likes"
+            result["subject"] = "creator"
+
+            return result
+
+        # --------------------------------------------------------
+        # BROAD MEMORY RECALL
+        # --------------------------------------------------------
+
+        broad_patterns = (
+            "what do you remember about me",
+            "what do you remember about me",
+            "what do you know about me",
+            "what do you remember",
+            "what do you know about me",
+            "tell me what you remember",
+            "tell me what you know about me",
+        )
+
+        if any(
+            pattern in normalized
+            for pattern in broad_patterns
+        ):
+            result["type"] = "general_recall"
+            result["subject"] = "creator"
+
+            return result
+
+        # --------------------------------------------------------
+        # DIRECT CONCEPT SEARCH
+        # --------------------------------------------------------
+
+        result["type"] = "concept"
+
+        return result
 
     # ============================================================
     # WORKING MEMORY
@@ -98,15 +244,11 @@ class MemoryRetriever:
 
             if hasattr(self.working, "search"):
 
-                results = self.working.search(
-                    query
-                )
+                results = self.working.search(query)
 
             elif hasattr(self.working, "retrieve"):
 
-                results = self.working.retrieve(
-                    query
-                )
+                results = self.working.retrieve(query)
 
             elif hasattr(self.working, "all"):
 
@@ -152,15 +294,11 @@ class MemoryRetriever:
 
             if hasattr(self.episodic, "search"):
 
-                results = self.episodic.search(
-                    query
-                )
+                results = self.episodic.search(query)
 
             elif hasattr(self.episodic, "retrieve"):
 
-                results = self.episodic.retrieve(
-                    query
-                )
+                results = self.episodic.retrieve(query)
 
             elif hasattr(self.episodic, "all"):
 
@@ -196,7 +334,11 @@ class MemoryRetriever:
         query: str,
     ) -> List[Dict[str, Any]]:
         """
-        Retrieve relevant facts and knowledge.
+        Retrieve relevant durable facts and knowledge.
+
+        For preference questions, semantic memory is queried
+        directly using the interpreted predicate whenever
+        possible.
         """
 
         if self.semantic is None:
@@ -204,17 +346,46 @@ class MemoryRetriever:
 
         try:
 
+            query_intent = self._interpret_query(query)
+
+            predicate = query_intent.get(
+                "predicate"
+            )
+
+            subject = query_intent.get(
+                "subject"
+            )
+
+            # ----------------------------------------------------
+            # DIRECT SEMANTIC FACT RETRIEVAL
+            # ----------------------------------------------------
+
+            if (
+                predicate is not None
+                and hasattr(self.semantic, "find")
+            ):
+
+                results = self.semantic.find(
+                    subject=subject,
+                    predicate=predicate,
+                )
+
+                return self._normalize_results(
+                    results,
+                    "semantic",
+                )
+
+            # ----------------------------------------------------
+            # NORMAL SEMANTIC SEARCH
+            # ----------------------------------------------------
+
             if hasattr(self.semantic, "search"):
 
-                results = self.semantic.search(
-                    query
-                )
+                results = self.semantic.search(query)
 
             elif hasattr(self.semantic, "retrieve"):
 
-                results = self.semantic.retrieve(
-                    query
-                )
+                results = self.semantic.retrieve(query)
 
             elif hasattr(self.semantic, "all"):
 
@@ -261,24 +432,19 @@ class MemoryRetriever:
         if isinstance(results, dict):
             results = [results]
 
-        if not isinstance(results, (list, tuple)):
+        if not isinstance(
+            results,
+            (list, tuple),
+        ):
             return []
 
         normalized: List[Dict[str, Any]] = []
 
         for result in results:
 
-            # ----------------------------------------------------
-            # Dictionary-based memories
-            # ----------------------------------------------------
-
             if isinstance(result, dict):
 
                 item = dict(result)
-
-            # ----------------------------------------------------
-            # Object-based memories
-            # ----------------------------------------------------
 
             elif hasattr(result, "to_dict"):
 
@@ -291,10 +457,6 @@ class MemoryRetriever:
                     item = {
                         "content": str(result)
                     }
-
-            # ----------------------------------------------------
-            # Generic objects
-            # ----------------------------------------------------
 
             else:
 
@@ -312,9 +474,7 @@ class MemoryRetriever:
                 0.0,
             )
 
-            normalized.append(
-                item
-            )
+            normalized.append(item)
 
         return normalized
 
@@ -326,20 +486,36 @@ class MemoryRetriever:
         self,
         query: str,
         candidates: List[Dict[str, Any]],
+        query_intent: Dict[str, Any] | None = None,
     ) -> List[Dict[str, Any]]:
         """
         Rank memory candidates.
 
-        Existing similarity/relevance scores are respected.
+        Ranking considers:
 
-        A lexical relevance signal is added when possible.
+            - existing memory-system score
+            - lexical relevance
+            - semantic predicate match
+            - subject match
+            - memory type
+            - confidence
+
+        Semantic facts receive a meaningful boost when they
+        directly answer a preference question.
         """
 
-        query_words = {
-            word.lower()
-            for word in query.split()
-            if word.strip()
-        }
+        if query_intent is None:
+            query_intent = self._interpret_query(query)
+
+        query_words = self._tokenize(query)
+
+        target_predicate = query_intent.get(
+            "predicate"
+        )
+
+        target_subject = query_intent.get(
+            "subject"
+        )
 
         scored: List[Dict[str, Any]] = []
 
@@ -349,11 +525,13 @@ class MemoryRetriever:
                 candidate
             )
 
-            content_words = {
-                word.lower()
-                for word in content.split()
-                if word.strip()
-            }
+            content_words = self._tokenize(
+                content
+            )
+
+            # ----------------------------------------------------
+            # LEXICAL SCORE
+            # ----------------------------------------------------
 
             lexical_score = 0.0
 
@@ -368,6 +546,10 @@ class MemoryRetriever:
                     / len(query_words)
                 )
 
+            # ----------------------------------------------------
+            # EXISTING SCORE
+            # ----------------------------------------------------
+
             existing_score = self._safe_float(
                 candidate.get(
                     "score",
@@ -375,9 +557,94 @@ class MemoryRetriever:
                 )
             )
 
+            # ----------------------------------------------------
+            # SEMANTIC MATCH
+            # ----------------------------------------------------
+
+            predicate_score = 0.0
+            subject_score = 0.0
+
+            candidate_predicate = str(
+                candidate.get(
+                    "predicate",
+                    "",
+                )
+            ).strip().lower()
+
+            candidate_subject = str(
+                candidate.get(
+                    "subject",
+                    "",
+                )
+            ).strip().lower()
+
+            if (
+                target_predicate
+                and candidate_predicate
+                == str(
+                    target_predicate
+                ).lower()
+            ):
+                predicate_score = 1.0
+
+            if (
+                target_subject
+                and candidate_subject
+                == str(
+                    target_subject
+                ).lower()
+            ):
+                subject_score = 1.0
+
+            # ----------------------------------------------------
+            # MEMORY TYPE
+            # ----------------------------------------------------
+
+            memory_type = str(
+                candidate.get(
+                    "memory_type",
+                    "",
+                )
+            ).lower()
+
+            semantic_bonus = 0.0
+
+            if (
+                query_intent.get("type")
+                in {
+                    "preference",
+                    "general_recall",
+                }
+                and memory_type == "semantic"
+            ):
+                semantic_bonus = 0.35
+
+            # ----------------------------------------------------
+            # CONFIDENCE
+            # ----------------------------------------------------
+
+            confidence = self._safe_float(
+                candidate.get(
+                    "confidence",
+                    0.0,
+                )
+            )
+
+            confidence_bonus = (
+                confidence * 0.15
+            )
+
+            # ----------------------------------------------------
+            # COMBINED SCORE
+            # ----------------------------------------------------
+
             combined_score = (
-                existing_score * 0.7
-                + lexical_score * 0.3
+                existing_score * 0.55
+                + lexical_score * 0.15
+                + predicate_score * 1.50
+                + subject_score * 0.25
+                + semantic_bonus
+                + confidence_bonus
             )
 
             item = dict(candidate)
@@ -386,9 +653,7 @@ class MemoryRetriever:
                 combined_score
             )
 
-            scored.append(
-                item
-            )
+            scored.append(item)
 
         scored.sort(
             key=lambda item: item.get(
@@ -412,9 +677,6 @@ class MemoryRetriever:
     ) -> str:
         """
         Extract searchable text from a memory record.
-
-        Different memory systems expose information through
-        different fields, so multiple fields are considered.
         """
 
         fields = (
@@ -440,19 +702,117 @@ class MemoryRetriever:
             if value is None:
                 continue
 
-            if isinstance(value, (dict, list, tuple, set)):
-
-                parts.append(
-                    str(value)
-                )
-
-            else:
-
-                parts.append(
-                    str(value)
-                )
+            parts.append(
+                str(value)
+            )
 
         return " ".join(parts)
+
+    # ============================================================
+    # QUERY NORMALIZATION
+    # ============================================================
+
+    @staticmethod
+    def _normalize_query(
+        query: str,
+    ) -> str:
+        """
+        Normalize a query for deterministic intent matching.
+        """
+
+        text = str(query).lower().strip()
+
+        text = re.sub(
+            r"[^\w\s']",
+            " ",
+            text,
+        )
+
+        text = re.sub(
+            r"\s+",
+            " ",
+            text,
+        )
+
+        return text.strip()
+
+    # ============================================================
+    # TOKENIZATION
+    # ============================================================
+
+    @staticmethod
+    def _tokenize(
+        text: str,
+    ) -> set[str]:
+        """
+        Convert text into normalized lexical tokens.
+        """
+
+        normalized = MemoryRetriever._normalize_query(
+            text
+        )
+
+        if not normalized:
+            return set()
+
+        return set(
+            normalized.split()
+        )
+
+    # ============================================================
+    # CONCEPT EXTRACTION
+    # ============================================================
+
+    @staticmethod
+    def _extract_concepts(
+        query: str,
+    ) -> List[str]:
+        """
+        Extract useful concept words from a query.
+
+        Common conversational filler is ignored.
+        """
+
+        stop_words = {
+            "what",
+            "do",
+            "does",
+            "did",
+            "i",
+            "you",
+            "me",
+            "my",
+            "your",
+            "about",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "am",
+            "to",
+            "of",
+            "and",
+            "or",
+            "that",
+            "this",
+            "these",
+            "those",
+            "remember",
+            "know",
+            "tell",
+            "please",
+        }
+
+        tokens = MemoryRetriever._tokenize(
+            query
+        )
+
+        return [
+            token
+            for token in tokens
+            if token not in stop_words
+        ]
 
     # ============================================================
     # DUPLICATE REMOVAL
@@ -467,6 +827,7 @@ class MemoryRetriever:
         """
 
         seen = set()
+
         unique: List[Dict[str, Any]] = []
 
         for result in results:
@@ -500,9 +861,7 @@ class MemoryRetriever:
 
             seen.add(key)
 
-            unique.append(
-                result
-            )
+            unique.append(result)
 
         return unique
 

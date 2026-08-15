@@ -3,16 +3,40 @@ MaryV2 - Mary Core
 
 Top-level coordinator for Mary's systems.
 
-Mary is responsible for connecting the major subsystems.
-Individual systems remain responsible for their own behavior.
+Mary connects the major subsystems while allowing each subsystem
+to remain responsible for its own behavior.
+
+Core process flow:
+
+    Input
+      ↓
+    Context
+      ↓
+    Intent
+      ↓
+    Intent-specific system action
+      ↓
+    Cognition
+      ↓
+    Response
+
+Mary coordinates systems.
+
+Mary does not replace:
+    - cognition
+    - memory
+    - personality
+    - learning
+    - relationships
+    - LLM routing
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
-from mary.core.identity import Identity
 from mary.core.config import Config
+from mary.core.identity import Identity
 
 from mary.personality.personality import Personality
 from mary.personality.development import PersonalityDevelopment
@@ -24,35 +48,41 @@ from mary.learning.learner import Learner
 from mary.memory.manager import MemoryManager
 
 from mary.cognition.orchestrator import (
-    CognitiveOrchestrator,
     CognitiveCycleResult,
+    CognitiveOrchestrator,
 )
 from mary.cognition.reasoning import ReasoningEngine
 from mary.cognition.reflection import ReflectionEngine
+from mary.cognition.intent import Intent, IntentType
 
 
 class Mary:
     """
     Top-level coordinator for MaryV2.
+
+    Mary owns subsystem instances and coordinates communication
+    between them.
+
+    Subsystems remain responsible for their own internal behavior.
     """
 
     def __init__(self) -> None:
 
-        # ========================================================
+        # ============================================================
         # CONFIGURATION
-        # ========================================================
+        # ============================================================
 
         self.config = Config()
 
-        # ========================================================
+        # ============================================================
         # IDENTITY
-        # ========================================================
+        # ============================================================
 
         self.identity = Identity()
 
-        # ========================================================
+        # ============================================================
         # PERSONALITY
-        # ========================================================
+        # ============================================================
 
         self.personality = Personality(
             name="Mary",
@@ -62,29 +92,33 @@ class Mary:
             personality=self.personality,
         )
 
-        # ========================================================
-        # RELATIONSHIP / USER MODEL
-        # ========================================================
+        # ============================================================
+        # RELATIONSHIP
+        # ============================================================
 
         self.user_model = UserModel()
 
-        # ========================================================
+        # ============================================================
         # LEARNING
-        # ========================================================
+        # ============================================================
 
         self.learner = Learner()
 
-        # ========================================================
+        # ============================================================
         # MEMORY
-        # ========================================================
+        # ============================================================
 
         self.memory = MemoryManager()
 
-        # ========================================================
-        # COGNITION
-        # ========================================================
+        # ============================================================
+        # LLM
+        # ============================================================
 
         self.llm = self._create_llm_router()
+
+        # ============================================================
+        # COGNITION
+        # ============================================================
 
         self.reasoning = ReasoningEngine(
             llm=self.llm,
@@ -99,83 +133,521 @@ class Mary:
             reflection_engine=self.reflection,
         )
 
-    # ============================================================
-    # COGNITION
-    # ============================================================
+    # ================================================================
+    # PRIMARY ENTRY POINT
+    # ================================================================
 
     def process(
         self,
         input_text: str,
     ) -> CognitiveCycleResult:
         """
-        Process one complete cognitive cycle.
+        Process one complete MaryV2 interaction.
 
-        This is Mary's primary cognitive entry point.
+        Flow:
 
-        The method gathers relevant information from Mary's systems,
-        passes it into cognition, and returns the complete structured
-        cognitive-cycle result.
+            input
+              ↓
+            validation
+              ↓
+            context
+              ↓
+            intent
+              ↓
+            deterministic subsystem actions
+              ↓
+            cognition
+              ↓
+            final response
         """
 
-        if not input_text or not str(input_text).strip():
+        input_text = self._normalize_input(
+            input_text
+        )
+
+        # ------------------------------------------------------------
+        # BUILD INITIAL CONTEXT
+        # ------------------------------------------------------------
+
+        context = self._build_context(
+            input_text
+        )
+
+        # ------------------------------------------------------------
+        # DETECT INTENT
+        # ------------------------------------------------------------
+
+        intent = self._detect_intent(
+            input_text
+        )
+
+        # ------------------------------------------------------------
+        # EXECUTE DETERMINISTIC SYSTEM ACTION
+        # ------------------------------------------------------------
+
+        system_response = self._handle_intent(
+            intent
+        )
+
+        # ------------------------------------------------------------
+        # REFRESH MEMORY CONTEXT
+        #
+        # If this interaction changed memory, cognition should receive
+        # the newly updated state during the same cycle.
+        # ------------------------------------------------------------
+
+        if system_response is not None:
+
+            context["memory"] = self.memory.build_context(
+                input_text
+            )
+
+        # ------------------------------------------------------------
+        # COGNITIVE CYCLE
+        # ------------------------------------------------------------
+
+        result = self.cognition.process(
+            input_text=input_text,
+            intent=intent,
+            memories=context["memory"].get(
+                "relevant_memories",
+                [],
+            ),
+            user_context=context["user"],
+            personality_context=context["personality"],
+        )
+
+        # ------------------------------------------------------------
+        # DETERMINISTIC RESPONSE OVERRIDE
+        #
+        # Actual subsystem results take precedence over generated
+        # reasoning responses.
+        # ------------------------------------------------------------
+
+        if system_response is not None:
+
+            result.final_response = system_response
+
+            result.metadata.update(
+                {
+                    "handled_by": "mary",
+                    "system_action": (
+                        intent.intent_type.value
+                        if intent is not None
+                        else None
+                    ),
+                }
+            )
+
+        return result
+
+    # ================================================================
+    # INPUT
+    # ================================================================
+
+    def _normalize_input(
+        self,
+        input_text: str,
+    ) -> str:
+        """
+        Validate and normalize input.
+        """
+
+        if input_text is None:
+
+            raise ValueError(
+                "input_text cannot be None."
+            )
+
+        text = str(
+            input_text
+        ).strip()
+
+        if not text:
 
             raise ValueError(
                 "input_text cannot be empty."
             )
 
-        input_text = str(input_text).strip()
+        return text
 
-        # --------------------------------------------------------
-        # MEMORY CONTEXT
-        # --------------------------------------------------------
+    # ================================================================
+    # CONTEXT
+    # ================================================================
 
-        memory_context = self.memory.build_context(
-            input_text,
-        )
+    def _build_context(
+        self,
+        input_text: str,
+    ) -> dict[str, Any]:
+        """
+        Build the subsystem context required for one cognitive cycle.
+        """
 
-        # --------------------------------------------------------
-        # USER CONTEXT
-        # --------------------------------------------------------
-
-        user_context = self._safe_user_context()
-
-        # --------------------------------------------------------
-        # PERSONALITY CONTEXT
-        # --------------------------------------------------------
-
-        personality_context = self._safe_personality_context()
-
-        # --------------------------------------------------------
-        # COGNITIVE CYCLE
-        # --------------------------------------------------------
-
-        return self.cognition.process(
-            input_text=input_text,
-            memories=memory_context.get(
-                "relevant_memories",
-                [],
+        return {
+            "memory": self.memory.build_context(
+                input_text
             ),
-            user_context=user_context,
-            personality_context=personality_context,
+            "user": self._user_context(),
+            "personality": self._personality_context(),
+        }
+
+    # ================================================================
+    # INTENT
+    # ================================================================
+
+    def _detect_intent(
+        self,
+        input_text: str,
+    ) -> Intent:
+        """
+        Ask cognition to classify the user's intent.
+        """
+
+        return self.cognition.detect_intent(
+            input_text
         )
 
-    # ============================================================
-    # STATUS
-    # ============================================================
+    def _handle_intent(
+        self,
+        intent: Intent | None,
+    ) -> str | None:
+        """
+        Execute deterministic subsystem actions.
 
-    def status(self) -> Dict[str, Any]:
+        Cognition identifies what the user wants.
+
+        Mary coordinates the subsystem responsible for performing
+        that action.
+        """
+
+        if intent is None:
+            return None
+
+        if intent.intent_type == IntentType.MEMORY_STORE:
+
+            return self._handle_memory_store(
+                intent
+            )
+
+        if intent.intent_type == IntentType.MEMORY_RECALL:
+
+            return self._handle_memory_recall(
+                intent
+            )
+
+        return None
+
+    # ================================================================
+    # MEMORY STORE
+    # ================================================================
+
+    def _handle_memory_store(
+        self,
+        intent: Intent,
+    ) -> str:
+        """
+        Handle an explicit request to store information.
+        """
+
+        content = intent.parameters.get(
+            "content"
+        )
+
+        if content is None:
+
+            return (
+                "What would you like me to remember?"
+            )
+
+        content = str(
+            content
+        ).strip()
+
+        if not content:
+
+            return (
+                "What would you like me to remember?"
+            )
+
+        memory = self.remember(
+            content,
+            memory_type="episodic",
+            importance=0.8,
+            metadata={
+                "source": "interaction",
+                "event_type": "user_preference",
+            },
+        )
+
+        if memory is None:
+
+            return (
+                "I wasn't able to store that memory."
+            )
+
+        return (
+            f"Got it. I'll remember that {content}."
+        )
+
+    # ================================================================
+    # MEMORY RECALL
+    # ================================================================
+
+    def _handle_memory_recall(
+        self,
+        intent: Intent,
+    ) -> str:
+        """
+        Handle an explicit request to recall information.
+        """
+
+        query = intent.parameters.get(
+            "query",
+            "",
+        )
+
+        query = str(
+            query
+        ).strip()
+
+        if self._is_broad_memory_query(
+            query
+        ):
+
+            memories = self._all_available_memories()
+
+            if not memories:
+
+                return (
+                    "I don't have any stored memories "
+                    "about you yet."
+                )
+
+        else:
+
+            memories = self.memory.recall(
+                query,
+                limit=5,
+            )
+
+            if not memories:
+
+                return (
+                    "I don't have a stored memory "
+                    "that answers that."
+                )
+
+        return self._format_memory_response(
+            memories
+        )
+
+    def _is_broad_memory_query(
+        self,
+        query: str,
+    ) -> bool:
+        """
+        Determine whether the user is asking for a broad memory
+        summary rather than a specific retrieval.
+        """
+
+        lowered = query.lower()
+
+        phrases = (
+            "what do you remember about me",
+            "what do you know about me",
+            "tell me what you remember about me",
+            "what do you remember",
+            "what are my preferences",
+        )
+
+        return any(
+            phrase in lowered
+            for phrase in phrases
+        )
+
+    def _all_available_memories(
+        self,
+    ) -> list[Any]:
+        """
+        Return Mary's available stored memories.
+
+        Episodic memory is preferred because it represents direct
+        interactions and experiences.
+
+        Semantic memory is used as a fallback.
+        """
+
+        episodic = list(
+            self.memory.episodic.all()
+        )
+
+        if episodic:
+            return episodic
+
+        semantic = list(
+            self.memory.semantic.all()
+        )
+
+        return semantic
+
+    # ================================================================
+    # MEMORY RESPONSE
+    # ================================================================
+
+    def _format_memory_response(
+        self,
+        memories: list[Any],
+    ) -> str:
+        """
+        Convert memory records into a deterministic,
+        human-readable response.
+        """
+
+        if not memories:
+
+            return (
+                "I don't have any relevant memories stored."
+            )
+
+        statements: list[str] = []
+
+        for memory in memories:
+
+            statement = self._memory_to_text(
+                memory
+            )
+
+            if statement:
+
+                statements.append(
+                    statement
+                )
+
+        if not statements:
+
+            return (
+                "I found stored memories, but I couldn't "
+                "turn them into an answer."
+            )
+
+        # ------------------------------------------------------------
+        # REMOVE DUPLICATES WHILE PRESERVING ORDER
+        # ------------------------------------------------------------
+
+        statements = list(
+            dict.fromkeys(
+                statements
+            )
+        )
+
+        if len(statements) == 1:
+
+            return (
+                f"I remember that {statements[0]}"
+            )
+
+        lines = "\n".join(
+            f"- {statement}"
+            for statement in statements
+        )
+
+        return (
+            "Here's what I remember:\n"
+            f"{lines}"
+        )
+
+    def _memory_to_text(
+        self,
+        memory: Any,
+    ) -> str | None:
+        """
+        Extract human-readable text from a memory representation.
+        """
+
+        # ------------------------------------------------------------
+        # DICTIONARY MEMORY
+        # ------------------------------------------------------------
+
+        if isinstance(
+            memory,
+            dict,
+        ):
+
+            content = memory.get(
+                "content"
+            )
+
+            if content:
+
+                return str(
+                    content
+                ).strip()
+
+            subject = memory.get(
+                "subject"
+            )
+
+            predicate = memory.get(
+                "predicate"
+            )
+
+            value = memory.get(
+                "value"
+            )
+
+            if (
+                subject is not None
+                and predicate is not None
+                and value is not None
+            ):
+
+                return (
+                    f"{subject} "
+                    f"{predicate} "
+                    f"{value}"
+                ).strip()
+
+            return None
+
+        # ------------------------------------------------------------
+        # OBJECT MEMORY
+        # ------------------------------------------------------------
+
+        content = getattr(
+            memory,
+            "content",
+            None,
+        )
+
+        if content:
+
+            return str(
+                content
+            ).strip()
+
+        return None
+
+    # ================================================================
+    # STATUS
+    # ================================================================
+
+    def status(
+        self,
+    ) -> dict[str, Any]:
         """
         Return Mary's current high-level system status.
         """
 
         return {
             "name": self.personality.name,
-            "identity": self._safe_identity(),
-            "personality": self.personality.get_traits(),
+            "identity": self._identity_context(),
+            "personality": (
+                self._personality_context()
+            ),
             "personality_development": (
                 self.personality_development.summary()
             ),
-            "user": self.user_model.get_identity(),
+            "user": self._user_context(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),
             "cognition": {
@@ -186,97 +658,168 @@ class Mary:
             },
         }
 
-    # ============================================================
+    # ================================================================
     # SELF DESCRIPTION
-    # ============================================================
+    # ================================================================
 
-    def describe_self(self) -> str:
+    def describe_self(
+        self,
+    ) -> str:
         """
-        Return a human-readable description of Mary.
+        Return Mary's human-readable self description.
         """
 
         return self.personality.describe()
 
-    # ============================================================
-    # PERSONALITY DEVELOPMENT
-    # ============================================================
+    # ================================================================
+    # IDENTITY
+    # ================================================================
+
+    def _identity_context(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Safely expose Mary's identity as structured context.
+        """
+
+        to_dict = getattr(
+            self.identity,
+            "to_dict",
+            None,
+        )
+
+        if callable(
+            to_dict
+        ):
+
+            result = to_dict()
+
+            if isinstance(
+                result,
+                dict,
+            ):
+                return result
+
+        describe = getattr(
+            self.identity,
+            "describe",
+            None,
+        )
+
+        if callable(
+            describe
+        ):
+
+            return {
+                "description": describe()
+            }
+
+        return {
+            "type": type(
+                self.identity
+            ).__name__
+        }
+
+    # ================================================================
+    # USER
+    # ================================================================
+
+    def describe_user(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return Mary's structured understanding of her creator.
+        """
+
+        return self._user_context()
+
+    def _user_context(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Safely expose the current user-model context.
+        """
+
+        to_dict = getattr(
+            self.user_model,
+            "to_dict",
+            None,
+        )
+
+        if callable(
+            to_dict
+        ):
+
+            result = to_dict()
+
+            if isinstance(
+                result,
+                dict,
+            ):
+                return result
+
+        get_identity = getattr(
+            self.user_model,
+            "get_identity",
+            None,
+        )
+
+        if callable(
+            get_identity
+        ):
+
+            result = get_identity()
+
+            if isinstance(
+                result,
+                dict,
+            ):
+                return result
+
+        return {}
+
+    # ================================================================
+    # PERSONALITY
+    # ================================================================
+
+    def _personality_context(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Safely expose Mary's personality state.
+        """
+
+        get_traits = getattr(
+            self.personality,
+            "get_traits",
+            None,
+        )
+
+        if not callable(
+            get_traits
+        ):
+
+            return {}
+
+        result = get_traits()
+
+        if isinstance(
+            result,
+            dict,
+        ):
+
+            return result
+
+        return {}
 
     def personality_development_summary(
         self,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Return Mary's current personality-development state.
         """
 
         return self.personality_development.summary()
-
-    # ============================================================
-    # USER
-    # ============================================================
-
-    def describe_user(self) -> Dict[str, Any]:
-        """
-        Return Mary's current structured understanding
-        of her creator.
-        """
-
-        return self.user_model.to_dict()
-
-    # ============================================================
-    # LEARNING
-    # ============================================================
-
-    def learn(
-        self,
-        event_type: str,
-        subject: str,
-        content: str,
-        *,
-        source: str | None = None,
-        confidence: float = 0.5,
-        usefulness: float = 0.5,
-        metadata: Dict[str, Any] | None = None,
-    ):
-        """
-        Record something Mary may learn from.
-        """
-
-        return self.learner.record(
-            event_type=event_type,
-            subject=subject,
-            content=content,
-            source=source,
-            confidence=confidence,
-            usefulness=usefulness,
-            metadata=metadata,
-        )
-
-    # ============================================================
-    # MEMORY
-    # ============================================================
-
-    def remember(
-        self,
-        content: str,
-        *,
-        memory_type: str = "episodic",
-        importance: float = 0.5,
-        metadata: Dict[str, Any] | None = None,
-    ):
-        """
-        Store a memory through the MemoryManager.
-        """
-
-        return self.memory.remember(
-            content,
-            memory_type=memory_type,
-            importance=importance,
-            metadata=metadata,
-        )
-
-    # ============================================================
-    # PERSONALITY DEVELOPMENT HELPERS
-    # ============================================================
 
     def propose_personality_change(
         self,
@@ -303,11 +846,10 @@ class Mary:
 
     def apply_personality_change(
         self,
-        proposal: Dict[str, Any],
+        proposal: dict[str, Any],
     ) -> bool:
         """
-        Apply a previously created personality-development
-        proposal.
+        Apply an approved personality-development proposal.
         """
 
         return self.personality_development.apply(
@@ -316,7 +858,7 @@ class Mary:
 
     def reject_personality_change(
         self,
-        proposal: Dict[str, Any],
+        proposal: dict[str, Any],
         reason: str = "",
     ) -> bool:
         """
@@ -328,16 +870,69 @@ class Mary:
             reason=reason,
         )
 
-    # ============================================================
-    # INTERNAL
-    # ============================================================
+    # ================================================================
+    # LEARNING
+    # ================================================================
 
-    def _create_llm_router(self):
+    def learn(
+        self,
+        event_type: str,
+        subject: str,
+        content: str,
+        *,
+        source: str | None = None,
+        confidence: float = 0.5,
+        usefulness: float = 0.5,
+        metadata: dict[str, Any] | None = None,
+    ):
+        """
+        Record something Mary may learn from.
+        """
+
+        return self.learner.record(
+            event_type=event_type,
+            subject=subject,
+            content=content,
+            source=source,
+            confidence=confidence,
+            usefulness=usefulness,
+            metadata=metadata,
+        )
+
+    # ================================================================
+    # MEMORY
+    # ================================================================
+
+    def remember(
+        self,
+        content: str,
+        *,
+        memory_type: str = "episodic",
+        importance: float = 0.5,
+        metadata: dict[str, Any] | None = None,
+    ):
+        """
+        Store a memory through Mary's MemoryManager.
+        """
+
+        return self.memory.remember(
+            content,
+            memory_type=memory_type,
+            importance=importance,
+            metadata=metadata,
+        )
+
+    # ================================================================
+    # INTERNAL
+    # ================================================================
+
+    def _create_llm_router(
+        self,
+    ):
         """
         Create Mary's LLM router.
 
-        The router remains the only layer that knows which
-        provider is being used.
+        The router remains responsible for provider selection.
         """
 
         from mary.llm.router import LLMRouter
@@ -345,64 +940,3 @@ class Mary:
         return LLMRouter(
             config=self.config,
         )
-
-    def _safe_identity(self) -> Dict[str, Any]:
-        """
-        Safely serialize Mary's identity regardless of the
-        current Identity implementation.
-        """
-
-        if hasattr(self.identity, "to_dict"):
-
-            result = self.identity.to_dict()
-
-            if isinstance(result, dict):
-                return result
-
-        if hasattr(self.identity, "describe"):
-
-            return {
-                "description": self.identity.describe()
-            }
-
-        return {
-            "type": type(self.identity).__name__
-        }
-
-    def _safe_user_context(self) -> Dict[str, Any]:
-        """
-        Safely expose the current user model to cognition.
-        """
-
-        if hasattr(self.user_model, "to_dict"):
-
-            result = self.user_model.to_dict()
-
-            if isinstance(result, dict):
-                return result
-
-        if hasattr(self.user_model, "get_identity"):
-
-            result = self.user_model.get_identity()
-
-            if isinstance(result, dict):
-                return result
-
-        return {}
-
-    def _safe_personality_context(self) -> Dict[str, Any]:
-        """
-        Safely expose Mary's personality state to cognition.
-        """
-
-        if hasattr(
-            self.personality,
-            "get_traits",
-        ):
-
-            result = self.personality.get_traits()
-
-            if isinstance(result, dict):
-                return result
-
-        return {}

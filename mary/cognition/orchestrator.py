@@ -1,20 +1,25 @@
 """
-MaryV2 Cognitive Orchestrator
+MaryV2 - Cognitive Orchestrator
 
-The orchestrator coordinates Mary's cognitive systems.
+Coordinates Mary's cognitive cycle.
 
-It is intentionally NOT a replacement for those systems.
+The orchestrator connects:
 
-The orchestrator:
-    1. Creates cognitive context.
-    2. Receives or determines intent.
-    3. Runs reasoning.
-    4. Runs reflection.
-    5. Produces a structured cognitive-cycle result.
+    Input
+      ↓
+    Context
+      ↓
+    Intent
+      ↓
+    Reasoning
+      ↓
+    Reflection
+      ↓
+    Response
 
-Future systems such as memory, personality, relationship, knowledge,
-tools, learning, and agency can be injected into the cognitive cycle
-without turning this file into a monolithic "brain".
+Subsystem actions such as memory storage are coordinated by Mary.
+
+The orchestrator is responsible for cognition, not subsystem ownership.
 """
 
 from dataclasses import dataclass, field
@@ -31,6 +36,11 @@ from mary.cognition.reflection import (
     ReflectionEngine,
     ReflectionResult,
 )
+
+
+# ================================================================
+# CYCLE RESULT
+# ================================================================
 
 
 @dataclass
@@ -54,7 +64,9 @@ class CognitiveCycleResult:
     )
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert the complete cognitive cycle into a dictionary."""
+        """
+        Convert the complete cycle into a dictionary.
+        """
 
         return {
             "context": self.context.to_dict(),
@@ -70,9 +82,19 @@ class CognitiveCycleResult:
         }
 
 
+# ================================================================
+# ORCHESTRATOR
+# ================================================================
+
+
 class CognitiveOrchestrator:
     """
-    Coordinates Mary's cognition pipeline.
+    Coordinates Mary's cognitive pipeline.
+
+    The orchestrator does not own memory, personality, learning,
+    relationships, or other Mary subsystems.
+
+    Those systems provide context to cognition through Mary.
     """
 
     def __init__(
@@ -83,6 +105,10 @@ class CognitiveOrchestrator:
 
         self.reasoning_engine = reasoning_engine
         self.reflection_engine = reflection_engine
+
+    # ============================================================
+    # PROCESS
+    # ============================================================
 
     def process(
         self,
@@ -105,64 +131,76 @@ class CognitiveOrchestrator:
             input_text=input_text,
         )
 
-        if conversation:
+        # --------------------------------------------------------
+        # BUILD CONTEXT
+        # --------------------------------------------------------
 
+        if conversation:
             context.conversation.extend(
                 conversation
             )
 
         if memories:
-
             context.memories.extend(
                 memories
             )
 
         if knowledge:
-
             context.relevant_knowledge.extend(
                 knowledge
             )
 
         if entities:
-
             context.entities.extend(
                 entities
             )
 
         if user_context:
-
             context.user_context.update(
                 user_context
             )
 
         if personality_context:
-
             context.personality_context.update(
                 personality_context
             )
 
         if active_goals:
-
             context.active_goals.extend(
                 active_goals
             )
 
-        if intent is None:
+        # --------------------------------------------------------
+        # INTENT
+        # --------------------------------------------------------
 
-            intent = self._basic_intent_detection(
+        if intent is None:
+            intent = self.detect_intent(
                 input_text
             )
+
+        # --------------------------------------------------------
+        # REASONING
+        # --------------------------------------------------------
 
         reasoning = self.reasoning_engine.reason(
             context=context,
             intent=intent,
         )
 
+        # --------------------------------------------------------
+        # REFLECTION
+        # --------------------------------------------------------
+
         reflection = self.reflection_engine.reflect(
             context=context,
             reasoning=reasoning,
             intent=intent,
         )
+
+        # --------------------------------------------------------
+        # RESPONSE
+        # --------------------------------------------------------
 
         final_response = self._select_response(
             reasoning=reasoning,
@@ -177,20 +215,27 @@ class CognitiveOrchestrator:
             final_response=final_response,
         )
 
-    def _basic_intent_detection(
+    # ============================================================
+    # INTENT DETECTION
+    # ============================================================
+
+    def detect_intent(
         self,
         input_text: str,
     ) -> Intent:
         """
-        Temporary deterministic intent detection.
+        Detect the user's intent.
 
-        This is intentionally simple.
+        This is the public V2 intent-detection interface.
 
-        The dedicated intent system can later replace this with a hybrid
-        rule/model approach without changing the orchestrator interface.
+        A more advanced hybrid or model-based detector can replace
+        the deterministic implementation later without requiring
+        Mary or other systems to change their API.
         """
 
-        text = input_text.strip()
+        text = str(
+            input_text
+        ).strip()
 
         if not text:
 
@@ -203,48 +248,187 @@ class CognitiveOrchestrator:
 
         lowered = text.lower()
 
+        # --------------------------------------------------------
+        # MEMORY STORE
+        # --------------------------------------------------------
+
+        memory_store = self._detect_memory_store(
+            text=text,
+            lowered=lowered,
+        )
+
+        if memory_store is not None:
+            return memory_store
+
+        # --------------------------------------------------------
+        # MEMORY RECALL
+        # --------------------------------------------------------
+
+        recall_phrases = (
+            "what do you remember",
+            "what do you know about me",
+            "what don't i like",
+            "what dont i like",
+            "what do i like",
+            "what are my preferences",
+            "do you remember",
+            "remember about me",
+        )
+
+        if any(
+            phrase in lowered
+            for phrase in recall_phrases
+        ):
+
+            return Intent(
+                intent_type=IntentType.MEMORY_RECALL,
+                confidence=0.9,
+                description=(
+                    "Input appears to request "
+                    "information from memory."
+                ),
+                parameters={
+                    "query": text
+                },
+                source="basic_detector",
+            )
+
+        # --------------------------------------------------------
+        # QUESTION
+        # --------------------------------------------------------
+
         if lowered.endswith("?"):
 
             return Intent(
                 intent_type=IntentType.QUESTION,
                 confidence=0.8,
-                description="Input appears to be a question.",
+                description=(
+                    "Input appears to be a question."
+                ),
                 source="basic_detector",
             )
 
+        # --------------------------------------------------------
+        # REQUEST
+        # --------------------------------------------------------
+
+        request_prefixes = (
+            "please ",
+            "do ",
+            "make ",
+            "create ",
+            "find ",
+            "tell me ",
+        )
+
         if lowered.startswith(
-            (
-                "please ",
-                "do ",
-                "make ",
-                "create ",
-                "find ",
-                "tell me ",
-            )
+            request_prefixes
         ):
 
             return Intent(
                 intent_type=IntentType.REQUEST,
                 confidence=0.7,
-                description="Input appears to contain a request.",
+                description=(
+                    "Input appears to contain a request."
+                ),
                 source="basic_detector",
             )
+
+        # --------------------------------------------------------
+        # GOAL
+        # --------------------------------------------------------
 
         if "goal" in lowered:
 
             return Intent(
                 intent_type=IntentType.GOAL,
                 confidence=0.8,
-                description="Input appears to concern a goal.",
+                description=(
+                    "Input appears to concern a goal."
+                ),
                 source="basic_detector",
             )
+
+        # --------------------------------------------------------
+        # DEFAULT
+        # --------------------------------------------------------
 
         return Intent(
             intent_type=IntentType.CONVERSATION,
             confidence=0.6,
-            description="Input appears to be general conversation.",
+            description=(
+                "Input appears to be general conversation."
+            ),
             source="basic_detector",
         )
+
+    # ============================================================
+    # MEMORY INTENT DETECTION
+    # ============================================================
+
+    def _detect_memory_store(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """
+        Detect explicit requests to store information in memory.
+
+        V2 remains deterministic: Mary only stores information
+        automatically when the user clearly asks her to remember it.
+        """
+
+        # More specific phrases must appear before generic phrases.
+
+        prefixes = (
+            "remember that ",
+            "remember ",
+            "don't forget that ",
+            "dont forget that ",
+            "don't forget ",
+            "dont forget ",
+            "keep in mind that ",
+            "keep in mind ",
+            "i want you to remember that ",
+            "i want you to remember ",
+            "i need you to remember that ",
+            "i need you to remember ",
+            "please remember that ",
+            "please remember ",
+        )
+
+        for prefix in prefixes:
+
+            if lowered.startswith(
+                prefix
+            ):
+
+                content = text[
+                    len(prefix):
+                ].strip()
+
+                if not content:
+                    continue
+
+                return Intent(
+                    intent_type=IntentType.MEMORY_STORE,
+                    confidence=0.95,
+                    description=(
+                        "Input explicitly requests "
+                        "that information be remembered."
+                    ),
+                    parameters={
+                        "content": content
+                    },
+                    source="basic_detector",
+                )
+
+        return None
+
+    # ============================================================
+    # RESPONSE SELECTION
+    # ============================================================
 
     def _select_response(
         self,
@@ -252,17 +436,18 @@ class CognitiveOrchestrator:
         reflection: ReflectionResult,
     ) -> str:
         """
-        Determine the response produced by the cognitive cycle.
+        Determine the final response.
 
-        For the initial V2 implementation, accepted and revised reasoning
-        both return the reasoning response.
+        Reflection may influence response selection more deeply
+        in later versions.
 
-        Revision loops will be added once the cognitive cycle has been
-        validated end-to-end.
+        V2 currently returns the reasoning response.
         """
 
-        if reflection.decision == ReflectionDecision.ESCALATE:
-
+        if (
+            reflection.decision
+            == ReflectionDecision.ESCALATE
+        ):
             return reasoning.response
 
         return reasoning.response

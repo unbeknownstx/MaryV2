@@ -30,6 +30,9 @@ class IntentType(str, Enum):
     TOOL_USE = "tool_use"
     WEB_SEARCH = "web_search"
 
+    MEMORY_STORE = "memory_store"
+    MEMORY_RECALL = "memory_recall"
+
     UNKNOWN = "unknown"
 
 
