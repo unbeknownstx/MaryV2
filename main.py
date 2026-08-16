@@ -1,108 +1,34 @@
 """
 MaryV2 Entry Point
 
-Minimal interactive runtime for Mary.
+Canonical project entry point.
 
-This file intentionally contains very little logic.
-Mary's architecture lives inside the mary/ package.
+The actual interactive application runtime lives in
+mary.runtime.application so every supported entry point starts the same
+complete MaryV2 system.
 """
 
-from mary.core.config import Config
-from mary.conversation.service import ConversationService
-from mary.conversation.stage import ConversationStage
-from mary.llm.router import LLMRouter
+from mary.runtime.application import (
+    create_application,
+    run_interactive,
+)
 from mary.runtime.pipeline import Pipeline
-from mary.runtime.state import RuntimeState
 
 
-def create_mary():
-    """Construct the initial Mary runtime."""
+def create_mary() -> Pipeline:
+    """
+    Compatibility factory returning the canonical full-Mary pipeline.
+    """
 
-    config = Config.from_environment()
-
-    config.ensure_directories()
-
-    router = LLMRouter(config)
-
-    conversation = ConversationService(
-        router,
-        system_prompt=(
-            "You are Mary. "
-            "You are a fictional character created by Unbe. "
-            "Respond naturally and conversationally."
-        ),
-    )
-
-    conversation_stage = ConversationStage(
-        conversation,
-    )
-
-    state = RuntimeState()
-
-    pipeline = Pipeline(
-        state,
-        stages=[
-            conversation_stage,
-        ],
+    return create_application(
         name="mary",
-    )
-
-    return pipeline
+    ).pipeline
 
 
-def main():
-    """Run Mary's interactive terminal interface."""
+def main() -> None:
+    """Run the canonical MaryV2 terminal application."""
 
-    mary = create_mary()
-
-    print()
-    print("================================")
-    print(" MaryV2")
-    print("================================")
-    print("Type 'exit' to stop.")
-    print()
-
-    while True:
-
-        try:
-            user_input = input("You: ")
-
-        except (KeyboardInterrupt, EOFError):
-            print()
-            break
-
-        user_input = user_input.strip()
-
-        if not user_input:
-            continue
-
-        if user_input.lower() in {
-            "exit",
-            "quit",
-        }:
-            break
-
-        try:
-            result = mary.run(
-                user_input
-            )
-
-            if result.success:
-                print(
-                    f"Mary: {result.output}"
-                )
-            else:
-                print(
-                    f"Mary encountered an error: "
-                    f"{result.error}"
-                )
-
-        except Exception as exc:
-            print(
-                f"Mary runtime error: {exc}"
-            )
-
-        print()
+    run_interactive()
 
 
 if __name__ == "__main__":
