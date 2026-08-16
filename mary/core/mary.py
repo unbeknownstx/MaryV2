@@ -39,6 +39,26 @@ from mary.core.config import Config
 from mary.core.identity import Identity
 from mary.core.lifecycle import Lifecycle
 
+from mary.agency.agency import Agency
+from mary.autonomy.runtime import AutonomyRuntime
+
+from mary.conversation.service import ConversationService
+
+from mary.expression.dialogue import DialogueManager
+from mary.expression.emotion import EmotionManager
+from mary.expression.response import ResponseBuilder
+from mary.expression.expression import ExpressionSystem
+
+from mary.avatar.bridge import AvatarBridge
+
+from mary.audio import (
+    AudioManager,
+    NullAudioInputProvider,
+    NullAudioOutputProvider,
+    create_audio_input_service,
+    create_audio_output_service,
+)
+
 from mary.identity.biography import create_default_biography
 from mary.identity.self_model import SelfModel
 
@@ -145,6 +165,51 @@ class Mary:
         self.llm = self._create_llm_router()
 
         # ============================================================
+        # CONVERSATION
+        # ============================================================
+
+        self.conversation = ConversationService(
+            router=self.llm,
+        )
+
+        # ============================================================
+        # EXPRESSION
+        # ============================================================
+
+        self.emotion = EmotionManager()
+
+        self.response = ResponseBuilder()
+
+        self.dialogue = DialogueManager()
+
+        self.expression = ExpressionSystem(
+            emotion=self.emotion,
+            response=self.response,
+            dialogue=self.dialogue,
+        )
+
+        # ============================================================
+        # AVATAR
+        # ============================================================
+
+        self.avatar = AvatarBridge(
+            emotion_manager=self.emotion,
+        )
+
+        # ============================================================
+        # AUDIO
+        # ============================================================
+
+        self.audio = AudioManager(
+            input_service=create_audio_input_service(
+                NullAudioInputProvider(),
+            ),
+            output_service=create_audio_output_service(
+                NullAudioOutputProvider(),
+            ),
+        )
+
+        # ============================================================
         # LEARNING
         # ============================================================
 
@@ -190,6 +255,19 @@ class Mary:
             reasoning_engine=self.reasoning,
             reflection_engine=self.reflection,
         )
+
+        # ============================================================
+        # AGENCY
+        # ============================================================
+
+        self.agency = Agency()
+        self.agency.load()
+
+        # ============================================================
+        # AUTONOMY
+        # ============================================================
+
+        self.autonomy = AutonomyRuntime()
 
     # ================================================================
     # PRIMARY ENTRY POINT
