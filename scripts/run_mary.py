@@ -31,6 +31,18 @@ def main() -> None:
         print(f"{type(exc).__name__}: {exc}")
         return
 
+    # ------------------------------------------------------------
+    # DURABLE MEMORY
+    # ------------------------------------------------------------
+
+    mary.config.ensure_directories()
+
+    mary.memory.configure_persistence(
+        mary.config.paths.memory / "memory.json",
+        auto_save=True,
+        load=True,
+    )
+
     print()
     print("Mary initialized successfully.")
 
@@ -121,6 +133,8 @@ def main() -> None:
                 f"{type(exc).__name__}: {exc}"
             )
             print()
+
+    mary.memory.save()
 
     print()
     print("Mary stopped.")

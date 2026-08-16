@@ -16,6 +16,8 @@ storage and behavior.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from mary.memory.episodic import EpisodicMemoryStore
@@ -37,6 +39,9 @@ class MemoryManager:
         working_memory: Optional[WorkingMemory] = None,
         retrieval: Optional[MemoryRetriever] = None,
         consolidation: Optional[MemoryConsolidator] = None,
+        storage_path: str | Path | None = None,
+        auto_load: bool = False,
+        auto_save: bool = False,
     ) -> None:
 
         self.episodic = (
@@ -78,6 +83,17 @@ class MemoryManager:
             )
         )
 
+        self.storage_path = (
+            Path(storage_path)
+            if storage_path is not None
+            else None
+        )
+
+        self.auto_save = bool(auto_save)
+
+        if auto_load and self.storage_path is not None:
+            self.load()
+
     # ========================================================
     # REMEMBER
     # ========================================================
@@ -101,7 +117,7 @@ class MemoryManager:
         metadata = metadata or {}
 
         if memory_type == "episodic":
-            return self.episodic.create(
+            result = self.episodic.create(
                 content=content,
                 importance=importance,
                 source=metadata.get(
@@ -122,6 +138,9 @@ class MemoryManager:
                 ),
                 metadata=metadata,
             )
+
+            self._persist_if_enabled()
+            return result
 
         if memory_type == "working":
             return self.working.add(
@@ -151,7 +170,7 @@ class MemoryManager:
                     "Semantic memory requires metadata['predicate']."
                 )
 
-            return self.semantic.add(
+            result = self.semantic.add(
                 subject=subject,
                 predicate=predicate,
                 value=(
@@ -167,6 +186,9 @@ class MemoryManager:
                     "source",
                 ),
             )
+
+            self._persist_if_enabled()
+            return result
 
         raise ValueError(
             f"Unknown memory type: {memory_type}"
@@ -191,7 +213,7 @@ class MemoryManager:
         Store an episodic experience.
         """
 
-        return self.episodic.create(
+        result = self.episodic.create(
             content=content,
             importance=importance,
             source=source,
@@ -200,6 +222,9 @@ class MemoryManager:
             emotional_context=emotional_context,
             metadata=metadata,
         )
+
+        self._persist_if_enabled()
+        return result
 
     def remember_fact(
         self,
@@ -214,13 +239,16 @@ class MemoryManager:
         Store durable semantic knowledge.
         """
 
-        return self.semantic.add(
+        result = self.semantic.add(
             subject=subject,
             predicate=predicate,
             value=value,
             confidence=confidence,
             source=source,
         )
+
+        self._persist_if_enabled()
+        return result
 
     def remember_working(
         self,
@@ -295,7 +323,185 @@ class MemoryManager:
         Consolidate eligible memories into semantic memory.
         """
 
-        return self.consolidation.consolidate_and_promote()
+        promoted = self.consolidation.consolidate_and_promote()
+
+        if promoted:
+            self._persist_if_enabled()
+
+        return promoted
+
+    # ========================================================
+    # PERSISTENCE
+    # ========================================================
+
+    def configure_persistence(
+        self,
+        storage_path: str | Path,
+        *,
+        auto_save: bool = True,
+        load: bool = True,
+    ) -> bool:
+        """
+        Configure durable episodic/semantic memory storage.
+
+        Working memory is intentionally not persisted.
+        """
+
+        self.storage_path = Path(storage_path)
+        self.auto_save = bool(auto_save)
+
+        if load:
+            return self.load()
+
+        return True
+
+    def save(self) -> bool:
+        """Persist durable memory to disk using an atomic replace."""
+
+        if self.storage_path is None:
+            return False
+
+        self.storage_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        payload = {
+            "version": 1,
+            "episodic": self.episodic.export(),
+            "semantic": [
+                dict(memory)
+                for memory in self.semantic.all()
+            ],
+        }
+
+        temporary_path = self.storage_path.with_suffix(
+            self.storage_path.suffix + ".tmp"
+        )
+
+        try:
+            with temporary_path.open(
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    payload,
+                    file,
+                    indent=4,
+                    ensure_ascii=False,
+                    default=str,
+                )
+
+            temporary_path.replace(
+                self.storage_path
+            )
+
+        except OSError:
+            try:
+                temporary_path.unlink(
+                    missing_ok=True
+                )
+            except OSError:
+                pass
+
+            return False
+
+        return True
+
+    def load(self) -> bool:
+        """Load durable episodic/semantic memory from disk."""
+
+        if self.storage_path is None:
+            return False
+
+        if not self.storage_path.exists():
+            return False
+
+        try:
+            with self.storage_path.open(
+                "r",
+                encoding="utf-8",
+            ) as file:
+                payload = json.load(file)
+
+        except (
+            OSError,
+            json.JSONDecodeError,
+            TypeError,
+            ValueError,
+        ):
+            return False
+
+        if not isinstance(payload, dict):
+            return False
+
+        episodic_data = payload.get(
+            "episodic",
+            [],
+        )
+
+        semantic_data = payload.get(
+            "semantic",
+            [],
+        )
+
+        if not isinstance(episodic_data, list):
+            episodic_data = []
+
+        if not isinstance(semantic_data, list):
+            semantic_data = []
+
+        self.episodic.import_data(
+            episodic_data
+        )
+
+        self.semantic.clear()
+
+        for item in semantic_data:
+            if not isinstance(item, dict):
+                continue
+
+            subject = item.get(
+                "subject"
+            )
+            predicate = item.get(
+                "predicate"
+            )
+
+            if subject is None or predicate is None:
+                continue
+
+            restored = self.semantic.add(
+                subject=str(subject),
+                predicate=str(predicate),
+                value=item.get(
+                    "value"
+                ),
+                confidence=item.get(
+                    "confidence",
+                    1.0,
+                ),
+                source=item.get(
+                    "source"
+                ),
+            )
+
+            for field in (
+                "id",
+                "created_at",
+                "updated_at",
+            ):
+                if item.get(field) is not None:
+                    restored[field] = item[field]
+
+        return True
+
+    def _persist_if_enabled(self) -> None:
+        if (
+            self.auto_save
+            and self.storage_path is not None
+        ):
+            self.save()
 
     # ========================================================
     # STATUS

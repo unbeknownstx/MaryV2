@@ -271,6 +271,10 @@ class CognitiveOrchestrator:
             "what dont i like",
             "what do i like",
             "what are my preferences",
+            "my favorite",
+            "my favourite",
+            "my favorites",
+            "my favourites",
             "do you remember",
             "remember about me",
         )
