@@ -141,4 +141,4 @@ class AvatarController:
         )
 
     def _touch(self) -> None:
-        self._state.updated_at = ti
+        self._state.updated_at = time()

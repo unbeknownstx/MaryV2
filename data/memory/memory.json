@@ -1,0 +1,20 @@
+{
+    "version": 1,
+    "episodic": [
+        {
+            "id": "episode_285531ab7479439f93f6e7f341fc863e",
+            "content": "my favorite color is blue",
+            "timestamp": "2026-08-16T16:38:32.189920+00:00",
+            "importance": 0.8,
+            "source": "interaction",
+            "event_type": "user_preference",
+            "participants": [],
+            "emotional_context": {},
+            "metadata": {
+                "source": "interaction",
+                "event_type": "user_preference"
+            }
+        }
+    ],
+    "semantic": []
+}

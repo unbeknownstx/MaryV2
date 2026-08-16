@@ -33,6 +33,7 @@ Mary does not replace:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from mary.core.config import Config
@@ -460,7 +461,10 @@ class Mary:
             importance=0.8,
             metadata={
                 "source": "interaction",
-                "event_type": "user_preference",
+                "event_type": "user_statement",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person",
             },
         )
 
@@ -470,8 +474,15 @@ class Mary:
                 "I wasn't able to store that memory."
             )
 
+        rendered_content = (
+            self._creator_to_second_person(
+                content
+            )
+        )
+
         return (
-            f"Got it. I'll remember that {content}."
+            "Got it. I'll remember that "
+            f"{rendered_content}."
         )
 
     # ================================================================
@@ -638,6 +649,9 @@ class Mary:
     ) -> str | None:
         """
         Extract human-readable text from a memory representation.
+
+        Creator-owned episodic memories are rendered from Mary's
+        speaking perspective. The raw stored content is not mutated.
         """
 
         if isinstance(
@@ -651,9 +665,18 @@ class Mary:
 
             if content:
 
-                return str(
+                text = str(
                     content
                 ).strip()
+
+                if self._memory_is_creator_owned(
+                    memory
+                ):
+                    return self._creator_to_second_person(
+                        text
+                    )
+
+                return text
 
             subject = memory.get(
                 "subject"
@@ -689,11 +712,179 @@ class Mary:
 
         if content:
 
-            return str(
+            text = str(
                 content
             ).strip()
 
+            if self._memory_is_creator_owned(
+                memory
+            ):
+                return self._creator_to_second_person(
+                    text
+                )
+
+            return text
+
         return None
+
+    def _memory_is_creator_owned(
+        self,
+        memory: Any,
+    ) -> bool:
+        """
+        Determine whether a memory statement belongs to Mary's creator.
+
+        New memories carry explicit ownership metadata. The
+        user_preference fallback preserves correct rendering for older
+        V2 memories written before ownership metadata was introduced.
+        """
+
+        if isinstance(memory, dict):
+            metadata = memory.get(
+                "metadata",
+                {},
+            )
+            event_type = memory.get(
+                "event_type"
+            )
+        else:
+            metadata = getattr(
+                memory,
+                "metadata",
+                {},
+            )
+            event_type = getattr(
+                memory,
+                "event_type",
+                None,
+            )
+
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        owner = str(
+            metadata.get(
+                "owner",
+                "",
+            )
+        ).strip().lower()
+
+        if owner in {
+            "creator",
+            "user",
+            "unbe",
+        }:
+            return True
+
+        if owner in {
+            "mary",
+            "self",
+        }:
+            return False
+
+        legacy_event_type = str(
+            metadata.get(
+                "event_type",
+                event_type or "",
+            )
+        ).strip().lower()
+
+        return legacy_event_type == "user_preference"
+
+    @classmethod
+    def _creator_to_second_person(
+        cls,
+        text: str,
+    ) -> str:
+        """
+        Render creator-authored first-person text for Mary speaking back
+        to the creator.
+
+        Only text outside double/curly-double quoted spans is shifted,
+        preserving quoted first-person speech. The stored memory itself
+        remains unchanged.
+        """
+
+        text = str(text).strip()
+
+        if not text:
+            return text
+
+        parts = re.split(
+            r'("[^"\n]*"|“[^”\n]*”)',
+            text,
+        )
+
+        rendered: list[str] = []
+
+        for index, part in enumerate(parts):
+            if index % 2 == 1:
+                rendered.append(part)
+                continue
+
+            rendered.append(
+                cls._shift_first_person_segment(
+                    part
+                )
+            )
+
+        return "".join(rendered)
+
+    @classmethod
+    def _shift_first_person_segment(
+        cls,
+        text: str,
+    ) -> str:
+        """Shift creator first-person pronouns to second person."""
+
+        replacements = (
+            (r"\bI\s+am\b", "you are"),
+            (r"\bI\s+was\b", "you were"),
+            (r"\bI'm\b", "you're"),
+            (r"\bI've\b", "you've"),
+            (r"\bI'll\b", "you'll"),
+            (r"\bI'd\b", "you'd"),
+            (r"\bmyself\b", "yourself"),
+            (r"\bmine\b", "yours"),
+            (r"\bmy\b", "your"),
+            (r"\bme\b", "you"),
+            (r"\bI\b", "you"),
+        )
+
+        result = text
+
+        for pattern, replacement in replacements:
+            result = re.sub(
+                pattern,
+                lambda match, value=replacement: (
+                    cls._match_case(
+                        match.group(0),
+                        value,
+                    )
+                ),
+                result,
+                flags=re.IGNORECASE,
+            )
+
+        return result
+
+    @staticmethod
+    def _match_case(
+        source: str,
+        replacement: str,
+    ) -> str:
+        """Apply simple source capitalization to replacement text."""
+
+        if source.isupper() and len(source) > 1:
+            return replacement.upper()
+
+        if source[:1].isupper():
+            return (
+                replacement[:1].upper()
+                + replacement[1:]
+            )
+
+        return replacement
 
     # ================================================================
     # STATUS
