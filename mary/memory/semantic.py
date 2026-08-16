@@ -56,14 +56,6 @@ class SemanticMemory:
         Add a semantic fact.
 
         Exact duplicate facts are not stored twice.
-
-        Example:
-
-            add(
-                subject="creator",
-                predicate="likes",
-                value="anime",
-            )
         """
 
         if not subject or not str(subject).strip():
@@ -79,10 +71,6 @@ class SemanticMemory:
             confidence
         )
 
-        # --------------------------------------------------------
-        # DUPLICATE CHECK
-        # --------------------------------------------------------
-
         existing = self._find_exact(
             subject=subject,
             predicate=predicate,
@@ -90,7 +78,6 @@ class SemanticMemory:
         )
 
         if existing is not None:
-
             existing["confidence"] = max(
                 self._clamp_confidence(
                     existing.get(
@@ -109,10 +96,6 @@ class SemanticMemory:
             )
 
             return existing
-
-        # --------------------------------------------------------
-        # CREATE
-        # --------------------------------------------------------
 
         now = datetime.now().isoformat()
 
@@ -148,7 +131,6 @@ class SemanticMemory:
         results: list[dict[str, Any]] = []
 
         for memory in self.memories:
-
             if subject is not None:
                 if not self._text_equal(
                     memory.get("subject"),
@@ -183,15 +165,7 @@ class SemanticMemory:
         """
         Search semantic memory using natural language.
 
-        Examples:
-
-            "what don't I like?"
-            "what do I like?"
-            "what does the creator like?"
-            "shrimp"
-            "anime"
-
-        Results contain a `score` field used by MemoryRetriever.
+        Results contain a score field used by MemoryRetriever.
         """
 
         if not query or not str(query).strip():
@@ -222,7 +196,6 @@ class SemanticMemory:
         scored: list[dict[str, Any]] = []
 
         for memory in self.memories:
-
             score = self._score_memory(
                 memory=memory,
                 query=query_lower,
@@ -235,7 +208,6 @@ class SemanticMemory:
                 continue
 
             result = dict(memory)
-
             result["score"] = score
 
             scored.append(result)
@@ -267,8 +239,6 @@ class SemanticMemory:
     ) -> list[dict[str, Any]]:
         """
         Alias for search().
-
-        Allows MemoryRetriever to use either interface.
         """
 
         return self.search(
@@ -289,7 +259,6 @@ class SemanticMemory:
         """
 
         for memory in self.memories:
-
             if memory.get("id") == memory_id:
                 return memory
 
@@ -324,7 +293,6 @@ class SemanticMemory:
         }
 
         for key, value in changes.items():
-
             if key not in allowed_fields:
                 continue
 
@@ -332,7 +300,6 @@ class SemanticMemory:
                 "subject",
                 "predicate",
             }:
-
                 if value is None:
                     continue
 
@@ -344,7 +311,6 @@ class SemanticMemory:
                     continue
 
             if key == "confidence":
-
                 value = (
                     self._clamp_confidence(
                         value
@@ -374,11 +340,8 @@ class SemanticMemory:
         for index, memory in enumerate(
             self.memories
         ):
-
             if memory.get("id") == memory_id:
-
                 del self.memories[index]
-
                 return True
 
         return False
@@ -438,18 +401,6 @@ class SemanticMemory:
         Calculate semantic relevance.
 
         Predicate meaning is intentionally weighted heavily.
-
-        Therefore:
-
-            "what don't I like?"
-
-        strongly prefers:
-
-            creator / dislikes / shrimp
-
-        over:
-
-            creator / likes / anime
         """
 
         subject = str(
@@ -499,14 +450,9 @@ class SemanticMemory:
         # --------------------------------------------------------
 
         if requested_predicates:
-
             if predicate in requested_predicates:
-
                 score += 1.50
-
             else:
-
-                # Explicitly penalize the opposite predicate.
                 score -= 0.75
 
         # --------------------------------------------------------
@@ -514,9 +460,7 @@ class SemanticMemory:
         # --------------------------------------------------------
 
         if requested_subjects:
-
             if subject in requested_subjects:
-
                 score += 0.50
 
         # --------------------------------------------------------
@@ -527,7 +471,6 @@ class SemanticMemory:
             query_words
             and content_words
         ):
-
             overlap = (
                 query_words
                 .intersection(
@@ -536,7 +479,6 @@ class SemanticMemory:
             )
 
             if overlap:
-
                 lexical_score = (
                     len(overlap)
                     / max(
@@ -557,9 +499,7 @@ class SemanticMemory:
         if self._is_dislike_query(
             query
         ):
-
             if predicate == "dislikes":
-
                 score += 1.50
 
             elif predicate in {
@@ -568,7 +508,6 @@ class SemanticMemory:
                 "enjoys",
                 "prefers",
             }:
-
                 score -= 1.25
 
         # --------------------------------------------------------
@@ -578,18 +517,15 @@ class SemanticMemory:
         elif self._is_like_query(
             query
         ):
-
             if predicate in {
                 "likes",
                 "loves",
                 "enjoys",
                 "prefers",
             }:
-
                 score += 1.50
 
             elif predicate == "dislikes":
-
                 score -= 1.25
 
         # --------------------------------------------------------
@@ -606,7 +542,6 @@ class SemanticMemory:
         )
 
         if score > 0:
-
             score *= (
                 0.75
                 + (
@@ -634,53 +569,51 @@ class SemanticMemory:
         """
         Detect semantic predicates from natural language.
 
-        IMPORTANT:
-
-        Negative preference queries are checked FIRST.
-
-        This prevents:
-
-            "what don't I like?"
-
-        from being interpreted as both:
-
-            dislikes
-            likes
+        Negative preference queries are checked first.
         """
 
         query = str(
             query
         ).strip().lower()
 
-        # --------------------------------------------------------
-        # NEGATIVE PREFERENCE
-        # --------------------------------------------------------
+        negative_patterns = (
+            r"\bdon't\b.*\blike\b",
+            r"\bdo not\b.*\blike\b",
+            r"\bdoesn't\b.*\blike\b",
+            r"\bdoes not\b.*\blike\b",
+            r"\bdislike\b",
+            r"\bdislikes\b",
+            r"\bhate\b",
+            r"\bhates\b",
+        )
 
-        if (
-            "don't like" in query
-            or "do not like" in query
-            or "dislike" in query
-            or "dislikes" in query
-            or "hate" in query
-            or "hates" in query
+        if any(
+            re.search(
+                pattern,
+                query,
+            )
+            for pattern in negative_patterns
         ):
-
             return {
                 "dislikes"
             }
 
-        # --------------------------------------------------------
-        # POSITIVE PREFERENCE
-        # --------------------------------------------------------
+        positive_patterns = (
+            r"\bwhat do i like\b",
+            r"\bwhat i like\b",
+            r"\bwhat does the creator like\b",
+            r"\bwhat does he like\b",
+            r"\bwhat does she like\b",
+            r"\bwhat do you like\b",
+        )
 
-        if (
-            "what do i like" in query
-            or "what i like" in query
-            or "what does the creator like" in query
-            or "what does he like" in query
-            or "what does she like" in query
+        if any(
+            re.search(
+                pattern,
+                query,
+            )
+            for pattern in positive_patterns
         ):
-
             return {
                 "likes",
                 "loves",
@@ -688,17 +621,20 @@ class SemanticMemory:
                 "prefers",
             }
 
-        # --------------------------------------------------------
-        # LOVE
-        # --------------------------------------------------------
+        love_patterns = (
+            r"\bwhat do i love\b",
+            r"\bwhat does the creator love\b",
+            r"\bwhat does he love\b",
+            r"\bwhat does she love\b",
+        )
 
-        if (
-            "what do i love" in query
-            or "what does the creator love" in query
-            or "what does he love" in query
-            or "what does she love" in query
+        if any(
+            re.search(
+                pattern,
+                query,
+            )
+            for pattern in love_patterns
         ):
-
             return {
                 "loves"
             }
@@ -723,13 +659,11 @@ class SemanticMemory:
             "creator" in query
             or "my creator" in query
         ):
-
             subjects.add(
                 "creator"
             )
 
         if "mary" in query:
-
             subjects.add(
                 "mary"
             )
@@ -746,15 +680,25 @@ class SemanticMemory:
 
         query = str(
             query
-        ).lower()
+        ).strip().lower()
 
-        return (
-            "don't like" in query
-            or "do not like" in query
-            or "dislike" in query
-            or "dislikes" in query
-            or "hate" in query
-            or "hates" in query
+        patterns = (
+            r"\bdon't\b.*\blike\b",
+            r"\bdo not\b.*\blike\b",
+            r"\bdoesn't\b.*\blike\b",
+            r"\bdoes not\b.*\blike\b",
+            r"\bdislike\b",
+            r"\bdislikes\b",
+            r"\bhate\b",
+            r"\bhates\b",
+        )
+
+        return any(
+            re.search(
+                pattern,
+                query,
+            )
+            for pattern in patterns
         )
 
     @staticmethod
@@ -791,7 +735,6 @@ class SemanticMemory:
         """
 
         for memory in self.memories:
-
             if not self._text_equal(
                 memory.get("subject"),
                 subject,
@@ -875,7 +818,6 @@ class SemanticMemory:
         highest = 0
 
         for memory in self.memories:
-
             memory_id = str(
                 memory.get(
                     "id",
@@ -889,7 +831,6 @@ class SemanticMemory:
                 continue
 
             try:
-
                 number = int(
                     memory_id.split(
                         "_"
@@ -921,7 +862,6 @@ class SemanticMemory:
         """
 
         try:
-
             value = float(
                 value
             )
@@ -930,7 +870,6 @@ class SemanticMemory:
             TypeError,
             ValueError,
         ):
-
             value = 1.0
 
         return max(

@@ -37,13 +37,22 @@ from typing import Any
 
 from mary.core.config import Config
 from mary.core.identity import Identity
+from mary.core.lifecycle import Lifecycle
+
+from mary.identity.biography import create_default_biography
+from mary.identity.self_model import SelfModel
 
 from mary.personality.personality import Personality
 from mary.personality.development import PersonalityDevelopment
+from mary.personality.character import Character
 
 from mary.relationship.user import UserModel
 
 from mary.learning.learner import Learner
+from mary.learning.evaluator import Evaluator
+from mary.learning.researcher import Researcher
+
+from mary.knowledge.manager import KnowledgeManager
 
 from mary.memory.manager import MemoryManager
 
@@ -75,6 +84,15 @@ class Mary:
         self.config = Config()
 
         # ============================================================
+        # LIFECYCLE
+        # ============================================================
+
+        self.lifecycle = Lifecycle()
+
+        self.lifecycle.initialize()
+        self.lifecycle.ready()
+
+        # ============================================================
         # IDENTITY
         # ============================================================
 
@@ -93,10 +111,38 @@ class Mary:
         )
 
         # ============================================================
+        # CHARACTER
+        # ============================================================
+
+        self.character = Character()
+
+        # ============================================================
+        # SELF MODEL
+        # ============================================================
+
+        self.self_model = SelfModel(
+            name="Mary",
+            personality=self.personality,
+            character=self.character,
+        )
+
+        # ============================================================
+        # BIOGRAPHY
+        # ============================================================
+
+        self.biography = create_default_biography()
+
+        # ============================================================
         # RELATIONSHIP
         # ============================================================
 
         self.user_model = UserModel()
+
+        # ============================================================
+        # LLM
+        # ============================================================
+
+        self.llm = self._create_llm_router()
 
         # ============================================================
         # LEARNING
@@ -104,17 +150,29 @@ class Mary:
 
         self.learner = Learner()
 
+        self.evaluator = Evaluator(
+            llm=self.llm,
+        )
+
+        # ============================================================
+        # RESEARCHER
+        # ============================================================
+
+        self.researcher = Researcher(
+            web_tool=None,
+        )
+
+        # ============================================================
+        # KNOWLEDGE
+        # ============================================================
+
+        self.knowledge = KnowledgeManager()
+
         # ============================================================
         # MEMORY
         # ============================================================
 
         self.memory = MemoryManager()
-
-        # ============================================================
-        # LLM
-        # ============================================================
-
-        self.llm = self._create_llm_router()
 
         # ============================================================
         # COGNITION
@@ -143,68 +201,29 @@ class Mary:
     ) -> CognitiveCycleResult:
         """
         Process one complete MaryV2 interaction.
-
-        Flow:
-
-            input
-              ↓
-            validation
-              ↓
-            context
-              ↓
-            intent
-              ↓
-            deterministic subsystem actions
-              ↓
-            cognition
-              ↓
-            final response
         """
 
         input_text = self._normalize_input(
             input_text
         )
 
-        # ------------------------------------------------------------
-        # BUILD INITIAL CONTEXT
-        # ------------------------------------------------------------
-
         context = self._build_context(
             input_text
         )
-
-        # ------------------------------------------------------------
-        # DETECT INTENT
-        # ------------------------------------------------------------
 
         intent = self._detect_intent(
             input_text
         )
 
-        # ------------------------------------------------------------
-        # EXECUTE DETERMINISTIC SYSTEM ACTION
-        # ------------------------------------------------------------
-
         system_response = self._handle_intent(
             intent
         )
-
-        # ------------------------------------------------------------
-        # REFRESH MEMORY CONTEXT
-        #
-        # If this interaction changed memory, cognition should receive
-        # the newly updated state during the same cycle.
-        # ------------------------------------------------------------
 
         if system_response is not None:
 
             context["memory"] = self.memory.build_context(
                 input_text
             )
-
-        # ------------------------------------------------------------
-        # COGNITIVE CYCLE
-        # ------------------------------------------------------------
 
         result = self.cognition.process(
             input_text=input_text,
@@ -216,13 +235,6 @@ class Mary:
             user_context=context["user"],
             personality_context=context["personality"],
         )
-
-        # ------------------------------------------------------------
-        # DETERMINISTIC RESPONSE OVERRIDE
-        #
-        # Actual subsystem results take precedence over generated
-        # reasoning responses.
-        # ------------------------------------------------------------
 
         if system_response is not None:
 
@@ -313,11 +325,6 @@ class Mary:
     ) -> str | None:
         """
         Execute deterministic subsystem actions.
-
-        Cognition identifies what the user wants.
-
-        Mary coordinates the subsystem responsible for performing
-        that action.
         """
 
         if intent is None:
@@ -470,11 +477,6 @@ class Mary:
     ) -> list[Any]:
         """
         Return Mary's available stored memories.
-
-        Episodic memory is preferred because it represents direct
-        interactions and experiences.
-
-        Semantic memory is used as a fallback.
         """
 
         episodic = list(
@@ -530,10 +532,6 @@ class Mary:
                 "turn them into an answer."
             )
 
-        # ------------------------------------------------------------
-        # REMOVE DUPLICATES WHILE PRESERVING ORDER
-        # ------------------------------------------------------------
-
         statements = list(
             dict.fromkeys(
                 statements
@@ -563,10 +561,6 @@ class Mary:
         """
         Extract human-readable text from a memory representation.
         """
-
-        # ------------------------------------------------------------
-        # DICTIONARY MEMORY
-        # ------------------------------------------------------------
 
         if isinstance(
             memory,
@@ -608,10 +602,6 @@ class Mary:
                 ).strip()
 
             return None
-
-        # ------------------------------------------------------------
-        # OBJECT MEMORY
-        # ------------------------------------------------------------
 
         content = getattr(
             memory,
@@ -832,8 +822,6 @@ class Mary:
     ):
         """
         Propose a controlled personality change.
-
-        The proposal is not applied automatically.
         """
 
         return self.personality_development.propose_change(
@@ -931,8 +919,6 @@ class Mary:
     ):
         """
         Create Mary's LLM router.
-
-        The router remains responsible for provider selection.
         """
 
         from mary.llm.router import LLMRouter
