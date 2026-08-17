@@ -28,6 +28,132 @@ from mary.runtime.pipeline import Pipeline, PipelineResult
 from mary.runtime.state import RuntimeState
 
 
+
+
+# ================================================================
+# INTERACTIVE TERMINAL UX
+# ================================================================
+
+
+_POWERSHELL_PREFIXES = (
+    "test-path ",
+    "get-content ",
+    "set-content ",
+    "add-content ",
+    "remove-item ",
+    "copy-item ",
+    "move-item ",
+    "get-childitem",
+    "get-location",
+    "set-location ",
+    "new-item ",
+    "select-string ",
+    "where-object ",
+    "foreach-object ",
+    "resolve-path ",
+    "join-path ",
+    "split-path ",
+    "python ",
+    "py ",
+    "pytest ",
+    "pip ",
+    "git ",
+    "cd ",
+)
+
+
+def looks_like_terminal_command(text: str) -> bool:
+    """Return True for command-shaped input meant for PowerShell/terminal.
+
+    The interactive Mary prompt never executes these commands.  This helper is
+    only a usability guard so command text is not accidentally sent to the LLM
+    and described as though Mary had or lacked a capability.
+    """
+
+    value = str(text or "").strip()
+    if not value:
+        return False
+
+    lowered = value.lower()
+
+    # Natural-language questions about commands should still reach Mary.
+    if lowered.startswith((
+        "what ",
+        "why ",
+        "how ",
+        "explain ",
+        "tell me ",
+    )):
+        return False
+
+    if lowered in {"dir", "ls", "pwd"}:
+        return True
+
+    return lowered.startswith(_POWERSHELL_PREFIXES)
+
+
+def terminal_command_guidance(text: str) -> str:
+    """Explain where a terminal-shaped command should be entered."""
+
+    command = str(text or "").strip()
+    return (
+        "That looks like a PowerShell/terminal command, so I did not execute "
+        "or send it through Mary's reasoning pipeline.\n\n"
+        f"Run this at the PowerShell prompt instead:\n{command}\n\n"
+        "You can use a second VS Code terminal while Mary stays open, or type "
+        "`exit` here first and then run the command."
+    )
+
+
+def format_pending_requests(application: "MaryApplication") -> str:
+    """Return a compact creator-facing list of pending approvals."""
+
+    pending = application.mary.tools.pending_requests()
+    if not pending:
+        return "There are no pending tool requests."
+
+    lines = ["Pending tool requests:"]
+    for request in pending:
+        lines.append(
+            f"- {request.request_id}: {request.tool_name}"
+        )
+
+    if len(pending) == 1:
+        lines.append("Say `approve` to approve it, or `reject` to reject it.")
+    else:
+        lines.append(
+            "More than one request is pending. Use `approve request_...` or "
+            "`reject request_...` with the exact id."
+        )
+
+    return "\n".join(lines)
+
+
+def interactive_help(application: "MaryApplication") -> str:
+    """Explain the difference between Mary's prompt and PowerShell."""
+
+    workspace = application.mary.tools.workspace_root
+    return (
+        "MaryV2 terminal help\n\n"
+        "At `You:` type requests for Mary, for example:\n"
+        "  who are you?\n"
+        "  remember that my test animal is a red panda\n"
+        "  show me what's in mary/memory\n"
+        "  analyze mary/memory/manager.py\n"
+        "  create file test.txt with hello\n\n"
+        "PowerShell commands do NOT belong at the `You:` prompt, for example:\n"
+        "  python -m pytest tests -q\n"
+        "  Test-Path test.txt\n"
+        "  Get-Content test.txt\n"
+        "  Remove-Item test.txt\n\n"
+        "Run those in a VS Code PowerShell terminal instead. You can open a "
+        "second terminal while Mary stays running.\n\n"
+        "Inside Mary, `/pending` shows pending approvals. If exactly one request "
+        "is pending, simply type `approve` or `reject`.\n\n"
+        f"Mary's bounded workspace is: {workspace}"
+    )
+
+
 @dataclass
 class MaryApplication:
     """
@@ -179,7 +305,8 @@ def run_interactive(
 
     print()
     print("Mary is ready.")
-    print("Type 'exit' or 'quit' to stop.")
+    print("At 'You:' type requests for Mary, not PowerShell commands.")
+    print("Type '/help' for examples, '/pending' for approvals, or 'exit' to stop.")
     print("=" * 60)
     print()
 
@@ -206,6 +333,20 @@ def run_interactive(
                 "quit",
             }:
                 break
+
+            command = user_input.lower()
+
+            if command in {"/help", "/h"}:
+                print(f"Mary: {interactive_help(app)}")
+                continue
+
+            if command in {"/pending", "pending", "pending requests"}:
+                print(f"Mary: {format_pending_requests(app)}")
+                continue
+
+            if looks_like_terminal_command(user_input):
+                print(f"Mary: {terminal_command_guidance(user_input)}")
+                continue
 
             try:
                 result = app.run(

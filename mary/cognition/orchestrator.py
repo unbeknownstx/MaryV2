@@ -413,7 +413,66 @@ class CognitiveOrchestrator:
         text: str,
         lowered: str,
     ) -> Intent | None:
-        """Detect explicit creator approval or rejection of a tool request."""
+        """Detect explicit creator approval or rejection of tool requests.
+
+        A full request id is still the most precise form.  For terminal usability,
+        a bare ``approve``/``reject`` is also treated as an explicit creator
+        decision.  The Mary coordinator resolves that shorthand only when there
+        is exactly one pending request; it never guesses among multiple requests.
+        """
+
+        normalized = re.sub(
+            r"\s+",
+            " ",
+            lowered.strip(),
+        )
+
+        bare_approve = {
+            "approve",
+            "approve it",
+            "approve request",
+            "approve the request",
+            "yes approve",
+            "yes, approve",
+        }
+        bare_reject = {
+            "reject",
+            "reject it",
+            "reject request",
+            "reject the request",
+            "deny",
+            "deny it",
+        }
+
+        if normalized in bare_approve:
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description=(
+                    "Creator explicitly approves the single pending tool request."
+                ),
+                parameters={
+                    "action": "approve",
+                    "request_id": "",
+                    "resolve_single_pending": True,
+                },
+                source="basic_detector",
+            )
+
+        if normalized in bare_reject:
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description=(
+                    "Creator explicitly rejects the single pending tool request."
+                ),
+                parameters={
+                    "action": "reject",
+                    "request_id": "",
+                    "resolve_single_pending": True,
+                },
+                source="basic_detector",
+            )
 
         request_match = re.search(
             r"\brequest_[0-9a-fA-F]+\b",
@@ -425,9 +484,10 @@ class CognitiveOrchestrator:
 
         request_id = request_match.group(0)
 
-        if lowered.startswith((
+        if normalized.startswith((
             "approve ",
             "yes approve ",
+            "yes, approve ",
             "approve tool ",
             "approve request",
         )):
@@ -444,7 +504,7 @@ class CognitiveOrchestrator:
                 source="basic_detector",
             )
 
-        if lowered.startswith((
+        if normalized.startswith((
             "reject ",
             "deny ",
             "no reject ",

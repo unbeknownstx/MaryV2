@@ -410,22 +410,51 @@ class Mary:
                 intent
             )
 
+        # Deterministic tool/system responses must not fall through into an
+        # unnecessary LLM call.  This includes pending approval prompts, tool
+        # failures, approvals/rejections, and validated code proposals.  A web
+        # action that returned grounded knowledge still goes through cognition
+        # because the LLM is needed to synthesize the sourced answer.
+        if (
+            system_response is not None
+            and not external_knowledge
+            and intent.intent_type in {
+                IntentType.WEB_SEARCH,
+                IntentType.TOOL_USE,
+            }
+        ):
+            skip_cognition = True
+
         if system_response is not None:
             context["memory"] = self.memory.build_context(
                 input_text
             )
 
         if skip_cognition and system_response is not None:
+            system_action = str(
+                intent.parameters.get(
+                    "action",
+                    intent.intent_type.value,
+                )
+            ).strip() or intent.intent_type.value
+
+            metadata = {
+                "handled_by": "mary_system",
+                "system_action": system_action,
+                "llm_calls_after_action": 0,
+            }
+            if system_action == "propose_code_change":
+                metadata.update({
+                    "handled_by": "mary_code_change_planner",
+                    "llm_calls_after_planning": 0,
+                })
+
             return self._build_system_cycle_result(
                 input_text=input_text,
                 intent=intent,
                 response=system_response,
                 context=context,
-                metadata={
-                    "handled_by": "mary_code_change_planner",
-                    "system_action": "propose_code_change",
-                    "llm_calls_after_planning": 0,
-                },
+                metadata=metadata,
             )
 
         result = self.cognition.process(
@@ -642,7 +671,8 @@ class Mary:
                     "Current external information would help answer that. "
                     f"I created {request.request_id} for {tool_name}. "
                     "To authorize exactly that request, say: "
-                    f"approve {request.request_id}"
+                    f"approve {request.request_id}. "
+                    "If it is the only pending request, you can simply say: approve"
                 )
             }
 
@@ -744,7 +774,8 @@ class Mary:
             "```\n\n"
             f"Approval request: {request.request_id}\n"
             "To apply exactly this validated proposal, say: "
-            f"approve {request.request_id}"
+            f"approve {request.request_id}.\n"
+            "If it is the only pending request, you can simply say: approve"
         )
 
         return {
@@ -901,7 +932,8 @@ class Mary:
                 f"{tool_name} would change Mary's workspace. "
                 f"I created {request.request_id}. "
                 "To authorize exactly that operation, say: "
-                f"approve {request.request_id}"
+                f"approve {request.request_id}. "
+                "If it is the only pending request, you can simply say: approve"
             )
         }
 
@@ -983,7 +1015,12 @@ class Mary:
         self,
         intent: Intent,
     ) -> dict[str, Any]:
-        """Handle creator approval/rejection of a pending tool request."""
+        """Handle creator approval/rejection of a pending tool request.
+
+        A request id is always accepted.  Bare ``approve`` or ``reject`` is a
+        convenience for the creator only when exactly one request is pending.
+        Mary never guesses which request to authorize when more than one exists.
+        """
 
         action = str(
             intent.parameters.get(
@@ -999,15 +1036,44 @@ class Mary:
             )
         ).strip()
 
+        if not request_id:
+            pending = self.tools.pending_requests()
+
+            if not pending:
+                return {
+                    "system_response": (
+                        "There are no pending tool requests to "
+                        f"{action or 'control'}."
+                    ),
+                    "skip_cognition": True,
+                }
+
+            if len(pending) > 1:
+                choices = "\n".join(
+                    f"- {item.request_id}: {item.tool_name}"
+                    for item in pending
+                )
+                return {
+                    "system_response": (
+                        "More than one tool request is pending, so I won't "
+                        "guess which one you mean. Use the full request id:\n"
+                        f"{choices}"
+                    ),
+                    "skip_cognition": True,
+                }
+
+            request_id = pending[0].request_id
+
         request = self.tools.registry.get_request(
             request_id
         )
 
-        if request is None:
+        if request is None or request.status != "pending":
             return {
                 "system_response": (
                     f"I don't have a pending tool request named {request_id}."
-                )
+                ),
+                "skip_cognition": True,
             }
 
         if action == "reject":
@@ -1019,14 +1085,16 @@ class Mary:
                     f"Rejected {request_id}."
                     if rejected
                     else f"{request_id} could not be rejected."
-                )
+                ),
+                "skip_cognition": True,
             }
 
         if action != "approve":
             return {
                 "system_response": (
                     "I don't recognize that tool-control action."
-                )
+                ),
+                "skip_cognition": True,
             }
 
         token = self.tools.approve(
@@ -1038,7 +1106,8 @@ class Mary:
             return {
                 "system_response": (
                     f"{request_id} could not be approved."
-                )
+                ),
+                "skip_cognition": True,
             }
 
         tool_result = self.tools.execute_approved(
@@ -1071,7 +1140,8 @@ class Mary:
                 "system_response": (
                     f"{request.tool_name} failed: "
                     f"{tool_result.error or 'unknown error'}"
-                )
+                ),
+                "skip_cognition": True,
             }
 
         if request.tool_name == "code_apply_change":
@@ -1079,14 +1149,16 @@ class Mary:
                 "system_response": (
                     "Applied the exact approved code proposal to "
                     f"{tool_result.result}. No code or tests were executed."
-                )
+                ),
+                "skip_cognition": True,
             }
 
         return {
             "system_response": (
                 f"{request.tool_name} completed: "
                 f"{tool_result.result}"
-            )
+            ),
+            "skip_cognition": True,
         }
 
     def _research_from_tool_result(

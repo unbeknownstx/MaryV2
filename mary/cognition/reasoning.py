@@ -243,8 +243,10 @@ class ReasoningEngine:
                     "signatures, persistence files, side effects, data structures, "
                     "or warnings that are not shown by the tool evidence. If the "
                     "tool marks source as truncated or says the middle was omitted, "
-                    "state that limitation when it matters. If a claim cannot be "
-                    "verified from the supplied local evidence, say so."
+                    "state that limitation when it matters. Do not speculate about "
+                    "what an omitted region likely, probably, or possibly contains; "
+                    "describe it only as unavailable in the supplied evidence. If a "
+                    "claim cannot be verified from the supplied local evidence, say so."
                 )
 
             if any(
