@@ -93,8 +93,18 @@ def run_diagnostics() -> bool:
     )
 
 
+def run_resilience_install_check() -> bool:
+    _heading("4. PROVIDER RESILIENCE CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_resilience_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_local_safety_smoke() -> bool:
-    _heading("4. LOCAL TOOL SAFETY SMOKE")
+    _heading("5. LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -163,7 +173,7 @@ def run_local_safety_smoke() -> bool:
 
 
 def run_live_web() -> bool:
-    _heading("5. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("6. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -225,6 +235,7 @@ def main() -> int:
         ("compile", run_compile_check()),
         ("pytest", run_pytest(offline=args.offline)),
         ("diagnostics", run_diagnostics()),
+        ("resilience", run_resilience_install_check()),
         ("local_safety", run_local_safety_smoke()),
     ]
 

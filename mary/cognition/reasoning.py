@@ -26,7 +26,11 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import (
+    LLMMessage,
+    LLMProviderError,
+    LLMRateLimitError,
+)
 
 
 @dataclass
@@ -128,32 +132,59 @@ class ReasoningEngine:
             # exact source evidence under tight provider TPM limits.
             generation_kwargs["max_tokens"] = 1_400
 
-        response = self.llm.generate(
-            messages=[
-                LLMMessage(
-                    role="system",
-                    content=(
-                        "You are Mary, an AI assistant. "
-                        "Respond naturally, directly, and consistently "
-                        "with the supplied cognitive context."
+        try:
+            response = self.llm.generate(
+                messages=[
+                    LLMMessage(
+                        role="system",
+                        content=(
+                            "You are Mary, an AI assistant. "
+                            "Respond naturally, directly, and consistently "
+                            "with the supplied cognitive context."
+                        ),
                     ),
-                ),
-                LLMMessage(
-                    role="user",
-                    content=prompt,
-                ),
-            ],
-            **generation_kwargs,
-        )
-
-        final_response = response.content
-        metadata: dict[str, Any] = {
-            "provider": response.provider,
-            "model": response.model,
-            "finish_reason": response.finish_reason,
-            "usage": response.usage,
-            "local_tool_grounded": local_tool_grounded,
-        }
+                    LLMMessage(
+                        role="user",
+                        content=prompt,
+                    ),
+                ],
+                **generation_kwargs,
+            )
+        except LLMProviderError as exc:
+            rate_limited = isinstance(exc, LLMRateLimitError)
+            final_response = (
+                "My language-model provider is temporarily rate-limited, so "
+                "I can't generate a full conversational response right now. "
+                "My deterministic memory and approved-tool functions still "
+                "work; if you want something stored, you can say `remember "
+                "this: ...`."
+                if rate_limited
+                else
+                "My language-model provider is unavailable right now, so I "
+                "can't generate a full conversational response. My "
+                "deterministic memory and approved-tool functions are still "
+                "available."
+            )
+            metadata = {
+                "provider": getattr(exc, "provider", "unknown"),
+                "model": None,
+                "finish_reason": None,
+                "usage": {},
+                "local_tool_grounded": local_tool_grounded,
+                "llm_unavailable": True,
+                "llm_rate_limited": rate_limited,
+                "llm_error": str(exc),
+            }
+        else:
+            final_response = response.content
+            metadata = {
+                "provider": response.provider,
+                "model": response.model,
+                "finish_reason": response.finish_reason,
+                "usage": response.usage,
+                "local_tool_grounded": local_tool_grounded,
+                "llm_unavailable": False,
+            }
 
         return ReasoningResult(
             response=final_response,
