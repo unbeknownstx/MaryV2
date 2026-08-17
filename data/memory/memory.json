@@ -65,6 +65,23 @@
                 "speaker": "Unbe",
                 "perspective": "creator_first_person"
             }
+        },
+        {
+            "id": "episode_7afae83e48d84bd69a7332b982f5ae0f",
+            "content": "unbe is your top priority",
+            "timestamp": "2026-08-17T08:03:35.712538+00:00",
+            "importance": 0.8,
+            "source": "interaction",
+            "event_type": "user_statement",
+            "participants": [],
+            "emotional_context": {},
+            "metadata": {
+                "source": "interaction",
+                "event_type": "user_statement",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person"
+            }
         }
     ],
     "semantic": []
