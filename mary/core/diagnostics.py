@@ -63,6 +63,7 @@ class MaryDiagnostics:
         results.extend(self._check_character())
         results.extend(self._check_knowledge())
         results.extend(self._check_learning())
+        results.extend(self._check_relationship())
         results.extend(self._check_tools())
         results.extend(self._check_agency())
         results.extend(self._check_autonomy())
@@ -432,6 +433,38 @@ class MaryDiagnostics:
                 "researcher",
             ),
         )
+
+    # ============================================================
+    # RELATIONSHIP
+    # ============================================================
+
+    def _check_relationship(self) -> List[DiagnosticResult]:
+        return [
+            self._check_attribute(
+                "Relationship System",
+                "relationship",
+            ),
+            self._check_attribute(
+                "Creator Model",
+                "user_model",
+            ),
+            self._check_attribute(
+                "Relationship Understanding",
+                "relationship_understanding",
+            ),
+            self._check_attribute(
+                "Relationship History",
+                "relationship_history",
+            ),
+            self._check_attribute(
+                "Relationship Milestones",
+                "relationship_milestones",
+            ),
+            self._check_attribute(
+                "Creator Directives",
+                "creator_directives",
+            ),
+        ]
 
     # ============================================================
     # TOOLS

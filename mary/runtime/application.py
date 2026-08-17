@@ -226,6 +226,18 @@ def create_application(
         load=load_memory,
     )
 
+    # Memory is loaded here, after Mary construction.  Give the relationship
+    # system one conservative pass over durable explicit creator statements so
+    # older V2 memories can populate the structured creator model without
+    # promoting arbitrary conversation or inference.
+    sync_relationship = getattr(
+        mary,
+        "_sync_relationship_from_existing_memories",
+        None,
+    )
+    if callable(sync_relationship):
+        sync_relationship()
+
     state = RuntimeState()
 
     stage = MaryStage(

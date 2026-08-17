@@ -123,8 +123,18 @@ def run_creator_directive_install_check() -> bool:
     return completed.returncode == 0
 
 
+def run_relationship_development_install_check() -> bool:
+    _heading("7. RELATIONSHIP DEVELOPMENT CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_relationship_development_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_local_safety_smoke() -> bool:
-    _heading("7. LOCAL TOOL SAFETY SMOKE")
+    _heading("8. LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -193,7 +203,7 @@ def run_local_safety_smoke() -> bool:
 
 
 def run_live_web() -> bool:
-    _heading("8. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("9. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -258,6 +268,7 @@ def main() -> int:
         ("resilience", run_resilience_install_check()),
         ("self_introspection", run_self_introspection_install_check()),
         ("creator_directives", run_creator_directive_install_check()),
+        ("relationship_development", run_relationship_development_install_check()),
         ("local_safety", run_local_safety_smoke()),
     ]
 

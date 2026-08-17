@@ -262,12 +262,29 @@ class CognitiveOrchestrator:
             return memory_store
 
         # --------------------------------------------------------
+        # RELATIONSHIP SHARING / CREATOR MODEL QUERIES
+        # --------------------------------------------------------
+
+        relationship_share = self._detect_relationship_share(
+            text=text,
+            lowered=lowered,
+        )
+        if relationship_share is not None:
+            return relationship_share
+
+        relationship_query = self._detect_relationship_query(
+            text=text,
+            lowered=lowered,
+        )
+        if relationship_query is not None:
+            return relationship_query
+
+        # --------------------------------------------------------
         # MEMORY RECALL
         # --------------------------------------------------------
 
         recall_phrases = (
             "what do you remember",
-            "what do you know about me",
             "what don't i like",
             "what dont i like",
             "what do i like",
@@ -430,6 +447,81 @@ class CognitiveOrchestrator:
     # ============================================================
     # TOOL / WEB INTENT DETECTION
     # ============================================================
+
+    def _detect_relationship_share(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Detect explicit requests for Mary to learn structured creator information."""
+
+        normalized = re.sub(r"\s+", " ", text.strip())
+        match = re.match(
+            r"^(?:learn this about me|know this about me|add this to what you know about me)\s*:\s*(.+)$",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        if match is None:
+            return None
+
+        content = match.group(1).strip()
+        if not content:
+            return None
+
+        return Intent(
+            intent_type=IntentType.RELATIONSHIP_SHARE,
+            confidence=0.99,
+            description=(
+                "Creator explicitly asked Mary to add information to her structured creator model."
+            ),
+            parameters={
+                "content": content,
+                "force_general": True,
+            },
+            source="basic_detector",
+        )
+
+    def _detect_relationship_query(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Detect local questions about Mary's structured understanding of Unbe."""
+
+        normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
+        query_map = {
+            "what do you know about me": "overview",
+            "what do you know about my interests": "interests",
+            "what interests do you know i have": "interests",
+            "what are my interests": "interests",
+            "what do you know about my goals": "goals",
+            "what goals do you know i have": "goals",
+            "what are my goals": "goals",
+            "what do you know about my values": "values",
+            "what values do you know i have": "values",
+            "what do you know about my preferences": "preferences",
+            "what preferences do you know i have": "preferences",
+            "what is your structured relationship history with me": "history",
+            "what have you learned about me": "overview",
+        }
+        query_type = query_map.get(normalized)
+        if query_type is None:
+            return None
+
+        return Intent(
+            intent_type=IntentType.RELATIONSHIP_QUERY,
+            confidence=0.98,
+            description=(
+                "Input asks about Mary's persistent structured creator model."
+            ),
+            parameters={
+                "query": text,
+                "relationship_query_type": query_type,
+            },
+            source="basic_detector",
+        )
 
     def _detect_tool_control(
         self,

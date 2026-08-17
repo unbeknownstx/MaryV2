@@ -69,7 +69,7 @@ from mary.personality.development import PersonalityDevelopment
 from mary.personality.character import Character
 from mary.personality.values import Values
 
-from mary.relationship.user import UserModel
+from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
 
 from mary.learning.learner import Learner
@@ -180,7 +180,15 @@ class Mary:
         # RELATIONSHIP
         # ============================================================
 
-        self.user_model = UserModel()
+        self.relationship = RelationshipManager()
+        self.relationship.load()
+
+        # Keep one authoritative creator model and expose the existing
+        # relationship components through Mary for compatibility.
+        self.user_model = self.relationship.user_model
+        self.relationship_history = self.relationship.history
+        self.relationship_understanding = self.relationship.understanding
+        self.relationship_milestones = self.relationship.milestones
 
         self.creator_directives = CreatorDirectiveSystem()
         self.creator_directives.load()
@@ -292,6 +300,10 @@ class Mary:
 
         self.memory = MemoryManager()
 
+        # Build structured creator understanding from older explicit memories
+        # using only the relationship manager's narrow high-confidence parser.
+        self._sync_relationship_from_existing_memories()
+
         # ============================================================
         # COGNITION
         # ============================================================
@@ -370,7 +382,17 @@ class Mary:
         external_sources: list[dict[str, Any]] = []
         skip_cognition = False
 
-        if intent.intent_type == IntentType.CREATOR_DIRECTIVE:
+        if intent.intent_type == IntentType.RELATIONSHIP_SHARE:
+            relationship_action = self._handle_relationship_share(intent)
+            system_response = relationship_action.get("system_response")
+            skip_cognition = True
+
+        elif intent.intent_type == IntentType.RELATIONSHIP_QUERY:
+            relationship_action = self._handle_relationship_query(intent)
+            system_response = relationship_action.get("system_response")
+            skip_cognition = True
+
+        elif intent.intent_type == IntentType.CREATOR_DIRECTIVE:
             directive_action = self._handle_creator_directive(
                 intent
             )
@@ -475,6 +497,8 @@ class Mary:
                 IntentType.MEMORY_STORE,
                 IntentType.MEMORY_RECALL,
                 IntentType.CREATOR_DIRECTIVE,
+                IntentType.RELATIONSHIP_SHARE,
+                IntentType.RELATIONSHIP_QUERY,
             }
         ):
             skip_cognition = True
@@ -642,6 +666,119 @@ class Mary:
             )
 
         return None
+
+    # ================================================================
+    # RELATIONSHIP DEVELOPMENT
+    # ================================================================
+
+    def _handle_relationship_share(
+        self,
+        intent: Intent,
+    ) -> dict[str, Any]:
+        """Store an explicit creator share in memory and structured relationship state."""
+
+        content = str(intent.parameters.get("content", "")).strip()
+        if not content:
+            return {"system_response": "What would you like me to learn about you?"}
+
+        memory = self.remember(
+            content,
+            memory_type="episodic",
+            importance=0.8,
+            metadata={
+                "source": "interaction",
+                "event_type": "creator_relationship_share",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person",
+            },
+        )
+        if memory is None:
+            return {"system_response": "I wasn't able to preserve that relationship share."}
+
+        learned = self.relationship.learn_explicit(
+            content,
+            source="creator_explicit",
+            evidence_id=str(getattr(memory, "id", "") or "") or None,
+            force_general=bool(intent.parameters.get("force_general", True)),
+        )
+        if learned is None:
+            return {
+                "system_response": (
+                    "I preserved that in memory, but I didn't promote it into my "
+                    "structured creator model because it wasn't specific enough."
+                )
+            }
+
+        self._advance_creator_curiosity(learned)
+        return {
+            "system_response": (
+                "Got it. I've preserved that in memory and added it to my "
+                f"structured understanding of Unbe as {learned.get('label', learned.get('category', 'information'))}."
+            )
+        }
+
+    def _handle_relationship_query(
+        self,
+        intent: Intent,
+    ) -> dict[str, Any]:
+        """Answer from Mary's local structured creator model without web or LLM."""
+
+        query_type = str(
+            intent.parameters.get("relationship_query_type", "overview")
+        ).strip().lower()
+        return {
+            "system_response": self.relationship.answer_query(query_type)
+        }
+
+    def _advance_creator_curiosity(
+        self,
+        learned: dict[str, Any],
+    ) -> None:
+        """Record progress on the persistent Learn-more-about-Unbe curiosity."""
+
+        changed = False
+        for curiosity in self.agency.curiosities.get_curiosities():
+            if curiosity.get("status") not in {"open", "exploring"}:
+                continue
+            if str(curiosity.get("description", "")).strip().lower() != "learn more about unbe":
+                continue
+
+            curiosity["status"] = "exploring"
+            curiosity["progress_count"] = int(curiosity.get("progress_count", 0)) + 1
+            curiosity["last_learned_category"] = learned.get("category")
+            curiosity["last_learned_value"] = learned.get("value")
+            changed = True
+
+        if changed:
+            self.agency.curiosities.save()
+            self.agency.rebuild_priorities()
+
+    def _sync_relationship_from_existing_memories(self) -> None:
+        """Safely import high-confidence explicit creator statements from older memory."""
+
+        episodic = getattr(self.memory, "episodic", None)
+        all_memories = getattr(episodic, "all", None)
+        if not callable(all_memories):
+            return
+
+        changed = False
+        for memory in all_memories():
+            content = str(getattr(memory, "content", "") or "").strip()
+            if not content:
+                continue
+            memory_id = str(getattr(memory, "id", "") or "") or None
+            learned = self.relationship.learn_explicit(
+                content,
+                source="explicit_memory_import",
+                evidence_id=memory_id,
+                force_general=False,
+            )
+            if learned is not None and not learned.get("already_known"):
+                changed = True
+
+        if changed:
+            self.relationship.save()
 
     # ================================================================
     # CREATOR DIRECTIVES
@@ -1566,6 +1703,15 @@ class Mary:
             return (
                 "I wasn't able to store that memory."
             )
+
+        learned = self.relationship.learn_explicit(
+            content,
+            source="explicit_memory",
+            evidence_id=str(getattr(memory, "id", "") or "") or None,
+            force_general=False,
+        )
+        if learned is not None and not learned.get("already_known"):
+            self._advance_creator_curiosity(learned)
 
         rendered_content = (
             self._creator_to_second_person(

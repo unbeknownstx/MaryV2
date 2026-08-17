@@ -34,6 +34,8 @@ class IntentType(str, Enum):
     MEMORY_RECALL = "memory_recall"
     SELF_QUERY = "self_query"
     CREATOR_DIRECTIVE = "creator_directive"
+    RELATIONSHIP_SHARE = "relationship_share"
+    RELATIONSHIP_QUERY = "relationship_query"
 
     UNKNOWN = "unknown"
 
