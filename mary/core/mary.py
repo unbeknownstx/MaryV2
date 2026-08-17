@@ -88,8 +88,14 @@ from mary.cognition.orchestrator import (
     CognitiveCycleResult,
     CognitiveOrchestrator,
 )
-from mary.cognition.reasoning import ReasoningEngine
-from mary.cognition.reflection import ReflectionEngine
+from mary.cognition.reasoning import ReasoningEngine, ReasoningResult
+from mary.cognition.reflection import (
+    ReflectionDecision,
+    ReflectionEngine,
+    ReflectionResult,
+)
+from mary.cognition.context import CognitiveContext
+from mary.cognition.code_change import CodeChangePlanner
 from mary.cognition.intent import Intent, IntentType
 
 
@@ -178,6 +184,11 @@ class Mary:
 
         self.tools = ToolManager(
             workspace_root=self.config.paths.root,
+        )
+
+        self.code_change_planner = CodeChangePlanner(
+            llm=self.llm,
+            code=self.tools.code,
         )
 
         # ============================================================
@@ -326,6 +337,7 @@ class Mary:
         system_response: str | None = None
         external_knowledge: list[Any] = []
         external_sources: list[dict[str, Any]] = []
+        skip_cognition = False
 
         if intent.intent_type == IntentType.WEB_SEARCH:
             web_action = self._handle_web_intent(
@@ -360,6 +372,11 @@ class Mary:
                 tool_action = self._handle_tool_control(
                     intent
                 )
+            elif action == "propose_code_change":
+                tool_action = self._handle_code_change_proposal(
+                    intent,
+                    original_input=input_text,
+                )
             else:
                 tool_action = self._handle_local_tool_intent(
                     intent,
@@ -381,6 +398,12 @@ class Mary:
                     [],
                 )
             )
+            skip_cognition = bool(
+                tool_action.get(
+                    "skip_cognition",
+                    False,
+                )
+            )
 
         else:
             system_response = self._handle_intent(
@@ -390,6 +413,19 @@ class Mary:
         if system_response is not None:
             context["memory"] = self.memory.build_context(
                 input_text
+            )
+
+        if skip_cognition and system_response is not None:
+            return self._build_system_cycle_result(
+                input_text=input_text,
+                intent=intent,
+                response=system_response,
+                context=context,
+                metadata={
+                    "handled_by": "mary_code_change_planner",
+                    "system_action": "propose_code_change",
+                    "llm_calls_after_planning": 0,
+                },
             )
 
         result = self.cognition.process(
@@ -623,6 +659,154 @@ class Mary:
             query=query,
             tool_name=tool_name,
             request_id=request.request_id,
+        )
+
+    def _handle_code_change_proposal(
+        self,
+        intent: Intent,
+        *,
+        original_input: str,
+    ) -> dict[str, Any]:
+        """Plan, validate, and present a code change without applying it."""
+
+        path = str(
+            intent.parameters.get(
+                "path",
+                "",
+            )
+        ).strip()
+        instruction = str(
+            intent.parameters.get(
+                "instruction",
+                "",
+            )
+        ).strip()
+
+        try:
+            plan = self.code_change_planner.propose(
+                path,
+                instruction,
+            )
+        except Exception as exc:
+            return {
+                "system_response": (
+                    "I couldn't create a safe grounded code proposal: "
+                    f"{exc}"
+                ),
+                "skip_cognition": True,
+            }
+
+        change = plan.change
+        request = self.tools.request(
+            "code_apply_change",
+            {
+                "change": change.to_dict(),
+            },
+            reason=(
+                "Creator requested this exact proposed source change: "
+                f"{original_input}"
+            ),
+        )
+
+        if request.status != "pending":
+            return {
+                "system_response": (
+                    "The proposal was generated and validated, but I couldn't "
+                    "create the approval request needed to apply it."
+                ),
+                "skip_cognition": True,
+            }
+
+        diff_text = change.diff.strip() or "(no textual diff)"
+        if len(diff_text) > 14_000:
+            diff_text = (
+                diff_text[:14_000].rstrip()
+                + "\n...[diff truncated for display]"
+            )
+
+        validation = plan.validation
+        warning_text = ""
+        warnings = validation.get("warnings") or []
+        if warnings:
+            warning_text = (
+                "\nStatic warnings: "
+                + "; ".join(str(item) for item in warnings)
+            )
+
+        response = (
+            f"Proposed change for `{change.path}`\n\n"
+            f"Summary: {plan.summary}\n"
+            f"Static syntax validation: PASS"
+            f"{warning_text}\n\n"
+            "Nothing has been written or executed.\n\n"
+            "```diff\n"
+            f"{diff_text}\n"
+            "```\n\n"
+            f"Approval request: {request.request_id}\n"
+            "To apply exactly this validated proposal, say: "
+            f"approve {request.request_id}"
+        )
+
+        return {
+            "system_response": response,
+            "skip_cognition": True,
+            "proposal": plan.to_dict(),
+        }
+
+    def _build_system_cycle_result(
+        self,
+        *,
+        input_text: str,
+        intent: Intent | None,
+        response: str,
+        context: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> CognitiveCycleResult:
+        """Return a deterministic system result without another LLM call."""
+
+        cognitive_context = CognitiveContext(
+            input_text=input_text,
+            memories=list(
+                context.get("memory", {}).get(
+                    "relevant_memories",
+                    [],
+                )
+            ),
+            user_context=dict(
+                context.get("user", {})
+            ),
+            personality_context=dict(
+                context.get("personality", {})
+            ),
+        )
+
+        reasoning = ReasoningResult(
+            response=response,
+            confidence=1.0,
+            reasoning_type="deterministic_system_action",
+            intent=intent,
+            metadata={
+                "llm_skipped": True,
+            },
+        )
+        reflection = ReflectionResult(
+            decision=ReflectionDecision.ACCEPT,
+            confidence=1.0,
+            assessment=(
+                "Deterministic system action; no second LLM pass required."
+            ),
+            metadata={
+                "mode": "deterministic_system_action",
+            },
+        )
+
+        return CognitiveCycleResult(
+            context=cognitive_context,
+            intent=intent,
+            reasoning=reasoning,
+            reflection=reflection,
+            final_response=response,
+            metadata=dict(metadata or {}),
         )
 
     def _handle_local_tool_intent(
@@ -887,6 +1071,14 @@ class Mary:
                 "system_response": (
                     f"{request.tool_name} failed: "
                     f"{tool_result.error or 'unknown error'}"
+                )
+            }
+
+        if request.tool_name == "code_apply_change":
+            return {
+                "system_response": (
+                    "Applied the exact approved code proposal to "
+                    f"{tool_result.result}. No code or tests were executed."
                 )
             }
 

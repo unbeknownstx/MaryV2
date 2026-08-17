@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import ast
 import difflib
-import re
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -301,7 +301,7 @@ class CodeClient:
         )
 
         self._collect_basic_warnings(
-            source,
+            tree,
             analysis,
         )
 
@@ -420,6 +420,8 @@ class CodeClient:
             metadata={
                 "changes_source": True,
                 "requires_creator_approval": True,
+                "original_sha256": self._sha256(original),
+                "proposed_sha256": self._sha256(proposed),
             },
         )
 
@@ -487,7 +489,7 @@ class CodeClient:
 
     def apply_change(
         self,
-        change: CodeChange,
+        change: CodeChange | dict[str, Any],
     ) -> str:
         """
         Apply a previously proposed source-code change.
@@ -502,6 +504,32 @@ class CodeClient:
         ToolRegistry is responsible for controlling whether this
         method can execute.
         """
+
+        change = self._coerce_change(
+            change
+        )
+
+        current = self.filesystem.read_text(
+            change.path
+        )
+        expected_hash = str(
+            change.metadata.get(
+                "original_sha256",
+                "",
+            )
+        ).strip()
+
+        if expected_hash:
+            if self._sha256(current) != expected_hash:
+                raise RuntimeError(
+                    "Source changed after the proposal was created. "
+                    "Create a fresh proposal before applying it."
+                )
+        elif current != change.original:
+            raise RuntimeError(
+                "Source changed after the proposal was created. "
+                "Create a fresh proposal before applying it."
+            )
 
         validation = (
             self.validate_change(
@@ -794,51 +822,110 @@ class CodeClient:
 
     @staticmethod
     def _collect_basic_warnings(
-        source: str,
+        tree: ast.AST,
         analysis: CodeAnalysis,
     ) -> None:
         """
-        Detect a few potentially dangerous Python constructs.
+        Detect a small set of higher-risk Python constructs using the AST.
 
-        These are warnings only.
-
-        This is NOT a security sandbox.
+        AST inspection avoids false positives from comments, strings, and
+        ordinary context-managed ``Path.open(...)`` file I/O.  File opening
+        by itself is not treated as a security warning; filesystem mutation
+        is controlled separately by ToolRegistry and FilesystemClient.
         """
 
-        patterns = {
-            r"\beval\s*\(": (
-                "Uses eval()."
-            ),
-            r"\bexec\s*\(": (
-                "Uses exec()."
-            ),
-            r"\bos\.system\s*\(": (
-                "Uses os.system()."
-            ),
-            r"\bsubprocess\b": (
-                "Uses subprocess."
-            ),
-            r"\bsocket\b": (
-                "Uses socket functionality."
-            ),
-            r"\b__import__\s*\(": (
-                "Uses dynamic imports."
-            ),
-            r"\bopen\s*\(": (
-                "Uses direct file opening."
-            ),
-        }
+        warnings: set[str] = set()
 
-        for pattern, warning in (
-            patterns.items()
-        ):
-            if re.search(
-                pattern,
-                source,
-            ):
-                analysis.warnings.append(
-                    warning
-                )
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                modules: list[str] = []
+                if isinstance(node, ast.Import):
+                    modules.extend(alias.name for alias in node.names)
+                else:
+                    modules.append(node.module or "")
+
+                for module in modules:
+                    root = module.split(".", 1)[0]
+                    if root == "subprocess":
+                        warnings.add("Uses subprocess.")
+                    elif root == "socket":
+                        warnings.add("Uses socket functionality.")
+
+            if not isinstance(node, ast.Call):
+                continue
+
+            function = node.func
+
+            if isinstance(function, ast.Name):
+                if function.id == "eval":
+                    warnings.add("Uses eval().")
+                elif function.id == "exec":
+                    warnings.add("Uses exec().")
+                elif function.id == "__import__":
+                    warnings.add("Uses dynamic imports.")
+
+            elif isinstance(function, ast.Attribute):
+                if (
+                    isinstance(function.value, ast.Name)
+                    and function.value.id == "os"
+                    and function.attr == "system"
+                ):
+                    warnings.add("Uses os.system().")
+
+        analysis.warnings.extend(
+            sorted(warnings)
+        )
+
+    @staticmethod
+    def _sha256(
+        text: str,
+    ) -> str:
+        """Return a stable hash used to detect stale code proposals."""
+
+        return hashlib.sha256(
+            str(text).encode("utf-8")
+        ).hexdigest()
+
+    @staticmethod
+    def _coerce_change(
+        change: CodeChange | dict[str, Any],
+    ) -> CodeChange:
+        """Normalize a registry-safe dictionary back into CodeChange."""
+
+        if isinstance(change, CodeChange):
+            return change
+
+        if not isinstance(change, dict):
+            raise TypeError(
+                "change must be a CodeChange or dictionary."
+            )
+
+        required = (
+            "path",
+            "original",
+            "proposed",
+            "diff",
+        )
+        missing = [
+            field_name
+            for field_name in required
+            if field_name not in change
+        ]
+        if missing:
+            raise ValueError(
+                "Change proposal is missing: "
+                + ", ".join(missing)
+            )
+
+        return CodeChange(
+            path=str(change["path"]),
+            original=str(change["original"]),
+            proposed=str(change["proposed"]),
+            diff=str(change["diff"]),
+            reason=str(change.get("reason", "")),
+            approved=bool(change.get("approved", False)),
+            metadata=dict(change.get("metadata", {}) or {}),
+        )
 
     # ============================================================
     # PATH VALIDATION

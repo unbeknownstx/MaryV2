@@ -677,6 +677,50 @@ class CognitiveOrchestrator:
             )
 
         # --------------------------------------------------------
+        # GROUNDED CODE CHANGE PROPOSALS
+        # --------------------------------------------------------
+        # Detecting the request does not modify source code. Mary first
+        # produces a bounded exact-edit proposal, validates it, displays the
+        # unified diff, and then creates a separate approval-gated apply request.
+
+        source_extension = (
+            r"(?:py|pyi|js|jsx|ts|tsx|json|toml|ya?ml|md|html?|css|sql|sh)"
+        )
+        change_patterns = (
+            rf"^(?:change|modify|edit|update)\s+(?:file\s+)?(.+?\.{source_extension})\s+"
+            rf"(?:so that|so|to|by|:)\s*(.+)$",
+            rf"^fix\s+(?:file\s+)?([^\s]+\.{source_extension})\s+(.+)$",
+            rf"^propose (?:a )?change to\s+(.+?\.{source_extension})\s+"
+            rf"(?:so that|so|to|by|:)\s*(.+)$",
+        )
+
+        for pattern in change_patterns:
+            match = re.match(
+                pattern,
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if match:
+                path = clean(match.group(1))
+                instruction = match.group(2).strip()
+                if path and instruction:
+                    return Intent(
+                        intent_type=IntentType.TOOL_USE,
+                        confidence=0.98,
+                        description=(
+                            "Creator requested a grounded source-code change "
+                            "proposal. Applying it requires separate approval."
+                        ),
+                        parameters={
+                            "action": "propose_code_change",
+                            "path": path,
+                            "instruction": instruction,
+                            "explicit_creator_request": True,
+                        },
+                        source="basic_detector",
+                    )
+
+        # --------------------------------------------------------
         # SEARCH INSIDE THE PROJECT
         # --------------------------------------------------------
 

@@ -474,6 +474,9 @@ class MaryDiagnostics:
             "filesystem_search",
             "code_read",
             "code_analyze",
+            "code_validate_python",
+            "code_diff",
+            "code_apply_change",
             "web_search",
         }
         missing_tools: list[str] = []
@@ -485,7 +488,18 @@ class MaryDiagnostics:
                 if not registry.has(name)
             )
 
-        if missing_attributes or registry is None or missing_tools:
+        planner_missing = getattr(
+            self.mary,
+            "code_change_planner",
+            None,
+        ) is None
+
+        if (
+            missing_attributes
+            or registry is None
+            or missing_tools
+            or planner_missing
+        ):
             return [
                 DiagnosticResult(
                     name="Tools",
@@ -494,6 +508,7 @@ class MaryDiagnostics:
                     details={
                         "missing_attributes": missing_attributes,
                         "missing_tools": missing_tools,
+                        "code_change_planner_missing": planner_missing,
                     },
                 )
             ]
