@@ -1,0 +1,3 @@
+# MaryV2 Desktop Alpha dependencies
+# Kept separate from requirements.txt so the headless/core runtime stays lean.
+PySide6==6.11.1

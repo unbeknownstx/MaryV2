@@ -105,6 +105,13 @@ def main() -> int:
             if not ok:
                 failures.append("memory-isolation")
 
+            # Simulate derived agency state being absent while the durable creator
+            # directive survives. Startup must reconstruct the creator curiosity.
+            mary.agency.curiosities.path.write_text(
+                '{"curiosities": []}',
+                encoding="utf-8",
+            )
+
             app.close()
 
             restarted = Mary()
@@ -119,9 +126,28 @@ def main() -> int:
                 and restarted_priority.output == expected
                 and restarted_provider.calls == 0
             )
-            print(("PASS" if ok else "FAIL") + "  grounded priority survives restart")
+            print(("PASS" if ok else "FAIL") + "  durable directive reconstructs missing derived priority state on restart")
             if not ok:
-                failures.append("restart")
+                failures.append("restart-reconcile")
+
+            scored_intent = restarted.cognition.detect_intent(
+                "Learn more about Unbe (score 1.00)"
+            )
+            scored_result = restarted_app.run(
+                "Learn more about Unbe (score 1.00)"
+            )
+            active = restarted.creator_directives.get_active()
+            ok = (
+                scored_intent.intent_type == IntentType.CREATOR_DIRECTIVE
+                and scored_result.success is True
+                and len(active) == 1
+                and active[0].get("priority") == 1.0
+                and bool((active[0].get("metadata") or {}).get("top_priority"))
+                and restarted_provider.calls == 0
+            )
+            print(("PASS" if ok else "FAIL") + "  pasted score annotation normalizes to the existing local directive")
+            if not ok:
+                failures.append("score-normalization")
 
         finally:
             os.chdir(original_cwd)

@@ -195,6 +195,71 @@ def test_top_priority_query_reads_priority_system_without_llm(tmp_path, monkeypa
     assert provider.calls == 0
     assert mary.tools.pending_requests() == []
 
+def test_startup_reconciles_durable_directive_when_derived_curiosity_state_is_missing(tmp_path, monkeypatch):
+    mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
+    app.run("you should be curious about me top priority")
+    assert provider.calls == 0
+    assert len(mary.creator_directives.get_active()) == 1
+
+    # Simulate a state-safe code restore or older derived agency file where
+    # the durable creator directive survived but the derived curiosity file did not.
+    mary.agency.curiosities.path.write_text(
+        '{"curiosities": []}',
+        encoding="utf-8",
+    )
+
+    restarted = Mary()
+    restarted_provider = RateLimitedProvider()
+    restarted.llm.register_provider("fake", restarted_provider)
+    restarted.config.llm.provider = "fake"
+    restarted_app = create_application(
+        mary=restarted,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    result = restarted_app.run("What is your top priority?")
+    assert result.success is True
+    assert result.output == (
+        "My current highest-ranked internal priority is "
+        "Learn more about Unbe (score 1.00)."
+    )
+    parents = [
+        item for item in restarted.agency.curiosities.get_curiosities()
+        if item.get("status") in {"open", "exploring"}
+        and item.get("description", "").lower() == "learn more about unbe"
+    ]
+    assert len(parents) == 1
+    assert parents[0]["importance"] == 1.0
+    assert parents[0]["urgency"] == 1.0
+    assert parents[0]["creator_directed"] is True
+    assert restarted_provider.calls == 0
+
+
+def test_scored_learn_more_phrase_normalizes_to_local_directive_and_can_upgrade_priority(tmp_path, monkeypatch):
+    mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
+
+    initial = app.run("Learn more about Unbe")
+    assert initial.success is True
+    assert provider.calls == 0
+    assert mary.creator_directives.get_active()[0]["priority"] == 0.9
+
+    upgraded_intent = mary.cognition.detect_intent("Learn more about Unbe (score 1.00)")
+    assert upgraded_intent.intent_type == IntentType.CREATOR_DIRECTIVE
+    assert upgraded_intent.parameters["priority"] == 1.0
+    assert upgraded_intent.parameters["top_priority"] is True
+
+    upgraded = app.run("Learn more about Unbe (score 1.00)")
+    assert upgraded.success is True
+    assert provider.calls == 0
+    active = mary.creator_directives.get_active()
+    assert len(active) == 1
+    assert active[0]["priority"] == 1.0
+    assert (active[0].get("metadata") or {}).get("top_priority") is True
+
+    priority = app.run("What is your top priority?")
+    assert priority.output.endswith("Learn more about Unbe (score 1.00).")
+    assert provider.calls == 0
+
 def test_remember_this_stays_memory_not_creator_directive(tmp_path, monkeypatch):
     mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
 

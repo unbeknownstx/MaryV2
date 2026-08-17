@@ -330,6 +330,12 @@ class Mary:
         self.agency = Agency()
         self.agency.load()
 
+        # Creator directives are the durable source of creator-directed
+        # agency orientation. Reconcile them into curiosity state on every
+        # startup so a missing/older derived curiosity file cannot silently
+        # erase an active creator directive.
+        self._sync_creator_directives_to_agency()
+
         self.relationship_curiosity = RelationshipCuriosityDevelopment(
             relationship=self.relationship,
             curiosity_system=self.agency.curiosities,
@@ -814,6 +820,107 @@ class Mary:
     # ================================================================
     # CREATOR DIRECTIVES
     # ================================================================
+
+    def _sync_creator_directives_to_agency(self) -> None:
+        """Reconcile durable creator directives into derived agency state.
+
+        Creator directives are authoritative for creator-directed internal
+        orientation. Curiosity/priority entries are derived runtime state.
+        If derived files are missing, stale, or were restored from an older
+        checkpoint, Mary rebuilds the active creator curiosity from the
+        directive rather than silently forgetting it.
+        """
+
+        creator_name = str(
+            self.user_model.name or self.identity.creator or "Unbe"
+        ).strip() or "Unbe"
+        description = f"Learn more about {creator_name.title()}"
+        changed = False
+
+        for directive in self.creator_directives.get_active():
+            if str(directive.get("category", "")).strip().lower() != "relationship_curiosity":
+                continue
+
+            target = str(directive.get("target", "")).strip().lower()
+            if target not in {"unbe", "creator", "creator_relationship"}:
+                continue
+
+            metadata = directive.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            top_priority = bool(metadata.get("top_priority", False))
+            try:
+                directive_priority = float(directive.get("priority", 0.9))
+            except (TypeError, ValueError):
+                directive_priority = 0.9
+            directive_priority = max(0.0, min(1.0, directive_priority))
+
+            desired_importance = 1.0 if top_priority else directive_priority
+            desired_urgency = 1.0 if top_priority else 0.5
+
+            existing = None
+            for curiosity in self.agency.curiosities.get_curiosities():
+                if curiosity.get("status") not in {"open", "exploring"}:
+                    continue
+                if str(curiosity.get("description", "")).strip().lower() != description.lower():
+                    continue
+                if not bool(curiosity.get("creator_directed")) and curiosity.get("source") != "creator_directive":
+                    continue
+                existing = curiosity
+                break
+
+            if existing is None:
+                existing = self.agency.curiosities.add_curiosity(
+                    description=description,
+                    importance=desired_importance,
+                    source="creator_directive",
+                    metadata={
+                        "directive_id": directive.get("id"),
+                        "creator_directed": True,
+                        "top_priority": top_priority,
+                    },
+                )
+                changed = existing is not None or changed
+
+            if existing is None:
+                continue
+
+            before = (
+                existing.get("importance"),
+                existing.get("urgency"),
+                existing.get("relevance"),
+                existing.get("directive_id"),
+                existing.get("creator_directed"),
+                existing.get("source"),
+            )
+            existing["importance"] = desired_importance
+            existing["urgency"] = desired_urgency
+            existing["relevance"] = 1.0
+            existing["directive_id"] = directive.get("id")
+            existing["creator_directed"] = True
+            existing["source"] = "creator_directive"
+            existing_metadata = existing.get("metadata")
+            existing_metadata = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
+            existing_metadata.update({
+                "directive_id": directive.get("id"),
+                "creator_directed": True,
+                "top_priority": top_priority,
+            })
+            existing["metadata"] = existing_metadata
+            after = (
+                existing.get("importance"),
+                existing.get("urgency"),
+                existing.get("relevance"),
+                existing.get("directive_id"),
+                existing.get("creator_directed"),
+                existing.get("source"),
+            )
+            if before != after:
+                changed = True
+
+        if changed:
+            self.agency.curiosities.save()
+
+        self.agency.rebuild_priorities()
 
     def _handle_creator_directive(
         self,

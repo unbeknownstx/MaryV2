@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MaryV2 — Mary Cosma</title>
+  </head>
+  <body>
+    <main id="app">
+      <section class="avatar-pane">
+        <canvas id="avatar-canvas"></canvas>
+        <div id="avatar-fallback" class="avatar-fallback">
+          <div class="fallback-orb"></div>
+          <strong>Mary Cosma</strong>
+          <span>Place MaryCosma.vrm in desktop/public/models/</span>
+        </div>
+        <div class="avatar-status">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status-text">Connecting to Mary…</span>
+        </div>
+      </section>
+
+      <section class="conversation-pane">
+        <header>
+          <div>
+            <h1>Mary</h1>
+            <p id="model-label">MaryV2</p>
+          </div>
+          <div id="thinking" class="thinking hidden">Thinking…</div>
+        </header>
+
+        <div id="messages" class="messages" aria-live="polite">
+          <article class="message mary">
+            <div class="speaker">Mary</div>
+            <div class="bubble">I'm here.</div>
+          </article>
+        </div>
+
+        <form id="composer" class="composer">
+          <textarea
+            id="message-input"
+            rows="2"
+            placeholder="Talk to Mary…"
+            autocomplete="off"
+          ></textarea>
+          <button id="send-button" type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

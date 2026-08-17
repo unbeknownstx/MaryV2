@@ -658,6 +658,22 @@ class CognitiveOrchestrator:
 
         normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
 
+        # Console/status output can be pasted back as a directive. Normalize a
+        # harmless trailing score annotation so `Learn more about Unbe (score
+        # 1.00)` still resolves to the same local creator directive instead of
+        # falling through to the language model.
+        explicit_score: float | None = None
+        score_match = re.search(
+            r"\s*\(\s*score\s+([01](?:\.\d+)?)\s*\)\s*$",
+            normalized,
+        )
+        if score_match is not None:
+            try:
+                explicit_score = max(0.0, min(1.0, float(score_match.group(1))))
+            except (TypeError, ValueError):
+                explicit_score = None
+            normalized = normalized[:score_match.start()].strip()
+
         # V2 begins with a deliberately narrow, high-confidence directive:
         # Unbe explicitly tells Mary that understanding/learning about her
         # creator should be an active curiosity or top priority.
@@ -672,7 +688,16 @@ class CognitiveOrchestrator:
         )
 
         if any(re.fullmatch(pattern, normalized) for pattern in creator_curiosity_patterns):
-            top_priority = "top priority" in normalized or normalized.startswith("prioritize ")
+            top_priority = (
+                "top priority" in normalized
+                or normalized.startswith("prioritize ")
+                or (explicit_score is not None and explicit_score >= 0.999)
+            )
+            priority = (
+                explicit_score
+                if explicit_score is not None
+                else (1.0 if top_priority else 0.9)
+            )
             return Intent(
                 intent_type=IntentType.CREATOR_DIRECTIVE,
                 confidence=0.99,
@@ -684,7 +709,7 @@ class CognitiveOrchestrator:
                     "directive_type": "creator_curiosity",
                     "target": "unbe",
                     "instruction": text,
-                    "priority": 1.0 if top_priority else 0.9,
+                    "priority": priority,
                     "top_priority": top_priority,
                 },
                 source="basic_detector",
