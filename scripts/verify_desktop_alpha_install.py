@@ -39,6 +39,9 @@ def main() -> int:
         ("setNormalizedPose" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "desktop applies a relaxed humanoid pose"),
         ("currentVrm.scene.rotation.y = Math.PI" not in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "VRM 1.0 is not forcibly turned backward"),
         ("new THREE.Clock" not in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "deprecated Three.js Clock removed"),
+        ("expression = mary.avatar.sync_emotion()" not in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop bridge keeps AvatarState and AvatarExpression types separate"),
+        ("leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "left arm lowers from T-pose"),
+        ("rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "right arm lowers from T-pose"),
     ]
 
     failed = False

@@ -110,10 +110,14 @@ function quaternionArrayFromEuler(x = 0, y = 0, z = 0) {
 // offset gives Mary a relaxed standing presentation until we add real VRMA
 // animation clips/state-machine playback.
 const RELAXED_STANDING_POSE = {
-  leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.10) },
-  rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.10) },
-  leftLowerArm: { rotation: quaternionArrayFromEuler(0, 0, 0.14) },
-  rightLowerArm: { rotation: quaternionArrayFromEuler(0, 0, -0.14) },
+  // VRM normalized humanoid rest pose is a T-pose. Rotating the upper arms
+  // toward the torso gives Mary a natural A/standing pose. These signs are
+  // intentionally opposite the earlier prototype, which raised the arms.
+  leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) },
+  rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) },
+  // Add a small forward elbow bend so the arms do not look rigidly pinned.
+  leftLowerArm: { rotation: quaternionArrayFromEuler(0, -0.10, -0.10) },
+  rightLowerArm: { rotation: quaternionArrayFromEuler(0, 0.10, 0.10) },
 };
 
 function applyRelaxedStandingPose(vrm) {

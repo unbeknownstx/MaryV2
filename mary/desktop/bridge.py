@@ -57,10 +57,13 @@ class _ConversationWorker(QRunnable):
 
             # The core already owns provider-independent avatar state.  The
             # desktop only asks that state to reflect this response.
-            expression = mary.avatar.sync_emotion()
+            # sync_emotion() updates the controller and returns an AvatarState.
+            # Do not pass that state back as ``expression``: present() expects
+            # an AvatarExpression there.  Keep the synchronized expression on
+            # the controller and only add the response text/presentation data.
+            mary.avatar.sync_emotion()
             avatar_state = mary.avatar.controller.present(
                 text=response_text,
-                expression=expression,
                 speaking=False,
                 metadata={"surface": "desktop"},
             )

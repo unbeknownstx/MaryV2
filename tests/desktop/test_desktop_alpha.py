@@ -37,3 +37,18 @@ def test_vrm_orientation_and_relaxed_pose_are_version_safe() -> None:
     assert "setNormalizedPose" in source
     assert "RELAXED_STANDING_POSE" in source
     assert "new THREE.Clock" not in source
+
+
+def test_desktop_bridge_does_not_pass_avatar_state_as_expression() -> None:
+    source = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+
+    assert "mary.avatar.sync_emotion()" in source
+    assert "expression = mary.avatar.sync_emotion()" not in source
+    assert "expression=expression" not in source
+
+
+def test_relaxed_pose_lowers_arms_from_t_pose() -> None:
+    source = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) }" in source
+    assert "rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) }" in source
