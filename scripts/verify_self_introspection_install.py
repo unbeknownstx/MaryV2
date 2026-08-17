@@ -54,8 +54,8 @@ def main() -> int:
     original_cwd = Path.cwd()
     failures: list[str] = []
 
-    try:
-        with TemporaryDirectory() as temp_dir:
+    with TemporaryDirectory() as temp_dir:
+        try:
             os.chdir(temp_dir)
             mary = Mary()
             mary.llm.register_provider("fake", _RateLimitedProvider())
@@ -76,8 +76,10 @@ def main() -> int:
                 print(("PASS" if ok else "FAIL") + f"  {query}")
                 if not ok:
                     failures.append(query)
-    finally:
-        os.chdir(original_cwd)
+        finally:
+            # Windows cannot remove the process's current working directory.
+            # Leave the temporary workspace before TemporaryDirectory cleanup.
+            os.chdir(original_cwd)
 
     print("=" * 72)
     if failures:
