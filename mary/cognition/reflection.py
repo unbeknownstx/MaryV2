@@ -113,22 +113,6 @@ class ReflectionEngine:
                 },
             )
 
-        if reasoning.metadata.get("llm_unavailable") is True:
-            return ReflectionResult(
-                decision=ReflectionDecision.ACCEPT,
-                confidence=1.0,
-                assessment=(
-                    "Reasoning used Mary's deterministic provider-unavailable "
-                    "fallback; no second LLM call should be attempted."
-                ),
-                metadata={
-                    "mode": "llm_unavailable_fallback",
-                    "rate_limited": bool(
-                        reasoning.metadata.get("llm_rate_limited")
-                    ),
-                },
-            )
-
         if reasoning.metadata.get("local_tool_grounded") is True:
             return ReflectionResult(
                 decision=ReflectionDecision.ACCEPT,

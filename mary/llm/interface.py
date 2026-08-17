@@ -12,37 +12,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-class LLMProviderError(RuntimeError):
-    """Normalized failure raised at Mary's LLM provider boundary."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        provider: str = "unknown",
-        retryable: bool = False,
-    ) -> None:
-        super().__init__(message)
-        self.provider = provider
-        self.retryable = bool(retryable)
-
-
-class LLMRateLimitError(LLMProviderError):
-    """Provider usage/rate limit prevented generation."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        provider: str = "unknown",
-    ) -> None:
-        super().__init__(
-            message,
-            provider=provider,
-            retryable=True,
-        )
-
-
 @dataclass
 class LLMMessage:
     """A single message sent to an LLM."""
