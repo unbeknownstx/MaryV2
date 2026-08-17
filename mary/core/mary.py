@@ -1456,24 +1456,28 @@ class Mary:
         query: str,
     ) -> bool:
         """
-        Determine whether the user is asking for a broad memory
-        summary rather than a specific retrieval.
+        Return True only for genuinely broad creator-memory queries.
+
+        Specific questions such as "what do you remember about creation"
+        must continue through MemoryRetriever instead of dumping every stored
+        memory merely because they contain the words "what do you remember".
         """
 
-        lowered = query.lower()
+        normalized = self.memory.retrieval._normalize_query(
+            query
+        )
 
-        phrases = (
+        phrases = {
+            "what do you remember",
             "what do you remember about me",
             "what do you know about me",
+            "tell me what you remember",
             "tell me what you remember about me",
-            "what do you remember",
+            "tell me what you know about me",
             "what are my preferences",
-        )
+        }
 
-        return any(
-            phrase in lowered
-            for phrase in phrases
-        )
+        return normalized in phrases
 
     def _all_available_memories(
         self,

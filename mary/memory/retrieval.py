@@ -198,21 +198,38 @@ class MemoryRetriever:
         # BROAD MEMORY RECALL
         # --------------------------------------------------------
 
-        broad_patterns = (
-            "what do you remember about me",
-            "what do you remember about me",
-            "what do you know about me",
+        broad_patterns = {
             "what do you remember",
+            "what do you remember about me",
             "what do you know about me",
             "tell me what you remember",
+            "tell me what you remember about me",
             "tell me what you know about me",
+            "what are my preferences",
+        }
+
+        if normalized in broad_patterns:
+            result["type"] = "general_recall"
+            result["subject"] = "creator"
+
+            return result
+
+        # --------------------------------------------------------
+        # CURRENT CREATOR FACT / PREFERENCE
+        # --------------------------------------------------------
+
+        current_fact_patterns = (
+            "what is my ",
+            "what's my ",
+            "whats my ",
+            "which is my ",
         )
 
         if any(
-            pattern in normalized
-            for pattern in broad_patterns
+            normalized.startswith(pattern)
+            for pattern in current_fact_patterns
         ):
-            result["type"] = "general_recall"
+            result["type"] = "current_fact"
             result["subject"] = "creator"
 
             return result
@@ -508,6 +525,22 @@ class MemoryRetriever:
             query_intent = self._interpret_query(query)
 
         query_words = self._tokenize(query)
+        concepts = set(
+            query_intent.get(
+                "concepts",
+                [],
+            )
+        )
+
+        # For specific fact/concept questions, conversational scaffolding such
+        # as "what do you remember about" is not evidence.  Rank and filter
+        # against the actual concepts the creator asked about.
+        if (
+            query_intent.get("type")
+            in {"concept", "current_fact"}
+            and concepts
+        ):
+            query_words = concepts
 
         target_predicate = query_intent.get(
             "predicate"
@@ -535,6 +568,8 @@ class MemoryRetriever:
 
             lexical_score = 0.0
 
+            overlap: set[str] = set()
+
             if query_words and content_words:
 
                 overlap = query_words.intersection(
@@ -545,6 +580,14 @@ class MemoryRetriever:
                     len(overlap)
                     / len(query_words)
                 )
+
+            if (
+                query_intent.get("type")
+                in {"concept", "current_fact"}
+                and concepts
+                and not overlap
+            ):
+                continue
 
             # ----------------------------------------------------
             # EXISTING SCORE
@@ -663,9 +706,115 @@ class MemoryRetriever:
             reverse=True,
         )
 
-        return self._remove_duplicates(
+        ranked = self._remove_duplicates(
             scored
         )
+
+        if query_intent.get("type") == "current_fact":
+            ranked = self._resolve_current_fact_conflicts(
+                ranked
+            )
+
+        return ranked
+
+    # ============================================================
+    # CURRENT FACT CONFLICT RESOLUTION
+    # ============================================================
+
+    def _resolve_current_fact_conflicts(
+        self,
+        results: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Collapse conflicting historical values for current-fact questions.
+
+        History is not deleted.  This affects only the answer set for queries
+        such as "what is my favorite color?".  The newest episodic statement
+        for the same deterministic fact slot wins; semantic facts use the
+        newest updated/created timestamp for the same subject+predicate slot.
+        """
+
+        if not results:
+            return []
+
+        selected: dict[tuple[str, str], tuple[int, Dict[str, Any]]] = {}
+        passthrough: list[tuple[int, Dict[str, Any]]] = []
+
+        for index, item in enumerate(results):
+            key = self._current_fact_key(item)
+
+            if key is None:
+                passthrough.append((index, item))
+                continue
+
+            previous = selected.get(key)
+
+            if previous is None:
+                selected[key] = (index, item)
+                continue
+
+            previous_index, previous_item = previous
+
+            if self._memory_recency(item) >= self._memory_recency(previous_item):
+                selected[key] = (min(index, previous_index), item)
+
+        combined = passthrough + list(selected.values())
+        combined.sort(key=lambda pair: pair[0])
+
+        return [item for _, item in combined]
+
+    @staticmethod
+    def _current_fact_key(
+        item: Dict[str, Any],
+    ) -> tuple[str, str] | None:
+        """Return a deterministic slot key for facts that can supersede."""
+
+        memory_type = str(item.get("memory_type", "")).lower()
+
+        if memory_type == "semantic":
+            subject = str(item.get("subject", "")).strip().lower()
+            predicate = str(item.get("predicate", "")).strip().lower()
+            if subject and predicate:
+                return ("semantic", f"{subject}|{predicate}")
+            return None
+
+        content = str(item.get("content", "")).strip().lower()
+        if not content:
+            return None
+
+        normalized = MemoryRetriever._normalize_query(content)
+
+        # Deliberately conservative.  Only stable creator-owned "X is Y"
+        # style facts are collapsed.  Narrative memories remain historical.
+        match = re.match(
+            r"^(?:my|your)\s+(.+?)\s+is\s+(.+)$",
+            normalized,
+        )
+        if match is None:
+            return None
+
+        slot = match.group(1).strip()
+        if not slot:
+            return None
+
+        return ("episodic", slot)
+
+    @staticmethod
+    def _memory_recency(
+        item: Dict[str, Any],
+    ) -> str:
+        """Return an ISO-like timestamp string suitable for deterministic ordering."""
+
+        for field in (
+            "updated_at",
+            "timestamp",
+            "created_at",
+        ):
+            value = item.get(field)
+            if value is not None:
+                return str(value)
+
+        return ""
 
     # ============================================================
     # SEARCH TEXT

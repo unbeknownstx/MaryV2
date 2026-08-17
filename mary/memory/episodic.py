@@ -23,6 +23,7 @@ It does NOT handle:
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+import re
 import uuid
 
 
@@ -275,11 +276,12 @@ class EpisodicMemoryStore:
         if limit <= 0:
             return []
 
-        query_terms = {
-            term.lower()
-            for term in str(query).split()
-            if term.strip()
-        }
+        query_terms = set(
+            re.findall(
+                r"\b[\w']+\b",
+                str(query).lower(),
+            )
+        )
 
         if not query_terms:
             return []
@@ -288,12 +290,17 @@ class EpisodicMemoryStore:
 
         for memory in self._memories:
 
-            content = memory.content.lower()
+            content_terms = set(
+                re.findall(
+                    r"\b[\w']+\b",
+                    memory.content.lower(),
+                )
+            )
 
-            matched_terms = sum(
-                1
-                for term in query_terms
-                if term in content
+            matched_terms = len(
+                query_terms.intersection(
+                    content_terms
+                )
             )
 
             if matched_terms > 0:
