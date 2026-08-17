@@ -99,6 +99,40 @@
                 "speaker": "Unbe",
                 "perspective": "creator_first_person"
             }
+        },
+        {
+            "id": "episode_4fa79f08352a48f29816ba066c5e6839",
+            "content": "my main goal is finish MaryV2",
+            "timestamp": "2026-08-17T09:15:45.521986+00:00",
+            "importance": 0.8,
+            "source": "interaction",
+            "event_type": "creator_relationship_share",
+            "participants": [],
+            "emotional_context": {},
+            "metadata": {
+                "source": "interaction",
+                "event_type": "creator_relationship_share",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person"
+            }
+        },
+        {
+            "id": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+            "content": "I prefer you to be direct and concise",
+            "timestamp": "2026-08-17T09:16:19.277854+00:00",
+            "importance": 0.8,
+            "source": "interaction",
+            "event_type": "creator_relationship_share",
+            "participants": [],
+            "emotional_context": {},
+            "metadata": {
+                "source": "interaction",
+                "event_type": "creator_relationship_share",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person"
+            }
         }
     ],
     "semantic": []

@@ -13,8 +13,12 @@
       "creating stories"
     ],
     "values": [],
-    "goals": [],
-    "communication_style": {},
+    "goals": [
+      "finish MaryV2"
+    ],
+    "communication_style": {
+      "preferred_style": "be direct and concise"
+    },
     "profile_records": [
       {
         "id": "profile_1",
@@ -71,10 +75,38 @@
         "observation_id": "observation_af5bc3d90431",
         "created_at": "2026-08-17T09:02:06.946404+00:00",
         "updated_at": "2026-08-17T09:02:06.946404+00:00"
+      },
+      {
+        "id": "profile_5",
+        "category": "goal",
+        "key": "finish_maryv2",
+        "value": "finish MaryV2",
+        "status": "current",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_4fa79f08352a48f29816ba066c5e6839",
+        "observation_id": "observation_8e68c273c19c",
+        "created_at": "2026-08-17T09:15:45.523765+00:00",
+        "updated_at": "2026-08-17T09:15:45.523765+00:00"
+      },
+      {
+        "id": "profile_6",
+        "category": "communication",
+        "key": "preferred_style",
+        "value": "be direct and concise",
+        "status": "current",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "observation_id": "observation_bdbacf029a8b",
+        "created_at": "2026-08-17T09:16:19.279880+00:00",
+        "updated_at": "2026-08-17T09:16:19.279880+00:00"
       }
     ],
     "created_at": "2026-08-17T09:00:42.431016+00:00",
-    "updated_at": "2026-08-17T09:02:06.946429+00:00"
+    "updated_at": "2026-08-17T09:16:19.279902+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -138,10 +170,40 @@
           "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c"
         },
         "created_at": "2026-08-17T02:02:06.946440"
+      },
+      {
+        "id": "relationship_3d03f5a212cf",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared goal: finish MaryV2",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "goal",
+          "key": "finish_maryv2",
+          "profile_record_id": "profile_5",
+          "evidence_id": "episode_4fa79f08352a48f29816ba066c5e6839"
+        },
+        "created_at": "2026-08-17T02:15:45.523795"
+      },
+      {
+        "id": "relationship_fc9b2021798c",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_6",
+          "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d"
+        },
+        "created_at": "2026-08-17T02:16:19.279918"
       }
     ],
     "created_at": "2026-08-17T02:00:42.431023",
-    "updated_at": "2026-08-17T02:02:06.946443"
+    "updated_at": "2026-08-17T02:16:19.279922"
   },
   "understanding": {
     "observations": [
@@ -180,11 +242,29 @@
         "confidence": 1.0,
         "evidence": "episode_3d85117d4c1442a5b3507937fb03077c",
         "created_at": "2026-08-17T02:02:06.946386"
+      },
+      {
+        "id": "observation_8e68c273c19c",
+        "observation": "my main goal is finish MaryV2",
+        "category": "goal",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "episode_4fa79f08352a48f29816ba066c5e6839",
+        "created_at": "2026-08-17T02:15:45.523750"
+      },
+      {
+        "id": "observation_bdbacf029a8b",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "created_at": "2026-08-17T02:16:19.279861"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-17T02:02:06.946398"
+    "updated_at": "2026-08-17T02:16:19.279871"
   },
   "milestones": []
 }
