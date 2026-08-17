@@ -668,6 +668,7 @@ class CognitiveOrchestrator:
             r"^(?:learning|understanding|knowing more) about (?:me|unbe) (?:is|should be) (?:a )?top priority$",
             r"^(?:unbe|your creator) (?:is|should be) your top priority$",
             r"^prioritize (?:learning|understanding|knowing more) about (?:me|unbe)$",
+            r"^learn more about (?:me|unbe)$",
         )
 
         if any(re.fullmatch(pattern, normalized) for pattern in creator_curiosity_patterns):

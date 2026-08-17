@@ -143,8 +143,18 @@ def run_curiosity_development_install_check() -> bool:
     return completed.returncode == 0
 
 
+def run_priority_grounding_install_check() -> bool:
+    _heading("9. PRIORITY GROUNDING CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_priority_grounding_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_local_safety_smoke() -> bool:
-    _heading("9. LOCAL TOOL SAFETY SMOKE")
+    _heading("10. LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -213,7 +223,7 @@ def run_local_safety_smoke() -> bool:
 
 
 def run_live_web() -> bool:
-    _heading("10. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("11. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -280,6 +290,7 @@ def main() -> int:
         ("creator_directives", run_creator_directive_install_check()),
         ("relationship_development", run_relationship_development_install_check()),
         ("curiosity_development", run_curiosity_development_install_check()),
+        ("priority_grounding", run_priority_grounding_install_check()),
         ("local_safety", run_local_safety_smoke()),
     ]
 

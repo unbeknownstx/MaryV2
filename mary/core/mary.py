@@ -414,10 +414,19 @@ class Mary:
             self_action = self._handle_self_query(
                 intent
             )
+            system_response = self_action.get(
+                "system_response"
+            )
             external_knowledge = list(
                 self_action.get(
                     "knowledge",
                     [],
+                )
+            )
+            skip_cognition = bool(
+                self_action.get(
+                    "skip_cognition",
+                    False,
                 )
             )
 
@@ -840,6 +849,23 @@ class Mary:
             intent.parameters.get("top_priority", False)
         )
 
+        existing_directive = self.creator_directives.find_active(
+            category="relationship_curiosity",
+            target=target,
+        )
+        if existing_directive is not None:
+            existing_priority = float(
+                existing_directive.get("priority", 0.0)
+            )
+            existing_top_priority = bool(
+                (existing_directive.get("metadata") or {}).get(
+                    "top_priority",
+                    False,
+                )
+            )
+            priority = max(priority, existing_priority)
+            top_priority = top_priority or existing_top_priority
+
         directive = self.creator_directives.add(
             instruction=instruction,
             category="relationship_curiosity",
@@ -925,6 +951,18 @@ class Mary:
         evidence = self.self_introspection.build(
             subtype
         )
+
+        # Dynamic agency rankings are runtime state, not prose-generation tasks.
+        # The actual PrioritySystem is authoritative, so top-priority queries are
+        # answered locally and deterministically instead of allowing an LLM to
+        # replace the ranking with a generic relationship statement.
+        if subtype == "priorities":
+            return {
+                "system_response": str(
+                    evidence.get("fallback_response", "")
+                ).strip(),
+                "skip_cognition": True,
+            }
 
         return {
             "knowledge": [evidence],

@@ -150,9 +150,50 @@ def test_self_curiosity_reports_creator_directive_during_429(tmp_path, monkeypat
     assert "learn more about unbe" in curiosity.output.lower()
     assert priorities.success is True
     assert "learn more about unbe" in priorities.output.lower()
-    assert provider.calls == 2
+    # Curiosity prose may use the provider and fall back during a 429, but
+    # dynamic priority ranking is now a deterministic local read.
+    assert provider.calls == 1
     assert mary.tools.pending_requests() == []
 
+
+
+def test_plain_learn_more_directive_is_local_idempotent_and_preserves_top_priority(tmp_path, monkeypatch):
+    mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
+
+    first = app.run("you should be curious about me top priority")
+    assert first.success is True
+    assert provider.calls == 0
+
+    repeated = app.run("Learn more about Unbe")
+    assert repeated.success is True
+    assert "creator-directed curiosity" in repeated.output.lower()
+    assert provider.calls == 0
+
+    active = mary.creator_directives.get_active()
+    assert len(active) == 1
+    assert active[0]["priority"] == 1.0
+    assert (active[0].get("metadata") or {}).get("top_priority") is True
+
+    priorities = app.run("What is your top priority?")
+    assert priorities.success is True
+    assert "learn more about unbe" in priorities.output.lower()
+    assert "score 1.00" in priorities.output.lower()
+    assert provider.calls == 0
+
+
+def test_top_priority_query_reads_priority_system_without_llm(tmp_path, monkeypatch):
+    mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
+    app.run("you should be curious about me top priority")
+
+    result = app.run("What is your top priority?")
+
+    assert result.success is True
+    assert result.output == (
+        "My current highest-ranked internal priority is "
+        "Learn more about Unbe (score 1.00)."
+    )
+    assert provider.calls == 0
+    assert mary.tools.pending_requests() == []
 
 def test_remember_this_stays_memory_not_creator_directive(tmp_path, monkeypatch):
     mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
