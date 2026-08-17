@@ -42,6 +42,10 @@ def main() -> int:
         ("expression = mary.avatar.sync_emotion()" not in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop bridge keeps AvatarState and AvatarExpression types separate"),
         ("leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "left arm lowers from T-pose"),
         ("rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "right arm lowers from T-pose"),
+        ("Math.max(verticalDistance, horizontalDistance) * 1.18" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "camera frames Mary using full-body geometry"),
+        ("self._active_worker = worker" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop keeps conversation worker alive until completion"),
+        ("timeout=20.0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq interactive request timeout is bounded"),
+        ("max_retries=0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq SDK retries do not trap desktop in Thinking"),
     ]
 
     failed = False

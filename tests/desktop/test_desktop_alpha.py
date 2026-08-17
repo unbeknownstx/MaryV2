@@ -52,3 +52,27 @@ def test_relaxed_pose_lowers_arms_from_t_pose() -> None:
 
     assert "leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) }" in source
     assert "rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) }" in source
+
+
+def test_desktop_full_body_camera_framing_is_geometry_based() -> None:
+    source = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "verticalDistance" in source
+    assert "horizontalDistance" in source
+    assert "Math.max(verticalDistance, horizontalDistance) * 1.18" in source
+    assert "const distance = height * 1.05" not in source
+
+
+def test_desktop_bridge_keeps_active_worker_alive_until_completion() -> None:
+    source = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+
+    assert "self._active_worker: _ConversationWorker | None = None" in source
+    assert "self._active_worker = worker" in source
+    assert source.count("self._active_worker = None") >= 2
+
+
+def test_groq_provider_has_bounded_interactive_timeout_without_sdk_retries() -> None:
+    source = (_root() / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8")
+
+    assert "timeout=20.0" in source
+    assert "max_retries=0" in source

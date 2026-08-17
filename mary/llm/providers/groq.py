@@ -35,8 +35,14 @@ class GroqProvider(LLMInterface):
         self.client = None
 
         if self.api_key:
+            # Desktop/conversational turns should never inherit the Groq
+            # SDK's long default wait-and-retry behavior. Mary already has
+            # provider-failure fallbacks at the cognition layer, so fail
+            # promptly and let those deterministic fallbacks take over.
             self.client = Groq(
-                api_key=self.api_key
+                api_key=self.api_key,
+                timeout=20.0,
+                max_retries=0,
             )
 
     def generate(

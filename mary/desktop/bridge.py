@@ -95,6 +95,11 @@ class MaryDesktopBridge(QObject):
         self.application = application
         self._pool = QThreadPool.globalInstance()
         self._busy = False
+        # Keep a strong Python reference to the active QRunnable until one of
+        # its completion signals reaches the bridge. Without this, bindings
+        # can collect the Python wrapper while the C++ thread-pool task is
+        # still running, leaving the web UI stuck in its busy state.
+        self._active_worker: _ConversationWorker | None = None
         self.application.mary.avatar.ready()
 
     @Slot(str)
@@ -110,6 +115,7 @@ class MaryDesktopBridge(QObject):
         worker = _ConversationWorker(self.application, value)
         worker.signals.finished.connect(self._on_turn_finished)
         worker.signals.failed.connect(self._on_turn_failed)
+        self._active_worker = worker
         self._pool.start(worker)
 
     @Slot(result=str)
@@ -146,11 +152,13 @@ class MaryDesktopBridge(QObject):
         self.busyChanged.emit(self._busy)
 
     def _on_turn_finished(self, payload: DesktopTurnPayload) -> None:
+        self._active_worker = None
         self._set_busy(False)
         payload_dict = payload.to_dict()
         self.messageReady.emit(_json(payload_dict))
         self.avatarStateChanged.emit(_json(payload.avatar))
 
     def _on_turn_failed(self, error: str) -> None:
+        self._active_worker = None
         self._set_busy(False)
         self.errorOccurred.emit(error)

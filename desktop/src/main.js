@@ -55,12 +55,32 @@ function resizeRenderer() {
 }
 
 function fitCamera(vrm) {
+  // Make sure camera.aspect reflects the actual avatar viewport before
+  // calculating a framing distance.
+  resizeRenderer();
+
   const box = new THREE.Box3().setFromObject(vrm.scene);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
+
   const height = Math.max(size.y, 1.0);
-  const targetY = center.y + height * 0.06;
-  const distance = height * 1.05;
+  const width = Math.max(size.x, 0.5);
+
+  const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+  const horizontalFov = 2 * Math.atan(
+    Math.tan(verticalFov / 2) * Math.max(camera.aspect, 0.1),
+  );
+
+  // Fit both the avatar height and width, then add breathing room.
+  // The previous prototype used height * 1.05, which is much too close
+  // for a 30-degree camera and crops Mary around the torso.
+  const verticalDistance = (height / 2) / Math.tan(verticalFov / 2);
+  const horizontalDistance = (width / 2) / Math.tan(horizontalFov / 2);
+  const distance = Math.max(verticalDistance, horizontalDistance) * 1.18;
+
+  // Center the complete character rather than biasing the camera toward
+  // the face. This gives a comfortable full-body framing by default.
+  const targetY = center.y;
 
   camera.position.set(center.x, targetY, center.z + distance);
   camera.lookAt(center.x, targetY, center.z);
