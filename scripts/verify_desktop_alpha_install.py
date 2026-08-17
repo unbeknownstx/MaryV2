@@ -12,6 +12,8 @@ def main() -> int:
         root / "requirements-desktop.txt",
         root / "mary" / "desktop" / "bridge.py",
         root / "mary" / "desktop" / "window.py",
+        root / "mary" / "desktop" / "voice.py",
+        root / "mary" / "voice" / "providers" / "elevenlabs.py",
         root / "desktop" / "package.json",
         root / "desktop" / "vite.config.js",
         root / "desktop" / "index.html",
@@ -49,6 +51,11 @@ def main() -> int:
         ("Mary's desktop worker stopped without returning a response." in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop releases Thinking on unexpected worker termination"),
         ("timeout=20.0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq interactive request timeout is bounded"),
         ("max_retries=0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq SDK retries do not trap desktop in Thinking"),
+        ("MARY_TTS_PROVIDER" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "desktop voice is explicit opt-in"),
+        ("voice=voice_payload" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop response carries synthesized voice separately from text"),
+        ("playVoice(payload.voice || {})" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "desktop plays returned Mary voice audio"),
+        ("PlaybackRequiresUserGesture" in (root / "mary" / "desktop" / "window.py").read_text(encoding="utf-8"), "Qt permits async TTS playback"),
+        ("Voice synthesis is also best-effort" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "voice failure cannot swallow Mary's text response"),
     ]
 
     failed = False

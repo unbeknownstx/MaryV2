@@ -38,6 +38,10 @@ class MaryDesktopWindow(QMainWindow):
             QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
             True,
         )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture,
+            False,
+        )
 
         self.channel = QWebChannel(self.web.page())
         self.channel.registerObject("maryBridge", self.bridge)

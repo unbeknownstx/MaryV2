@@ -18,6 +18,7 @@ let bridge = null;
 let currentVrm = null;
 let modelBaseY = 0;
 let busy = false;
+let activeSpeechAudio = null;
 
 // ---------------------------------------------------------------------------
 // Three.js / VRM presentation
@@ -266,6 +267,51 @@ function parsePayload(value) {
   try { return JSON.parse(value); } catch (_) { return {}; }
 }
 
+
+function stopVoicePlayback() {
+  if (!activeSpeechAudio) return;
+  try {
+    activeSpeechAudio.pause();
+    activeSpeechAudio.currentTime = 0;
+  } catch (_) { /* best-effort */ }
+  activeSpeechAudio = null;
+}
+
+function playVoice(voice = {}) {
+  if (!voice?.enabled || voice.status !== 'success' || !voice.audio_base64) return;
+
+  stopVoicePlayback();
+
+  const mimeType = voice.mime_type || 'audio/mpeg';
+  const audio = new Audio(`data:${mimeType};base64,${voice.audio_base64}`);
+  activeSpeechAudio = audio;
+
+  audio.addEventListener('play', () => {
+    if (activeSpeechAudio === audio) setConnected(true, 'Mary speaking');
+  });
+
+  audio.addEventListener('ended', () => {
+    if (activeSpeechAudio === audio) {
+      activeSpeechAudio = null;
+      setConnected(true, 'Mary ready');
+    }
+  });
+
+  audio.addEventListener('error', () => {
+    if (activeSpeechAudio === audio) {
+      activeSpeechAudio = null;
+      setConnected(true, 'Mary ready');
+    }
+    appendMessage('System', 'Mary generated voice audio, but playback failed.', 'system');
+  });
+
+  audio.play().catch((error) => {
+    if (activeSpeechAudio === audio) activeSpeechAudio = null;
+    setConnected(true, 'Mary ready');
+    appendMessage('System', `Voice playback failed: ${error}`, 'system');
+  });
+}
+
 function connectBridge() {
   if (!window.qt?.webChannelTransport || typeof QWebChannel === 'undefined') {
     setConnected(false, 'Open this UI through MaryV2 Desktop');
@@ -280,6 +326,7 @@ function connectBridge() {
       const payload = parsePayload(raw);
       appendMessage('Mary', payload.text || '[No response]', 'mary');
       applyAvatarState(payload.avatar || {});
+      playVoice(payload.voice || {});
     });
 
     bridge.avatarStateChanged.connect((raw) => applyAvatarState(parsePayload(raw)));
@@ -291,7 +338,8 @@ function connectBridge() {
 
     bridge.getStatus((raw) => {
       const status = parsePayload(raw);
-      modelLabel.textContent = `${status.provider || 'unknown'} · ${status.model || 'unknown'}`;
+      const voiceLabel = status.voice?.enabled ? ` · voice:${status.voice.provider}` : '';
+      modelLabel.textContent = `${status.provider || 'unknown'} · ${status.model || 'unknown'}${voiceLabel}`;
     });
 
     bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));

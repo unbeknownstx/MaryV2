@@ -16,6 +16,7 @@ from typing import Any
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from mary.runtime.application import MaryApplication
+from mary.desktop.voice import DesktopVoiceEngine
 
 
 def _json(data: Any) -> str:
@@ -26,12 +27,14 @@ def _json(data: Any) -> str:
 class DesktopTurnPayload:
     text: str
     avatar: dict[str, Any]
+    voice: dict[str, Any]
     runtime: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "text": self.text,
             "avatar": dict(self.avatar),
+            "voice": dict(self.voice),
             "runtime": dict(self.runtime),
         }
 
@@ -42,10 +45,16 @@ class _ConversationWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, application: MaryApplication, text: str) -> None:
+    def __init__(
+        self,
+        application: MaryApplication,
+        text: str,
+        voice: DesktopVoiceEngine,
+    ) -> None:
         super().__init__()
         self.application = application
         self.text = text
+        self.voice = voice
 
     @Slot()
     def run(self) -> None:
@@ -78,14 +87,30 @@ class _ConversationWorker(QObject):
                 avatar_error = f"{type(exc).__name__}: {exc}"
                 avatar_payload = mary.avatar.state.to_dict()
 
+            # Voice synthesis is also best-effort. A TTS provider failure must
+            # never hide Mary's text response. Voice is opt-in through the
+            # desktop environment configuration.
+            voice_error: str | None = None
+            try:
+                voice_payload = self.voice.synthesize(response_text)
+            except Exception as exc:
+                voice_error = f"{type(exc).__name__}: {exc}"
+                voice_payload = {
+                    **self.voice.status.to_dict(),
+                    "status": "failed",
+                    "error": voice_error,
+                }
+
             payload = DesktopTurnPayload(
                 text=response_text,
                 avatar=avatar_payload,
+                voice=voice_payload,
                 runtime={
                     "turn_id": result.turn_id,
                     "elapsed": result.elapsed,
                     "success": result.success,
                     "avatar_error": avatar_error,
+                    "voice_error": voice_error,
                 },
             )
 
@@ -118,6 +143,7 @@ class MaryDesktopBridge(QObject):
         self._busy = False
         self._active_thread: QThread | None = None
         self._active_worker: _ConversationWorker | None = None
+        self.voice = DesktopVoiceEngine.from_environment()
         self.application.mary.avatar.ready()
 
     @Slot(str)
@@ -133,7 +159,7 @@ class MaryDesktopBridge(QObject):
         self._set_busy(True)
 
         thread = QThread(self)
-        worker = _ConversationWorker(self.application, value)
+        worker = _ConversationWorker(self.application, value, self.voice)
         worker.moveToThread(thread)
 
         # Keep both wrappers alive for the full turn.
@@ -158,6 +184,7 @@ class MaryDesktopBridge(QObject):
                 "provider": cognition.get("llm", "unknown"),
                 "model": cognition.get("model", "unknown"),
                 "busy": self._busy,
+                "voice": self.voice.status.to_dict(),
             }
         )
 
@@ -209,6 +236,15 @@ class MaryDesktopBridge(QObject):
         if avatar_error:
             print(
                 f"[MaryDesktop] avatar presentation warning: {avatar_error}",
+                flush=True,
+            )
+
+        voice_error = str(
+            payload.runtime.get("voice_error") or ""
+        ).strip()
+        if voice_error:
+            print(
+                f"[MaryDesktop] voice synthesis warning: {voice_error}",
                 flush=True,
             )
 
