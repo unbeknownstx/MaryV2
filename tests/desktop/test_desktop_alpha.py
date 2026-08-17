@@ -63,12 +63,27 @@ def test_desktop_full_body_camera_framing_is_geometry_based() -> None:
     assert "const distance = height * 1.05" not in source
 
 
-def test_desktop_bridge_keeps_active_worker_alive_until_completion() -> None:
+def test_desktop_bridge_uses_dedicated_qthread_and_gui_thread_slots() -> None:
     source = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
 
-    assert "self._active_worker: _ConversationWorker | None = None" in source
-    assert "self._active_worker = worker" in source
-    assert source.count("self._active_worker = None") >= 2
+    assert "from PySide6.QtCore import QObject, QThread, Signal, Slot" in source
+    assert "self._active_thread: QThread | None = None" in source
+    assert "worker.moveToThread(thread)" in source
+    assert "thread.started.connect(worker.run)" in source
+    assert "@Slot(object)" in source
+    assert "@Slot(str)" in source
+    assert "self._set_busy(False)" in source
+    assert "worker.finished.connect(self._on_turn_finished)" in source
+    assert "worker.failed.connect(self._on_turn_failed)" in source
+
+
+def test_desktop_avatar_failure_cannot_swallow_chat_response() -> None:
+    source = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+
+    assert "Avatar presentation is best-effort" in source
+    assert '"avatar_error": avatar_error' in source
+    assert "self.finished.emit(payload)" in source
+    assert "self.failed.emit(error)" in source
 
 
 def test_groq_provider_has_bounded_interactive_timeout_without_sdk_retries() -> None:

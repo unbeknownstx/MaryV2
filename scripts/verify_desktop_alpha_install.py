@@ -43,7 +43,10 @@ def main() -> int:
         ("leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "left arm lowers from T-pose"),
         ("rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "right arm lowers from T-pose"),
         ("Math.max(verticalDistance, horizontalDistance) * 1.18" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "camera frames Mary using full-body geometry"),
-        ("self._active_worker = worker" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop keeps conversation worker alive until completion"),
+        ("worker.moveToThread(thread)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop conversation uses a dedicated QThread"),
+        ("@Slot(object)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop completion is marshalled through a Qt slot"),
+        ("Avatar presentation is best-effort" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "avatar presentation cannot swallow a chat response"),
+        ("Mary's desktop worker stopped without returning a response." in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop releases Thinking on unexpected worker termination"),
         ("timeout=20.0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq interactive request timeout is bounded"),
         ("max_retries=0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq SDK retries do not trap desktop in Thinking"),
     ]
