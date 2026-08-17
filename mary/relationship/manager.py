@@ -358,6 +358,7 @@ class RelationshipManager:
 
         goal_patterns = (
             r"my goal is (.+)",
+            r"my main goal is (.+)",
             r"one of my goals is (.+)",
         )
         for pattern in goal_patterns:
@@ -369,6 +370,22 @@ class RelationshipManager:
                     "key": cls._slug(value),
                     "value": value,
                     "label": "goal",
+                }
+
+        communication_patterns = (
+            r"my communication preference is (.+)",
+            r"i prefer you to (.+)",
+            r"i prefer when you (.+)",
+        )
+        for pattern in communication_patterns:
+            match = re.fullmatch(pattern, lowered)
+            if match:
+                value = cls._original_tail(text, match.group(1))
+                return {
+                    "category": "communication",
+                    "key": "preferred_style",
+                    "value": value,
+                    "label": "communication preference",
                 }
 
         value_match = re.fullmatch(r"i value (.+)", lowered)

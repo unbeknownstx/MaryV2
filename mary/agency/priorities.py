@@ -305,7 +305,7 @@ class PrioritySystem:
             if not isinstance(curiosity, dict):
                 continue
 
-            if curiosity.get("status", "open") != "open":
+            if curiosity.get("status", "open") not in {"open", "exploring"}:
                 continue
 
             self.add(

@@ -132,6 +132,7 @@ class CuriositySystem:
         description: str,
         importance: float = 0.5,
         source: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """
         Create and persist a new curiosity.
@@ -168,6 +169,7 @@ class CuriositySystem:
             "created_at": now,
             "updated_at": now,
             "resolved_at": None,
+            "metadata": dict(metadata or {}),
         }
 
         self.curiosities.append(
@@ -183,6 +185,7 @@ class CuriositySystem:
         description: str,
         importance: float = 0.5,
         source: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Compatibility alias for add_curiosity()."""
 
@@ -190,6 +193,7 @@ class CuriositySystem:
             description,
             importance,
             source,
+            metadata,
         )
 
     # ============================================================

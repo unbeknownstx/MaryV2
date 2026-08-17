@@ -505,6 +505,12 @@ class CognitiveOrchestrator:
             "what preferences do you know i have": "preferences",
             "what is your structured relationship history with me": "history",
             "what have you learned about me": "overview",
+            "what are you curious about regarding me": "curiosity_gaps",
+            "what are you still curious about regarding me": "curiosity_gaps",
+            "what are you curious about when it comes to me": "curiosity_gaps",
+            "what don't you know about me": "curiosity_gaps",
+            "what dont you know about me": "curiosity_gaps",
+            "what do you still not know about me": "curiosity_gaps",
         }
         query_type = query_map.get(normalized)
         if query_type is None:

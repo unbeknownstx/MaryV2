@@ -464,6 +464,10 @@ class MaryDiagnostics:
                 "Creator Directives",
                 "creator_directives",
             ),
+            self._check_attribute(
+                "Relationship Curiosity Development",
+                "relationship_curiosity",
+            ),
         ]
 
     # ============================================================

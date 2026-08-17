@@ -71,6 +71,7 @@ from mary.personality.values import Values
 
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
+from mary.relationship.curiosity_development import RelationshipCuriosityDevelopment
 
 from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
@@ -328,6 +329,14 @@ class Mary:
 
         self.agency = Agency()
         self.agency.load()
+
+        self.relationship_curiosity = RelationshipCuriosityDevelopment(
+            relationship=self.relationship,
+            curiosity_system=self.agency.curiosities,
+            creator_name=str(self.user_model.name or self.identity.creator or "Unbe").title(),
+        )
+        self.relationship_curiosity.sync()
+        self.agency.rebuild_priorities()
 
         # ============================================================
         # AUTONOMY
@@ -727,8 +736,15 @@ class Mary:
         query_type = str(
             intent.parameters.get("relationship_query_type", "overview")
         ).strip().lower()
+        if query_type == "curiosity_gaps":
+            self.relationship_curiosity.sync()
+            self.agency.rebuild_priorities()
+            response = self.relationship_curiosity.answer_query()
+        else:
+            response = self.relationship.answer_query(query_type)
+
         return {
-            "system_response": self.relationship.answer_query(query_type)
+            "system_response": response
         }
 
     def _advance_creator_curiosity(
@@ -752,6 +768,12 @@ class Mary:
 
         if changed:
             self.agency.curiosities.save()
+
+        relationship_curiosity = getattr(self, "relationship_curiosity", None)
+        if relationship_curiosity is not None:
+            relationship_curiosity.sync()
+
+        if hasattr(self, "agency"):
             self.agency.rebuild_priorities()
 
     def _sync_relationship_from_existing_memories(self) -> None:
@@ -865,6 +887,7 @@ class Mary:
             curiosity["creator_directed"] = True
             self.agency.curiosities.save()
 
+        self.relationship_curiosity.sync()
         self.agency.rebuild_priorities()
 
         if top_priority:

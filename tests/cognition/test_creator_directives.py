@@ -80,11 +80,15 @@ def test_creator_directive_persists_and_populates_curiosity_priority(tmp_path, m
     assert active[0]["priority"] == 1.0
 
     curiosities = mary.agency.curiosities.get_open_curiosities()
-    assert len(curiosities) == 1
-    assert curiosities[0]["description"].lower() == "learn more about unbe"
-    assert curiosities[0]["importance"] == 1.0
-    assert curiosities[0]["relevance"] == 1.0
-    assert curiosities[0]["creator_directed"] is True
+    parents = [
+        item for item in curiosities
+        if item["description"].lower() == "learn more about unbe"
+    ]
+    assert len(parents) == 1
+    assert parents[0]["importance"] == 1.0
+    assert parents[0]["relevance"] == 1.0
+    assert parents[0]["creator_directed"] is True
+    assert any(item.get("relationship_gap") for item in curiosities)
 
     ranked = mary.agency.rebuild_priorities()
     assert ranked
@@ -100,7 +104,18 @@ def test_repeating_same_creator_directive_does_not_duplicate_curiosity(tmp_path,
 
     assert provider.calls == 0
     assert len(mary.creator_directives.get_active()) == 1
-    assert len(mary.agency.curiosities.get_open_curiosities()) == 1
+    parents = [
+        item for item in mary.agency.curiosities.get_curiosities()
+        if item.get("status") in {"open", "exploring"}
+        and item.get("description", "").lower() == "learn more about unbe"
+    ]
+    assert len(parents) == 1
+    gap_categories = [
+        item.get("gap_category")
+        for item in mary.agency.curiosities.get_curiosities()
+        if item.get("relationship_gap")
+    ]
+    assert len(gap_categories) == len(set(gap_categories))
 
 
 def test_creator_directive_survives_restart(tmp_path, monkeypatch):
@@ -115,8 +130,12 @@ def test_creator_directive_survives_restart(tmp_path, monkeypatch):
     assert active[0]["target"] == "unbe"
 
     curiosities = restarted.agency.curiosities.get_open_curiosities()
-    assert len(curiosities) == 1
-    assert curiosities[0]["description"].lower() == "learn more about unbe"
+    parents = [
+        item for item in curiosities
+        if item["description"].lower() == "learn more about unbe"
+    ]
+    assert len(parents) == 1
+    assert any(item.get("relationship_gap") for item in curiosities)
 
 
 def test_self_curiosity_reports_creator_directive_during_429(tmp_path, monkeypatch):

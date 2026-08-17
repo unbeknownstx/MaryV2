@@ -63,7 +63,15 @@ def main() -> int:
                 and "creator-directed curiosity" in str(directive.output).lower()
                 and provider.calls == 0
                 and len(mary.creator_directives.get_active()) == 1
-                and len(mary.agency.curiosities.get_open_curiosities()) == 1
+                and len([
+                    item
+                    for item in mary.agency.curiosities.get_open_curiosities()
+                    if str(item.get("description", "")).lower() == "learn more about unbe"
+                ]) == 1
+                and any(
+                    item.get("relationship_gap")
+                    for item in mary.agency.curiosities.get_open_curiosities()
+                )
             )
             print(("PASS" if ok else "FAIL") + "  explicit directive uses local state with 0 LLM calls")
             if not ok:
