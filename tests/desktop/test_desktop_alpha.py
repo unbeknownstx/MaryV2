@@ -27,3 +27,13 @@ def test_desktop_bridge_uses_canonical_application_not_second_mary() -> None:
     assert "MaryApplication" in source
     assert "Mary(" not in source
     assert "self.application.run" in source
+
+
+def test_vrm_orientation_and_relaxed_pose_are_version_safe() -> None:
+    source = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "VRMUtils.rotateVRM0(currentVrm)" in source
+    assert "currentVrm.scene.rotation.y = Math.PI" not in source
+    assert "setNormalizedPose" in source
+    assert "RELAXED_STANDING_POSE" in source
+    assert "new THREE.Clock" not in source

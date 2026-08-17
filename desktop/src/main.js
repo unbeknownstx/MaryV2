@@ -41,7 +41,7 @@ fill.position.set(-2, 1.2, 1.0);
 scene.add(fill);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x202030, 1.8));
 
-const clock = new THREE.Clock();
+let previousFrameMs = performance.now();
 let blinkAt = performance.now() + 1800;
 let blinkPhase = -1;
 
@@ -82,7 +82,12 @@ async function loadMaryVrm() {
     VRMUtils.combineSkeletons(vrm.scene);
 
     currentVrm = vrm;
-    currentVrm.scene.rotation.y = Math.PI;
+
+    // VRM 1.0 already uses +Z as the standardized forward direction.
+    // Only legacy VRM 0.x models require the 180-degree compatibility turn.
+    VRMUtils.rotateVRM0(currentVrm);
+    applyRelaxedStandingPose(currentVrm);
+
     scene.add(currentVrm.scene);
     fitCamera(currentVrm);
     fallback.classList.add('hidden');
@@ -91,6 +96,31 @@ async function loadMaryVrm() {
     console.warn('MaryCosma.vrm was not loaded:', error);
     fallback.classList.remove('hidden');
   }
+}
+
+
+function quaternionArrayFromEuler(x = 0, y = 0, z = 0) {
+  const quaternion = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(x, y, z, 'XYZ'),
+  );
+  return [quaternion.x, quaternion.y, quaternion.z, quaternion.w];
+}
+
+// VRM humanoids use T-pose as their reference pose. This small normalized
+// offset gives Mary a relaxed standing presentation until we add real VRMA
+// animation clips/state-machine playback.
+const RELAXED_STANDING_POSE = {
+  leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.10) },
+  rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.10) },
+  leftLowerArm: { rotation: quaternionArrayFromEuler(0, 0, 0.14) },
+  rightLowerArm: { rotation: quaternionArrayFromEuler(0, 0, -0.14) },
+};
+
+function applyRelaxedStandingPose(vrm) {
+  const humanoid = vrm?.humanoid;
+  if (!humanoid?.setNormalizedPose) return;
+  humanoid.setNormalizedPose(RELAXED_STANDING_POSE);
+  vrm.update(0);
 }
 
 const PRESET_MAP = {
@@ -154,8 +184,9 @@ function animate(now = performance.now()) {
   requestAnimationFrame(animate);
   resizeRenderer();
 
-  const delta = clock.getDelta();
-  const elapsed = clock.elapsedTime;
+  const delta = Math.min(Math.max((now - previousFrameMs) / 1000, 0), 0.1);
+  previousFrameMs = now;
+  const elapsed = now / 1000;
 
   if (currentVrm) {
     currentVrm.update(delta);

@@ -35,6 +35,10 @@ def main() -> int:
         (package["dependencies"].get("@pixiv/three-vrm") == "3.5.5", "three-vrm version pinned"),
         ("MaryApplication" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop uses canonical MaryApplication"),
         ("base: './'" in (root / "desktop" / "vite.config.js").read_text(encoding="utf-8"), "Vite emits Qt-friendly relative asset paths"),
+        ("VRMUtils.rotateVRM0(currentVrm)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "VRM orientation is version-aware"),
+        ("setNormalizedPose" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "desktop applies a relaxed humanoid pose"),
+        ("currentVrm.scene.rotation.y = Math.PI" not in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "VRM 1.0 is not forcibly turned backward"),
+        ("new THREE.Clock" not in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "deprecated Three.js Clock removed"),
     ]
 
     failed = False
