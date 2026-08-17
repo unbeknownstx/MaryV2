@@ -82,6 +82,23 @@
                 "speaker": "Unbe",
                 "perspective": "creator_first_person"
             }
+        },
+        {
+            "id": "episode_3d85117d4c1442a5b3507937fb03077c",
+            "content": "I love creating stories",
+            "timestamp": "2026-08-17T09:02:06.944691+00:00",
+            "importance": 0.8,
+            "source": "interaction",
+            "event_type": "creator_relationship_share",
+            "participants": [],
+            "emotional_context": {},
+            "metadata": {
+                "source": "interaction",
+                "event_type": "creator_relationship_share",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person"
+            }
         }
     ],
     "semantic": []

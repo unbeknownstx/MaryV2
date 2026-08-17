@@ -1,0 +1,190 @@
+{
+  "version": 2,
+  "user_model": {
+    "creator_id": "creator",
+    "name": "unbe",
+    "facts": {
+      "test_animal": "a red panda"
+    },
+    "preferences": {
+      "favorite_color": "green"
+    },
+    "interests": [
+      "creating stories"
+    ],
+    "values": [],
+    "goals": [],
+    "communication_style": {},
+    "profile_records": [
+      {
+        "id": "profile_1",
+        "category": "preference",
+        "key": "favorite_color",
+        "value": "blue",
+        "status": "historical",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_285531ab7479439f93f6e7f341fc863e",
+        "observation_id": "observation_49b94561ef35",
+        "created_at": "2026-08-17T09:01:41.853069+00:00",
+        "updated_at": "2026-08-17T09:01:41.854254+00:00"
+      },
+      {
+        "id": "profile_2",
+        "category": "preference",
+        "key": "favorite_color",
+        "value": "green",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_e630d1da5a164a149ba5437378031ed7",
+        "observation_id": "observation_79110abc87e7",
+        "created_at": "2026-08-17T09:01:41.854254+00:00",
+        "updated_at": "2026-08-17T09:01:41.854254+00:00"
+      },
+      {
+        "id": "profile_3",
+        "category": "fact",
+        "key": "test_animal",
+        "value": "a red panda",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_52bdc771934c4abc85849358f3f3be1b",
+        "observation_id": "observation_a652ef266409",
+        "created_at": "2026-08-17T09:01:41.855759+00:00",
+        "updated_at": "2026-08-17T09:01:41.855759+00:00"
+      },
+      {
+        "id": "profile_4",
+        "category": "interest",
+        "key": "creating_stories",
+        "value": "creating stories",
+        "status": "current",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c",
+        "observation_id": "observation_af5bc3d90431",
+        "created_at": "2026-08-17T09:02:06.946404+00:00",
+        "updated_at": "2026-08-17T09:02:06.946404+00:00"
+      }
+    ],
+    "created_at": "2026-08-17T09:00:42.431016+00:00",
+    "updated_at": "2026-08-17T09:02:06.946429+00:00"
+  },
+  "history": {
+    "creator_id": "creator",
+    "events": [
+      {
+        "id": "relationship_4d09e4e253db",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: blue",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_1",
+          "evidence_id": "episode_285531ab7479439f93f6e7f341fc863e"
+        },
+        "created_at": "2026-08-17T02:01:41.853091"
+      },
+      {
+        "id": "relationship_5d2274fa1d2c",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: green",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_2",
+          "evidence_id": "episode_e630d1da5a164a149ba5437378031ed7"
+        },
+        "created_at": "2026-08-17T02:01:41.854275"
+      },
+      {
+        "id": "relationship_379ddbe7a16a",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared test animal: a red panda",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "fact",
+          "key": "test_animal",
+          "profile_record_id": "profile_3",
+          "evidence_id": "episode_52bdc771934c4abc85849358f3f3be1b"
+        },
+        "created_at": "2026-08-17T02:01:41.855783"
+      },
+      {
+        "id": "relationship_3df1af1c0448",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "creating_stories",
+          "profile_record_id": "profile_4",
+          "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c"
+        },
+        "created_at": "2026-08-17T02:02:06.946440"
+      }
+    ],
+    "created_at": "2026-08-17T02:00:42.431023",
+    "updated_at": "2026-08-17T02:02:06.946443"
+  },
+  "understanding": {
+    "observations": [
+      {
+        "id": "observation_49b94561ef35",
+        "observation": "my favorite color is blue",
+        "category": "preference",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_285531ab7479439f93f6e7f341fc863e",
+        "created_at": "2026-08-17T02:01:41.853055"
+      },
+      {
+        "id": "observation_79110abc87e7",
+        "observation": "my favorite color is green",
+        "category": "preference",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_e630d1da5a164a149ba5437378031ed7",
+        "created_at": "2026-08-17T02:01:41.854243"
+      },
+      {
+        "id": "observation_a652ef266409",
+        "observation": "my test animal is a red panda",
+        "category": "fact",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_52bdc771934c4abc85849358f3f3be1b",
+        "created_at": "2026-08-17T02:01:41.855749"
+      },
+      {
+        "id": "observation_af5bc3d90431",
+        "observation": "I love creating stories",
+        "category": "interest",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "episode_3d85117d4c1442a5b3507937fb03077c",
+        "created_at": "2026-08-17T02:02:06.946386"
+      }
+    ],
+    "inferences": [],
+    "patterns": [],
+    "updated_at": "2026-08-17T02:02:06.946398"
+  },
+  "milestones": []
+}
