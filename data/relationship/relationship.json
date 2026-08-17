@@ -3,27 +3,268 @@
   "user_model": {
     "creator_id": "creator",
     "name": "unbe",
-    "facts": {},
-    "preferences": {},
-    "interests": [],
+    "facts": {
+      "test_animal": "a red panda"
+    },
+    "preferences": {
+      "favorite_color": "green"
+    },
+    "interests": [
+      "creating stories"
+    ],
     "values": [],
-    "goals": [],
-    "communication_style": {},
-    "profile_records": [],
+    "goals": [
+      "finish MaryV2"
+    ],
+    "communication_style": {
+      "preferred_style": "be direct and concise"
+    },
+    "profile_records": [
+      {
+        "id": "profile_1",
+        "category": "preference",
+        "key": "favorite_color",
+        "value": "blue",
+        "status": "historical",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_285531ab7479439f93f6e7f341fc863e",
+        "observation_id": "observation_189d3b4fac50",
+        "created_at": "2026-08-17T22:18:17.919451+00:00",
+        "updated_at": "2026-08-17T22:18:17.920958+00:00"
+      },
+      {
+        "id": "profile_2",
+        "category": "preference",
+        "key": "favorite_color",
+        "value": "green",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_e630d1da5a164a149ba5437378031ed7",
+        "observation_id": "observation_f19ba3eef636",
+        "created_at": "2026-08-17T22:18:17.920958+00:00",
+        "updated_at": "2026-08-17T22:18:17.920958+00:00"
+      },
+      {
+        "id": "profile_3",
+        "category": "fact",
+        "key": "test_animal",
+        "value": "a red panda",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_52bdc771934c4abc85849358f3f3be1b",
+        "observation_id": "observation_1be1e7f55343",
+        "created_at": "2026-08-17T22:18:17.922622+00:00",
+        "updated_at": "2026-08-17T22:18:17.922622+00:00"
+      },
+      {
+        "id": "profile_4",
+        "category": "interest",
+        "key": "creating_stories",
+        "value": "creating stories",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c",
+        "observation_id": "observation_b354dc1c89cd",
+        "created_at": "2026-08-17T22:18:17.923862+00:00",
+        "updated_at": "2026-08-17T22:18:17.923862+00:00"
+      },
+      {
+        "id": "profile_5",
+        "category": "goal",
+        "key": "finish_maryv2",
+        "value": "finish MaryV2",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_4fa79f08352a48f29816ba066c5e6839",
+        "observation_id": "observation_1446b09cc06e",
+        "created_at": "2026-08-17T22:18:17.925041+00:00",
+        "updated_at": "2026-08-17T22:18:17.925041+00:00"
+      },
+      {
+        "id": "profile_6",
+        "category": "communication",
+        "key": "preferred_style",
+        "value": "be direct and concise",
+        "status": "current",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "observation_id": "observation_9fa663d8cc51",
+        "created_at": "2026-08-17T22:18:17.926226+00:00",
+        "updated_at": "2026-08-17T22:18:17.926226+00:00"
+      }
+    ],
     "created_at": "2026-08-17T22:13:26.842107+00:00",
-    "updated_at": "2026-08-17T22:13:26.842107+00:00"
+    "updated_at": "2026-08-17T22:18:17.926236+00:00"
   },
   "history": {
     "creator_id": "creator",
-    "events": [],
+    "events": [
+      {
+        "id": "relationship_d295b3655c2f",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: blue",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_1",
+          "evidence_id": "episode_285531ab7479439f93f6e7f341fc863e"
+        },
+        "created_at": "2026-08-17T15:18:17.919470"
+      },
+      {
+        "id": "relationship_d537543eda77",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: green",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_2",
+          "evidence_id": "episode_e630d1da5a164a149ba5437378031ed7"
+        },
+        "created_at": "2026-08-17T15:18:17.920981"
+      },
+      {
+        "id": "relationship_afc727b89595",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared test animal: a red panda",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "fact",
+          "key": "test_animal",
+          "profile_record_id": "profile_3",
+          "evidence_id": "episode_52bdc771934c4abc85849358f3f3be1b"
+        },
+        "created_at": "2026-08-17T15:18:17.922639"
+      },
+      {
+        "id": "relationship_687f8bbccd62",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "creating_stories",
+          "profile_record_id": "profile_4",
+          "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c"
+        },
+        "created_at": "2026-08-17T15:18:17.923881"
+      },
+      {
+        "id": "relationship_969414f5ad5b",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared goal: finish MaryV2",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "goal",
+          "key": "finish_maryv2",
+          "profile_record_id": "profile_5",
+          "evidence_id": "episode_4fa79f08352a48f29816ba066c5e6839"
+        },
+        "created_at": "2026-08-17T15:18:17.925062"
+      },
+      {
+        "id": "relationship_398024ca3935",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_6",
+          "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d"
+        },
+        "created_at": "2026-08-17T15:18:17.926244"
+      }
+    ],
     "created_at": "2026-08-17T22:13:26.842111",
-    "updated_at": "2026-08-17T22:13:26.842111"
+    "updated_at": "2026-08-17T15:18:17.926246"
   },
   "understanding": {
-    "observations": [],
+    "observations": [
+      {
+        "id": "observation_189d3b4fac50",
+        "observation": "my favorite color is blue",
+        "category": "preference",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_285531ab7479439f93f6e7f341fc863e",
+        "created_at": "2026-08-17T15:18:17.919441"
+      },
+      {
+        "id": "observation_f19ba3eef636",
+        "observation": "my favorite color is green",
+        "category": "preference",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_e630d1da5a164a149ba5437378031ed7",
+        "created_at": "2026-08-17T15:18:17.920948"
+      },
+      {
+        "id": "observation_1be1e7f55343",
+        "observation": "my test animal is a red panda",
+        "category": "fact",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_52bdc771934c4abc85849358f3f3be1b",
+        "created_at": "2026-08-17T15:18:17.922614"
+      },
+      {
+        "id": "observation_b354dc1c89cd",
+        "observation": "I love creating stories",
+        "category": "interest",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_3d85117d4c1442a5b3507937fb03077c",
+        "created_at": "2026-08-17T15:18:17.923854"
+      },
+      {
+        "id": "observation_1446b09cc06e",
+        "observation": "my main goal is finish MaryV2",
+        "category": "goal",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_4fa79f08352a48f29816ba066c5e6839",
+        "created_at": "2026-08-17T15:18:17.925033"
+      },
+      {
+        "id": "observation_9fa663d8cc51",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "created_at": "2026-08-17T15:18:17.926218"
+      }
+    ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-17T22:13:26.842113"
+    "updated_at": "2026-08-17T15:18:17.926222"
   },
   "milestones": []
 }
