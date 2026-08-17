@@ -253,6 +253,16 @@ class CodeClient:
             ),
         )
 
+        source_excerpt, source_truncated = self._build_source_evidence(
+            source
+        )
+        analysis.metadata.update({
+            "source_grounded": True,
+            "source_excerpt": source_excerpt,
+            "source_truncated": source_truncated,
+            "source_characters": len(source),
+        })
+
         if language != "python":
             analysis.warnings.append(
                 "Detailed static analysis "
@@ -284,6 +294,10 @@ class CodeClient:
         self._collect_ast_information(
             tree,
             analysis,
+        )
+
+        analysis.metadata["symbols"] = self._collect_symbol_details(
+            tree
         )
 
         self._collect_basic_warnings(
@@ -686,6 +700,93 @@ class CodeClient:
                 analysis.variables
             )
         )
+
+    # ============================================================
+    # SOURCE GROUNDING EVIDENCE
+    # ============================================================
+
+    @staticmethod
+    def _build_source_evidence(
+        source: str,
+        *,
+        max_chars: int = 10_000,
+    ) -> tuple[str, bool]:
+        """
+        Return bounded source evidence for grounded code explanation.
+
+        Static AST structure alone is not enough to support claims about
+        implementation behavior.  When a file is too large, preserve both
+        the beginning and end so imports/initialization and later persistence
+        or status methods remain visible to reasoning.
+        """
+
+        text = str(source)
+        limit = max(1_000, int(max_chars))
+
+        if len(text) <= limit:
+            return text, False
+
+        marker = (
+            "\n\n... [middle of source omitted by bounded code tool] ...\n\n"
+        )
+        available = max(1_000, limit - len(marker))
+        head_budget = int(available * 0.6)
+        tail_budget = available - head_budget
+
+        head = text[:head_budget]
+        if "\n" in head:
+            head = head.rsplit("\n", 1)[0]
+
+        tail = text[-tail_budget:]
+        if "\n" in tail:
+            tail = tail.split("\n", 1)[-1]
+
+        return head + marker + tail, True
+
+    @staticmethod
+    def _collect_symbol_details(
+        tree: ast.AST,
+    ) -> list[dict[str, Any]]:
+        """Return exact symbol names and source line ranges from the AST."""
+
+        details: list[dict[str, Any]] = []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                details.append({
+                    "kind": "class",
+                    "name": node.name,
+                    "line": getattr(node, "lineno", None),
+                    "end_line": getattr(node, "end_lineno", None),
+                })
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                details.append({
+                    "kind": (
+                        "async_function"
+                        if isinstance(node, ast.AsyncFunctionDef)
+                        else "function"
+                    ),
+                    "name": node.name,
+                    "line": getattr(node, "lineno", None),
+                    "end_line": getattr(node, "end_lineno", None),
+                    "arguments": [
+                        argument.arg
+                        for argument in (
+                            list(node.args.posonlyargs)
+                            + list(node.args.args)
+                            + list(node.args.kwonlyargs)
+                        )
+                    ],
+                })
+
+        details.sort(
+            key=lambda item: (
+                item.get("line") is None,
+                item.get("line") or 0,
+                str(item.get("name", "")),
+            )
+        )
+        return details
 
     # ============================================================
     # BASIC STATIC WARNINGS

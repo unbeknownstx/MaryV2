@@ -14,6 +14,23 @@
                 "source": "interaction",
                 "event_type": "user_preference"
             }
+        },
+        {
+            "id": "episode_e630d1da5a164a149ba5437378031ed7",
+            "content": "my favorite color is green",
+            "timestamp": "2026-08-17T04:49:40.136761+00:00",
+            "importance": 0.8,
+            "source": "interaction",
+            "event_type": "user_statement",
+            "participants": [],
+            "emotional_context": {},
+            "metadata": {
+                "source": "interaction",
+                "event_type": "user_statement",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person"
+            }
         }
     ],
     "semantic": []

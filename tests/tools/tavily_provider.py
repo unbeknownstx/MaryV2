@@ -62,6 +62,7 @@ def test_tavily_result_normalization():
                     "title": "Example Result",
                     "url": "https://example.com",
                     "content": "Useful search content.",
+                    "raw_content": "Full extracted page content. " * 40,
                     "score": 0.91,
                 }
             ]
@@ -73,6 +74,8 @@ def test_tavily_result_normalization():
     assert results[0].title == "Example Result"
     assert results[0].url == "https://example.com"
     assert results[0].snippet == "Useful search content."
+    assert "Full extracted page content" in results[0].content
     assert results[0].source == "tavily"
     assert results[0].metadata["provider"] == "tavily"
-    assert results[0].metadata["score"] =
+    assert results[0].metadata["score"] == 0.91
+    assert results[0].metadata["content_source"] == "raw_content"

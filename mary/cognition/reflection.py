@@ -86,6 +86,46 @@ class ReflectionEngine:
     ) -> ReflectionResult:
         """Evaluate a reasoning result."""
 
+        # Research reasoning has already passed through the evidence boundary.
+        # Reusing that result avoids spending another LLM request merely to
+        # restate an audit that cannot change V2's selected response anyway.
+        evidence = reasoning.metadata.get("evidence_validation")
+        if isinstance(evidence, dict):
+            validated = bool(evidence.get("validated"))
+            failure = evidence.get("failure")
+
+            return ReflectionResult(
+                decision=ReflectionDecision.ACCEPT,
+                confidence=0.95 if validated else 0.65,
+                assessment=(
+                    "Research response passed evidence-grounded synthesis."
+                    if validated
+                    else "Research response used the safe evidence-only fallback."
+                ),
+                issues=(
+                    []
+                    if validated
+                    else [str(failure or "evidence synthesis fallback")]
+                ),
+                metadata={
+                    "mode": "evidence_validation_reuse",
+                    "validated": validated,
+                },
+            )
+
+        if reasoning.metadata.get("local_tool_grounded") is True:
+            return ReflectionResult(
+                decision=ReflectionDecision.ACCEPT,
+                confidence=0.95,
+                assessment=(
+                    "Local tool response was generated from bounded source evidence "
+                    "and grounding rules."
+                ),
+                metadata={
+                    "mode": "local_tool_grounding_reuse",
+                },
+            )
+
         prompt = self._build_prompt(
             context=context,
             reasoning=reasoning,
@@ -106,6 +146,7 @@ class ReflectionEngine:
                     content=prompt,
                 ),
             ],
+            max_tokens=512,
         )
 
         result = self._parse_response(

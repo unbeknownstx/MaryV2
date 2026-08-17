@@ -128,6 +128,26 @@ class FileInfo:
         }
 
 
+@dataclass
+class TextSearchMatch:
+    """
+    One bounded text-search match inside Mary's workspace.
+    """
+
+    path: str
+    line_number: int
+    line: str
+
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "line_number": self.line_number,
+            "line": self.line,
+        }
+
+
 # ================================================================
 # FILESYSTEM CLIENT
 # ================================================================
@@ -421,6 +441,101 @@ class FilesystemClient:
             )
 
         return target.read_bytes()
+
+    # ============================================================
+    # TEXT SEARCH
+    # ============================================================
+
+    def search_text(
+        self,
+        query: str,
+        path: str = ".",
+        *,
+        max_matches: int = 50,
+    ) -> list[TextSearchMatch]:
+        """
+        Search permitted workspace text files without executing anything.
+
+        The search is intentionally bounded so a conversational request cannot
+        recursively ingest an unlimited repository into Mary's LLM context.
+        Large files, binary/undecodable files, symlinks, and common generated
+        dependency/cache directories are skipped.
+        """
+
+        needle = str(query).strip()
+        if not needle:
+            raise ValueError("Search query cannot be empty.")
+
+        root = self._resolve_allowed_path(path)
+        if not root.is_dir():
+            raise NotADirectoryError(f"Not a directory: {root}")
+
+        limit = max(1, min(int(max_matches), 200))
+        ignored_directories = {
+            ".git",
+            ".venv",
+            "venv",
+            "__pycache__",
+            ".pytest_cache",
+            "node_modules",
+        }
+
+        matches: list[TextSearchMatch] = []
+        files_seen = 0
+        max_files = 750
+        lowered_needle = needle.casefold()
+
+        for candidate in root.rglob("*"):
+            if len(matches) >= limit or files_seen >= max_files:
+                break
+
+            try:
+                relative_parts = candidate.relative_to(root).parts
+            except ValueError:
+                continue
+
+            if any(part in ignored_directories for part in relative_parts):
+                continue
+
+            if candidate.is_dir():
+                continue
+
+            if candidate.is_symlink() and not self.config.allow_symlinks:
+                continue
+
+            if not candidate.is_file():
+                continue
+
+            files_seen += 1
+
+            try:
+                if candidate.stat().st_size > self.config.max_read_bytes:
+                    continue
+                text = candidate.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+
+            for line_number, line in enumerate(text.splitlines(), start=1):
+                if lowered_needle not in line.casefold():
+                    continue
+
+                try:
+                    display_path = candidate.relative_to(self._roots[0]).as_posix()
+                except ValueError:
+                    display_path = candidate.as_posix()
+
+                matches.append(
+                    TextSearchMatch(
+                        path=display_path,
+                        line_number=line_number,
+                        line=line.strip()[:500],
+                    )
+                )
+
+                if len(matches) >= limit:
+                    break
+
+        return matches
 
     # ============================================================
     # WRITE
@@ -754,6 +869,38 @@ class FilesystemClient:
                     "type": "string",
                     "required": False,
                 },
+            },
+        )
+
+        registry.register(
+            name="filesystem_search",
+            description=(
+                "Search text inside files in a permitted workspace "
+                "without modifying or executing anything."
+            ),
+            function=self.search_text,
+            category="filesystem",
+            version="1.0",
+            permission_level=PermissionLevel.SAFE,
+            external_access=False,
+            mutates_state=False,
+            parameters={
+                "query": {
+                    "type": "string",
+                    "required": True,
+                },
+                "path": {
+                    "type": "string",
+                    "required": False,
+                },
+                "max_matches": {
+                    "type": "integer",
+                    "required": False,
+                },
+            },
+            metadata={
+                "operation": "workspace_text_search",
+                "execution": False,
             },
         )
 

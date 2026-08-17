@@ -323,6 +323,18 @@ class CognitiveOrchestrator:
             return web_intent
 
         # --------------------------------------------------------
+        # LOCAL FILESYSTEM / CODE TOOLS
+        # --------------------------------------------------------
+
+        local_tool_intent = self._detect_local_tool_intent(
+            text=text,
+            lowered=lowered,
+        )
+
+        if local_tool_intent is not None:
+            return local_tool_intent
+
+        # --------------------------------------------------------
         # QUESTION
         # --------------------------------------------------------
 
@@ -611,6 +623,267 @@ class CognitiveOrchestrator:
                     "explicit_creator_request": False,
                 },
                 source="basic_detector",
+            )
+
+        return None
+
+    def _detect_local_tool_intent(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """
+        Detect intentional local filesystem and static-code operations.
+
+        Read-only operations map to SAFE ToolRegistry capabilities. Mutating
+        operations are only identified here; Mary still creates a pending
+        request and requires a separate creator approval before execution.
+        """
+
+        def make(
+            tool_name: str,
+            arguments: dict[str, Any],
+            description: str,
+        ) -> Intent:
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.96,
+                description=description,
+                parameters={
+                    "action": "execute_tool",
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                    "explicit_creator_request": True,
+                },
+                source="basic_detector",
+            )
+
+        def clean(value: str) -> str:
+            return value.strip().strip('"\'').rstrip("?.")
+
+        def looks_like_path(value: str) -> bool:
+            candidate = clean(value)
+            if not candidate or candidate.startswith(("http://", "https://")):
+                return False
+            if any(sep in candidate for sep in ("/", "\\")):
+                return True
+            return bool(
+                re.search(
+                    r"\.(?:py|pyi|json|toml|ya?ml|md|txt|ini|cfg|csv|html?|css|js|ts|tsx|jsx)$",
+                    candidate,
+                    flags=re.IGNORECASE,
+                )
+            )
+
+        # --------------------------------------------------------
+        # SEARCH INSIDE THE PROJECT
+        # --------------------------------------------------------
+
+        search_patterns = (
+            r"^search (?:the )?project for (.+)$",
+            r"^search (?:the )?files for (.+)$",
+            r"^find in (?:the )?project (.+)$",
+            r"^find where (.+?) is used\??$",
+            r"^find usages of (.+)$",
+            r"^find references to (.+)$",
+        )
+        for pattern in search_patterns:
+            match = re.match(pattern, text, flags=re.IGNORECASE)
+            if match:
+                query = clean(match.group(1))
+                if query:
+                    return make(
+                        "filesystem_search",
+                        {
+                            "query": query,
+                            "path": ".",
+                            "max_matches": 50,
+                        },
+                        "Creator requested a bounded text search inside Mary's workspace.",
+                    )
+
+        # --------------------------------------------------------
+        # DIRECTORY LISTING
+        # --------------------------------------------------------
+
+        list_prefixes = (
+            "list files in ",
+            "list directory ",
+            "list folder ",
+            "show files in ",
+            "show me what's in ",
+            "show me what is in ",
+        )
+        for prefix in list_prefixes:
+            if lowered.startswith(prefix):
+                path = clean(text[len(prefix):]) or "."
+                return make(
+                    "filesystem_list",
+                    {"path": path},
+                    "Creator requested a directory listing inside Mary's workspace.",
+                )
+
+        # --------------------------------------------------------
+        # STATIC CODE INSPECTION
+        # --------------------------------------------------------
+
+        analysis_prefixes = (
+            "analyze code ",
+            "analyse code ",
+            "analyze file ",
+            "analyse file ",
+            "analyze ",
+            "analyse ",
+            "inspect code ",
+            "inspect file ",
+            "inspect ",
+        )
+        for prefix in analysis_prefixes:
+            if lowered.startswith(prefix):
+                path = clean(text[len(prefix):])
+                if not path:
+                    continue
+                tool_name = (
+                    "code_analyze"
+                    if path.lower().endswith((".py", ".pyi"))
+                    else "filesystem_info"
+                )
+                return make(
+                    tool_name,
+                    {"path": path},
+                    "Creator requested local static inspection without execution.",
+                )
+
+        # --------------------------------------------------------
+        # FILE / SOURCE READ
+        # --------------------------------------------------------
+
+        read_prefixes = (
+            "read file ",
+            "read source ",
+            "show file ",
+            "show source ",
+            "open file ",
+            "read ",
+        )
+        for prefix in read_prefixes:
+            if lowered.startswith(prefix):
+                path = clean(text[len(prefix):])
+                if not looks_like_path(path):
+                    continue
+                tool_name = (
+                    "code_read"
+                    if path.lower().endswith((
+                        ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx",
+                        ".java", ".c", ".h", ".cpp", ".hpp", ".cs",
+                        ".go", ".rs", ".rb", ".php", ".swift", ".kt",
+                        ".kts", ".sh", ".ps1",
+                    ))
+                    else "filesystem_read"
+                )
+                return make(
+                    tool_name,
+                    {"path": path},
+                    "Creator requested a bounded local file read.",
+                )
+
+        # --------------------------------------------------------
+        # EXISTS / INFO
+        # --------------------------------------------------------
+
+        exists_match = re.match(
+            r"^does (.+?) exist\??$",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if exists_match and looks_like_path(exists_match.group(1)):
+            return make(
+                "filesystem_exists",
+                {"path": clean(exists_match.group(1))},
+                "Creator asked whether a local workspace path exists.",
+            )
+
+        for prefix in ("file info ", "info on file ", "info on "):
+            if lowered.startswith(prefix):
+                path = clean(text[len(prefix):])
+                if looks_like_path(path):
+                    return make(
+                        "filesystem_info",
+                        {"path": path},
+                        "Creator requested local filesystem metadata.",
+                    )
+
+        # --------------------------------------------------------
+        # MUTATING FILESYSTEM OPERATIONS
+        # --------------------------------------------------------
+        # These intents NEVER grant approval. Mary will create a pending
+        # ToolRegistry request that requires a second explicit approval turn.
+
+        write_match = re.match(
+            r"^(?:write|create) file\s+(.+?)\s+(?:with|containing)\s+(.+)$",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if write_match:
+            return make(
+                "filesystem_write",
+                {
+                    "path": clean(write_match.group(1)),
+                    "content": write_match.group(2),
+                    "overwrite": False,
+                },
+                "Creator requested a filesystem write; separate approval is required.",
+            )
+
+        append_match = re.match(
+            r"^append\s+(.+?)\s+to file\s+(.+)$",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if append_match:
+            return make(
+                "filesystem_append",
+                {
+                    "path": clean(append_match.group(2)),
+                    "content": append_match.group(1),
+                },
+                "Creator requested a filesystem append; separate approval is required.",
+            )
+
+        for prefix in ("create directory ", "create folder ", "make directory ", "make folder "):
+            if lowered.startswith(prefix):
+                path = clean(text[len(prefix):])
+                if path:
+                    return make(
+                        "filesystem_create_directory",
+                        {"path": path},
+                        "Creator requested directory creation; separate approval is required.",
+                    )
+
+        for prefix in ("delete file ", "remove file "):
+            if lowered.startswith(prefix):
+                path = clean(text[len(prefix):])
+                if path:
+                    return make(
+                        "filesystem_delete",
+                        {"path": path},
+                        "Creator requested file deletion; separate approval is required.",
+                    )
+
+        move_match = re.match(
+            r"^move file\s+(.+?)\s+to\s+(.+)$",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if move_match:
+            return make(
+                "filesystem_move",
+                {
+                    "source": clean(move_match.group(1)),
+                    "destination": clean(move_match.group(2)),
+                },
+                "Creator requested a file move; separate approval is required.",
             )
 
         return None

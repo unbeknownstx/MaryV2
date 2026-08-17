@@ -173,6 +173,10 @@ class SearchResult:
 
     snippet: str = ""
 
+    # Rich extracted page content when the provider can return it within
+    # the same approved search request. Falls back to snippet-only providers.
+    content: str = ""
+
     source: str = ""
 
     metadata: dict[str, Any] = field(
@@ -186,6 +190,7 @@ class SearchResult:
             "title": self.title,
             "url": self.url,
             "snippet": self.snippet,
+            "content": self.content or self.snippet,
             "source": self.source,
             "metadata": dict(
                 self.metadata
@@ -268,7 +273,10 @@ class TavilySearchProvider:
             "topic": self.topic,
             "max_results": count,
             "include_answer": False,
-            "include_raw_content": False,
+            # Tavily can return extracted page content in the SAME search
+            # request. This strengthens evidence without creating a second
+            # unapproved network action.
+            "include_raw_content": True,
         }
 
         request = urllib.request.Request(
@@ -340,6 +348,16 @@ class TavilySearchProvider:
             snippet = _clean_search_text(
                 item.get("content", "")
             )
+            raw_content_value = item.get("raw_content", "")
+            raw_content = _clean_search_text(
+                raw_content_value or ""
+            )
+            max_raw_chars = 12_000
+            rich_content = (
+                raw_content[:max_raw_chars]
+                if raw_content
+                else snippet
+            )
 
             if not title and not url:
                 continue
@@ -349,12 +367,20 @@ class TavilySearchProvider:
                     title=title or url,
                     url=url,
                     snippet=snippet,
+                    content=rich_content,
                     source="tavily",
                     metadata={
                         "provider": "tavily",
                         "rank": rank,
                         "score": item.get("score"),
+                        "published_date": item.get("published_date"),
                         "result_type": "web",
+                        "content_source": (
+                            "raw_content" if raw_content else "snippet"
+                        ),
+                        "raw_content_truncated": bool(
+                            raw_content and len(raw_content) > max_raw_chars
+                        ),
                     },
                 )
             )

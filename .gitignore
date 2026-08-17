@@ -45,3 +45,4 @@ dist/
 # Secrets
 *.pem
 *.key
+.env

@@ -52,6 +52,7 @@ from .filesystem import (
     FilesystemClient,
     FilesystemConfig,
     FileInfo,
+    TextSearchMatch,
     create_filesystem_client,
     register_filesystem_tools,
 )
@@ -89,6 +90,7 @@ __all__ = [
     "FilesystemClient",
     "FilesystemConfig",
     "FileInfo",
+    "TextSearchMatch",
     "create_filesystem_client",
     "register_filesystem_tools",
 

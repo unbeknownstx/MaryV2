@@ -33,6 +33,7 @@ Mary does not replace:
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -72,8 +73,12 @@ from mary.relationship.user import UserModel
 from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
 from mary.learning.researcher import Researcher
+from mary.learning.grounding import ResearchGrounder
+from mary.learning.source_resolver import SourceResolver
+from mary.learning.evidence import ClaimGrounder, EvidenceValidator
 
 from mary.tools.manager import ToolManager
+from mary.tools.registry import PermissionLevel
 
 from mary.knowledge.manager import KnowledgeManager
 
@@ -230,6 +235,16 @@ class Mary:
             llm=self.llm,
         )
 
+        self.source_resolver = SourceResolver()
+
+        self.research_grounder = ResearchGrounder()
+
+        self.claim_grounder = ClaimGrounder()
+
+        self.evidence_validator = EvidenceValidator(
+            claim_grounder=self.claim_grounder,
+        )
+
         # ============================================================
         # RESEARCHER
         # ============================================================
@@ -259,6 +274,7 @@ class Mary:
 
         self.reasoning = ReasoningEngine(
             llm=self.llm,
+            evidence_validator=self.evidence_validator,
         )
 
         self.reflection = ReflectionEngine(
@@ -333,9 +349,23 @@ class Mary:
             )
 
         elif intent.intent_type == IntentType.TOOL_USE:
-            tool_action = self._handle_tool_control(
-                intent
-            )
+            action = str(
+                intent.parameters.get(
+                    "action",
+                    "",
+                )
+            ).strip().lower()
+
+            if action in {"approve", "reject"}:
+                tool_action = self._handle_tool_control(
+                    intent
+                )
+            else:
+                tool_action = self._handle_local_tool_intent(
+                    intent,
+                    original_input=input_text,
+                )
+
             system_response = tool_action.get(
                 "system_response"
             )
@@ -547,7 +577,9 @@ class Mary:
             ).strip()
             arguments = {
                 "query": query,
-                "limit": 5,
+                # Retrieve a broader candidate set in one approved search
+                # call, then resolve/rank locally down to the strongest five.
+                "limit": 10,
             }
 
         reason = (
@@ -592,6 +624,176 @@ class Mary:
             tool_name=tool_name,
             request_id=request.request_id,
         )
+
+    def _handle_local_tool_intent(
+        self,
+        intent: Intent,
+        *,
+        original_input: str,
+    ) -> dict[str, Any]:
+        """
+        Execute an intentional local SAFE tool or request approval for a
+        state-changing local tool.
+
+        SAFE here means the ToolRegistry definition is read-only/non-external.
+        Mutating and creator-sensitive tools always require a separate approval
+        turn even when the creator explicitly asked for the mutation initially.
+        """
+
+        tool_name = str(
+            intent.parameters.get(
+                "tool_name",
+                "",
+            )
+        ).strip()
+        arguments = dict(
+            intent.parameters.get(
+                "arguments",
+                {},
+            )
+            or {}
+        )
+
+        if not tool_name:
+            return {
+                "system_response": "I couldn't determine which local tool to use."
+            }
+
+        definition = self.tools.registry.get(
+            tool_name
+        )
+        if definition is None or not definition.enabled:
+            return {
+                "system_response": f"The local tool {tool_name} is unavailable."
+            }
+
+        valid, validation_error = self.tools.registry.validate(
+            tool_name,
+            arguments,
+        )
+        if not valid:
+            return {
+                "system_response": (
+                    f"I couldn't prepare {tool_name}: "
+                    f"{validation_error or 'invalid arguments'}"
+                )
+            }
+
+        if definition.permission_level == PermissionLevel.SAFE:
+            tool_result = self.tools.registry.execute_validated(
+                tool_name,
+                arguments,
+            )
+            return self._local_tool_result_to_context(
+                tool_result,
+                original_input=original_input,
+            )
+
+        if definition.permission_level == PermissionLevel.NEVER_AUTONOMOUS:
+            return {
+                "system_response": (
+                    f"{tool_name} cannot run through Mary's normal tool path."
+                )
+            }
+
+        request = self.tools.request(
+            tool_name,
+            arguments,
+            reason=(
+                "Creator requested a state-changing local operation: "
+                f"{original_input}"
+            ),
+        )
+
+        if request.status != "pending":
+            return {
+                "system_response": (
+                    f"I couldn't create an approval request for {tool_name}."
+                )
+            }
+
+        return {
+            "system_response": (
+                f"{tool_name} would change Mary's workspace. "
+                f"I created {request.request_id}. "
+                "To authorize exactly that operation, say: "
+                f"approve {request.request_id}"
+            )
+        }
+
+    def _local_tool_result_to_context(
+        self,
+        tool_result: Any,
+        *,
+        original_input: str,
+    ) -> dict[str, Any]:
+        """Convert a read-only local tool result into bounded LLM context."""
+
+        if not getattr(tool_result, "success", False):
+            return {
+                "system_response": (
+                    f"{getattr(tool_result, 'tool_name', 'local tool')} failed: "
+                    f"{getattr(tool_result, 'error', None) or 'unknown error'}"
+                )
+            }
+
+        raw_result = getattr(tool_result, "result", None)
+
+        def serializable(value: Any) -> Any:
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, dict):
+                return {
+                    str(key): serializable(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, (list, tuple)):
+                return [
+                    serializable(item)
+                    for item in value[:75]
+                ]
+            to_dict = getattr(value, "to_dict", None)
+            if callable(to_dict):
+                return serializable(to_dict())
+            return str(value)
+
+        normalized = serializable(raw_result)
+        rendered = json.dumps(
+            normalized,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+
+        tool_name = getattr(
+            tool_result,
+            "tool_name",
+            "local_tool",
+        )
+
+        # Code reads/analysis need enough exact source evidence for grounded
+        # explanation. Other local tool results stay smaller to protect the
+        # LLM context/token budget.
+        max_chars = (
+            13_000
+            if tool_name in {"code_analyze", "code_read"}
+            else 6_000
+        )
+        truncated = len(rendered) > max_chars
+        if truncated:
+            rendered = rendered[:max_chars].rstrip() + "\n...[tool result truncated]"
+
+        return {
+            "knowledge": [
+                {
+                    "local_tool": True,
+                    "tool_name": tool_name,
+                    "request": original_input,
+                    "content": rendered,
+                    "truncated": truncated,
+                }
+            ]
+        }
 
     def _handle_tool_control(
         self,
@@ -745,7 +947,7 @@ class Mary:
                 "Answer the creator's current request using "
                 "approved external information."
             ),
-            source_limit=5,
+            source_limit=10,
             metadata={
                 "tool_request_id": request_id,
                 "tool_name": tool_name,
@@ -767,7 +969,18 @@ class Mary:
         knowledge: list[dict[str, Any]] = []
         source_cards: list[dict[str, Any]] = []
 
-        for source in research_result.sources[:5]:
+        resolved_sources = self.source_resolver.resolve(
+            query,
+            research_result.sources,
+            max_sources=10,
+        )
+
+        grounded_sources = self.research_grounder.rank_sources(
+            query,
+            resolved_sources,
+        )[:5]
+
+        for source, grounding in grounded_sources:
             statement = (
                 source.content.strip()
                 or source.title.strip()
@@ -781,6 +994,7 @@ class Mary:
                 metadata={
                     "url": source.url,
                     "research_request_id": research_request.id,
+                    "grounding": grounding.to_dict(),
                 },
             )
 
@@ -790,6 +1004,10 @@ class Mary:
                     "url": source.url,
                     "content": statement[:4000],
                     "source_type": source.source_type,
+                    "research_grounding": grounding.to_dict(),
+                    "source_resolution": dict(
+                        source.metadata.get("source_resolution", {})
+                    ),
                     "evaluation": {
                         "recommendation": evaluation.recommendation,
                         "confidence": evaluation.confidence,
@@ -804,6 +1022,10 @@ class Mary:
                     "url": source.url,
                     "confidence": evaluation.confidence,
                     "recommendation": evaluation.recommendation,
+                    "grounding": grounding.to_dict(),
+                    "resolution": dict(
+                        source.metadata.get("source_resolution", {})
+                    ),
                 }
             )
 

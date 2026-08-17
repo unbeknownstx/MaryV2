@@ -63,6 +63,7 @@ class MaryDiagnostics:
         results.extend(self._check_character())
         results.extend(self._check_knowledge())
         results.extend(self._check_learning())
+        results.extend(self._check_tools())
         results.extend(self._check_agency())
         results.extend(self._check_autonomy())
         results.extend(self._check_conversation())
@@ -431,6 +432,85 @@ class MaryDiagnostics:
                 "researcher",
             ),
         )
+
+    # ============================================================
+    # TOOLS
+    # ============================================================
+
+    def _check_tools(self) -> List[DiagnosticResult]:
+        """Verify the controlled tool manager and core capabilities."""
+
+        manager = getattr(
+            self.mary,
+            "tools",
+            None,
+        )
+
+        if manager is None:
+            return [
+                DiagnosticResult(
+                    name="Tools",
+                    status="FAIL",
+                    message="'tools' is not connected",
+                )
+            ]
+
+        required_attributes = (
+            "registry",
+            "filesystem",
+            "code",
+            "web",
+        )
+        missing_attributes = [
+            attribute
+            for attribute in required_attributes
+            if getattr(manager, attribute, None) is None
+        ]
+
+        registry = getattr(manager, "registry", None)
+        required_tools = {
+            "filesystem_read",
+            "filesystem_list",
+            "filesystem_search",
+            "code_read",
+            "code_analyze",
+            "web_search",
+        }
+        missing_tools: list[str] = []
+
+        if registry is not None:
+            missing_tools = sorted(
+                name
+                for name in required_tools
+                if not registry.has(name)
+            )
+
+        if missing_attributes or registry is None or missing_tools:
+            return [
+                DiagnosticResult(
+                    name="Tools",
+                    status="FAIL",
+                    message="controlled tool system is incomplete",
+                    details={
+                        "missing_attributes": missing_attributes,
+                        "missing_tools": missing_tools,
+                    },
+                )
+            ]
+
+        return [
+            DiagnosticResult(
+                name="Tools",
+                status="PASS",
+                message="connected",
+                details={
+                    "registered": len(registry.all()),
+                    "workspace_root": str(
+                        getattr(manager, "workspace_root", "")
+                    ),
+                },
+            )
+        ]
 
     # ============================================================
     # AGENCY
