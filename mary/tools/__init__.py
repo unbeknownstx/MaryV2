@@ -41,6 +41,9 @@ from .web import (
     WebConfig,
     WebPage,
     SearchResult,
+    TavilySearchProvider,
+    BraveSearchProvider,
+    create_search_provider,
     create_web_client,
     register_web_tools,
 )
@@ -61,6 +64,8 @@ from .code import (
     register_code_tools,
 )
 
+from .manager import ToolManager
+
 
 __all__ = [
     # Registry
@@ -74,6 +79,9 @@ __all__ = [
     "WebConfig",
     "WebPage",
     "SearchResult",
+    "TavilySearchProvider",
+    "BraveSearchProvider",
+    "create_search_provider",
     "create_web_client",
     "register_web_tools",
 

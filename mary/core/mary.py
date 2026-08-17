@@ -73,6 +73,8 @@ from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
 from mary.learning.researcher import Researcher
 
+from mary.tools.manager import ToolManager
+
 from mary.knowledge.manager import KnowledgeManager
 
 from mary.memory.manager import MemoryManager
@@ -166,6 +168,14 @@ class Mary:
         self.llm = self._create_llm_router()
 
         # ============================================================
+        # TOOLS
+        # ============================================================
+
+        self.tools = ToolManager(
+            workspace_root=self.config.paths.root,
+        )
+
+        # ============================================================
         # CONVERSATION
         # ============================================================
 
@@ -224,6 +234,9 @@ class Mary:
         # RESEARCHER
         # ============================================================
 
+        # Web execution is intentionally NOT injected directly here.
+        # Mary coordinates approved ToolRegistry results into Researcher so
+        # Researcher cannot bypass the creator-approval boundary.
         self.researcher = Researcher(
             web_tool=None,
         )
@@ -294,12 +307,57 @@ class Mary:
             input_text
         )
 
-        system_response = self._handle_intent(
-            intent
-        )
+        system_response: str | None = None
+        external_knowledge: list[Any] = []
+        external_sources: list[dict[str, Any]] = []
+
+        if intent.intent_type == IntentType.WEB_SEARCH:
+            web_action = self._handle_web_intent(
+                intent,
+                original_input=input_text,
+            )
+            system_response = web_action.get(
+                "system_response"
+            )
+            external_knowledge = list(
+                web_action.get(
+                    "knowledge",
+                    [],
+                )
+            )
+            external_sources = list(
+                web_action.get(
+                    "sources",
+                    [],
+                )
+            )
+
+        elif intent.intent_type == IntentType.TOOL_USE:
+            tool_action = self._handle_tool_control(
+                intent
+            )
+            system_response = tool_action.get(
+                "system_response"
+            )
+            external_knowledge = list(
+                tool_action.get(
+                    "knowledge",
+                    [],
+                )
+            )
+            external_sources = list(
+                tool_action.get(
+                    "sources",
+                    [],
+                )
+            )
+
+        else:
+            system_response = self._handle_intent(
+                intent
+            )
 
         if system_response is not None:
-
             context["memory"] = self.memory.build_context(
                 input_text
             )
@@ -311,14 +369,13 @@ class Mary:
                 "relevant_memories",
                 [],
             ),
+            knowledge=external_knowledge,
             user_context=context["user"],
             personality_context=context["personality"],
         )
 
         if system_response is not None:
-
             result.final_response = system_response
-
             result.metadata.update(
                 {
                     "handled_by": "mary",
@@ -327,6 +384,20 @@ class Mary:
                         if intent is not None
                         else None
                     ),
+                }
+            )
+
+        elif external_sources:
+            result.final_response = (
+                result.final_response.rstrip()
+                + self._format_source_footer(
+                    external_sources
+                )
+            )
+            result.metadata.update(
+                {
+                    "handled_by": "mary_research",
+                    "web_sources": external_sources,
                 }
             )
 
@@ -422,6 +493,361 @@ class Mary:
             )
 
         return None
+
+    # ================================================================
+    # TOOLS / WEB RESEARCH
+    # ================================================================
+
+    def _handle_web_intent(
+        self,
+        intent: Intent,
+        *,
+        original_input: str,
+    ) -> dict[str, Any]:
+        """Handle a purposeful web search or web-page retrieval request."""
+
+        operation = str(
+            intent.parameters.get(
+                "operation",
+                "search",
+            )
+        ).strip().lower()
+
+        explicit = bool(
+            intent.parameters.get(
+                "explicit_creator_request",
+                False,
+            )
+        )
+
+        if operation == "fetch":
+            tool_name = "web_fetch"
+            url = str(
+                intent.parameters.get(
+                    "url",
+                    "",
+                )
+            ).strip()
+            arguments = {
+                "url": url,
+            }
+            query = str(
+                intent.parameters.get(
+                    "query",
+                    url,
+                )
+            ).strip()
+        else:
+            tool_name = "web_search"
+            query = str(
+                intent.parameters.get(
+                    "query",
+                    original_input,
+                )
+            ).strip()
+            arguments = {
+                "query": query,
+                "limit": 5,
+            }
+
+        reason = (
+            "Creator requested external information for: "
+            f"{original_input}"
+        )
+
+        if not explicit:
+            request = self.tools.request(
+                tool_name,
+                arguments,
+                reason=reason,
+            )
+
+            if request.status != "pending":
+                return {
+                    "system_response": (
+                        "I couldn't create the required tool request."
+                    )
+                }
+
+            return {
+                "system_response": (
+                    "Current external information would help answer that. "
+                    f"I created {request.request_id} for {tool_name}. "
+                    "To authorize exactly that request, say: "
+                    f"approve {request.request_id}"
+                )
+            }
+
+        request, tool_result = (
+            self.tools.execute_explicit_creator_request(
+                tool_name,
+                arguments,
+                reason=reason,
+            )
+        )
+
+        return self._research_from_tool_result(
+            tool_result,
+            query=query,
+            tool_name=tool_name,
+            request_id=request.request_id,
+        )
+
+    def _handle_tool_control(
+        self,
+        intent: Intent,
+    ) -> dict[str, Any]:
+        """Handle creator approval/rejection of a pending tool request."""
+
+        action = str(
+            intent.parameters.get(
+                "action",
+                "",
+            )
+        ).strip().lower()
+
+        request_id = str(
+            intent.parameters.get(
+                "request_id",
+                "",
+            )
+        ).strip()
+
+        request = self.tools.registry.get_request(
+            request_id
+        )
+
+        if request is None:
+            return {
+                "system_response": (
+                    f"I don't have a pending tool request named {request_id}."
+                )
+            }
+
+        if action == "reject":
+            rejected = self.tools.reject(
+                request_id
+            )
+            return {
+                "system_response": (
+                    f"Rejected {request_id}."
+                    if rejected
+                    else f"{request_id} could not be rejected."
+                )
+            }
+
+        if action != "approve":
+            return {
+                "system_response": (
+                    "I don't recognize that tool-control action."
+                )
+            }
+
+        token = self.tools.approve(
+            request_id,
+            reason="Explicit creator approval in conversation.",
+        )
+
+        if token is None:
+            return {
+                "system_response": (
+                    f"{request_id} could not be approved."
+                )
+            }
+
+        tool_result = self.tools.execute_approved(
+            request_id
+        )
+
+        if request.tool_name in {
+            "web_search",
+            "web_fetch",
+        }:
+            query = str(
+                request.arguments.get(
+                    "query",
+                    request.arguments.get(
+                        "url",
+                        "",
+                    ),
+                )
+            ).strip()
+
+            return self._research_from_tool_result(
+                tool_result,
+                query=query,
+                tool_name=request.tool_name,
+                request_id=request_id,
+            )
+
+        if not tool_result.success:
+            return {
+                "system_response": (
+                    f"{request.tool_name} failed: "
+                    f"{tool_result.error or 'unknown error'}"
+                )
+            }
+
+        return {
+            "system_response": (
+                f"{request.tool_name} completed: "
+                f"{tool_result.result}"
+            )
+        }
+
+    def _research_from_tool_result(
+        self,
+        tool_result: Any,
+        *,
+        query: str,
+        tool_name: str,
+        request_id: str,
+    ) -> dict[str, Any]:
+        """Route approved web output through Researcher and Evaluator."""
+
+        if not getattr(
+            tool_result,
+            "success",
+            False,
+        ):
+            return {
+                "system_response": (
+                    f"{tool_name} failed: "
+                    f"{getattr(tool_result, 'error', None) or 'unknown error'}"
+                )
+            }
+
+        raw_result = getattr(
+            tool_result,
+            "result",
+            None,
+        )
+
+        if raw_result is None:
+            raw_sources: Any = []
+        elif isinstance(raw_result, (list, tuple, dict)):
+            raw_sources = raw_result
+        else:
+            to_dict = getattr(
+                raw_result,
+                "to_dict",
+                None,
+            )
+            raw_sources = [
+                to_dict()
+                if callable(to_dict)
+                else raw_result
+            ]
+
+        research_request = self.researcher.create_request(
+            query,
+            purpose=(
+                "Answer the creator's current request using "
+                "approved external information."
+            ),
+            source_limit=5,
+            metadata={
+                "tool_request_id": request_id,
+                "tool_name": tool_name,
+            },
+        )
+
+        research_result = self.researcher.complete_with_sources(
+            research_request,
+            raw_sources,
+        )
+
+        if not research_result.sources:
+            return {
+                "system_response": (
+                    "The web request completed, but it returned no usable sources."
+                )
+            }
+
+        knowledge: list[dict[str, Any]] = []
+        source_cards: list[dict[str, Any]] = []
+
+        for source in research_result.sources[:5]:
+            statement = (
+                source.content.strip()
+                or source.title.strip()
+            )
+
+            evaluation = self.evaluator.evaluate(
+                subject=query,
+                statement=statement,
+                source=source,
+                context=query,
+                metadata={
+                    "url": source.url,
+                    "research_request_id": research_request.id,
+                },
+            )
+
+            knowledge.append(
+                {
+                    "title": source.title,
+                    "url": source.url,
+                    "content": statement[:4000],
+                    "source_type": source.source_type,
+                    "evaluation": {
+                        "recommendation": evaluation.recommendation,
+                        "confidence": evaluation.confidence,
+                        "reliability": evaluation.reliability,
+                    },
+                }
+            )
+
+            source_cards.append(
+                {
+                    "title": source.title,
+                    "url": source.url,
+                    "confidence": evaluation.confidence,
+                    "recommendation": evaluation.recommendation,
+                }
+            )
+
+        return {
+            "knowledge": knowledge,
+            "sources": source_cards,
+        }
+
+    @staticmethod
+    def _format_source_footer(
+        sources: list[dict[str, Any]],
+    ) -> str:
+        """Append compact source attribution to a researched response."""
+
+        unique: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        for source in sources:
+            url = str(
+                source.get("url", "")
+            ).strip()
+            title = str(
+                source.get("title", "Source")
+            ).strip() or "Source"
+
+            key = url or title
+            if not key or key in seen:
+                continue
+
+            seen.add(key)
+            unique.append((title, url))
+
+        if not unique:
+            return ""
+
+        lines = ["", "", "Sources:"]
+        for title, url in unique[:5]:
+            lines.append(
+                f"- {title}: {url}"
+                if url
+                else f"- {title}"
+            )
+
+        return "\n".join(lines)
 
     # ================================================================
     # MEMORY STORE
@@ -909,6 +1335,7 @@ class Mary:
             "user": self._user_context(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),
+            "tools": self.tools.status(),
             "cognition": {
                 "reasoning": True,
                 "reflection": True,

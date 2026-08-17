@@ -286,31 +286,52 @@ class Researcher:
 
         request.status = "researching"
 
-        sources: list[
-            ResearchSource
-        ] = []
+        raw_results: Any = []
 
         if self.web_tool is not None:
-            sources = self._query_web_tool(
+            raw_results = self._query_web_tool(
                 request
             )
+
+        return self.complete_with_sources(
+            request,
+            raw_results,
+        )
+
+    def complete_with_sources(
+        self,
+        request: ResearchRequest,
+        raw_results: Any,
+        *,
+        status: str = "completed",
+    ) -> ResearchResult:
+        """
+        Complete a research request from externally obtained sources.
+
+        This is the preferred bridge when another subsystem (for example
+        ToolRegistry) owns permission and execution. Researcher normalizes
+        and records sources but does not bypass that external boundary.
+        """
+
+        request.status = "researching"
+
+        sources = self._normalize_sources(
+            raw_results
+        )
 
         result = ResearchResult(
             request_id=request.id,
             query=request.query,
             sources=sources,
-            status="completed",
+            status=status,
         )
 
         self.results.append(
             result
         )
 
-        request.status = "completed"
-
-        request.completed_at = (
-            _timestamp()
-        )
+        request.status = status
+        request.completed_at = _timestamp()
 
         return result
 
@@ -417,6 +438,28 @@ class Researcher:
                     item
                 )
                 continue
+
+            to_dict = getattr(
+                item,
+                "to_dict",
+                None,
+            )
+
+            if callable(to_dict):
+                converted = to_dict()
+                if isinstance(converted, dict):
+                    item = converted
+
+            elif (
+                not isinstance(item, (str, dict))
+                and hasattr(item, "title")
+            ):
+                item = {
+                    "title": getattr(item, "title", ""),
+                    "url": getattr(item, "url", ""),
+                    "snippet": getattr(item, "snippet", ""),
+                    "metadata": getattr(item, "metadata", {}),
+                }
 
             if isinstance(
                 item,

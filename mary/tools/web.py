@@ -43,9 +43,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.robotparser import RobotFileParser
 import html
+import json
+import os
 import re
 import time
 import urllib.error
@@ -85,6 +87,11 @@ class WebConfig:
     )
 
     max_results: int = 10
+
+    # Search backend used when WebClient is not given an explicit
+    # provider instance. The environment variable MARY_SEARCH_PROVIDER
+    # can override this value.
+    search_provider: str = "tavily"
 
     respect_robots_txt: bool = True
 
@@ -186,6 +193,461 @@ class SearchResult:
         }
 
 
+
+# ================================================================
+# SEARCH PROVIDERS
+# ================================================================
+
+
+class TavilySearchProvider:
+    """
+    Tavily Search API provider.
+
+    Tavily is Mary's default V2 search backend because it offers a free
+    developer tier and returns structured web results suitable for the
+    existing Researcher/Evaluator pipeline.
+
+    The provider performs retrieval only. Permission is still enforced by
+    ToolRegistry because WebClient.search is registered as an external,
+    approval-required capability.
+
+    The API key is read from TAVILY_API_KEY unless supplied explicitly.
+    It is never persisted by this class.
+    """
+
+    ENDPOINT = "https://api.tavily.com/search"
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        search_depth: str = "basic",
+        topic: str = "general",
+        timeout: float = 10.0,
+    ) -> None:
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else os.getenv("TAVILY_API_KEY")
+        )
+        self.search_depth = str(search_depth or "basic")
+        self.topic = str(topic or "general")
+        self.timeout = float(timeout)
+
+    @property
+    def configured(self) -> bool:
+        return bool(
+            self.api_key
+            and str(self.api_key).strip()
+        )
+
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        user_agent: str = "MaryV2/0.1",
+    ) -> list[SearchResult]:
+        """Search the public web through Tavily."""
+
+        if not self.configured:
+            raise RuntimeError(
+                "Tavily Search is not configured. "
+                "Set TAVILY_API_KEY in Mary's environment."
+            )
+
+        query = str(query).strip()
+        if not query:
+            raise ValueError("Search query cannot be empty.")
+
+        count = max(1, min(int(limit), 20))
+
+        payload = {
+            "query": query,
+            "search_depth": self.search_depth,
+            "topic": self.topic,
+            "max_results": count,
+            "include_answer": False,
+            "include_raw_content": False,
+        }
+
+        request = urllib.request.Request(
+            self.ENDPOINT,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "User-Agent": user_agent,
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=self.timeout,
+            ) as response:
+                response_payload = json.loads(
+                    response.read().decode("utf-8")
+                )
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode(
+                    "utf-8",
+                    errors="replace",
+                )
+            except Exception:
+                detail = ""
+            raise RuntimeError(
+                f"Tavily Search HTTP {exc.code}: "
+                f"{detail[:500] or exc.reason}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Tavily Search network error: {exc.reason}"
+            ) from exc
+
+        return self._parse_results(
+            response_payload,
+            limit=count,
+        )
+
+    def _parse_results(
+        self,
+        payload: dict[str, Any],
+        *,
+        limit: int,
+    ) -> list[SearchResult]:
+        results: list[SearchResult] = []
+
+        raw_results = payload.get("results", [])
+
+        for rank, item in enumerate(
+            raw_results,
+            start=1,
+        ):
+            if not isinstance(item, dict):
+                continue
+
+            title = _clean_search_text(
+                item.get("title", "")
+            )
+            url = str(
+                item.get("url", "")
+            ).strip()
+            snippet = _clean_search_text(
+                item.get("content", "")
+            )
+
+            if not title and not url:
+                continue
+
+            results.append(
+                SearchResult(
+                    title=title or url,
+                    url=url,
+                    snippet=snippet,
+                    source="tavily",
+                    metadata={
+                        "provider": "tavily",
+                        "rank": rank,
+                        "score": item.get("score"),
+                        "result_type": "web",
+                    },
+                )
+            )
+
+            if len(results) >= limit:
+                break
+
+        return results
+
+
+class BraveSearchProvider:
+    """
+    Brave Search API provider.
+
+    The provider performs retrieval only. Permission is still enforced by
+    ToolRegistry because WebClient.search is registered as an external,
+    approval-required capability.
+
+    The API key is read from BRAVE_API_KEY unless supplied explicitly.
+    It is never persisted by this class.
+    """
+
+    ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        country: str = "US",
+        search_lang: str = "en",
+        safesearch: str = "moderate",
+        timeout: float = 10.0,
+    ) -> None:
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else os.getenv("BRAVE_API_KEY")
+        )
+        self.country = str(country or "US")
+        self.search_lang = str(search_lang or "en")
+        self.safesearch = str(safesearch or "moderate")
+        self.timeout = float(timeout)
+
+    @property
+    def configured(self) -> bool:
+        return bool(
+            self.api_key
+            and str(self.api_key).strip()
+        )
+
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        user_agent: str = "MaryV2/0.1",
+    ) -> list[SearchResult]:
+        """Search Brave's public web index."""
+
+        if not self.configured:
+            raise RuntimeError(
+                "Brave Search is not configured. "
+                "Set BRAVE_API_KEY in Mary's environment."
+            )
+
+        query = str(query).strip()
+        if not query:
+            raise ValueError("Search query cannot be empty.")
+
+        count = max(1, min(int(limit), 20))
+
+        params = urlencode(
+            {
+                "q": query,
+                "count": count,
+                "country": self.country,
+                "search_lang": self.search_lang,
+                "safesearch": self.safesearch,
+            }
+        )
+
+        request = urllib.request.Request(
+            f"{self.ENDPOINT}?{params}",
+            headers={
+                "Accept": "application/json",
+                "X-Subscription-Token": str(self.api_key),
+                "User-Agent": user_agent,
+            },
+            method="GET",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=self.timeout,
+            ) as response:
+                payload = json.loads(
+                    response.read().decode("utf-8")
+                )
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode(
+                    "utf-8",
+                    errors="replace",
+                )
+            except Exception:
+                detail = ""
+            raise RuntimeError(
+                f"Brave Search HTTP {exc.code}: "
+                f"{detail[:500] or exc.reason}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Brave Search network error: {exc.reason}"
+            ) from exc
+
+        return self._parse_results(
+            payload,
+            limit=count,
+        )
+
+    def _parse_results(
+        self,
+        payload: dict[str, Any],
+        *,
+        limit: int,
+    ) -> list[SearchResult]:
+        results: list[SearchResult] = []
+
+        web_results = (
+            payload.get("web", {})
+            .get("results", [])
+        )
+
+        for rank, item in enumerate(
+            web_results,
+            start=1,
+        ):
+            if not isinstance(item, dict):
+                continue
+
+            title = _clean_search_text(
+                item.get("title", "")
+            )
+            url = str(
+                item.get("url", "")
+            ).strip()
+            snippet = _clean_search_text(
+                item.get("description", "")
+            )
+
+            if not title and not url:
+                continue
+
+            results.append(
+                SearchResult(
+                    title=title or url,
+                    url=url,
+                    snippet=snippet,
+                    source="brave",
+                    metadata={
+                        "provider": "brave",
+                        "rank": rank,
+                        "result_type": "web",
+                    },
+                )
+            )
+
+            if len(results) >= limit:
+                return results
+
+        # Location-sensitive queries may return dedicated place results.
+        location_results = (
+            payload.get("locations", {})
+            .get("results", [])
+        )
+
+        for item in location_results:
+            if len(results) >= limit:
+                break
+
+            if not isinstance(item, dict):
+                continue
+
+            title = _clean_search_text(
+                item.get("title", "")
+            )
+            url = str(
+                item.get("url", "")
+            ).strip()
+
+            address = item.get("address")
+            if isinstance(address, dict):
+                address_text = ", ".join(
+                    str(value).strip()
+                    for value in address.values()
+                    if str(value).strip()
+                )
+            else:
+                address_text = _clean_search_text(
+                    address or ""
+                )
+
+            description = _clean_search_text(
+                item.get("description", "")
+            )
+
+            snippet = "; ".join(
+                part
+                for part in (
+                    description,
+                    address_text,
+                )
+                if part
+            )
+
+            if not title:
+                continue
+
+            results.append(
+                SearchResult(
+                    title=title,
+                    url=url,
+                    snippet=snippet,
+                    source="brave",
+                    metadata={
+                        "provider": "brave",
+                        "result_type": "location",
+                        "location_id": item.get("id"),
+                    },
+                )
+            )
+
+        return results
+
+
+def _clean_search_text(value: Any) -> str:
+    """Normalize HTML-ish search result text."""
+
+    text = html.unescape(
+        str(value or "")
+    )
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        text,
+    )
+    text = re.sub(
+        r"\s+",
+        " ",
+        text,
+    )
+    return text.strip()
+
+
+def create_search_provider(
+    name: str | None = None,
+    *,
+    timeout: float = 10.0,
+) -> Any:
+    """
+    Create Mary's configured web-search provider.
+
+    MARY_SEARCH_PROVIDER can override the configured provider name.
+    Tavily is the default. Brave remains available as an optional backend
+    so the rest of Mary's research architecture is provider-independent.
+    """
+
+    provider_name = (
+        os.getenv("MARY_SEARCH_PROVIDER")
+        or name
+        or "tavily"
+    )
+
+    provider_name = str(provider_name).strip().lower()
+
+    if provider_name == "tavily":
+        return TavilySearchProvider(
+            timeout=timeout,
+        )
+
+    if provider_name == "brave":
+        return BraveSearchProvider(
+            timeout=timeout,
+        )
+
+    raise ValueError(
+        "Unknown web search provider: "
+        f"{provider_name}. Supported providers: tavily, brave."
+    )
+
+
 # ================================================================
 # WEB CLIENT
 # ================================================================
@@ -204,11 +666,21 @@ class WebClient:
     def __init__(
         self,
         config: WebConfig | None = None,
+        search_provider: Any | None = None,
     ) -> None:
         self.config = (
             config
             if config is not None
             else WebConfig()
+        )
+
+        self.search_provider = (
+            search_provider
+            if search_provider is not None
+            else create_search_provider(
+                self.config.search_provider,
+                timeout=self.config.timeout,
+            )
         )
 
     # ============================================================
@@ -338,22 +810,11 @@ class WebClient:
         limit: int | None = None,
     ) -> list[SearchResult]:
         """
-        Search the web.
+        Search the public web through the configured provider.
 
-        IMPORTANT:
-
-        This method intentionally does not silently select or
-        install a search provider.
-
-        A concrete search provider can be added later.
-
-        For now, the method raises NotImplementedError so Mary
-        cannot accidentally gain internet-search behavior through
-        an undeclared dependency.
-
-        Once a provider is selected, it should be implemented
-        behind this interface and still be registered through the
-        permission-gated tool system.
+        Calling this method directly does not grant permission. In Mary's
+        application runtime it is registered with ToolRegistry as an
+        approval-required external capability.
         """
 
         query = str(
@@ -365,10 +826,45 @@ class WebClient:
                 "Search query cannot be empty."
             )
 
-        raise NotImplementedError(
-            "No web search provider has been "
-            "configured for MaryV2 yet."
+        provider = self.search_provider
+
+        if provider is None:
+            raise RuntimeError(
+                "No web search provider is configured."
+            )
+
+        requested_limit = (
+            self.config.max_results
+            if limit is None
+            else int(limit)
         )
+
+        requested_limit = max(
+            1,
+            min(
+                requested_limit,
+                self.config.max_results,
+                20,
+            ),
+        )
+
+        if hasattr(provider, "search"):
+            results = provider.search(
+                query,
+                limit=requested_limit,
+                user_agent=self.config.user_agent,
+            )
+        elif callable(provider):
+            results = provider(
+                query,
+                limit=requested_limit,
+            )
+        else:
+            raise TypeError(
+                "Configured search provider is not callable."
+            )
+
+        return list(results or [])[:requested_limit]
 
     # ============================================================
     # TOOL REGISTRATION
@@ -775,6 +1271,7 @@ class WebClient:
 
 def create_web_client(
     config: WebConfig | None = None,
+    search_provider: Any | None = None,
 ) -> WebClient:
     """
     Create a configured web client.
@@ -787,7 +1284,8 @@ def create_web_client(
     """
 
     return WebClient(
-        config=config
+        config=config,
+        search_provider=search_provider,
     )
 
 

@@ -23,6 +23,7 @@ The orchestrator is responsible for cognition, not subsystem ownership.
 """
 
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 from mary.cognition.context import CognitiveContext
@@ -298,6 +299,30 @@ class CognitiveOrchestrator:
             )
 
         # --------------------------------------------------------
+        # TOOL APPROVAL / REJECTION
+        # --------------------------------------------------------
+
+        tool_control = self._detect_tool_control(
+            text=text,
+            lowered=lowered,
+        )
+
+        if tool_control is not None:
+            return tool_control
+
+        # --------------------------------------------------------
+        # WEB / EXTERNAL RESEARCH
+        # --------------------------------------------------------
+
+        web_intent = self._detect_web_intent(
+            text=text,
+            lowered=lowered,
+        )
+
+        if web_intent is not None:
+            return web_intent
+
+        # --------------------------------------------------------
         # QUESTION
         # --------------------------------------------------------
 
@@ -365,6 +390,230 @@ class CognitiveOrchestrator:
             ),
             source="basic_detector",
         )
+
+    # ============================================================
+    # TOOL / WEB INTENT DETECTION
+    # ============================================================
+
+    def _detect_tool_control(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Detect explicit creator approval or rejection of a tool request."""
+
+        request_match = re.search(
+            r"\brequest_[0-9a-fA-F]+\b",
+            text,
+        )
+
+        if request_match is None:
+            return None
+
+        request_id = request_match.group(0)
+
+        if lowered.startswith((
+            "approve ",
+            "yes approve ",
+            "approve tool ",
+            "approve request",
+        )):
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description=(
+                    "Creator explicitly approves a pending tool request."
+                ),
+                parameters={
+                    "action": "approve",
+                    "request_id": request_id,
+                },
+                source="basic_detector",
+            )
+
+        if lowered.startswith((
+            "reject ",
+            "deny ",
+            "no reject ",
+            "reject tool ",
+            "reject request",
+        )):
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description=(
+                    "Creator explicitly rejects a pending tool request."
+                ),
+                parameters={
+                    "action": "reject",
+                    "request_id": request_id,
+                },
+                source="basic_detector",
+            )
+
+        return None
+
+    def _detect_web_intent(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """
+        Detect purposeful external-information requests.
+
+        Explicit search/fetch wording is treated as creator authorization for
+        that exact network request. Questions that merely appear time-sensitive
+        may create a pending request, but are not automatically authorized.
+        """
+
+        url_match = re.search(
+            r"https?://[^\s<>\"]+",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        explicit_fetch_markers = (
+            "check this website",
+            "check this page",
+            "open this website",
+            "open this page",
+            "read this website",
+            "read this page",
+            "fetch this url",
+            "check the website",
+            "check the page",
+        )
+
+        if (
+            url_match is not None
+            and (
+                any(marker in lowered for marker in explicit_fetch_markers)
+                or lowered.startswith(("fetch ", "open ", "read ", "check "))
+            )
+        ):
+            url = url_match.group(0).rstrip(
+                ".,);]}'"
+            )
+            return Intent(
+                intent_type=IntentType.WEB_SEARCH,
+                confidence=0.98,
+                description=(
+                    "Creator explicitly requested retrieval of a web page."
+                ),
+                parameters={
+                    "operation": "fetch",
+                    "url": url,
+                    "query": text,
+                    "explicit_creator_request": True,
+                },
+                source="basic_detector",
+            )
+
+        explicit_prefixes = (
+            "search the web for ",
+            "search web for ",
+            "search online for ",
+            "look up ",
+            "look this up ",
+            "look this up: ",
+            "research ",
+            "research this ",
+            "find documentation for ",
+            "find docs for ",
+            "find online ",
+        )
+
+        for prefix in explicit_prefixes:
+            if lowered.startswith(prefix):
+                query = text[len(prefix):].strip()
+                if not query:
+                    query = text
+
+                return Intent(
+                    intent_type=IntentType.WEB_SEARCH,
+                    confidence=0.97,
+                    description=(
+                        "Creator explicitly requested a public web search."
+                    ),
+                    parameters={
+                        "operation": "search",
+                        "query": query,
+                        "explicit_creator_request": True,
+                    },
+                    source="basic_detector",
+                )
+
+        if lowered.startswith("find "):
+            web_find_markers = (
+                " near me",
+                " restaurant",
+                " restaurants",
+                " food",
+                " website",
+                " websites",
+                " documentation",
+                " docs",
+                " online",
+                " current ",
+                " latest ",
+            )
+
+            if any(
+                marker in f" {lowered} "
+                for marker in web_find_markers
+            ):
+                return Intent(
+                    intent_type=IntentType.WEB_SEARCH,
+                    confidence=0.92,
+                    description=(
+                        "Creator explicitly requested information that requires public search."
+                    ),
+                    parameters={
+                        "operation": "search",
+                        "query": text,
+                        "explicit_creator_request": True,
+                    },
+                    source="basic_detector",
+                )
+
+        # Dynamic-information questions can trigger a proposed search, but not
+        # creator approval. Mary must ask before network execution.
+        dynamic_markers = (
+            "latest",
+            "current",
+            "today",
+            "recent",
+            "news",
+            "weather",
+            "price",
+            "prices",
+            "near me",
+            "right now",
+            "this week",
+            "documentation",
+        )
+
+        if (
+            lowered.endswith("?")
+            and any(marker in lowered for marker in dynamic_markers)
+        ):
+            return Intent(
+                intent_type=IntentType.WEB_SEARCH,
+                confidence=0.78,
+                description=(
+                    "Input appears to need current external information."
+                ),
+                parameters={
+                    "operation": "search",
+                    "query": text,
+                    "explicit_creator_request": False,
+                },
+                source="basic_detector",
+            )
+
+        return None
 
     # ============================================================
     # MEMORY INTENT DETECTION
