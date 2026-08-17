@@ -1,3 +1,19 @@
 {
-    "directives": []
+    "directives": [
+        {
+            "id": "directive_1",
+            "instruction": "you should be curious about me top priority",
+            "category": "relationship_curiosity",
+            "target": "unbe",
+            "priority": 1.0,
+            "source": "creator_explicit",
+            "status": "active",
+            "metadata": {
+                "creator_name": "unbe",
+                "top_priority": true
+            },
+            "created_at": "2026-08-17T08:45:49.313443+00:00",
+            "updated_at": "2026-08-17T08:45:49.313443+00:00"
+        }
+    ]
 }
