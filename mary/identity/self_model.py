@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 
 from mary.personality.personality import Personality
 from mary.personality.character import Character
+from mary.personality.values import Values
 
 
 class SelfModel:
@@ -39,6 +40,7 @@ class SelfModel:
         name: str = "Mary",
         personality: Optional[Personality] = None,
         character: Optional[Character] = None,
+        values: Optional[Values] = None,
     ) -> None:
 
         self.name = (
@@ -58,6 +60,12 @@ class SelfModel:
             character
             if character is not None
             else Character()
+        )
+
+        self.values = (
+            values
+            if values is not None
+            else Values()
         )
 
     # ============================================================
@@ -86,6 +94,7 @@ class SelfModel:
         return {
             "identity": self.identity(),
             "personality": self.personality.behavioral_profile(),
+            "values": self.values.get_values(),
             "character": self.character.profile(),
         }
 
@@ -119,3 +128,4 @@ class SelfModel:
         )
 
         self.character = Character()
+        self.values = Values()

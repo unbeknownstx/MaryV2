@@ -129,6 +129,18 @@ class ReflectionEngine:
                 },
             )
 
+        if reasoning.metadata.get("self_grounded") is True:
+            return ReflectionResult(
+                decision=ReflectionDecision.ACCEPT,
+                confidence=0.95,
+                assessment=(
+                    "Self-introspection response was grounded in Mary's connected local state."
+                ),
+                metadata={
+                    "mode": "self_introspection_grounding_reuse",
+                },
+            )
+
         if reasoning.metadata.get("local_tool_grounded") is True:
             return ReflectionResult(
                 decision=ReflectionDecision.ACCEPT,

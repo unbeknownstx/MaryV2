@@ -67,6 +67,7 @@ from mary.identity.self_model import SelfModel
 from mary.personality.personality import Personality
 from mary.personality.development import PersonalityDevelopment
 from mary.personality.character import Character
+from mary.personality.values import Values
 
 from mary.relationship.user import UserModel
 
@@ -96,6 +97,7 @@ from mary.cognition.reflection import (
 )
 from mary.cognition.context import CognitiveContext
 from mary.cognition.code_change import CodeChangePlanner
+from mary.cognition.self_introspection import SelfIntrospection
 from mary.cognition.intent import Intent, IntentType
 
 
@@ -151,6 +153,12 @@ class Mary:
         self.character = Character()
 
         # ============================================================
+        # VALUES
+        # ============================================================
+
+        self.values = Values()
+
+        # ============================================================
         # SELF MODEL
         # ============================================================
 
@@ -158,6 +166,7 @@ class Mary:
             name="Mary",
             personality=self.personality,
             character=self.character,
+            values=self.values,
         )
 
         # ============================================================
@@ -310,6 +319,23 @@ class Mary:
 
         self.autonomy = AutonomyRuntime()
 
+        # ============================================================
+        # SELF INTROSPECTION
+        # ============================================================
+
+        self.self_introspection = SelfIntrospection(
+            identity=self.identity,
+            self_model=self.self_model,
+            biography=self.biography,
+            personality=self.personality,
+            values=self.values,
+            character=self.character,
+            user_model=self.user_model,
+            agency=self.agency,
+            autonomy=self.autonomy,
+            tools=self.tools,
+        )
+
     # ================================================================
     # PRIMARY ENTRY POINT
     # ================================================================
@@ -339,7 +365,18 @@ class Mary:
         external_sources: list[dict[str, Any]] = []
         skip_cognition = False
 
-        if intent.intent_type == IntentType.WEB_SEARCH:
+        if intent.intent_type == IntentType.SELF_QUERY:
+            self_action = self._handle_self_query(
+                intent
+            )
+            external_knowledge = list(
+                self_action.get(
+                    "knowledge",
+                    [],
+                )
+            )
+
+        elif intent.intent_type == IntentType.WEB_SEARCH:
             web_action = self._handle_web_intent(
                 intent,
                 original_input=input_text,
@@ -590,6 +627,31 @@ class Mary:
             )
 
         return None
+
+    # ================================================================
+    # SELF INTROSPECTION
+    # ================================================================
+
+    def _handle_self_query(
+        self,
+        intent: Intent,
+    ) -> dict[str, Any]:
+        """Provide grounded local evidence for questions about Mary herself."""
+
+        subtype = str(
+            intent.parameters.get(
+                "self_query_type",
+                "identity",
+            )
+        ).strip().lower()
+
+        evidence = self.self_introspection.build(
+            subtype
+        )
+
+        return {
+            "knowledge": [evidence],
+        }
 
     # ================================================================
     # TOOLS / WEB RESEARCH

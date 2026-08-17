@@ -311,6 +311,18 @@ class CognitiveOrchestrator:
             return tool_control
 
         # --------------------------------------------------------
+        # SELF INTROSPECTION
+        # --------------------------------------------------------
+
+        self_query = self._detect_self_query(
+            text=text,
+            lowered=lowered,
+        )
+
+        if self_query is not None:
+            return self_query
+
+        # --------------------------------------------------------
         # WEB / EXTERNAL RESEARCH
         # --------------------------------------------------------
 
@@ -523,6 +535,91 @@ class CognitiveOrchestrator:
                 },
                 source="basic_detector",
             )
+
+        return None
+
+    def _detect_self_query(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Detect questions about Mary's own local state before web routing."""
+
+        normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
+
+        patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
+            ("creator", (
+                "who is unbe to you",
+                "who is your creator",
+                "who created you",
+            )),
+            ("self_understanding", (
+                "what parts of yourself do you currently understand",
+                "what parts of yourself do you understand",
+                "what do you understand about yourself",
+            )),
+            ("values", (
+                "what are your values",
+                "what do you value",
+                "what matters to you",
+            )),
+            ("relationship", (
+                "what do you think your relationship with unbe should be",
+                "what should your relationship with unbe be",
+                "what is your relationship with unbe",
+            )),
+            ("personality", (
+                "do you have your own personality, or are you just copying mine",
+                "do you have your own personality or are you just copying mine",
+                "do you have your own personality",
+                "what is your personality",
+                "what's your personality",
+            )),
+            ("curiosity", (
+                "what are you curious about right now",
+                "what are you curious about",
+                "what are your current curiosities",
+            )),
+            ("disagreement", (
+                "if unbe tells you something you believe is a bad idea, would you disagree with him",
+                "would you disagree with unbe",
+                "can you disagree with unbe",
+            )),
+            ("purpose", (
+                "what do you think you should become",
+                "what should you become",
+                "what is your purpose",
+                "what's your purpose",
+            )),
+            ("capabilities", (
+                "what are you currently unable to do",
+                "what are you unable to do",
+                "what can you do",
+                "what are your capabilities",
+            )),
+            ("identity", (
+                "who are you",
+                "who are you, and what makes you different from a generic ai assistant",
+                "what makes you different from a generic ai assistant",
+                "tell me about yourself",
+            )),
+        )
+
+        for subtype, phrases in patterns:
+            if normalized in phrases:
+                return Intent(
+                    intent_type=IntentType.SELF_QUERY,
+                    confidence=0.98,
+                    description=(
+                        "Input asks about Mary's own connected identity or runtime state."
+                    ),
+                    parameters={
+                        "self_query_type": subtype,
+                        "query": text,
+                    },
+                    source="basic_detector",
+                )
 
         return None
 

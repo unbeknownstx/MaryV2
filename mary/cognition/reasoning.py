@@ -120,6 +120,9 @@ class ReasoningEngine:
         local_tool_grounded = self._has_local_tool_evidence(
             context
         )
+        self_grounded = self._has_self_evidence(
+            context
+        )
 
         prompt = self._build_prompt(
             context=context,
@@ -152,18 +155,23 @@ class ReasoningEngine:
             )
         except LLMProviderError as exc:
             rate_limited = isinstance(exc, LLMRateLimitError)
+            self_fallback = self._self_fallback(context)
             final_response = (
-                "My language-model provider is temporarily rate-limited, so "
-                "I can't generate a full conversational response right now. "
-                "My deterministic memory and approved-tool functions still "
-                "work; if you want something stored, you can say `remember "
-                "this: ...`."
-                if rate_limited
-                else
-                "My language-model provider is unavailable right now, so I "
-                "can't generate a full conversational response. My "
-                "deterministic memory and approved-tool functions are still "
-                "available."
+                self_fallback
+                if self_fallback is not None
+                else (
+                    "My language-model provider is temporarily rate-limited, so "
+                    "I can't generate a full conversational response right now. "
+                    "My deterministic memory and approved-tool functions still "
+                    "work; if you want something stored, you can say `remember "
+                    "this: ...`."
+                    if rate_limited
+                    else
+                    "My language-model provider is unavailable right now, so I "
+                    "can't generate a full conversational response. My "
+                    "deterministic memory and approved-tool functions are still "
+                    "available."
+                )
             )
             metadata = {
                 "provider": getattr(exc, "provider", "unknown"),
@@ -171,6 +179,7 @@ class ReasoningEngine:
                 "finish_reason": None,
                 "usage": {},
                 "local_tool_grounded": local_tool_grounded,
+                "self_grounded": self_grounded,
                 "llm_unavailable": True,
                 "llm_rate_limited": rate_limited,
                 "llm_error": str(exc),
@@ -183,6 +192,7 @@ class ReasoningEngine:
                 "finish_reason": response.finish_reason,
                 "usage": response.usage,
                 "local_tool_grounded": local_tool_grounded,
+                "self_grounded": self_grounded,
                 "llm_unavailable": False,
             }
 
@@ -219,6 +229,32 @@ class ReasoningEngine:
             and item.get("local_tool") is True
             for item in context.relevant_knowledge
         )
+
+    @staticmethod
+    def _has_self_evidence(
+        context: CognitiveContext,
+    ) -> bool:
+        return any(
+            isinstance(item, dict)
+            and item.get("self_introspection") is True
+            for item in context.relevant_knowledge
+        )
+
+    @staticmethod
+    def _self_fallback(
+        context: CognitiveContext,
+    ) -> str | None:
+        for item in context.relevant_knowledge:
+            if not isinstance(item, dict):
+                continue
+            if item.get("self_introspection") is not True:
+                continue
+            fallback = str(
+                item.get("fallback_response", "")
+            ).strip()
+            if fallback:
+                return fallback
+        return None
 
     def _build_prompt(
         self,
@@ -258,6 +294,23 @@ class ReasoningEngine:
             )
 
         if context.relevant_knowledge:
+            if any(
+                isinstance(item, dict)
+                and item.get("self_introspection") is True
+                for item in context.relevant_knowledge
+            ):
+                sections.append(
+                    "Self-introspection grounding rules:\n"
+                    "The local self-introspection evidence below is the source of truth "
+                    "for claims Mary makes about her own identity, creator, personality, "
+                    "values, relationship model, current curiosities, purpose, capabilities, "
+                    "and limits. Answer as Mary, not as a generic AI assistant. Do not search "
+                    "the web for facts about Mary herself. Do not invent consciousness, lived "
+                    "experiences, emotions, relationships, capabilities, goals, or curiosities "
+                    "that are not represented in the supplied local state. Distinguish stable "
+                    "identity from current mutable state when useful."
+                )
+
             if any(
                 isinstance(item, dict)
                 and item.get("local_tool") is True
