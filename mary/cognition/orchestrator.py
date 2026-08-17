@@ -1009,6 +1009,43 @@ class CognitiveOrchestrator:
         automatically when the user clearly asks her to remember it.
         """
 
+        # Natural explicit-memory forms can include a conversational lead-in,
+        # e.g. "want to know something about me, remember this: ...".
+        # Only the payload after an explicit remember-this/following marker is
+        # stored; ordinary mentions of memory are not treated as authorization.
+        explicit_payload_patterns = (
+            r"\bremember\s+this\s*:\s*(.+)$",
+            r"\bremember\s+the\s+following\s*:\s*(.+)$",
+            r"\bi\s+want\s+you\s+to\s+remember\s+this\s*:\s*(.+)$",
+            r"\bplease\s+remember\s+this\s*:\s*(.+)$",
+        )
+
+        for pattern in explicit_payload_patterns:
+            match = re.search(
+                pattern,
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if match is None:
+                continue
+
+            content = match.group(1).strip()
+            if not content:
+                continue
+
+            return Intent(
+                intent_type=IntentType.MEMORY_STORE,
+                confidence=0.99,
+                description=(
+                    "Input explicitly requests that the following payload "
+                    "be remembered."
+                ),
+                parameters={
+                    "content": content
+                },
+                source="basic_detector",
+            )
+
         # More specific phrases must appear before generic phrases.
 
         prefixes = (

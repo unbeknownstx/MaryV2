@@ -15,6 +15,8 @@ from .interface import (
     LLMInterface,
     LLMMessage,
     LLMResponse,
+    LLMProviderError,
+    LLMRateLimitError,
 )
 
 
@@ -146,19 +148,46 @@ class LLMRouter:
             provider
         )
 
-        return selected_provider.generate(
-            messages=messages,
-            temperature=(
-                temperature
-                if temperature is not None
-                else self.config.llm.temperature
-            ),
-            max_tokens=(
-                max_tokens
-                if max_tokens is not None
-                else self.config.llm.max_tokens
-            ),
-        )
+        provider_name = self.provider_name(provider)
+
+        try:
+            return selected_provider.generate(
+                messages=messages,
+                temperature=(
+                    temperature
+                    if temperature is not None
+                    else self.config.llm.temperature
+                ),
+                max_tokens=(
+                    max_tokens
+                    if max_tokens is not None
+                    else self.config.llm.max_tokens
+                ),
+            )
+        except LLMProviderError:
+            raise
+        except Exception as exc:
+            message = str(exc)
+            lowered = message.lower()
+            status_code = getattr(exc, "status_code", None)
+
+            if (
+                status_code == 429
+                or "rate limit" in lowered
+                or "rate_limit_exceeded" in lowered
+                or "tokens per day" in lowered
+                or " tpd" in lowered
+            ):
+                raise LLMRateLimitError(
+                    message,
+                    provider=provider_name,
+                ) from exc
+
+            raise LLMProviderError(
+                message,
+                provider=provider_name,
+                retryable=False,
+            ) from exc
 
     # ============================================================
     # STATUS

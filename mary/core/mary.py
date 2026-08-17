@@ -421,6 +421,8 @@ class Mary:
             and intent.intent_type in {
                 IntentType.WEB_SEARCH,
                 IntentType.TOOL_USE,
+                IntentType.MEMORY_STORE,
+                IntentType.MEMORY_RECALL,
             }
         ):
             skip_cognition = True
