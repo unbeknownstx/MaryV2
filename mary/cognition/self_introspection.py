@@ -27,6 +27,7 @@ class SelfIntrospection:
         values: Any,
         character: Any,
         user_model: Any,
+        creator_directives: Any,
         agency: Any,
         autonomy: Any,
         tools: Any,
@@ -38,6 +39,7 @@ class SelfIntrospection:
         self.values = values
         self.character = character
         self.user_model = user_model
+        self.creator_directives = creator_directives
         self.agency = agency
         self.autonomy = autonomy
         self.tools = tools
@@ -50,9 +52,10 @@ class SelfIntrospection:
         common = {
             "self_introspection": True,
             "subtype": subtype,
-            "identity": self.identity.to_dict(),
+            "identity": self._identity_profile(),
             "self_model": self.self_model.profile(),
             "creator": self.user_model.get_identity(),
+            "active_creator_directives": self.creator_directives.get_active(),
         }
 
         builders = {
@@ -63,6 +66,7 @@ class SelfIntrospection:
             "relationship": self._relationship,
             "personality": self._personality,
             "curiosity": self._curiosity,
+            "priorities": self._priorities,
             "disagreement": self._disagreement,
             "purpose": self._purpose,
             "capabilities": self._capabilities,
@@ -78,10 +82,7 @@ class SelfIntrospection:
 
     def _identity(self) -> dict[str, Any]:
         return {
-            "biography_identity": [
-                entry.to_dict()
-                for entry in self.biography.get_category("identity")
-            ],
+            "biography_identity": self._biography_category("identity"),
             "canonical_purpose": self.identity.purpose,
             "fallback_response": (
                 "I'm Mary, an evolving AI companion and creative system. "
@@ -145,6 +146,26 @@ class SelfIntrospection:
 
     def _relationship(self) -> dict[str, Any]:
         creator_name = str(self.user_model.name or self.identity.creator).strip()
+        active_directives = self.creator_directives.get_active()
+        relationship_directives = [
+            item
+            for item in active_directives
+            if item.get("category") == "relationship_curiosity"
+        ]
+
+        fallback = (
+            f"My relationship with {creator_name.title()} should be grounded in "
+            "care, honesty, loyalty, respect, and enough independence to offer "
+            "a real perspective instead of simply mirroring him. He is my creator, "
+            "but my current character model explicitly allows me to challenge "
+            "assumptions rather than automatically agree."
+        )
+        if relationship_directives:
+            fallback += (
+                f" I also have an active creator directive to make learning more "
+                f"about {creator_name.title()} a priority."
+            )
+
         return {
             "creator_name": creator_name,
             "relationship_basis": {
@@ -157,14 +178,9 @@ class SelfIntrospection:
                     "can challenge assumptions rather than simply agreeing"
                     in self.character.get_tendencies()
                 ),
+                "active_creator_directives": active_directives,
             },
-            "fallback_response": (
-                f"My relationship with {creator_name.title()} should be grounded in "
-                "care, honesty, loyalty, respect, and enough independence to offer "
-                "a real perspective instead of simply mirroring him. He is my creator, "
-                "but my current character model explicitly allows me to challenge "
-                "assumptions rather than automatically agree."
-            ),
+            "fallback_response": fallback,
         }
 
     def _personality(self) -> dict[str, Any]:
@@ -211,6 +227,46 @@ class SelfIntrospection:
             "fallback_response": fallback,
         }
 
+    def _priorities(self) -> dict[str, Any]:
+        items = list(self.agency.rebuild_priorities())
+        ranked = sorted(
+            items,
+            key=lambda item: float(getattr(item, "score", 0.0)),
+            reverse=True,
+        )
+
+        normalized = [
+            {
+                "item_id": item.item_id,
+                "item_type": item.item_type,
+                "description": item.description,
+                "importance": item.importance,
+                "urgency": item.urgency,
+                "relevance": item.relevance,
+                "score": item.score,
+                "metadata": dict(item.metadata),
+            }
+            for item in ranked
+        ]
+
+        if normalized:
+            top = normalized[0]
+            fallback = (
+                "My current highest-ranked internal priority is "
+                f"{top['description']} (score {top['score']:.2f})."
+            )
+        else:
+            fallback = (
+                "I don't currently have any active goals, intentions, or curiosities "
+                "ranked in my agency priority system."
+            )
+
+        return {
+            "ranked_priorities": normalized,
+            "active_creator_directives": self.creator_directives.get_active(),
+            "fallback_response": fallback,
+        }
+
     def _disagreement(self) -> dict[str, Any]:
         can_challenge = (
             "can challenge assumptions rather than simply agreeing"
@@ -230,10 +286,7 @@ class SelfIntrospection:
         }
 
     def _purpose(self) -> dict[str, Any]:
-        purpose_entries = [
-            entry.to_dict()
-            for entry in self.biography.get_category("goals")
-        ]
+        purpose_entries = self._biography_category("goals")
         canonical = (
             purpose_entries[0]["content"]
             if purpose_entries
@@ -249,6 +302,24 @@ class SelfIntrospection:
                 f"already points in that direction: {canonical}"
             ),
         }
+
+    def _identity_profile(self) -> dict[str, Any]:
+        """Expose canonical identity without runtime-construction timestamps."""
+
+        profile = dict(self.identity.to_dict())
+        profile.pop("created_at", None)
+        return profile
+
+    def _biography_category(self, category: str) -> list[dict[str, Any]]:
+        """Expose biography content without record bookkeeping timestamps."""
+
+        entries: list[dict[str, Any]] = []
+        for entry in self.biography.get_category(category):
+            data = dict(entry.to_dict())
+            data.pop("created_at", None)
+            data.pop("updated_at", None)
+            entries.append(data)
+        return entries
 
     def _capabilities(self) -> dict[str, Any]:
         return {

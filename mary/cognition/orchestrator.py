@@ -311,6 +311,18 @@ class CognitiveOrchestrator:
             return tool_control
 
         # --------------------------------------------------------
+        # CREATOR DIRECTIVES
+        # --------------------------------------------------------
+
+        creator_directive = self._detect_creator_directive(
+            text=text,
+            lowered=lowered,
+        )
+
+        if creator_directive is not None:
+            return creator_directive
+
+        # --------------------------------------------------------
         # SELF INTROSPECTION
         # --------------------------------------------------------
 
@@ -538,6 +550,49 @@ class CognitiveOrchestrator:
 
         return None
 
+    def _detect_creator_directive(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Detect explicit creator directions about Mary's internal priorities."""
+
+        normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
+
+        # V2 begins with a deliberately narrow, high-confidence directive:
+        # Unbe explicitly tells Mary that understanding/learning about her
+        # creator should be an active curiosity or top priority.
+        creator_curiosity_patterns = (
+            r"^(?:you should )?be curious about (?:me|unbe)(?: top priority)?$",
+            r"^you should be curious about (?:me|unbe)(?:,? )?(?:as )?(?:a )?top priority$",
+            r"^make (?:learning|understanding|knowing more) about (?:me|unbe) (?:a )?top priority$",
+            r"^(?:learning|understanding|knowing more) about (?:me|unbe) (?:is|should be) (?:a )?top priority$",
+            r"^(?:unbe|your creator) (?:is|should be) your top priority$",
+            r"^prioritize (?:learning|understanding|knowing more) about (?:me|unbe)$",
+        )
+
+        if any(re.fullmatch(pattern, normalized) for pattern in creator_curiosity_patterns):
+            top_priority = "top priority" in normalized or normalized.startswith("prioritize ")
+            return Intent(
+                intent_type=IntentType.CREATOR_DIRECTIVE,
+                confidence=0.99,
+                description=(
+                    "Creator explicitly directed Mary to prioritize learning "
+                    "about her creator as an internal curiosity."
+                ),
+                parameters={
+                    "directive_type": "creator_curiosity",
+                    "target": "unbe",
+                    "instruction": text,
+                    "priority": 1.0 if top_priority else 0.9,
+                    "top_priority": top_priority,
+                },
+                source="basic_detector",
+            )
+
+        return None
+
     def _detect_self_query(
         self,
         *,
@@ -580,6 +635,12 @@ class CognitiveOrchestrator:
                 "what are you curious about right now",
                 "what are you curious about",
                 "what are your current curiosities",
+            )),
+            ("priorities", (
+                "what are your priorities",
+                "what is your top priority",
+                "what's your top priority",
+                "what are you prioritizing right now",
             )),
             ("disagreement", (
                 "if unbe tells you something you believe is a bad idea, would you disagree with him",

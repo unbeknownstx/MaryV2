@@ -70,6 +70,7 @@ from mary.personality.character import Character
 from mary.personality.values import Values
 
 from mary.relationship.user import UserModel
+from mary.relationship.directives import CreatorDirectiveSystem
 
 from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
@@ -180,6 +181,9 @@ class Mary:
         # ============================================================
 
         self.user_model = UserModel()
+
+        self.creator_directives = CreatorDirectiveSystem()
+        self.creator_directives.load()
 
         # ============================================================
         # LLM
@@ -331,6 +335,7 @@ class Mary:
             values=self.values,
             character=self.character,
             user_model=self.user_model,
+            creator_directives=self.creator_directives,
             agency=self.agency,
             autonomy=self.autonomy,
             tools=self.tools,
@@ -365,7 +370,16 @@ class Mary:
         external_sources: list[dict[str, Any]] = []
         skip_cognition = False
 
-        if intent.intent_type == IntentType.SELF_QUERY:
+        if intent.intent_type == IntentType.CREATOR_DIRECTIVE:
+            directive_action = self._handle_creator_directive(
+                intent
+            )
+            system_response = directive_action.get(
+                "system_response"
+            )
+            skip_cognition = True
+
+        elif intent.intent_type == IntentType.SELF_QUERY:
             self_action = self._handle_self_query(
                 intent
             )
@@ -460,6 +474,7 @@ class Mary:
                 IntentType.TOOL_USE,
                 IntentType.MEMORY_STORE,
                 IntentType.MEMORY_RECALL,
+                IntentType.CREATOR_DIRECTIVE,
             }
         ):
             skip_cognition = True
@@ -627,6 +642,108 @@ class Mary:
             )
 
         return None
+
+    # ================================================================
+    # CREATOR DIRECTIVES
+    # ================================================================
+
+    def _handle_creator_directive(
+        self,
+        intent: Intent,
+    ) -> dict[str, Any]:
+        """Apply an explicit creator direction to Mary's internal state."""
+
+        directive_type = str(
+            intent.parameters.get("directive_type", "")
+        ).strip().lower()
+
+        if directive_type != "creator_curiosity":
+            return {
+                "system_response": (
+                    "I recognized that as a creator directive, but this directive "
+                    "type is not connected yet."
+                )
+            }
+
+        creator_name = str(
+            self.user_model.name or self.identity.creator or "Unbe"
+        ).strip() or "Unbe"
+        target = str(
+            intent.parameters.get("target", "unbe")
+        ).strip().lower() or "unbe"
+        instruction = str(
+            intent.parameters.get("instruction", "")
+        ).strip()
+        priority = float(
+            intent.parameters.get("priority", 0.9)
+        )
+        top_priority = bool(
+            intent.parameters.get("top_priority", False)
+        )
+
+        directive = self.creator_directives.add(
+            instruction=instruction,
+            category="relationship_curiosity",
+            target=target,
+            priority=priority,
+            metadata={
+                "creator_name": creator_name,
+                "top_priority": top_priority,
+            },
+        )
+
+        if directive is None:
+            return {
+                "system_response": "I wasn't able to store that creator directive."
+            }
+
+        description = f"Learn more about {creator_name.title()}"
+        existing = None
+        for curiosity in self.agency.curiosities.get_curiosities():
+            if str(curiosity.get("description", "")).strip().lower() != description.lower():
+                continue
+            if curiosity.get("status") not in {"open", "exploring"}:
+                continue
+            existing = curiosity
+            break
+
+        if existing is None:
+            curiosity = self.agency.curiosities.add_curiosity(
+                description=description,
+                importance=1.0 if top_priority else priority,
+                source="creator_directive",
+            )
+        else:
+            curiosity = existing
+            self.agency.curiosities.update_curiosity(
+                str(curiosity.get("id", "")),
+                importance=1.0 if top_priority else priority,
+                source="creator_directive",
+            )
+
+        if curiosity is not None:
+            curiosity["urgency"] = 1.0 if top_priority else 0.5
+            curiosity["relevance"] = 1.0
+            curiosity["directive_id"] = directive.get("id")
+            curiosity["creator_directed"] = True
+            self.agency.curiosities.save()
+
+        self.agency.rebuild_priorities()
+
+        if top_priority:
+            response = (
+                f"Understood. I've made learning more about {creator_name.title()} "
+                "an active creator-directed curiosity and top internal priority."
+            )
+        else:
+            response = (
+                f"Understood. I've made learning more about {creator_name.title()} "
+                "an active creator-directed curiosity."
+            )
+
+        return {
+            "system_response": response,
+        }
 
     # ================================================================
     # SELF INTROSPECTION

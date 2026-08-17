@@ -1,0 +1,124 @@
+"""Verify MaryV2 creator-directive integration without external services."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from mary.core.mary import Mary
+from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
+from mary.runtime.application import create_application
+
+
+class _Fake429(Exception):
+    status_code = 429
+
+
+class _RateLimitedProvider(LLMInterface):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(
+        self,
+        messages: list[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ) -> LLMResponse:
+        self.calls += 1
+        raise _Fake429("simulated 429 rate limit")
+
+    def is_available(self) -> bool:
+        return True
+
+    def provider_name(self) -> str:
+        return "creator-directive-verifier"
+
+    def model_name(self) -> str:
+        return "simulated-rate-limit"
+
+
+def main() -> int:
+    print("MARYV2 CREATOR-DIRECTIVE INSTALL VERIFICATION")
+    print("=" * 72)
+
+    original_cwd = Path.cwd()
+    failures: list[str] = []
+
+    with TemporaryDirectory() as temp_dir:
+        try:
+            os.chdir(temp_dir)
+            mary = Mary()
+            provider = _RateLimitedProvider()
+            mary.llm.register_provider("fake", provider)
+            mary.config.llm.provider = "fake"
+            app = create_application(
+                mary=mary,
+                memory_path=Path(temp_dir) / "memory.json",
+            )
+
+            directive = app.run("you should be curious about me top priority")
+            ok = (
+                directive.success is True
+                and "creator-directed curiosity" in str(directive.output).lower()
+                and provider.calls == 0
+                and len(mary.creator_directives.get_active()) == 1
+                and len(mary.agency.curiosities.get_open_curiosities()) == 1
+            )
+            print(("PASS" if ok else "FAIL") + "  explicit directive uses local state with 0 LLM calls")
+            if not ok:
+                failures.append("directive")
+
+            curiosity = app.run("What are you curious about right now?")
+            ok = (
+                curiosity.success is True
+                and "learn more about unbe" in str(curiosity.output).lower()
+                and not mary.tools.pending_requests()
+            )
+            print(("PASS" if ok else "FAIL") + "  curiosity self-query reflects creator directive")
+            if not ok:
+                failures.append("curiosity")
+
+            priority = app.run("What is your top priority?")
+            ok = (
+                priority.success is True
+                and "learn more about unbe" in str(priority.output).lower()
+                and not mary.tools.pending_requests()
+            )
+            print(("PASS" if ok else "FAIL") + "  priority self-query reflects creator directive")
+            if not ok:
+                failures.append("priority")
+
+            restarted = Mary()
+            ok = (
+                len(restarted.creator_directives.get_active()) == 1
+                and any(
+                    str(item.get("description", "")).lower() == "learn more about unbe"
+                    for item in restarted.agency.curiosities.get_open_curiosities()
+                )
+            )
+            print(("PASS" if ok else "FAIL") + "  directive and curiosity survive restart")
+            if not ok:
+                failures.append("restart")
+
+            memory_intent = mary.cognition.detect_intent(
+                "remember this: unbe is your top priority"
+            )
+            ok = memory_intent.intent_type.value == "memory_store"
+            print(("PASS" if ok else "FAIL") + "  remember-this remains ordinary memory")
+            if not ok:
+                failures.append("memory-separation")
+        finally:
+            os.chdir(original_cwd)
+
+    print("=" * 72)
+    if failures:
+        print("FAILED:", ", ".join(failures))
+        return 1
+
+    print("CREATOR-DIRECTIVE UPDATE INSTALLED CORRECTLY")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

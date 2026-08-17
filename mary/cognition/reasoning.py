@@ -20,6 +20,8 @@ evidence already supplied in cognitive context.
 """
 
 from dataclasses import dataclass, field
+import json
+import re
 from typing import Any
 
 from mary.cognition.context import CognitiveContext
@@ -186,6 +188,20 @@ class ReasoningEngine:
             }
         else:
             final_response = response.content
+            self_grounding_rejected = False
+            self_grounding_issue = None
+
+            if self_grounded:
+                self_grounding_issue = self._self_grounding_issue(
+                    response=final_response,
+                    context=context,
+                )
+                if self_grounding_issue is not None:
+                    fallback = self._self_fallback(context)
+                    if fallback is not None:
+                        final_response = fallback
+                        self_grounding_rejected = True
+
             metadata = {
                 "provider": response.provider,
                 "model": response.model,
@@ -193,6 +209,8 @@ class ReasoningEngine:
                 "usage": response.usage,
                 "local_tool_grounded": local_tool_grounded,
                 "self_grounded": self_grounded,
+                "self_grounding_rejected": self_grounding_rejected,
+                "self_grounding_issue": self_grounding_issue,
                 "llm_unavailable": False,
             }
 
@@ -256,6 +274,68 @@ class ReasoningEngine:
                 return fallback
         return None
 
+    @staticmethod
+    def _self_grounding_issue(
+        *,
+        response: str,
+        context: CognitiveContext,
+    ) -> str | None:
+        """Reject unsupported self-biographical dates from generated prose."""
+
+        response_text = str(response)
+        generated_dates = set(
+            re.findall(r"\b(?:19|20)\d{2}(?:-\d{2}-\d{2})?\b", response_text)
+        )
+        if not generated_dates:
+            return None
+
+        evidence = [
+            item
+            for item in context.relevant_knowledge
+            if isinstance(item, dict)
+            and item.get("self_introspection") is True
+        ]
+        evidence_text = json.dumps(
+            evidence,
+            ensure_ascii=False,
+            default=str,
+        )
+
+        # Runtime record timestamps are not biographical creation dates. A claim
+        # such as "I was created by Unbe on ..." requires an explicit canonical
+        # creation-date fact, not merely a timestamp somewhere in local state.
+        creation_date_claim = re.search(
+            r"\b(?:i\s+was\s+)?created(?:\s+by\s+[^.\n]+?)?\s+on\s+"
+            r"((?:19|20)\d{2}(?:-\d{2}-\d{2})?)",
+            response_text,
+            flags=re.IGNORECASE,
+        )
+        if creation_date_claim is not None:
+            explicit_creation_fact = re.search(
+                r'"creation_date"\s*:',
+                evidence_text,
+                flags=re.IGNORECASE,
+            )
+            if explicit_creation_fact is None:
+                return (
+                    "Generated self-response introduced an unsupported "
+                    "biographical creation date: "
+                    + creation_date_claim.group(1)
+                )
+
+        unsupported = sorted(
+            value
+            for value in generated_dates
+            if value not in evidence_text
+        )
+        if unsupported:
+            return (
+                "Generated self-response introduced unsupported date(s): "
+                + ", ".join(unsupported)
+            )
+
+        return None
+
     def _build_prompt(
         self,
         context: CognitiveContext,
@@ -307,8 +387,12 @@ class ReasoningEngine:
                     "and limits. Answer as Mary, not as a generic AI assistant. Do not search "
                     "the web for facts about Mary herself. Do not invent consciousness, lived "
                     "experiences, emotions, relationships, capabilities, goals, or curiosities "
-                    "that are not represented in the supplied local state. Distinguish stable "
-                    "identity from current mutable state when useful."
+                    "that are not represented in the supplied local state. Do not invent or infer "
+                    "creation dates, birthdays, version dates, private history, creator facts, traits, "
+                    "humor style, preferences, relationship milestones, or capabilities from the current "
+                    "date, the user's wording, or generic assistant behavior. If a detail is absent from "
+                    "the evidence, omit it or say it is not represented. Distinguish stable identity from "
+                    "current mutable state when useful."
                 )
 
             if any(

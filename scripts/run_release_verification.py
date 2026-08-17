@@ -103,8 +103,28 @@ def run_resilience_install_check() -> bool:
     return completed.returncode == 0
 
 
+def run_self_introspection_install_check() -> bool:
+    _heading("5. SELF-INTROSPECTION CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_self_introspection_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def run_creator_directive_install_check() -> bool:
+    _heading("6. CREATOR DIRECTIVE CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_creator_directives_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_local_safety_smoke() -> bool:
-    _heading("5. LOCAL TOOL SAFETY SMOKE")
+    _heading("7. LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -173,7 +193,7 @@ def run_local_safety_smoke() -> bool:
 
 
 def run_live_web() -> bool:
-    _heading("6. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("8. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -236,6 +256,8 @@ def main() -> int:
         ("pytest", run_pytest(offline=args.offline)),
         ("diagnostics", run_diagnostics()),
         ("resilience", run_resilience_install_check()),
+        ("self_introspection", run_self_introspection_install_check()),
+        ("creator_directives", run_creator_directive_install_check()),
         ("local_safety", run_local_safety_smoke()),
     ]
 
