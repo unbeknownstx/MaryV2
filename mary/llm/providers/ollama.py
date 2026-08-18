@@ -48,6 +48,12 @@ class OllamaProvider(LLMInterface):
             "MARY_OLLAMA_THINK",
             "false",
         ).strip().lower() in _TRUE_VALUES
+        self.num_ctx = int(
+            os.getenv(
+                "MARY_OLLAMA_NUM_CTX",
+                "8192",
+            )
+        )
 
     def generate(
         self,
@@ -70,6 +76,7 @@ class OllamaProvider(LLMInterface):
             "options": {
                 "temperature": float(temperature),
                 "num_predict": int(max_tokens),
+                "num_ctx": self.num_ctx,
             },
         }
 
