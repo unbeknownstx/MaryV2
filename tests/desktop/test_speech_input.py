@@ -69,4 +69,4 @@ def test_desktop_microphone_is_user_initiated_and_transcript_reuses_send_message
     assert "bridge.startListening()" in frontend
     assert "bridge.stopListening()" in frontend
     assert "bridge.sendMessage(transcript)" in frontend
-    assert "stopVoicePlayback();" in frontend
+    assert "stopVoicePlayback({ notifyBridge: false });" in frontend

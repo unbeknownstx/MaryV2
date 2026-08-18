@@ -171,3 +171,8 @@ button:disabled, textarea:disabled { opacity: .55; cursor: default; }
 #mic-button.transcribing {
   background: linear-gradient(180deg, #8f79c7, #665095);
 }
+
+#mic-button.speaking {
+  background: linear-gradient(180deg, #b77ae8, #7343a4);
+  box-shadow: 0 0 0 3px rgba(183,122,232,.10), 0 0 22px rgba(183,122,232,.16);
+}

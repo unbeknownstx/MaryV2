@@ -19,6 +19,10 @@ from mary.runtime.application import MaryApplication
 from mary.desktop.voice import DesktopVoiceEngine
 from mary.desktop.microphone import DesktopMicrophoneRecorder
 from mary.desktop.stt import DesktopSpeechToText
+from mary.desktop.conversation_runtime import (
+    DesktopConversationRuntime,
+    DesktopConversationState,
+)
 
 
 def _json(data: Any) -> str:
@@ -186,6 +190,8 @@ class MaryDesktopBridge(QObject):
     errorOccurred = Signal(str)
     listeningStateChanged = Signal(str)
     transcriptionReady = Signal(str)
+    conversationStateChanged = Signal(str)
+    voicePlaybackStopRequested = Signal()
 
     def __init__(self, application: MaryApplication) -> None:
         super().__init__()
@@ -195,10 +201,11 @@ class MaryDesktopBridge(QObject):
         self._active_worker: _ConversationWorker | None = None
         self._speech_thread: QThread | None = None
         self._speech_worker: _TranscriptionWorker | None = None
+        self.conversation_runtime = DesktopConversationRuntime()
         self.voice = DesktopVoiceEngine.from_environment()
         self.stt = DesktopSpeechToText.from_environment()
         self.microphone = DesktopMicrophoneRecorder()
-        self.microphone.stateChanged.connect(self.listeningStateChanged.emit)
+        self.microphone.stateChanged.connect(self._on_microphone_state_changed)
         self.microphone.recordingReady.connect(self._on_recording_ready)
         self.microphone.errorOccurred.connect(self._on_microphone_error)
         self.application.mary.avatar.ready()
@@ -209,10 +216,29 @@ class MaryDesktopBridge(QObject):
         if not value:
             return
 
+        state = self.conversation_runtime.state
         if self._busy:
             self.errorOccurred.emit("Mary is already processing a message.")
             return
+        if state in {
+            DesktopConversationState.LISTENING,
+            DesktopConversationState.TRANSCRIBING,
+        }:
+            self.errorOccurred.emit("Finish the current microphone turn first.")
+            return
+        if state == DesktopConversationState.SPEAKING:
+            # Typed input is also a valid barge-in. Stop browser playback first,
+            # then begin the new canonical Mary turn.
+            self._transition_conversation_state(
+                DesktopConversationState.INTERRUPTED,
+                reason="typed_barge_in",
+            )
+            self.voicePlaybackStopRequested.emit()
 
+        self._transition_conversation_state(
+            DesktopConversationState.THINKING,
+            reason="message_submitted",
+        )
         self._set_busy(True)
 
         thread = QThread(self)
@@ -232,11 +258,14 @@ class MaryDesktopBridge(QObject):
 
     @Slot()
     def startListening(self) -> None:  # noqa: N802 - JS-facing API
-        if self._busy:
-            self.errorOccurred.emit("Mary is already processing a message.")
+        state = self.conversation_runtime.state
+        if self._busy or state == DesktopConversationState.THINKING:
+            self.errorOccurred.emit("Mary is still thinking about the current message.")
             return
-        if self._speech_thread is not None:
+        if self._speech_thread is not None or state == DesktopConversationState.TRANSCRIBING:
             self.errorOccurred.emit("Mary is already transcribing microphone audio.")
+            return
+        if state == DesktopConversationState.LISTENING:
             return
         if not self.stt.enabled:
             self.errorOccurred.emit(
@@ -244,11 +273,48 @@ class MaryDesktopBridge(QObject):
                 "MARY_STT_PROVIDER=groq."
             )
             return
+
+        if state == DesktopConversationState.SPEAKING:
+            # Barge-in is authoritative here: browser playback is told to stop,
+            # then the microphone becomes the active side of the conversation.
+            self._transition_conversation_state(
+                DesktopConversationState.INTERRUPTED,
+                reason="microphone_barge_in",
+            )
+            self.voicePlaybackStopRequested.emit()
+
         self.microphone.start()
 
     @Slot()
     def stopListening(self) -> None:  # noqa: N802 - JS-facing API
         self.microphone.stop()
+
+    @Slot()
+    def voicePlaybackStarted(self) -> None:  # noqa: N802 - JS-facing API
+        state = self.conversation_runtime.state
+        if state in {
+            DesktopConversationState.LISTENING,
+            DesktopConversationState.TRANSCRIBING,
+            DesktopConversationState.INTERRUPTED,
+        }:
+            # A late browser play event must never talk over an active barge-in.
+            self.voicePlaybackStopRequested.emit()
+            return
+        self._transition_conversation_state(
+            DesktopConversationState.SPEAKING,
+            reason="voice_playback_started",
+        )
+
+    @Slot()
+    def voicePlaybackFinished(self) -> None:  # noqa: N802 - JS-facing API
+        if self.conversation_runtime.state in {
+            DesktopConversationState.SPEAKING,
+            DesktopConversationState.THINKING,
+        }:
+            self._transition_conversation_state(
+                DesktopConversationState.IDLE,
+                reason="voice_playback_finished",
+            )
 
     @Slot(result=str)
     def getStatus(self) -> str:  # noqa: N802 - JS-facing API
@@ -261,6 +327,7 @@ class MaryDesktopBridge(QObject):
                 "provider": cognition.get("llm", "unknown"),
                 "model": cognition.get("model", "unknown"),
                 "busy": self._busy,
+                "conversation": self.conversation_runtime.snapshot.to_dict(),
                 "voice": self.voice.status.to_dict(),
                 "speech_to_text": self.stt.status.to_dict(),
             }
@@ -318,6 +385,10 @@ class MaryDesktopBridge(QObject):
         value = str(text or "").strip()
         self.microphone.cleanup()
         self.listeningStateChanged.emit("idle")
+        self._transition_conversation_state(
+            DesktopConversationState.IDLE,
+            reason="transcription_finished",
+        )
         if value:
             self.transcriptionReady.emit(value)
         else:
@@ -328,13 +399,36 @@ class MaryDesktopBridge(QObject):
     def _on_transcription_failed(self, error: str) -> None:
         self.microphone.cleanup()
         self.listeningStateChanged.emit("idle")
+        self._transition_conversation_state(
+            DesktopConversationState.IDLE,
+            reason="transcription_failed",
+        )
         self.errorOccurred.emit(str(error))
         self._finish_speech_thread()
 
     @Slot(str)
     def _on_microphone_error(self, error: str) -> None:
         self.listeningStateChanged.emit("idle")
+        self._transition_conversation_state(
+            DesktopConversationState.IDLE,
+            reason="microphone_error",
+        )
         self.errorOccurred.emit(str(error))
+
+    @Slot(str)
+    def _on_microphone_state_changed(self, state: str) -> None:
+        value = str(state or "idle").strip().lower()
+        self.listeningStateChanged.emit(value)
+        if value == "listening":
+            self._transition_conversation_state(
+                DesktopConversationState.LISTENING,
+                reason="microphone_recording",
+            )
+        elif value == "transcribing":
+            self._transition_conversation_state(
+                DesktopConversationState.TRANSCRIBING,
+                reason="microphone_stopped",
+            )
 
     @Slot()
     def _on_speech_thread_finished(self) -> None:
@@ -345,6 +439,25 @@ class MaryDesktopBridge(QObject):
         thread = self._speech_thread
         if thread is not None and thread.isRunning():
             thread.quit()
+
+    def _transition_conversation_state(
+        self,
+        state: DesktopConversationState | str,
+        *,
+        reason: str,
+    ) -> None:
+        try:
+            snapshot = self.conversation_runtime.transition(state, reason=reason)
+        except ValueError as exc:
+            print(f"[MaryDesktop] conversation-state warning: {exc}", flush=True)
+            return
+        print(
+            f"[MaryDesktop] conversation state: "
+            f"{snapshot.previous.value} -> {snapshot.state.value} "
+            f"({snapshot.reason})",
+            flush=True,
+        )
+        self.conversationStateChanged.emit(_json(snapshot.to_dict()))
 
     def _set_busy(self, value: bool) -> None:
         self._busy = bool(value)
@@ -366,6 +479,18 @@ class MaryDesktopBridge(QObject):
         payload_dict = payload.to_dict()
         self.messageReady.emit(_json(payload_dict))
         self.avatarStateChanged.emit(_json(payload.avatar))
+
+        voice = payload.voice
+        voice_will_play = bool(
+            voice.get("enabled")
+            and voice.get("status") == "success"
+            and voice.get("audio_base64")
+        )
+        if not voice_will_play:
+            self._transition_conversation_state(
+                DesktopConversationState.IDLE,
+                reason="turn_finished_without_voice",
+            )
 
         avatar_error = str(
             payload.runtime.get("avatar_error") or ""
@@ -392,6 +517,10 @@ class MaryDesktopBridge(QObject):
         """Receive a failed turn on the GUI thread and always release input."""
 
         self._set_busy(False)
+        self._transition_conversation_state(
+            DesktopConversationState.IDLE,
+            reason="turn_failed",
+        )
         self.errorOccurred.emit(str(error))
         self._finish_thread()
 
@@ -401,6 +530,10 @@ class MaryDesktopBridge(QObject):
 
         if self._busy:
             self._set_busy(False)
+            self._transition_conversation_state(
+                DesktopConversationState.IDLE,
+                reason="worker_stopped_without_response",
+            )
             self.errorOccurred.emit(
                 "Mary's desktop worker stopped without returning a response."
             )

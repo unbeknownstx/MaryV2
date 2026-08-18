@@ -20,6 +20,7 @@ let currentVrm = null;
 let modelBaseY = 0;
 let busy = false;
 let listeningState = 'idle';
+let conversationState = 'idle';
 let activeSpeechAudio = null;
 let speechAudioContext = null;
 let speechAudioSource = null;
@@ -259,25 +260,64 @@ function appendMessage(speaker, text, kind) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+function refreshConversationControls() {
+  const listening = conversationState === 'listening';
+  const transcribing = conversationState === 'transcribing';
+  const thinkingNow = conversationState === 'thinking';
+  const speaking = conversationState === 'speaking';
+  const interrupted = conversationState === 'interrupted';
+
+  listeningState = listening ? 'listening' : (transcribing ? 'transcribing' : 'idle');
+
+  // Typed input can barge in while Mary is speaking. It is disabled only while
+  // microphone capture/transcription or Mary's reasoning turn owns the runtime.
+  input.disabled = listening || transcribing || thinkingNow || interrupted || busy;
+  sendButton.disabled = input.disabled;
+  micButton.disabled = transcribing || thinkingNow || interrupted || busy;
+
+  micButton.classList.toggle('listening', listening);
+  micButton.classList.toggle('transcribing', transcribing);
+  micButton.classList.toggle('speaking', speaking);
+  micButton.setAttribute('aria-pressed', listening ? 'true' : 'false');
+  micButton.textContent = listening
+    ? 'Stop'
+    : (transcribing ? '…' : (speaking ? 'Interrupt' : 'Mic'));
+
+  thinking.classList.toggle('hidden', !thinkingNow);
+
+  const labels = {
+    idle: 'Mary ready',
+    listening: 'Listening…',
+    transcribing: 'Transcribing…',
+    thinking: 'Thinking…',
+    speaking: 'Mary speaking',
+    interrupted: 'Interrupted…',
+  };
+  setConnected(true, labels[conversationState] || 'Mary ready');
+}
+
 function setBusy(value) {
   busy = Boolean(value);
-  sendButton.disabled = busy;
-  input.disabled = busy;
-  micButton.disabled = busy || listeningState === 'transcribing';
-  thinking.classList.toggle('hidden', !busy);
+  refreshConversationControls();
 }
 
 function setListeningState(state) {
-  listeningState = String(state || 'idle');
-  micButton.classList.toggle('listening', listeningState === 'listening');
-  micButton.classList.toggle('transcribing', listeningState === 'transcribing');
-  micButton.setAttribute('aria-pressed', listeningState === 'listening' ? 'true' : 'false');
-  micButton.textContent = listeningState === 'listening' ? 'Stop' : (listeningState === 'transcribing' ? '…' : 'Mic');
-  micButton.disabled = busy || listeningState === 'transcribing';
+  // Backwards-compatible microphone signal. The authoritative lifecycle comes
+  // from conversationStateChanged, but this keeps Alpha 1 recorder events sane
+  // if they arrive a fraction earlier than the state snapshot.
+  const value = String(state || 'idle');
+  if (value === 'listening' || value === 'transcribing') {
+    conversationState = value;
+    refreshConversationControls();
+  }
+}
 
-  if (listeningState === 'listening') setConnected(true, 'Listening…');
-  else if (listeningState === 'transcribing') setConnected(true, 'Transcribing…');
-  else if (!busy && !activeSpeechAudio) setConnected(true, 'Mary ready');
+function setConversationState(raw) {
+  const payload = parsePayload(raw);
+  const state = String(payload.state || raw || 'idle').toLowerCase();
+  if (!['idle', 'listening', 'transcribing', 'thinking', 'speaking', 'interrupted'].includes(state)) return;
+  conversationState = state;
+  refreshConversationControls();
 }
 
 function setConnected(value, label = '') {
@@ -408,7 +448,7 @@ function updateLipSync() {
   } catch (_) { /* optional mouth preset */ }
 }
 
-function stopVoicePlayback() {
+function stopVoicePlayback({ notifyBridge = true } = {}) {
   if (activeSpeechAudio) {
     try {
       activeSpeechAudio.pause();
@@ -418,12 +458,16 @@ function stopVoicePlayback() {
 
   activeSpeechAudio = null;
   disconnectLipSyncGraph();
+
+  if (notifyBridge && bridge?.voicePlaybackFinished) {
+    bridge.voicePlaybackFinished();
+  }
 }
 
 function playVoice(voice = {}) {
   if (!voice?.enabled || voice.status !== 'success' || !voice.audio_base64) return;
 
-  stopVoicePlayback();
+  stopVoicePlayback({ notifyBridge: false });
 
   const mimeType = voice.mime_type || 'audio/mpeg';
   const audio = new Audio(`data:${mimeType};base64,${voice.audio_base64}`);
@@ -431,14 +475,16 @@ function playVoice(voice = {}) {
   attachLipSyncToAudio(audio);
 
   audio.addEventListener('play', () => {
-    if (activeSpeechAudio === audio) setConnected(true, 'Mary speaking');
+    if (activeSpeechAudio === audio) {
+      bridge?.voicePlaybackStarted?.();
+    }
   });
 
   audio.addEventListener('ended', () => {
     if (activeSpeechAudio === audio) {
       activeSpeechAudio = null;
       disconnectLipSyncGraph();
-      setConnected(true, 'Mary ready');
+      bridge?.voicePlaybackFinished?.();
     }
   });
 
@@ -446,7 +492,7 @@ function playVoice(voice = {}) {
     if (activeSpeechAudio === audio) {
       activeSpeechAudio = null;
       disconnectLipSyncGraph();
-      setConnected(true, 'Mary ready');
+      bridge?.voicePlaybackFinished?.();
     }
     appendMessage('System', 'Mary generated voice audio, but playback failed.', 'system');
   });
@@ -454,7 +500,7 @@ function playVoice(voice = {}) {
   audio.play().catch((error) => {
     if (activeSpeechAudio === audio) activeSpeechAudio = null;
     disconnectLipSyncGraph();
-    setConnected(true, 'Mary ready');
+    bridge?.voicePlaybackFinished?.();
     appendMessage('System', `Voice playback failed: ${error}`, 'system');
   });
 }
@@ -478,9 +524,12 @@ function connectBridge() {
 
     bridge.avatarStateChanged.connect((raw) => applyAvatarState(parsePayload(raw)));
     bridge.busyChanged.connect((value) => setBusy(value));
+    bridge.conversationStateChanged.connect((raw) => setConversationState(raw));
+    bridge.voicePlaybackStopRequested.connect(() => {
+      stopVoicePlayback({ notifyBridge: false });
+    });
     bridge.errorOccurred.connect((message) => {
       setBusy(false);
-      setListeningState('idle');
       appendMessage('System', message, 'system');
     });
 
@@ -497,6 +546,7 @@ function connectBridge() {
       const voiceLabel = status.voice?.enabled ? ` · voice:${status.voice.provider}` : '';
       const sttLabel = status.speech_to_text?.enabled ? ` · mic:${status.speech_to_text.provider}` : '';
       modelLabel.textContent = `${status.provider || 'unknown'} · ${status.model || 'unknown'}${voiceLabel}${sttLabel}`;
+      if (status.conversation) setConversationState(status.conversation);
     });
 
     bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));
@@ -504,15 +554,18 @@ function connectBridge() {
 }
 
 micButton.addEventListener('click', () => {
-  if (!bridge || busy || listeningState === 'transcribing') return;
+  if (!bridge || conversationState === 'transcribing' || conversationState === 'thinking') return;
 
-  if (listeningState === 'listening') {
+  if (conversationState === 'listening') {
     bridge.stopListening();
     return;
   }
 
-  // Do not let Mary's own TTS leak into the microphone recording.
-  stopVoicePlayback();
+  // Barge-in is immediate on the presentation side: silence Mary before Qt
+  // starts recording, while the Python runtime records the interrupted state.
+  if (conversationState === 'speaking' || activeSpeechAudio) {
+    stopVoicePlayback({ notifyBridge: false });
+  }
   bridge.startListening();
 });
 
@@ -520,6 +573,11 @@ composer.addEventListener('submit', (event) => {
   event.preventDefault();
   const text = input.value.trim();
   if (!text || busy || !bridge) return;
+  if (['listening', 'transcribing', 'thinking', 'interrupted'].includes(conversationState)) return;
+
+  if (conversationState === 'speaking' || activeSpeechAudio) {
+    stopVoicePlayback({ notifyBridge: false });
+  }
 
   appendMessage('Unbe', text, 'user');
   input.value = '';

@@ -397,6 +397,10 @@ class Mary:
             dialogue=self.dialogue,
         )
 
+        # Conversation continuity is owned by the TurnMind builder so there is
+        # only one authoritative drive/question-budget implementation.
+        self.continuity = self.turn_mind.continuity
+
     # ================================================================
     # PRIMARY ENTRY POINT
     # ================================================================
@@ -450,6 +454,12 @@ class Mary:
         elif intent.intent_type == IntentType.RELATIONSHIP_QUERY:
             relationship_action = self._handle_relationship_query(intent)
             system_response = relationship_action.get("system_response")
+            skip_cognition = True
+
+        elif intent.intent_type == IntentType.CONVERSATION_RECALL:
+            system_response = self._handle_conversation_recall(
+                recent_conversation
+            )
             skip_cognition = True
 
         elif intent.intent_type == IntentType.CREATOR_DIRECTIVE:
@@ -565,6 +575,7 @@ class Mary:
                 IntentType.TOOL_USE,
                 IntentType.MEMORY_STORE,
                 IntentType.MEMORY_RECALL,
+                IntentType.CONVERSATION_RECALL,
                 IntentType.CREATOR_DIRECTIVE,
                 IntentType.RELATIONSHIP_SHARE,
                 IntentType.RELATIONSHIP_QUERY,
@@ -684,6 +695,11 @@ class Mary:
                         else "unknown"
                     ),
                     "reflection_mode": result.reflection.metadata.get("mode"),
+                    "conversational_drive": (
+                        result.context.mind_state.get("continuity", {}).get("drive")
+                        if isinstance(result.context.mind_state, dict)
+                        else None
+                    ),
                 },
             )
             self.expression.record_response(response)
@@ -821,6 +837,61 @@ class Mary:
             )
 
         return None
+
+    # ================================================================
+    # RECENT CONVERSATION RECALL
+    # ================================================================
+
+    def _handle_conversation_recall(
+        self,
+        recent_conversation: list[dict[str, str]],
+    ) -> str:
+        """Recall the active dialogue before consulting long-term memory.
+
+        Dialogue history is intentionally separate from episodic/semantic memory.
+        Queries about what was *just* said belong here even when no durable memory
+        was created from the exchange.
+        """
+
+        messages = [
+            {
+                "role": str(item.get("role", "")),
+                "content": str(item.get("content", "")).strip(),
+            }
+            for item in recent_conversation[-8:]
+            if isinstance(item, dict) and str(item.get("content", "")).strip()
+        ]
+        if not messages:
+            return "We haven't built up any recent conversation in this session yet."
+
+        # Prefer the latest completed creator/Mary pair and include one earlier
+        # creator point when available.  Quote the actual dialogue rather than
+        # inventing a summary that could drift from what was said.
+        latest_user = next(
+            (item["content"] for item in reversed(messages) if item["role"] == "user"),
+            None,
+        )
+        latest_mary = next(
+            (item["content"] for item in reversed(messages) if item["role"] == "assistant"),
+            None,
+        )
+        earlier_users = [item["content"] for item in messages if item["role"] == "user"]
+
+        if latest_user and latest_mary:
+            if len(earlier_users) >= 2:
+                earlier = earlier_users[-2]
+                return (
+                    f"We were just talking about this: you said, ‘{earlier}’ Then you said, "
+                    f"‘{latest_user}’ and I replied, ‘{latest_mary}’"
+                )
+            return (
+                f"We were just talking about this: you said, ‘{latest_user}’ "
+                f"and I replied, ‘{latest_mary}’"
+            )
+
+        if latest_user:
+            return f"The most recent thing you said was, ‘{latest_user}’"
+        return f"The most recent thing I said was, ‘{latest_mary}’"
 
     # ================================================================
     # RELATIONSHIP DEVELOPMENT

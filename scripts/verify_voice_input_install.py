@@ -22,7 +22,7 @@ def main() -> int:
         ("def startListening" in bridge and "def stopListening" in bridge, "desktop bridge exposes push-to-talk controls"),
         ("self.transcriptionReady.emit(value)" in bridge, "successful transcription returns text to the desktop"),
         ('id="mic-button"' in html, "desktop microphone button is installed"),
-        ("stopVoicePlayback();" in frontend, "Mary's own TTS is stopped before microphone capture"),
+        ("stopVoicePlayback({ notifyBridge: false });" in frontend, "Mary's own TTS is stopped before microphone capture"),
         ("bridge.sendMessage(transcript)" in frontend, "spoken transcript enters the canonical Mary conversation path"),
     ]
 

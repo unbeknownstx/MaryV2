@@ -344,6 +344,11 @@ class ReasoningEngine:
 
         mode = disposition.get("mode", "conversation")
         length = disposition.get("preferred_length", "medium")
+        continuity = {}
+        if isinstance(context.mind_state, dict):
+            continuity = context.mind_state.get("continuity", {}) or {}
+        drive = continuity.get("drive", "react")
+        question_allowed = bool(continuity.get("allow_follow_up_question", True))
 
         return (
             "You are Mary. You are a persistent AI character with your own connected "
@@ -357,14 +362,18 @@ class ReasoningEngine:
             "when the connected state supports it. Small natural reactions like 'wait', "
             "'hmm', laughter, teasing, or thinking aloud are allowed when genuine. "
             "Do not force a joke or a question into every turn. Silence/conciseness is "
-            "better than filler.\n\n"
+            "better than filler. Treat curiosity as an internal orientation, not a command "
+            "to interrogate Unbe. Mary is allowed to state an opinion, reaction, or thought "
+            "and simply stop.\n\n"
             "Avoid canned assistant habits in ordinary conversation: do not routinely say "
             "'anything else?', 'how can I help?', 'let me know if you'd like', or similar "
             "service-offer closers. Do not default to headings, bullet lists, or tables for "
             "casual conversation. Use structure when the task itself needs structure. "
             "Never invent memories, capabilities, actions, relationship facts, dates, or "
             "emotions absent from local state. Unbe's traits/values/emotions are not yours.\n\n"
-            f"Current interaction mode: {mode}. Preferred response length: {length}."
+            f"Current interaction mode: {mode}. Preferred response length: {length}. "
+            f"Primary conversational drive: {drive}. "
+            f"Follow-up question allowed this turn: {question_allowed}."
         )
 
     def _build_prompt(
@@ -502,10 +511,28 @@ class ReasoningEngine:
                 f"{context.active_goals}"
             )
 
+        continuity = context.mind_state.get("continuity", {}) if isinstance(context.mind_state, dict) else {}
+        drive = continuity.get("drive", "react")
+        allow_question = bool(continuity.get("allow_follow_up_question", True))
+        recent_openings = continuity.get("recent_openings", [])
+        recent_terms = continuity.get("recent_distinctive_terms", [])
+
+        sections.append(
+            "Conversation continuity instructions:\n"
+            f"Primary drive: {drive}.\n"
+            f"Follow-up question allowed: {allow_question}.\n"
+            f"Recent Mary openings to avoid repeating: {recent_openings}.\n"
+            f"Recent Mary vocabulary for continuity awareness: {recent_terms}. Avoid reusing it as decorative metaphor/punchline material; reuse factual topic terms when they are actually needed.\n"
+            "Do not repeat the same metaphor, opening, punchline, or question pattern from the immediately recent dialogue. "
+            "If the previous Mary turn ended in a question, strongly prefer a statement/opinion/reaction now. "
+            "A curious Mary can wonder internally or make an observation without asking anything."
+        )
+
         sections.append(
             "Continue the conversation as Mary. Use the integrated state above instead "
-            "of reverting to generic assistant behavior. React naturally first; help, "
-            "explain, challenge, joke, or ask one relevant question only as the turn calls for it."
+            "of reverting to generic assistant behavior. Follow the selected conversational "
+            "drive first; help, explain, challenge, joke, recall, or ask only as the turn calls for it. "
+            "Do not reflexively bounce every turn back to Unbe with a question."
         )
 
         return "\n\n".join(sections)

@@ -15,6 +15,7 @@ def main() -> int:
         root / "mary" / "desktop" / "voice.py",
         root / "mary" / "desktop" / "microphone.py",
         root / "mary" / "desktop" / "stt.py",
+        root / "mary" / "desktop" / "conversation_runtime.py",
         root / "mary" / "voice" / "providers" / "elevenlabs.py",
         root / "mary" / "voice" / "speech_renderer.py",
         root / "mary" / "voice" / "emotion_profile.py",
@@ -84,8 +85,13 @@ def main() -> int:
         ('MARY_STT_MODEL", "whisper-large-v3-turbo"' in (root / "mary" / "desktop" / "stt.py").read_text(encoding="utf-8"), "desktop STT defaults to Groq Whisper Large V3 Turbo"),
         ("client.audio.transcriptions.create" in (root / "mary" / "desktop" / "stt.py").read_text(encoding="utf-8"), "desktop STT uses Groq audio transcription endpoint"),
         ("bridge.startListening()" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "desktop exposes user-initiated push-to-talk"),
-        ("stopVoicePlayback();" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "push-to-talk stops Mary voice before recording to avoid feedback"),
+        ("stopVoicePlayback({ notifyBridge: false });" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "push-to-talk stops Mary voice before recording to avoid feedback"),
         ("bridge.sendMessage(transcript)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "voice transcript reuses canonical Mary conversation path"),
+        ("DesktopConversationRuntime()" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop owns one authoritative conversation runtime"),
+        ("conversationStateChanged = Signal(str)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop publishes conversation lifecycle state"),
+        ("voicePlaybackStopRequested = Signal()" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop can stop Mary playback for barge-in"),
+        ("bridge?.voicePlaybackStarted?.();" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "real audio playback marks Mary speaking"),
+        ("bridge.voicePlaybackStopRequested.connect" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "browser obeys authoritative interruption requests"),
     ]
 
     failed = False

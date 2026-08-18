@@ -27,6 +27,7 @@ import re
 from typing import Any
 
 from mary.cognition.context import CognitiveContext
+from mary.cognition.continuity import is_conversation_recall_query
 from mary.cognition.intent import Intent, IntentType
 from mary.cognition.reasoning import (
     ReasoningEngine,
@@ -284,6 +285,22 @@ class CognitiveOrchestrator:
         )
         if relationship_query is not None:
             return relationship_query
+
+        # --------------------------------------------------------
+        # RECENT CONVERSATION RECALL
+        # --------------------------------------------------------
+
+        if is_conversation_recall_query(text):
+            return Intent(
+                intent_type=IntentType.CONVERSATION_RECALL,
+                confidence=0.98,
+                description=(
+                    "Input requests recall from the active/recent dialogue rather "
+                    "than long-term memory."
+                ),
+                parameters={"query": text},
+                source="continuity_detector",
+            )
 
         # --------------------------------------------------------
         # MEMORY RECALL

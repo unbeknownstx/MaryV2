@@ -32,6 +32,7 @@ class IntentType(str, Enum):
 
     MEMORY_STORE = "memory_store"
     MEMORY_RECALL = "memory_recall"
+    CONVERSATION_RECALL = "conversation_recall"
     SELF_QUERY = "self_query"
     CREATOR_DIRECTIVE = "creator_directive"
     RELATIONSHIP_SHARE = "relationship_share"

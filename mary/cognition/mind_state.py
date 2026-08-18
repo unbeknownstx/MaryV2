@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mary.cognition.intent import Intent, IntentType
+from mary.cognition.continuity import ConversationContinuity
 
 
 def _clamp(value: float) -> float:
@@ -84,6 +85,7 @@ class TurnMindState:
     tools: dict[str, Any]
     emotion: dict[str, Any]
     conversation: dict[str, Any]
+    continuity: dict[str, Any]
     disposition: ResponseDisposition
     constraints: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -106,6 +108,7 @@ class TurnMindState:
             "tools": dict(self.tools),
             "emotion": dict(self.emotion),
             "conversation": dict(self.conversation),
+            "continuity": dict(self.continuity),
             "disposition": self.disposition.to_dict(),
             "constraints": list(self.constraints),
             "metadata": dict(self.metadata),
@@ -128,6 +131,7 @@ class TurnMindState:
             "tools": self.tools,
             "emotion": self.emotion,
             "conversation": self.conversation,
+            "continuity": self.continuity,
             "disposition": self.disposition.to_dict(),
             "constraints": self.constraints,
         }
@@ -168,6 +172,7 @@ class TurnMindStateBuilder:
         self.tools = tools
         self.emotion = emotion
         self.dialogue = dialogue
+        self.continuity = ConversationContinuity()
 
     def build(
         self,
@@ -190,6 +195,12 @@ class TurnMindStateBuilder:
         agency = self._agency_snapshot()
         emotion = self._emotion_snapshot()
         conversation = self._conversation_snapshot(recent_conversation or [])
+        continuity = self.continuity.build(
+            input_text=input_text,
+            intent_type=intent_type,
+            recent_conversation=recent_conversation or [],
+            active_curiosity=bool(agency.get("active_curiosities")),
+        ).to_dict()
         disposition = self._build_disposition(
             intent_type=intent_type,
             personality=personality,
@@ -197,6 +208,7 @@ class TurnMindStateBuilder:
             relationship=relationship,
             agency=agency,
             emotion=emotion,
+            continuity=continuity,
         )
 
         return TurnMindState(
@@ -216,6 +228,7 @@ class TurnMindStateBuilder:
             tools=self._tools_snapshot(),
             emotion=emotion,
             conversation=conversation,
+            continuity=continuity,
             disposition=disposition,
             constraints=[
                 "Mary is distinct from Unbe; do not copy his traits, values, preferences, or emotions as Mary's own.",
@@ -514,6 +527,7 @@ class TurnMindStateBuilder:
         relationship: dict[str, Any],
         agency: dict[str, Any],
         emotion: dict[str, Any],
+        continuity: dict[str, Any],
     ) -> ResponseDisposition:
         traits = _safe_dict(personality.get("traits"))
         style = _safe_dict(personality.get("style"))
@@ -562,9 +576,10 @@ class TurnMindStateBuilder:
         )
 
         active_curiosity = bool(agency.get("active_curiosities"))
+        question_allowed = bool(continuity.get("allow_follow_up_question", True))
         follow_up_urge = _clamp(
-            float(traits.get("curiosity", 0.8)) * (0.55 if active_curiosity else 0.25)
-        )
+            float(traits.get("curiosity", 0.8)) * (0.32 if active_curiosity else 0.12)
+        ) if question_allowed else 0.0
 
         emotion_name = str(emotion.get("primary", "neutral"))
         emotional_instruction = (
@@ -578,8 +593,9 @@ class TurnMindStateBuilder:
             "Prefer natural sentences over headings, tables, or bullet lists unless the task genuinely benefits from structure.",
             "Do not end ordinary conversation with canned service offers such as 'anything else?', 'how can I help?', or 'let me know if you'd like'.",
             "It is okay to be brief, witty, teasing, opinionated, uncertain, or to say 'wait', 'hmm', or similar natural reactions when they fit.",
-            "Ask at most one follow-up question, and only when it grows naturally from the conversation or an active curiosity.",
+            "Ask at most one follow-up question, and only when it grows naturally from the conversation or an active curiosity. Follow the continuity question budget; curiosity does not require a question.",
             "Use callbacks to recent conversation or relevant memories when they genuinely fit; do not force them.",
+            *tuple(continuity.get("instructions", [])),
             "Disagree respectfully when Mary's reasoning or values point somewhere different instead of reflexively agreeing.",
             (
                 f"Unbe's explicit communication preference is: {creator_style}. Honor it when relevant."

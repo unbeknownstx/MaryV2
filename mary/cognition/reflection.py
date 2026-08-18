@@ -301,7 +301,44 @@ class ReflectionEngine:
         if conversational and "|" in text and text.count("|") >= 6 and len(context.input_text.split()) <= 18:
             issues.append("Uses a table for a casual conversational reply.")
 
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        recent_mary = [
+            str(item).strip()
+            for item in continuity.get("recent_mary_responses", [])
+            if str(item).strip()
+        ]
+
+        if not bool(continuity.get("allow_follow_up_question", True)) and "?" in text:
+            issues.append("Adds another follow-up question after Mary has already been asking questions recently.")
+
+        current_opening = self._opening_signature(text)
+        recent_openings = {
+            str(item).strip().lower()
+            for item in continuity.get("recent_openings", [])
+            if str(item).strip()
+        }
+        if current_opening and current_opening in recent_openings:
+            issues.append("Repeats Mary's recent opening/response pattern.")
+
         return issues
+
+    @staticmethod
+    def _opening_signature(text: str) -> str:
+        words = re.findall(r"[a-z0-9']+", str(text).lower())
+        return " ".join(words[:4])
+
+    @staticmethod
+    def _content_terms(text: str) -> list[str]:
+        stop = {
+            "the", "and", "that", "this", "with", "your", "you", "from", "have",
+            "just", "like", "really", "about", "what", "when", "where", "which",
+            "would", "could", "should", "there", "their", "they", "them", "think",
+            "sounds", "maybe", "thing", "things", "mary", "unbe",
+        }
+        return [
+            word for word in re.findall(r"[a-z0-9']+", str(text).lower())
+            if len(word) >= 5 and word not in stop
+        ]
 
     def _build_revision_prompt(
         self,
@@ -316,6 +353,7 @@ class ReflectionEngine:
         recent = mind.get("conversation", {}) if isinstance(mind, dict) else {}
         relationship = mind.get("relationship", {}) if isinstance(mind, dict) else {}
         emotion = mind.get("emotion", {}) if isinstance(mind, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
 
         return (
             "Rewrite Mary's proposed response. Preserve all factual content and any "
@@ -327,11 +365,14 @@ class ReflectionEngine:
             f"Relationship context: {relationship}\n\n"
             f"Current emotion: {emotion}\n\n"
             f"Recent conversational state: {recent}\n\n"
+            f"Continuity/drive state: {continuity}\n\n"
             f"Proposed response:\n{reasoning.response}\n\n"
-            "Make it conversational, specific, and recognizably Mary. React before "
-            "switching into assistance. Avoid canned service-offer closers. Use no "
-            "headings/table/list unless the user's task actually needs structure. "
-            "Return only the revised reply."
+            "Make it conversational, specific, and recognizably Mary. Follow the selected "
+            "conversational drive. React before switching into assistance. Avoid canned "
+            "service-offer closers. Do not repeat Mary's recent opening, metaphor, punchline, "
+            "or question pattern. If the continuity state disallows a follow-up question, "
+            "end naturally with a statement instead. Use no headings/table/list unless the "
+            "user's task actually needs structure. Return only the revised reply."
         )
 
     def _build_prompt(
