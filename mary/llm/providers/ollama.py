@@ -12,7 +12,7 @@ class OllamaProvider(LLMInterface):
     def generate(self,messages,temperature=0.7,max_tokens=2048):
         if self.client is None:
             from openai import OpenAI
-            self.client=OpenAI(api_key="ollama",base_url=f"{self.base_url}/v1",timeout=45.0,max_retries=0)
+            self.client=OpenAI(api_key="ollama",base_url=f"{self.base_url}/v1",timeout=120.0,max_retries=0)
         r=self.client.chat.completions.create(model=self.model,messages=[{"role":m.role,"content":m.content} for m in messages],temperature=temperature,max_tokens=max_tokens)
         c=r.choices[0]; u=getattr(r,"usage",None)
         usage={"prompt_tokens":getattr(u,"prompt_tokens",0),"completion_tokens":getattr(u,"completion_tokens",0),"total_tokens":getattr(u,"total_tokens",0)} if u else {}
