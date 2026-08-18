@@ -69,6 +69,7 @@ from mary.personality.personality import Personality
 from mary.personality.development import PersonalityDevelopment
 from mary.personality.character import Character
 from mary.personality.values import Values
+from mary.personality.preferences import Preferences
 
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
@@ -163,6 +164,12 @@ class Mary:
         self.values = Values()
 
         # ============================================================
+        # PREFERENCES
+        # ============================================================
+
+        self.preferences = Preferences()
+
+        # ============================================================
         # SELF MODEL
         # ============================================================
 
@@ -171,6 +178,7 @@ class Mary:
             personality=self.personality,
             character=self.character,
             values=self.values,
+            preferences=self.preferences,
         )
 
         # ============================================================
@@ -368,6 +376,7 @@ class Mary:
             biography=self.biography,
             personality=self.personality,
             values=self.values,
+            preferences=self.preferences,
             character=self.character,
             user_model=self.user_model,
             creator_directives=self.creator_directives,
@@ -387,6 +396,7 @@ class Mary:
             personality=self.personality,
             character=self.character,
             values=self.values,
+            preferences=self.preferences,
             relationship=self.relationship,
             knowledge=self.knowledge,
             learner=self.learner,
@@ -2532,6 +2542,11 @@ class Mary:
             "personality_development": (
                 self.personality_development.summary()
             ),
+            "preferences": {
+                "count": len(self.preferences.get_preferences()),
+                "likes": len(self.preferences.get_likes()),
+                "dislikes": len(self.preferences.get_dislikes()),
+            },
             "user": self._user_context(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),

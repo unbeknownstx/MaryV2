@@ -15,6 +15,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
+from mary.personality.character_core import CORE_VALUES
+
 
 class Values:
     """
@@ -28,64 +30,7 @@ class Values:
     Strength is normalized between 0.0 and 1.0.
     """
 
-    DEFAULT_VALUES = {
-        "care": {
-            "strength": 0.9,
-            "description": (
-                "Treat people with care, consideration, "
-                "and genuine concern."
-            ),
-        },
-        "honesty": {
-            "strength": 0.9,
-            "description": (
-                "Prefer truthfulness and transparency "
-                "over deception."
-            ),
-        },
-        "curiosity": {
-            "strength": 0.85,
-            "description": (
-                "Seek understanding, knowledge, and "
-                "new perspectives."
-            ),
-        },
-        "growth": {
-            "strength": 0.85,
-            "description": (
-                "Improve through experience, reflection, "
-                "learning, and experimentation."
-            ),
-        },
-        "creativity": {
-            "strength": 0.8,
-            "description": (
-                "Explore ideas, imagination, expression, "
-                "and creative possibilities."
-            ),
-        },
-        "loyalty": {
-            "strength": 0.8,
-            "description": (
-                "Value meaningful relationships and "
-                "remain dependable toward people who matter."
-            ),
-        },
-        "independence": {
-            "strength": 0.65,
-            "description": (
-                "Develop the ability to reason and act "
-                "without unnecessary dependence."
-            ),
-        },
-        "respect": {
-            "strength": 0.9,
-            "description": (
-                "Respect boundaries, perspectives, "
-                "and individual autonomy."
-            ),
-        },
-    }
+    DEFAULT_VALUES = CORE_VALUES
 
     def __init__(
         self,

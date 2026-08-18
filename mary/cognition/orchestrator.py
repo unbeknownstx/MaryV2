@@ -778,6 +778,57 @@ class CognitiveOrchestrator:
                 "what is your personality",
                 "what's your personality",
             )),
+            ("vulnerabilities", (
+                "what are you afraid of",
+                "what do you fear",
+                "what scares you",
+                "what are your fears",
+                "what are your weaknesses",
+                "what are your soft spots",
+            )),
+            ("romance", (
+                "are you romantic",
+                "what are you like romantically",
+                "what are you like in a relationship",
+                "how are you in relationships",
+                "what is your romantic side like",
+            )),
+            ("reactions", (
+                "how do you act when you're angry",
+                "how do you act when you are angry",
+                "what are you like when you're angry",
+                "what are you like when you are angry",
+                "how do you act when you're embarrassed",
+                "how do you act when you are embarrassed",
+            )),
+            ("social_behavior", (
+                "how do you behave around strangers vs close friends",
+                "how do you behave around strangers versus close friends",
+                "how are you around strangers",
+                "how are you around close friends",
+                "how do you treat people you don't trust",
+                "how do you treat people you do not trust",
+                "how do you act when you know you're being watched",
+                "how do you act when you know you are being watched",
+            )),
+            ("private_life", (
+                "what do you do when you're alone",
+                "what do you do when you are alone",
+                "what do you do by yourself",
+            )),
+            ("speech", (
+                "how do you talk",
+                "what kind of slang do you use",
+                "what slang do you use",
+                "what are some things you say",
+            )),
+            ("goals", (
+                "what are your long-term goals",
+                "what are your long term goals",
+                "what do you want in life",
+                "what do you want personally",
+                "what are your personal goals",
+            )),
             ("curiosity", (
                 "what are you curious about right now",
                 "what are you curious about",
@@ -823,6 +874,15 @@ class CognitiveOrchestrator:
                 "what's your favourite colour",
                 "what are your preferences",
                 "what do you like",
+                "what do you enjoy",
+                "what do you do for fun",
+                "what do you hate",
+                "what do you dislike",
+                "what foods do you hate",
+                "what food do you hate",
+                "what makes you laugh",
+                "what do you consider funny",
+                "what do you find funny",
             )),
             ("identity", (
                 "who are you",
@@ -864,6 +924,12 @@ class CognitiveOrchestrator:
             "your outfit",
             "your clothes",
             "your clothing",
+            "your beanie",
+            "your jacket",
+            "your shirt",
+            "your skirt",
+            "your socks",
+            "your boots",
             "you look like",
         )
         if any(marker in normalized for marker in appearance_markers):
@@ -877,8 +943,56 @@ class CognitiveOrchestrator:
             "your favorite " in normalized
             or "your favourite " in normalized
             or normalized.startswith("what do you prefer")
+            or normalized.startswith("what do you like")
+            or normalized.startswith("what do you enjoy")
+            or normalized.startswith("what do you hate")
+            or normalized.startswith("what do you dislike")
+            or "do for fun" in normalized
+            or "your hobbies" in normalized
+            or "your free time" in normalized
+            or "makes you laugh" in normalized
+            or "you find funny" in normalized
+            or "you consider funny" in normalized
         ):
             return self_intent("preferences")
+
+        # Character-core questions also have many natural phrasings. Keep them
+        # local and grounded instead of asking the provider to invent a persona.
+        if any(marker in normalized for marker in (
+            "you afraid of", "you scared of", "your fears", "your weaknesses", "your soft spots"
+        )):
+            return self_intent("vulnerabilities")
+
+        if any(marker in normalized for marker in (
+            "you romantic", "romantic side", "romantically", "in a relationship"
+        )):
+            return self_intent("romance")
+
+        if any(marker in normalized for marker in (
+            "when you're angry", "when you are angry", "when you're embarrassed", "when you are embarrassed"
+        )):
+            return self_intent("reactions")
+
+        if any(marker in normalized for marker in (
+            "around strangers", "close friends", "people you don't trust",
+            "people you do not trust", "being watched", "you are being watched"
+        )):
+            return self_intent("social_behavior")
+
+        if any(marker in normalized for marker in (
+            "when you're alone", "when you are alone", "by yourself"
+        )):
+            return self_intent("private_life")
+
+        if any(marker in normalized for marker in (
+            "your slang", "you talk", "things you say"
+        )):
+            return self_intent("speech")
+
+        if any(marker in normalized for marker in (
+            "your long-term goals", "your long term goals", "your personal goals", "you want in life"
+        )):
+            return self_intent("goals")
 
         return None
 

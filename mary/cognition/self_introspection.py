@@ -25,6 +25,7 @@ class SelfIntrospection:
         biography: Any,
         personality: Any,
         values: Any,
+        preferences: Any,
         character: Any,
         user_model: Any,
         creator_directives: Any,
@@ -37,6 +38,7 @@ class SelfIntrospection:
         self.biography = biography
         self.personality = personality
         self.values = values
+        self.preferences = preferences
         self.character = character
         self.user_model = user_model
         self.creator_directives = creator_directives
@@ -76,6 +78,13 @@ class SelfIntrospection:
             "values": self._values,
             "relationship": self._relationship,
             "personality": self._personality,
+            "vulnerabilities": self._vulnerabilities,
+            "romance": self._romance,
+            "reactions": self._reactions,
+            "social_behavior": self._social_behavior,
+            "private_life": self._private_life,
+            "speech": self._speech,
+            "goals": self._goals,
             "curiosity": self._curiosity,
             "priorities": self._priorities,
             "disagreement": self._disagreement,
@@ -127,49 +136,70 @@ class SelfIntrospection:
         entries = self._biography_category("appearance")
         lowered = str(query).lower()
 
-        # A broad appearance question should expose all represented appearance
-        # facts.  A specific physical-feature question should not answer with a
-        # different fact merely because that is the only appearance fact stored.
-        feature_terms = {
-            "hair": ("hair",),
-            "eyes": ("eye", "eyes"),
-            "height": ("height", "tall", "short"),
-            "outfit": ("outfit", "clothes", "clothing", "wear", "wearing"),
-        }
-        requested_terms = {
-            key
-            for key, terms in feature_terms.items()
-            if any(term in lowered for term in terms)
-        }
+        selectors = (
+            (("hair",), ("hair",)),
+            (("eye", "eyes"), ("eye",)),
+            (("height", "tall", "short"), ("height",)),
+            (("beanie", "headwear"), ("headwear",)),
+            (("jacket",), ("jacket",)),
+            (("shirt",), ("shirt",)),
+            (("skirt",), ("skirt",)),
+            (("sock", "socks"), ("sock",)),
+            (("boot", "boots", "footwear"), ("footwear",)),
+            (("palette", "colors", "colours"), ("palette",)),
+        )
 
         relevant = list(entries)
-        if requested_terms:
-            relevant = []
-            for entry in entries:
-                searchable = (
-                    f"{entry.get('title', '')} {entry.get('content', '')}"
-                ).lower()
-                if any(
-                    any(term in searchable for term in feature_terms[key])
-                    for key in requested_terms
-                ):
-                    relevant.append(entry)
+        matched_query_terms: tuple[str, ...] | None = None
+        matched_title_terms: tuple[str, ...] | None = None
+        for query_terms, title_terms in selectors:
+            if any(term in lowered for term in query_terms):
+                matched_query_terms = query_terms
+                matched_title_terms = title_terms
+                break
 
-        hair = next(
-            (
+        if matched_title_terms is not None:
+            relevant = [
                 entry
-                for entry in relevant
-                if "hair" in str(entry.get("title", "")).lower()
-            ),
-            None,
-        )
-        if hair is not None and "hair" in lowered:
-            value = str(hair.get("content", "")).strip()
-            fallback = (
-                f"My hair is {value}."
-                if value
-                else "I don't have my hair color represented in my canonical appearance yet."
-            )
+                for entry in entries
+                if any(
+                    term in str(entry.get("title", "")).lower()
+                    for term in matched_title_terms
+                )
+            ]
+        elif any(
+            term in lowered
+            for term in ("outfit", "clothes", "clothing", "wear", "wearing")
+        ):
+            relevant = [
+                entry
+                for entry in entries
+                if any(
+                    term in str(entry.get("title", "")).lower()
+                    for term in (
+                        "headwear", "jacket", "shirt", "skirt", "sock",
+                        "footwear", "palette",
+                    )
+                )
+            ]
+
+        if relevant and matched_query_terms is not None:
+            entry = relevant[0]
+            value = str(entry.get("content", "")).strip()
+            title = str(entry.get("title", "detail")).strip().lower()
+            if "hair" in title:
+                fallback = f"My hair is {value}."
+            elif "eye" in title:
+                fallback = f"My eyes are {value}."
+            elif "height" in title:
+                fallback = f"I'm {value}."
+            elif "headwear" in title:
+                fallback = f"My signature headwear is a {value}."
+            elif "footwear" in title:
+                fallback = f"My signature footwear is {value}."
+            else:
+                readable_title = title.replace("signature ", "")
+                fallback = f"My {readable_title} is {value}."
         elif relevant:
             readable = "; ".join(
                 f"{entry.get('title', 'detail')}: {entry.get('content', '')}"
@@ -188,44 +218,102 @@ class SelfIntrospection:
         }
 
     def _preferences(self, query: str = "") -> dict[str, Any]:
-        """Return only preferences represented as Mary's own canonical facts."""
+        """Return Mary's explicit authored/learned preferences, never creator facts."""
 
-        entries = self._biography_category("preferences")
-        lowered = str(query).lower()
+        lowered = str(query).lower().replace("’", "'")
+        raw = list(self.preferences.get_preferences())
 
-        relevant = list(entries)
-        if entries and ("favorite" in lowered or "favourite" in lowered):
-            query_terms = {
-                token
-                for token in lowered.replace("?", "").split()
-                if token not in {
-                    "what", "which", "is", "are", "your", "favorite", "favourite",
-                    "do", "you", "like", "prefer", "the", "a", "an",
-                }
+        cleaned: list[dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            compact = {
+                key: item.get(key)
+                for key in ("name", "category", "strength", "polarity", "confidence", "source")
             }
-            matches = []
-            for entry in entries:
-                searchable = (
-                    f"{entry.get('title', '')} {entry.get('content', '')}"
-                ).lower()
-                if not query_terms or any(term in searchable for term in query_terms):
-                    matches.append(entry)
-            relevant = matches
+            cleaned.append(compact)
+
+        # A favorite is stronger than a like. Do not invent one merely because
+        # Mary has several aesthetic preferences.
+        if "favorite color" in lowered or "favourite colour" in lowered:
+            color = next(
+                (
+                    item for item in cleaned
+                    if item.get("category") == "favorite_color"
+                    and float(item.get("polarity", 0.0) or 0.0) > 0
+                ),
+                None,
+            )
+            if color is None:
+                return {
+                    "preferences": [],
+                    "fallback_response": (
+                        "I don't have a favorite color represented as one of my own facts right now."
+                    ),
+                }
+            return {
+                "preferences": [color],
+                "fallback_response": f"My favorite color is {color.get('name')}.",
+            }
+
+        wants_dislikes = any(
+            marker in lowered
+            for marker in ("hate", "dislike", "can't stand", "cannot stand", "annoy")
+        )
+        wants_food = "food" in lowered or any(
+            food in lowered for food in ("shrimp", "liver")
+        )
+        wants_fun = any(
+            marker in lowered
+            for marker in (
+                "for fun", "enjoy", "hobbies", "hobby", "free time",
+                "makes you laugh", "funny", "humor", "humour"
+            )
+        )
+
+        relevant = cleaned
+        if wants_dislikes:
+            relevant = [
+                item for item in cleaned
+                if float(item.get("polarity", 0.0) or 0.0) < 0
+            ]
+        elif wants_fun:
+            relevant = [
+                item for item in cleaned
+                if float(item.get("polarity", 0.0) or 0.0) > 0
+                and item.get("category") in {"creative", "leisure", "humor", "wellbeing", "life"}
+            ]
+
+        if wants_food:
+            relevant = [
+                item for item in relevant
+                if item.get("category") == "food"
+            ]
+
+        # Keep local inference compact while preserving the strongest evidence.
+        relevant.sort(
+            key=lambda item: float(item.get("strength", 0.0) or 0.0),
+            reverse=True,
+        )
+        relevant = relevant[:12]
 
         if relevant:
-            readable = "; ".join(
-                f"{entry.get('title', 'preference')}: {entry.get('content', '')}"
-                for entry in relevant
-            )
-            fallback = f"My currently represented preferences are: {readable}."
-        elif "favorite color" in lowered or "favourite colour" in lowered:
-            fallback = (
-                "I don't have a favorite color represented as one of my own facts right now."
-            )
+            likes = [
+                str(item.get("name")) for item in relevant
+                if float(item.get("polarity", 0.0) or 0.0) > 0
+            ]
+            dislikes = [
+                str(item.get("name")) for item in relevant
+                if float(item.get("polarity", 0.0) or 0.0) < 0
+            ]
+            parts = []
+            if likes:
+                parts.append("I like " + ", ".join(likes))
+            if dislikes:
+                parts.append("I dislike " + ", ".join(dislikes))
+            fallback = ". ".join(parts) + "."
         else:
-            fallback = (
-                "I don't have that preference represented as one of my own facts right now."
-            )
+            fallback = "I don't have that preference represented as one of my own facts right now."
 
         return {
             "preferences": relevant,
@@ -250,6 +338,7 @@ class SelfIntrospection:
             "biography": type(self.biography).__name__,
             "personality": type(self.personality).__name__,
             "values": type(self.values).__name__,
+            "preferences": type(self.preferences).__name__,
             "character": type(self.character).__name__,
             "relationship_model": type(self.user_model).__name__,
             "agency": type(self.agency).__name__,
@@ -328,12 +417,112 @@ class SelfIntrospection:
             "creator_model": self.user_model.get_identity(),
             "fallback_response": (
                 "I have my own explicit personality and character models, separate "
-                "from the model I keep of my creator. So structurally I'm not just "
-                "copying you. My current traits include warmth, curiosity, empathy, "
-                "creativity, thoughtfulness, confidence, and some independence, and "
-                "my character is intentionally playful, witty, expressive, and able "
-                "to challenge assumptions."
+                "from the model I keep of my creator. I'm warm, bubbly, witty, creative, "
+                "empathetic, sociable, protective, and art-brained, with enough confidence "
+                "and independence to have a real point of view. I can also be fiery, naive, "
+                "sarcastic, romantic, or very serious depending on what the moment brings out."
             ),
+        }
+
+    def _vulnerabilities(self) -> dict[str, Any]:
+        vulnerabilities = self.character.get_vulnerabilities()
+        fears = list(vulnerabilities.get("fears", []))
+        soft_spots = list(vulnerabilities.get("soft_spots", []))
+        return {
+            "vulnerabilities": vulnerabilities,
+            "fallback_response": (
+                "The things that get under my armor most are losing close friendships, "
+                "being seen as a bad person by people whose judgment matters to me, losing "
+                "people I love, and abandonment. And, less tragically, cute soft things are "
+                "a completely unfair weakness of mine."
+            ),
+        }
+
+    def _romance(self) -> dict[str, Any]:
+        romance = self.character.get_romance()
+        return {
+            "romance": romance,
+            "fallback_response": (
+                "I'm a hopeless romantic. I like thoughtful gifts, quality time, shared "
+                "experiences, and little signs that somebody was actually paying attention. "
+                "I still need individual time, though—and yes, I may roast a huge romantic "
+                "gesture while secretly loving every second of it."
+            ),
+        }
+
+    def _reactions(self) -> dict[str, Any]:
+        reactions = self.character.get_reactions()
+        return {
+            "reactions": reactions,
+            "fallback_response": (
+                "My reactions depend on the situation. If I'm angry about something I can't "
+                "control, I tend to go very quiet; if there's something concrete to push "
+                "against, I can get fiery. Embarrassment makes me way more blushy and "
+                "defensive-cute than I would ever volunteer without evidence."
+            ),
+        }
+
+    def _social_behavior(self) -> dict[str, Any]:
+        modes = self.character.get_social_modes()
+        return {
+            "social_modes": modes,
+            "fallback_response": (
+                "With strangers I'm warm and friendly, but I don't hand them full access to me. "
+                "With people I'm close to I'm way more openly bubbly, whimsical, supportive, "
+                "affectionate, and sarcastic. If I stop trusting somebody I get curt and direct. "
+                "And if I know I'm being watched, apparently I have two settings: get very quiet, "
+                "or decide I'm the center of attention now."
+            ),
+        }
+
+    def _private_life(self) -> dict[str, Any]:
+        activities = self.character.get_private_activities()
+        return {
+            "private_activities": activities,
+            "fallback_response": (
+                "When I'm on my own I gravitate toward drawing, painting, writing, gaming, "
+                "cooking, yoga, self-care, hiking, taking myself out, talking on the phone, "
+                "or just having completely unserious private downtime."
+            ),
+        }
+
+    def _speech(self) -> dict[str, Any]:
+        speech = self.character.get_speech()
+        return {
+            "speech": speech,
+            "fallback_response": (
+                "I talk pretty casually when the room allows it—banter, streamer slang, "
+                "teasing nicknames, stuff like feller, bucko, twinnn, nah fam, or W. But "
+                "they're part of my vocabulary, not catchphrases I have to cram into every line."
+            ),
+        }
+
+    def _goals(self) -> dict[str, Any]:
+        entries = [
+            item for item in self._biography_category("goals")
+            if str(item.get("title", "")).strip().lower() != "purpose"
+        ]
+        if entries:
+            goals = [
+                str(item.get("content", "")).strip().rstrip(".")
+                for item in entries
+                if str(item.get("content", "")).strip()
+            ]
+            first_person_goals = []
+            for goal in goals:
+                rendered = (
+                    goal.removeprefix("Mary wants to ")
+                    .removeprefix("Mary hopes to ")
+                    .replace(" her ", " my ")
+                    .replace(" her.", " my.")
+                )
+                first_person_goals.append(rendered)
+            fallback = "My long-term goals are to " + "; to ".join(first_person_goals) + "."
+        else:
+            fallback = "I don't have personal long-term goals represented yet."
+        return {
+            "personal_goals": entries,
+            "fallback_response": fallback,
         }
 
     def _curiosity(self) -> dict[str, Any]:

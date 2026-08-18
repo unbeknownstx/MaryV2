@@ -395,6 +395,32 @@ class ReasoningEngine:
                                 f"hair color ({expected})."
                             )
 
+                if "eye" in lowered_query or "eyes" in lowered_query:
+                    eyes = next(
+                        (
+                            entry
+                            for entry in appearance
+                            if isinstance(entry, dict)
+                            and "eye" in str(entry.get("title", "")).lower()
+                        ),
+                        None,
+                    )
+                    if eyes is not None:
+                        expected = str(eyes.get("content", "")).strip().lower()
+                        color_words = {
+                            "red", "blue", "green", "black", "brown", "hazel",
+                            "gray", "grey", "purple", "amber", "gold", "golden",
+                        }
+                        mentioned_colors = {
+                            color for color in color_words
+                            if re.search(rf"\b{re.escape(color)}\b", lowered_response)
+                        }
+                        if expected and expected not in lowered_response and mentioned_colors:
+                            return (
+                                "Generated self-response contradicted Mary's canonical "
+                                f"eye color ({expected})."
+                            )
+
             if subtype == "preferences":
                 preferences = source.get("preferences", [])
                 preferences = preferences if isinstance(preferences, list) else []
@@ -428,6 +454,66 @@ class ReasoningEngine:
                             "Generated self-response failed to preserve the absence of a "
                             "Mary preference in local self evidence."
                         )
+                else:
+                    # A direct preference self-query should preserve at least one
+                    # represented preference rather than substituting an unrelated
+                    # provider persona. Broad summaries may use a category word.
+                    supported = []
+                    for preference in preferences:
+                        if not isinstance(preference, dict):
+                            continue
+                        name = str(preference.get("name", "")).strip().lower()
+                        category = str(preference.get("category", "")).strip().lower()
+                        if name:
+                            supported.append(name)
+                        if category:
+                            supported.append(category)
+                    if supported and not any(term in lowered_response for term in supported):
+                        return (
+                            "Generated self-response did not preserve any represented Mary "
+                            "preference from local self evidence."
+                        )
+
+            if subtype in {
+                "vulnerabilities", "romance", "reactions", "social_behavior",
+                "private_life", "speech", "goals"
+            }:
+                marker_map = {
+                    "vulnerabilities": (
+                        "friend", "bad person", "loved", "passing", "abandon",
+                        "cute", "soft", "pink", "e-girl",
+                    ),
+                    "romance": (
+                        "hopeless romantic", "gift", "quality time", "shared",
+                        "individual time", "space", "romantic gesture", "roast",
+                    ),
+                    "reactions": (
+                        "quiet", "fiery", "crash", "blush", "tsundere",
+                        "happy dance", "protect",
+                    ),
+                    "social_behavior": (
+                        "stranger", "close", "bubbly", "support", "sarcastic",
+                        "curt", "trust", "watched", "center of attention", "quiet",
+                    ),
+                    "private_life": (
+                        "drawing", "painting", "writing", "gaming", "cooking",
+                        "yoga", "self-care", "hiking", "phone", "downtime",
+                    ),
+                    "speech": (
+                        "feller", "bucko", "this guy", "twinnn", "nah fam",
+                        "what up gang", "streamer", "slang",
+                    ),
+                    "goals": (
+                        "homestead", "love of my life", "lasting partnership",
+                        "travel", "justice",
+                    ),
+                }
+                markers = marker_map[subtype]
+                if not any(marker in lowered_response for marker in markers):
+                    return (
+                        f"Generated self-response did not preserve Mary's represented "
+                        f"{subtype} evidence."
+                    )
 
         generated_dates = set(
             re.findall(r"\b(?:19|20)\d{2}(?:-\d{2}-\d{2})?\b", response_text)

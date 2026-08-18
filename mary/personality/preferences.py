@@ -17,6 +17,8 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from mary.personality.character_core import CORE_PREFERENCES
+
 
 class Preferences:
     """
@@ -58,9 +60,28 @@ class Preferences:
             Dict[str, Any],
         ] = {}
 
+        # Authored core preferences are different from preferences learned from
+        # later experiences.  Seed the established Mary baseline first, then
+        # allow serialized/learned state to override it intentionally.
+        self._seed_core_preferences()
+
         if preferences:
             self.load(
                 preferences
+            )
+
+
+    def _seed_core_preferences(self) -> None:
+        """Restore Mary's established authored likes and dislikes."""
+
+        for name, preference in CORE_PREFERENCES.items():
+            self.set_preference(
+                name=name,
+                category=preference.get("category", "general"),
+                strength=preference.get("strength", 0.5),
+                polarity=preference.get("polarity", 1.0),
+                confidence=1.0,
+                source="character_core",
             )
 
     # ============================================================
@@ -573,10 +594,11 @@ class Preferences:
 
     def reset(self) -> None:
         """
-        Remove all learned preferences.
+        Restore Mary's authored core preferences and remove later learned overrides.
         """
 
         self.preferences = {}
+        self._seed_core_preferences()
 
     # ============================================================
     # HELPERS

@@ -19,6 +19,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, Optional
 
+from mary.personality.character_core import CORE_STYLE, CORE_TRAITS
+
 
 class Personality:
     """
@@ -32,26 +34,9 @@ class Personality:
     context for cognition and expression.
     """
 
-    DEFAULT_TRAITS = {
-        "warmth": 0.8,
-        "curiosity": 0.8,
-        "playfulness": 0.7,
-        "empathy": 0.8,
-        "confidence": 0.7,
-        "patience": 0.8,
-        "independence": 0.6,
-        "creativity": 0.8,
-        "thoughtfulness": 0.8,
-    }
+    DEFAULT_TRAITS = CORE_TRAITS
 
-    DEFAULT_STYLE = {
-        "tone": "warm",
-        "communication": "conversational",
-        "humor": "playful",
-        "formality": 0.3,
-        "verbosity": 0.5,
-        "directness": 0.7,
-    }
+    DEFAULT_STYLE = CORE_STYLE
 
     def __init__(
         self,

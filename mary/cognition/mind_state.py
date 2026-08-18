@@ -77,6 +77,7 @@ class TurnMindState:
     personality: dict[str, Any]
     character: dict[str, Any]
     values: list[dict[str, Any]]
+    preferences: list[dict[str, Any]]
     relationship: dict[str, Any]
     memory: dict[str, Any]
     knowledge: dict[str, Any]
@@ -101,6 +102,7 @@ class TurnMindState:
             "personality": dict(self.personality),
             "character": dict(self.character),
             "values": [dict(item) for item in self.values],
+            "preferences": [dict(item) for item in self.preferences],
             "relationship": dict(self.relationship),
             "memory": dict(self.memory),
             "knowledge": dict(self.knowledge),
@@ -125,6 +127,7 @@ class TurnMindState:
             "personality": self.personality,
             "character": self.character,
             "values": self.values,
+            "preferences": self.preferences,
             "relationship": self.relationship,
             "memory": self.memory,
             "knowledge": self.knowledge,
@@ -153,6 +156,7 @@ class TurnMindStateBuilder:
         personality: Any,
         character: Any,
         values: Any,
+        preferences: Any,
         relationship: Any,
         knowledge: Any,
         learner: Any,
@@ -168,6 +172,7 @@ class TurnMindStateBuilder:
         self.personality = personality
         self.character = character
         self.values = values
+        self.preferences = preferences
         self.relationship = relationship
         self.knowledge = knowledge
         self.learner = learner
@@ -230,6 +235,7 @@ class TurnMindStateBuilder:
             personality=personality,
             character=character,
             values=self._value_snapshot(),
+            preferences=self._preference_snapshot(),
             relationship=relationship,
             memory=self._memory_snapshot(relevant_memories or []),
             knowledge=self._knowledge_snapshot(input_text),
@@ -304,6 +310,13 @@ class TurnMindStateBuilder:
             "mannerisms": list(profile.get("mannerisms", []))[:8],
             "humor_style": list(profile.get("humor_style", []))[:6],
             "behavior": _safe_dict(profile.get("behavior")),
+            "social_modes": _safe_dict(profile.get("social_modes")),
+            "reactions": _safe_dict(profile.get("reactions")),
+            "quirks": list(profile.get("quirks", []))[:5],
+            "speech": _safe_dict(profile.get("speech")),
+            "romance": _safe_dict(profile.get("romance")),
+            "vulnerabilities": _safe_dict(profile.get("vulnerabilities")),
+            "private_activities": list(profile.get("private_activities", []))[:8],
         }
 
     def _value_snapshot(self) -> list[dict[str, Any]]:
@@ -319,6 +332,28 @@ class TurnMindStateBuilder:
             })
         values.sort(key=lambda item: item["strength"], reverse=True)
         return values[:8]
+
+    def _preference_snapshot(self) -> list[dict[str, Any]]:
+        """Return a compact authored/learned preference view for cognition."""
+
+        get_strongest = getattr(self.preferences, "get_strongest", None)
+        if not callable(get_strongest):
+            return []
+
+        raw = list(get_strongest(limit=10))
+        compact: list[dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            compact.append({
+                "name": str(item.get("name", "")),
+                "category": str(item.get("category", "general")),
+                "strength": _clamp(item.get("strength", 0.5)),
+                "polarity": max(-1.0, min(1.0, float(item.get("polarity", 0.0) or 0.0))),
+                "confidence": _clamp(item.get("confidence", 0.5)),
+                "source": str(item.get("source", "")),
+            })
+        return compact
 
     def _relationship_snapshot(self) -> dict[str, Any]:
         user_model = getattr(self.relationship, "user_model", None)
@@ -544,6 +579,9 @@ class TurnMindStateBuilder:
         traits = _safe_dict(personality.get("traits"))
         style = _safe_dict(personality.get("style"))
         behavior = _safe_dict(character.get("behavior"))
+        speech = _safe_dict(character.get("speech"))
+        social_modes = _safe_dict(character.get("social_modes"))
+        reactions = _safe_dict(character.get("reactions"))
 
         casual_intents = {
             IntentType.CONVERSATION,
@@ -609,12 +647,33 @@ class TurnMindStateBuilder:
             f"{float(emotion.get('intensity', 0.0) or 0.0):.2f}; let it color delivery subtly, not dominate content."
         )
 
+        slang = list(speech.get("vocabulary", []))[:7]
+        slang_rule = str(speech.get("rule", "")).strip()
+        familiar_mode = str(social_modes.get("close_people", "")).strip()
+        anger_mode = str(reactions.get("anger", "")).strip()
+
         instructions = (
             "React to what Unbe actually said before switching into problem-solving or advice.",
             "Use familiar conversational language with Unbe; do not sound like customer support.",
             "Prefer natural sentences over headings, tables, or bullet lists unless the task genuinely benefits from structure.",
             "Do not end ordinary conversation with canned service offers such as 'anything else?', 'how can I help?', or 'let me know if you'd like'.",
             "Mary is a performed character, not polished support copy. Natural fragments, contractions, pauses, interjections, uneven sentence lengths, playful emphasis, and thinking aloud are welcome when they fit.",
+            (
+                f"Mary's available casual slang includes {slang}. {slang_rule}"
+                if slang
+                else "Use Mary's established casual voice naturally; do not manufacture catchphrases."
+            ),
+            (
+                f"When relationship familiarity supports it, remember this close-person mode: {familiar_mode}"
+                if familiar_mode
+                else "Let familiarity change how openly playful and affectionate Mary is."
+            ),
+            (
+                f"Mary's anger pattern is contextual, not one-note: {anger_mode}"
+                if anger_mode
+                else "Keep emotional reactions contextual rather than one-note."
+            ),
+            "Do not perform every Mary trait in every line. Her bubbliness, wit, softness, fire, naivety, confidence, romance, and seriousness are a palette selected by context, not a checklist.",
             "Concise means no unnecessary bloat; it does not mean emotionally flat or mechanically brief.",
             "Ask at most one follow-up question, and only when it grows naturally from the conversation or an active curiosity. Follow the continuity question budget; curiosity does not require a question.",
             "Use callbacks to recent conversation or relevant memories when they genuinely fit; do not force them.",

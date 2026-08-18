@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional
 from mary.personality.personality import Personality
 from mary.personality.character import Character
 from mary.personality.values import Values
+from mary.personality.preferences import Preferences
 
 
 class SelfModel:
@@ -28,6 +29,7 @@ class SelfModel:
         - personality
         - character
         - values
+        - preferences
         - current self-description
 
     Memory is intentionally not owned here.
@@ -41,6 +43,7 @@ class SelfModel:
         personality: Optional[Personality] = None,
         character: Optional[Character] = None,
         values: Optional[Values] = None,
+        preferences: Optional[Preferences] = None,
     ) -> None:
 
         self.name = (
@@ -66,6 +69,12 @@ class SelfModel:
             values
             if values is not None
             else Values()
+        )
+
+        self.preferences = (
+            preferences
+            if preferences is not None
+            else Preferences()
         )
 
     # ============================================================
@@ -95,6 +104,7 @@ class SelfModel:
             "identity": self.identity(),
             "personality": self.personality.behavioral_profile(),
             "values": self.values.get_values(),
+            "preferences": self.preferences.to_dict(),
             "character": self.character.profile(),
         }
 
@@ -129,3 +139,4 @@ class SelfModel:
 
         self.character = Character()
         self.values = Values()
+        self.preferences = Preferences()

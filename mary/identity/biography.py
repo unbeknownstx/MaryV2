@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from mary.personality.character_core import CORE_APPEARANCE, CORE_PERSONAL_GOALS
+
 
 @dataclass
 class BiographyEntry:
@@ -454,11 +456,23 @@ def create_default_biography() -> Biography:
     # Character system. Keeping appearance as structured canon lets self
     # introspection answer physical-identity questions without asking an LLM
     # to invent what Mary looks like.
-    biography.add(
-        category="appearance",
-        title="Hair color",
-        content="red",
-        importance=9,
-    )
+    for title, content, importance in CORE_APPEARANCE:
+        biography.add(
+            category="appearance",
+            title=title,
+            content=content,
+            importance=importance,
+        )
+
+    # These are Mary's established personal aspirations, not unrevealed story
+    # lore. They can guide expression and agency without teaching her hidden
+    # canon that the creator intends to reveal later.
+    for title, content, importance in CORE_PERSONAL_GOALS:
+        biography.add(
+            category="goals",
+            title=title,
+            content=content,
+            importance=importance,
+        )
 
     return biography
