@@ -103,10 +103,24 @@
         "observation_id": "observation_9fa663d8cc51",
         "created_at": "2026-08-17T22:18:17.926226+00:00",
         "updated_at": "2026-08-17T22:18:17.926226+00:00"
+      },
+      {
+        "id": "profile_7",
+        "category": "general",
+        "key": "statement_i_really_love_creating_stories",
+        "value": "I really love creating stories",
+        "status": "current",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_6419ef6832484ab1a958710d208e3590",
+        "observation_id": "observation_4a91ed96c303",
+        "created_at": "2026-08-18T01:40:32.274060+00:00",
+        "updated_at": "2026-08-18T01:40:32.274060+00:00"
       }
     ],
     "created_at": "2026-08-17T22:13:26.842107+00:00",
-    "updated_at": "2026-08-17T22:18:17.926236+00:00"
+    "updated_at": "2026-08-18T01:40:32.274082+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -200,10 +214,25 @@
           "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d"
         },
         "created_at": "2026-08-17T15:18:17.926244"
+      },
+      {
+        "id": "relationship_69e6bc4bf5b3",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared explicit statement: I really love creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "general",
+          "key": "statement_i_really_love_creating_stories",
+          "profile_record_id": "profile_7",
+          "evidence_id": "episode_6419ef6832484ab1a958710d208e3590"
+        },
+        "created_at": "2026-08-17T18:40:32.274096"
       }
     ],
     "created_at": "2026-08-17T22:13:26.842111",
-    "updated_at": "2026-08-17T15:18:17.926246"
+    "updated_at": "2026-08-17T18:40:32.274099"
   },
   "understanding": {
     "observations": [
@@ -260,11 +289,20 @@
         "confidence": 1.0,
         "evidence": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
         "created_at": "2026-08-17T15:18:17.926218"
+      },
+      {
+        "id": "observation_4a91ed96c303",
+        "observation": "I really love creating stories",
+        "category": "general",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "episode_6419ef6832484ab1a958710d208e3590",
+        "created_at": "2026-08-17T18:40:32.274043"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-17T15:18:17.926222"
+    "updated_at": "2026-08-17T18:40:32.274051"
   },
   "milestones": []
 }
