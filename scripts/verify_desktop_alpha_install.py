@@ -15,6 +15,7 @@ def main() -> int:
         root / "mary" / "desktop" / "voice.py",
         root / "mary" / "voice" / "providers" / "elevenlabs.py",
         root / "mary" / "voice" / "speech_renderer.py",
+        root / "mary" / "voice" / "emotion_profile.py",
         root / "desktop" / "package.json",
         root / "desktop" / "vite.config.js",
         root / "desktop" / "index.html",
@@ -64,6 +65,9 @@ def main() -> int:
         ("spoken_text = self.renderer.render" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "desktop renders natural spoken text separately from GUI text"),
         ("class SpeechRenderer" in (root / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8"), "local deterministic speech renderer is installed"),
         ("grid-template-rows: auto minmax(0, 1fr) auto" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8"), "desktop pins composer while messages scroll"),
+        ("emotional_state=mary.emotion.state" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop voice and avatar share Mary's existing emotion state"),
+        ("resolve_emotion_voice_settings" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice delivery resolves from emotional state"),
+        ("class EmotionVoiceAdjustment" in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "emotion voice profile is local and provider-independent"),
     ]
 
     failed = False

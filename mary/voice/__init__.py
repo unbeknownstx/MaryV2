@@ -74,6 +74,17 @@ from .speech_renderer import (
     render_spoken_text,
 )
 
+
+# ================================================================
+# EMOTION-AWARE VOICE DELIVERY
+# ================================================================
+
+from .emotion_profile import (
+    EmotionVoiceAdjustment,
+    resolve_emotion_voice_settings,
+    emotion_voice_profile_name,
+)
+
 # ================================================================
 # PUBLIC API
 # ================================================================
@@ -122,4 +133,9 @@ __all__ = [
     # Speech rendering
     "SpeechRenderer",
     "render_spoken_text",
+
+    # Emotion-aware voice delivery
+    "EmotionVoiceAdjustment",
+    "resolve_emotion_voice_settings",
+    "emotion_voice_profile_name",
 ]

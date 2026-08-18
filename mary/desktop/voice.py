@@ -2,6 +2,10 @@
 
 Voice is opt-in. MaryV2 Desktop remains completely local/no-op unless
 ``MARY_TTS_PROVIDER=elevenlabs`` is explicitly configured.
+
+Mary's calibrated cloned voice remains the baseline.  If an existing Mary
+``EmotionalState`` is supplied, the desktop applies only subtle delivery
+changes around that baseline; it never changes voice identity.
 """
 
 from __future__ import annotations
@@ -11,11 +15,14 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from mary.expression.emotion import EmotionalState
 from mary.voice import (
     SpeechAudioFormat,
     SpeechRenderer,
     VoiceSettings,
     create_tts_service,
+    emotion_voice_profile_name,
+    resolve_emotion_voice_settings,
 )
 from mary.voice.providers import ElevenLabsTextToSpeechProvider
 
@@ -71,10 +78,12 @@ class DesktopVoiceEngine:
         service=None,
         status: DesktopVoiceStatus | None = None,
         renderer: SpeechRenderer | None = None,
+        base_settings: VoiceSettings | None = None,
     ) -> None:
         self.service = service
         self.status = status or DesktopVoiceStatus(enabled=False)
         self.renderer = renderer or SpeechRenderer()
+        self.base_settings = base_settings or VoiceSettings()
 
     @classmethod
     def from_environment(cls) -> "DesktopVoiceEngine":
@@ -130,6 +139,7 @@ class DesktopVoiceEngine:
         service = create_tts_service(provider, settings=settings)
         return cls(
             service=service,
+            base_settings=settings,
             status=DesktopVoiceStatus(
                 enabled=True,
                 provider="elevenlabs",
@@ -138,7 +148,12 @@ class DesktopVoiceEngine:
             ),
         )
 
-    def synthesize(self, text: str) -> dict[str, Any]:
+    def synthesize(
+        self,
+        text: str,
+        *,
+        emotional_state: EmotionalState | None = None,
+    ) -> dict[str, Any]:
         if self.service is None or not self.status.enabled:
             return {
                 **self.status.to_dict(),
@@ -153,14 +168,25 @@ class DesktopVoiceEngine:
                 "spoken_text": "",
             }
 
-        speech = self.service.synthesize(spoken_text)
+        active_settings = resolve_emotion_voice_settings(
+            self.base_settings,
+            emotional_state,
+        )
+        speech = self.service.synthesize(
+            spoken_text,
+            settings=active_settings,
+        )
         if not speech.is_successful:
             return {
                 **self.status.to_dict(),
                 "status": speech.status.value,
             }
 
-        mime_type = "audio/mpeg" if speech.format == SpeechAudioFormat.MP3 else "application/octet-stream"
+        mime_type = (
+            "audio/mpeg"
+            if speech.format == SpeechAudioFormat.MP3
+            else "application/octet-stream"
+        )
         return {
             **self.status.to_dict(),
             "status": speech.status.value,
@@ -169,4 +195,14 @@ class DesktopVoiceEngine:
             "audio_base64": base64.b64encode(speech.audio).decode("ascii"),
             "audio_size": len(speech.audio),
             "spoken_text": spoken_text,
+            "emotion": active_settings.emotion.value if active_settings.emotion else "neutral",
+            "emotion_intensity": active_settings.emotion_intensity,
+            "emotion_profile": emotion_voice_profile_name(emotional_state),
+            "voice_settings": {
+                "stability": active_settings.metadata.get("stability"),
+                "similarity_boost": active_settings.metadata.get("similarity_boost"),
+                "style": active_settings.metadata.get("style"),
+                "speed": active_settings.speed,
+                "use_speaker_boost": active_settings.metadata.get("use_speaker_boost", True),
+            },
         }

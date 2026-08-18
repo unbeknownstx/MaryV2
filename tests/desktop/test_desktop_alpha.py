@@ -105,3 +105,14 @@ def test_conversation_composer_stays_visible_while_messages_scroll() -> None:
     assert "overflow-y: auto" in source
     assert ".composer" in source
     assert "z-index: 2" in source
+
+
+def test_desktop_voice_and_avatar_share_marys_existing_emotion_state() -> None:
+    bridge = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    voice = (_root() / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8")
+
+    assert "mary.avatar.sync_emotion()" in bridge
+    assert "emotional_state=mary.emotion.state" in bridge
+    assert "resolve_emotion_voice_settings" in voice
+    assert '"emotion_profile"' in voice
+    assert '"voice_settings"' in voice

@@ -92,7 +92,10 @@ class _ConversationWorker(QObject):
             # desktop environment configuration.
             voice_error: str | None = None
             try:
-                voice_payload = self.voice.synthesize(response_text)
+                voice_payload = self.voice.synthesize(
+                    response_text,
+                    emotional_state=mary.emotion.state,
+                )
             except Exception as exc:
                 voice_error = f"{type(exc).__name__}: {exc}"
                 voice_payload = {
