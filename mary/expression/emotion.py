@@ -301,13 +301,22 @@ class EmotionalState:
                 weight=0.65,
             )
 
-            # A sufficiently strong signal can become primary.
-            if (
+            # A meaningful signal should be able to move Mary out of a
+            # neutral rest state without requiring high intensity. Existing
+            # non-neutral states remain resistant to weak competing signals.
+            promote_from_neutral = (
+                self.primary == Emotion.NEUTRAL
+                and signal.intensity >= 0.25
+            )
+
+            replace_existing = (
                 signal.intensity
                 > self.intensity
                 and signal.intensity
                 >= 0.6
-            ):
+            )
+
+            if promote_from_neutral or replace_existing:
                 previous = (
                     self.primary
                 )
@@ -322,6 +331,11 @@ class EmotionalState:
 
                 self.intensity = (
                     signal.intensity
+                )
+
+                self.secondary.pop(
+                    signal.emotion,
+                    None,
                 )
 
                 if previous != Emotion.NEUTRAL:
@@ -736,6 +750,43 @@ class EmotionManager:
             target_arousal,
             weight=intensity,
         )
+
+    # ============================================================
+    # DECAY
+    # ============================================================
+
+    def decay(
+        self,
+        amount: float = 0.05,
+    ) -> EmotionalState:
+        """Decay expressive intensity and relax dimensions toward neutral."""
+
+        amount = _clamp(
+            amount
+        )
+
+        self.state.decay(
+            amount
+        )
+
+        dimension_weight = min(
+            1.0,
+            amount * 1.5,
+        )
+
+        self.state.valence = _blend(
+            self.state.valence,
+            0.0,
+            weight=dimension_weight,
+        )
+
+        self.state.arousal = _blend(
+            self.state.arousal,
+            0.0,
+            weight=dimension_weight,
+        )
+
+        return self.state
 
     # ============================================================
     # RESET

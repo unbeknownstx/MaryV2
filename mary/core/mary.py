@@ -48,6 +48,7 @@ from mary.conversation.service import ConversationService
 
 from mary.expression.dialogue import DialogueManager
 from mary.expression.emotion import EmotionManager
+from mary.expression.appraisal import ConversationEmotionAppraiser
 from mary.expression.response import ResponseBuilder
 from mary.expression.expression import ExpressionSystem
 
@@ -235,6 +236,12 @@ class Mary:
             emotion=self.emotion,
             response=self.response,
             dialogue=self.dialogue,
+        )
+
+        self.emotion_appraiser = ConversationEmotionAppraiser(
+            creator_name=str(
+                self.user_model.name or self.identity.creator or "Unbe"
+            ).title(),
         )
 
         # ============================================================
@@ -551,12 +558,16 @@ class Mary:
                     "llm_calls_after_planning": 0,
                 })
 
-            return self._build_system_cycle_result(
+            cycle = self._build_system_cycle_result(
                 input_text=input_text,
                 intent=intent,
                 response=system_response,
                 context=context,
                 metadata=metadata,
+            )
+            return self._apply_conversation_emotion(
+                input_text=input_text,
+                result=cycle,
             )
 
         result = self.cognition.process(
@@ -598,6 +609,30 @@ class Mary:
                 }
             )
 
+        return self._apply_conversation_emotion(
+            input_text=input_text,
+            result=result,
+        )
+
+    def _apply_conversation_emotion(
+        self,
+        *,
+        input_text: str,
+        result: CognitiveCycleResult,
+    ) -> CognitiveCycleResult:
+        """Appraise one completed turn using Mary's existing emotion state."""
+
+        appraisal = self.emotion_appraiser.appraise(
+            input_text=input_text,
+            response_text=result.final_response,
+            intent=result.intent,
+        )
+        state = self.emotion_appraiser.apply(
+            self.emotion,
+            appraisal,
+        )
+        result.metadata["emotion_appraisal"] = appraisal.to_dict()
+        result.metadata["emotional_state"] = state.to_dict()
         return result
 
     # ================================================================

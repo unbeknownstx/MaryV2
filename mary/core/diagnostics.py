@@ -615,6 +615,7 @@ class MaryDiagnostics:
                 "expression",
                 "dialogue",
                 "emotion",
+                "emotion_appraiser",
                 "response",
             ),
         )

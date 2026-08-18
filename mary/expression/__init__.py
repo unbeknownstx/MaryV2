@@ -32,6 +32,12 @@ from .emotion import (
     create_emotion_manager,
 )
 
+
+from .appraisal import (
+    ConversationEmotionAppraisal,
+    ConversationEmotionAppraiser,
+)
+
 from .response import (
     ResponseType,
     ResponsePriority,
@@ -62,6 +68,8 @@ __all__ = [
     "EmotionalState",
     "EmotionManager",
     "create_emotion_manager",
+    "ConversationEmotionAppraisal",
+    "ConversationEmotionAppraiser",
 
     # Response
     "ResponseType",
