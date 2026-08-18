@@ -9,6 +9,7 @@ const messages = document.querySelector('#messages');
 const composer = document.querySelector('#composer');
 const input = document.querySelector('#message-input');
 const sendButton = document.querySelector('#send-button');
+const micButton = document.querySelector('#mic-button');
 const thinking = document.querySelector('#thinking');
 const statusDot = document.querySelector('#status-dot');
 const statusText = document.querySelector('#status-text');
@@ -18,6 +19,7 @@ let bridge = null;
 let currentVrm = null;
 let modelBaseY = 0;
 let busy = false;
+let listeningState = 'idle';
 let activeSpeechAudio = null;
 let speechAudioContext = null;
 let speechAudioSource = null;
@@ -261,7 +263,21 @@ function setBusy(value) {
   busy = Boolean(value);
   sendButton.disabled = busy;
   input.disabled = busy;
+  micButton.disabled = busy || listeningState === 'transcribing';
   thinking.classList.toggle('hidden', !busy);
+}
+
+function setListeningState(state) {
+  listeningState = String(state || 'idle');
+  micButton.classList.toggle('listening', listeningState === 'listening');
+  micButton.classList.toggle('transcribing', listeningState === 'transcribing');
+  micButton.setAttribute('aria-pressed', listeningState === 'listening' ? 'true' : 'false');
+  micButton.textContent = listeningState === 'listening' ? 'Stop' : (listeningState === 'transcribing' ? '…' : 'Mic');
+  micButton.disabled = busy || listeningState === 'transcribing';
+
+  if (listeningState === 'listening') setConnected(true, 'Listening…');
+  else if (listeningState === 'transcribing') setConnected(true, 'Transcribing…');
+  else if (!busy && !activeSpeechAudio) setConnected(true, 'Mary ready');
 }
 
 function setConnected(value, label = '') {
@@ -464,18 +480,41 @@ function connectBridge() {
     bridge.busyChanged.connect((value) => setBusy(value));
     bridge.errorOccurred.connect((message) => {
       setBusy(false);
+      setListeningState('idle');
       appendMessage('System', message, 'system');
+    });
+
+    bridge.listeningStateChanged.connect((state) => setListeningState(state));
+    bridge.transcriptionReady.connect((text) => {
+      const transcript = String(text || '').trim();
+      if (!transcript || busy) return;
+      appendMessage('Unbe', transcript, 'user');
+      bridge.sendMessage(transcript);
     });
 
     bridge.getStatus((raw) => {
       const status = parsePayload(raw);
       const voiceLabel = status.voice?.enabled ? ` · voice:${status.voice.provider}` : '';
-      modelLabel.textContent = `${status.provider || 'unknown'} · ${status.model || 'unknown'}${voiceLabel}`;
+      const sttLabel = status.speech_to_text?.enabled ? ` · mic:${status.speech_to_text.provider}` : '';
+      modelLabel.textContent = `${status.provider || 'unknown'} · ${status.model || 'unknown'}${voiceLabel}${sttLabel}`;
     });
 
     bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));
   });
 }
+
+micButton.addEventListener('click', () => {
+  if (!bridge || busy || listeningState === 'transcribing') return;
+
+  if (listeningState === 'listening') {
+    bridge.stopListening();
+    return;
+  }
+
+  // Do not let Mary's own TTS leak into the microphone recording.
+  stopVoicePlayback();
+  bridge.startListening();
+});
 
 composer.addEventListener('submit', (event) => {
   event.preventDefault();

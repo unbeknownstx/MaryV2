@@ -121,7 +121,7 @@ header p { margin: 0; color: #848ba2; font-size: 12px; }
   min-height: 0;
   position: relative;
   z-index: 2;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 10px;
   padding: 16px 20px 20px;
   border-top: 1px solid rgba(255,255,255,.07);
@@ -156,4 +156,18 @@ button:disabled, textarea:disabled { opacity: .55; cursor: default; }
 
 @media (max-width: 1050px) {
   #app { grid-template-columns: 1fr 1fr; }
+}
+
+
+#mic-button {
+  min-width: 72px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.10);
+}
+#mic-button.listening {
+  background: linear-gradient(180deg, #e46a83, #a43d55);
+  box-shadow: 0 0 0 3px rgba(228,106,131,.12), 0 0 24px rgba(228,106,131,.18);
+}
+#mic-button.transcribing {
+  background: linear-gradient(180deg, #8f79c7, #665095);
 }

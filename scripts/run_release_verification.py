@@ -163,8 +163,18 @@ def run_emotion_appraisal_install_check() -> bool:
     return completed.returncode == 0
 
 
+def run_voice_input_install_check() -> bool:
+    _heading("11. DESKTOP VOICE INPUT CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_voice_input_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_local_safety_smoke() -> bool:
-    _heading("11. LOCAL TOOL SAFETY SMOKE")
+    _heading("12. LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -233,7 +243,7 @@ def run_local_safety_smoke() -> bool:
 
 
 def run_live_web() -> bool:
-    _heading("12. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("13. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -302,6 +312,7 @@ def main() -> int:
         ("curiosity_development", run_curiosity_development_install_check()),
         ("priority_grounding", run_priority_grounding_install_check()),
         ("emotion_appraisal", run_emotion_appraisal_install_check()),
+        ("voice_input", run_voice_input_install_check()),
         ("local_safety", run_local_safety_smoke()),
     ]
 

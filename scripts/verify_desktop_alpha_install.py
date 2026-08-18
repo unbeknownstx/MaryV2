@@ -13,6 +13,8 @@ def main() -> int:
         root / "mary" / "desktop" / "bridge.py",
         root / "mary" / "desktop" / "window.py",
         root / "mary" / "desktop" / "voice.py",
+        root / "mary" / "desktop" / "microphone.py",
+        root / "mary" / "desktop" / "stt.py",
         root / "mary" / "voice" / "providers" / "elevenlabs.py",
         root / "mary" / "voice" / "speech_renderer.py",
         root / "mary" / "voice" / "emotion_profile.py",
@@ -78,6 +80,12 @@ def main() -> int:
         ("getByteTimeDomainData(speechWaveform)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync reads real-time speech waveform amplitude"),
         ("manager.setValue(activeMouthExpression, lipSyncWeight)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync drives a standard VRM mouth expression"),
         ("disconnectLipSyncGraph();" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync resets mouth and audio graph after speech"),
+        ("QMediaCaptureSession" in (root / "mary" / "desktop" / "microphone.py").read_text(encoding="utf-8"), "desktop captures microphone through native Qt Multimedia"),
+        ('MARY_STT_MODEL", "whisper-large-v3-turbo"' in (root / "mary" / "desktop" / "stt.py").read_text(encoding="utf-8"), "desktop STT defaults to Groq Whisper Large V3 Turbo"),
+        ("client.audio.transcriptions.create" in (root / "mary" / "desktop" / "stt.py").read_text(encoding="utf-8"), "desktop STT uses Groq audio transcription endpoint"),
+        ("bridge.startListening()" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "desktop exposes user-initiated push-to-talk"),
+        ("stopVoicePlayback();" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "push-to-talk stops Mary voice before recording to avoid feedback"),
+        ("bridge.sendMessage(transcript)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "voice transcript reuses canonical Mary conversation path"),
     ]
 
     failed = False

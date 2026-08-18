@@ -17,6 +17,8 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from mary.runtime.application import MaryApplication
 from mary.desktop.voice import DesktopVoiceEngine
+from mary.desktop.microphone import DesktopMicrophoneRecorder
+from mary.desktop.stt import DesktopSpeechToText
 
 
 def _json(data: Any) -> str:
@@ -151,6 +153,30 @@ class _ConversationWorker(QObject):
             self.failed.emit(error)
 
 
+class _TranscriptionWorker(QObject):
+    """Transcribe one recorded microphone utterance off the GUI thread."""
+
+    finished = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, stt: DesktopSpeechToText, path: str) -> None:
+        super().__init__()
+        self.stt = stt
+        self.path = path
+
+    @Slot()
+    def run(self) -> None:
+        print("[MaryDesktop] transcription started", flush=True)
+        try:
+            text = self.stt.transcribe(self.path)
+            print(f"[MaryDesktop] transcription: {text}", flush=True)
+            self.finished.emit(text)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            print(f"[MaryDesktop] transcription failed: {error}", flush=True)
+            self.failed.emit(error)
+
+
 class MaryDesktopBridge(QObject):
     """Object exposed to JavaScript through QWebChannel."""
 
@@ -158,6 +184,8 @@ class MaryDesktopBridge(QObject):
     avatarStateChanged = Signal(str)
     busyChanged = Signal(bool)
     errorOccurred = Signal(str)
+    listeningStateChanged = Signal(str)
+    transcriptionReady = Signal(str)
 
     def __init__(self, application: MaryApplication) -> None:
         super().__init__()
@@ -165,7 +193,14 @@ class MaryDesktopBridge(QObject):
         self._busy = False
         self._active_thread: QThread | None = None
         self._active_worker: _ConversationWorker | None = None
+        self._speech_thread: QThread | None = None
+        self._speech_worker: _TranscriptionWorker | None = None
         self.voice = DesktopVoiceEngine.from_environment()
+        self.stt = DesktopSpeechToText.from_environment()
+        self.microphone = DesktopMicrophoneRecorder()
+        self.microphone.stateChanged.connect(self.listeningStateChanged.emit)
+        self.microphone.recordingReady.connect(self._on_recording_ready)
+        self.microphone.errorOccurred.connect(self._on_microphone_error)
         self.application.mary.avatar.ready()
 
     @Slot(str)
@@ -195,6 +230,26 @@ class MaryDesktopBridge(QObject):
 
         thread.start()
 
+    @Slot()
+    def startListening(self) -> None:  # noqa: N802 - JS-facing API
+        if self._busy:
+            self.errorOccurred.emit("Mary is already processing a message.")
+            return
+        if self._speech_thread is not None:
+            self.errorOccurred.emit("Mary is already transcribing microphone audio.")
+            return
+        if not self.stt.enabled:
+            self.errorOccurred.emit(
+                "Speech input is not configured. Set GROQ_API_KEY and "
+                "MARY_STT_PROVIDER=groq."
+            )
+            return
+        self.microphone.start()
+
+    @Slot()
+    def stopListening(self) -> None:  # noqa: N802 - JS-facing API
+        self.microphone.stop()
+
     @Slot(result=str)
     def getStatus(self) -> str:  # noqa: N802 - JS-facing API
         mary = self.application.mary
@@ -207,6 +262,7 @@ class MaryDesktopBridge(QObject):
                 "model": cognition.get("model", "unknown"),
                 "busy": self._busy,
                 "voice": self.voice.status.to_dict(),
+                "speech_to_text": self.stt.status.to_dict(),
             }
         )
 
@@ -222,6 +278,13 @@ class MaryDesktopBridge(QObject):
             self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
 
     def close(self) -> None:
+        self.microphone.stop()
+        speech_thread = self._speech_thread
+        if speech_thread is not None and speech_thread.isRunning():
+            speech_thread.quit()
+            speech_thread.wait()
+        self.microphone.cleanup()
+
         thread = self._active_thread
         if thread is not None and thread.isRunning():
             # Ask the pipeline to stop at the next stage boundary, then wait for
@@ -230,6 +293,58 @@ class MaryDesktopBridge(QObject):
             thread.quit()
             thread.wait()
         self.application.close()
+
+    @Slot(str)
+    def _on_recording_ready(self, path: str) -> None:
+        if self._speech_thread is not None:
+            self.errorOccurred.emit("Speech transcription is already active.")
+            self.microphone.cleanup()
+            return
+
+        thread = QThread(self)
+        worker = _TranscriptionWorker(self.stt, path)
+        worker.moveToThread(thread)
+        self._speech_thread = thread
+        self._speech_worker = worker
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_transcription_finished)
+        worker.failed.connect(self._on_transcription_failed)
+        thread.finished.connect(self._on_speech_thread_finished)
+        thread.start()
+
+    @Slot(str)
+    def _on_transcription_finished(self, text: str) -> None:
+        value = str(text or "").strip()
+        self.microphone.cleanup()
+        self.listeningStateChanged.emit("idle")
+        if value:
+            self.transcriptionReady.emit(value)
+        else:
+            self.errorOccurred.emit("No speech was detected in the recording.")
+        self._finish_speech_thread()
+
+    @Slot(str)
+    def _on_transcription_failed(self, error: str) -> None:
+        self.microphone.cleanup()
+        self.listeningStateChanged.emit("idle")
+        self.errorOccurred.emit(str(error))
+        self._finish_speech_thread()
+
+    @Slot(str)
+    def _on_microphone_error(self, error: str) -> None:
+        self.listeningStateChanged.emit("idle")
+        self.errorOccurred.emit(str(error))
+
+    @Slot()
+    def _on_speech_thread_finished(self) -> None:
+        self._speech_worker = None
+        self._speech_thread = None
+
+    def _finish_speech_thread(self) -> None:
+        thread = self._speech_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
 
     def _set_busy(self, value: bool) -> None:
         self._busy = bool(value)

@@ -136,3 +136,20 @@ def test_desktop_lip_sync_drives_standard_vrm_mouth_expression_and_resets() -> N
     assert "manager.setValue(activeMouthExpression, lipSyncWeight)" in source
     assert "resetLipSyncMouth()" in source
     assert "disconnectLipSyncGraph();" in source
+
+
+def test_desktop_push_to_talk_uses_native_qt_microphone_and_groq_stt() -> None:
+    root = _root()
+    bridge = (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    microphone = (root / "mary" / "desktop" / "microphone.py").read_text(encoding="utf-8")
+    stt = (root / "mary" / "desktop" / "stt.py").read_text(encoding="utf-8")
+    frontend = (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "DesktopMicrophoneRecorder" in bridge
+    assert "DesktopSpeechToText.from_environment()" in bridge
+    assert "QMediaCaptureSession" in microphone
+    assert "QAudioInput" in microphone
+    assert 'MARY_STT_MODEL", "whisper-large-v3-turbo"' in stt
+    assert "client.audio.transcriptions.create" in stt
+    assert "transcriptionReady" in bridge
+    assert "bridge.sendMessage(transcript)" in frontend
