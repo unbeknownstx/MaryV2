@@ -64,6 +64,16 @@ from .text_to_speech import (
 )
 
 
+
+# ================================================================
+# SPEECH RENDERING
+# ================================================================
+
+from .speech_renderer import (
+    SpeechRenderer,
+    render_spoken_text,
+)
+
 # ================================================================
 # PUBLIC API
 # ================================================================
@@ -108,4 +118,8 @@ __all__ = [
     "TextToSpeechService",
     "NullTextToSpeechProvider",
     "create_tts_service",
+
+    # Speech rendering
+    "SpeechRenderer",
+    "render_spoken_text",
 ]

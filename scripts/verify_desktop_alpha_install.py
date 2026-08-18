@@ -14,6 +14,7 @@ def main() -> int:
         root / "mary" / "desktop" / "window.py",
         root / "mary" / "desktop" / "voice.py",
         root / "mary" / "voice" / "providers" / "elevenlabs.py",
+        root / "mary" / "voice" / "speech_renderer.py",
         root / "desktop" / "package.json",
         root / "desktop" / "vite.config.js",
         root / "desktop" / "index.html",
@@ -56,6 +57,12 @@ def main() -> int:
         ("playVoice(payload.voice || {})" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "desktop plays returned Mary voice audio"),
         ("PlaybackRequiresUserGesture" in (root / "mary" / "desktop" / "window.py").read_text(encoding="utf-8"), "Qt permits async TTS playback"),
         ("Voice synthesis is also best-effort" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "voice failure cannot swallow Mary's text response"),
+        ('MARY_TTS_STABILITY", 0.42' in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice stability baseline is calibrated"),
+        ('MARY_TTS_SIMILARITY", 0.82' in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice similarity baseline is calibrated"),
+        ('MARY_TTS_STYLE", 0.11' in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice style baseline is calibrated"),
+        ('MARY_TTS_SPEED", 0.97' in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice speed baseline is calibrated"),
+        ("spoken_text = self.renderer.render" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "desktop renders natural spoken text separately from GUI text"),
+        ("class SpeechRenderer" in (root / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8"), "local deterministic speech renderer is installed"),
     ]
 
     failed = False

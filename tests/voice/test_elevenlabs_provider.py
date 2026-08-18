@@ -42,7 +42,14 @@ def test_elevenlabs_provider_uses_documented_tts_endpoint_without_sdk() -> None:
             "Hello Unbe",
             settings=VoiceSettings(
                 voice="mary-voice",
+                speed=0.97,
                 output_format=SpeechAudioFormat.MP3,
+                metadata={
+                    "stability": 0.42,
+                    "similarity_boost": 0.82,
+                    "style": 0.11,
+                    "use_speaker_boost": True,
+                },
             ),
         )
 
@@ -54,6 +61,13 @@ def test_elevenlabs_provider_uses_documented_tts_endpoint_without_sdk() -> None:
     assert captured["body"] == {
         "text": "Hello Unbe",
         "model_id": "eleven_flash_v2_5",
+        "voice_settings": {
+            "stability": 0.42,
+            "similarity_boost": 0.82,
+            "style": 0.11,
+            "speed": 0.97,
+            "use_speaker_boost": True,
+        },
     }
     assert captured["timeout"] == 20.0
     assert "secret-test-key" not in captured["url"]

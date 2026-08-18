@@ -22,6 +22,20 @@ from mary.voice.text_to_speech import (
 )
 
 
+def _setting_float(
+    metadata: dict,
+    key: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    try:
+        value = float(metadata.get(key, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    return max(minimum, min(maximum, value))
+
+
 class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
     """Synthesize Mary's speech through an explicitly configured voice."""
 
@@ -83,10 +97,27 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
             f"{self.base_url}/text-to-speech/{quote(voice_id, safe='')}"
             f"?output_format={quote(self.output_format, safe='')}"
         )
+        voice_settings = {
+            "stability": _setting_float(active.metadata, "stability", 0.42, 0.0, 1.0),
+            "similarity_boost": _setting_float(
+                active.metadata,
+                "similarity_boost",
+                0.82,
+                0.0,
+                1.0,
+            ),
+            "style": _setting_float(active.metadata, "style", 0.11, 0.0, 1.0),
+            "speed": max(0.7, min(1.2, float(active.speed))),
+            "use_speaker_boost": bool(
+                active.metadata.get("use_speaker_boost", True)
+            ),
+        }
+
         body = json.dumps(
             {
                 "text": str(text),
                 "model_id": self.model_id,
+                "voice_settings": voice_settings,
             }
         ).encode("utf-8")
         request = Request(

@@ -11,7 +11,12 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from mary.voice import SpeechAudioFormat, VoiceSettings, create_tts_service
+from mary.voice import (
+    SpeechAudioFormat,
+    SpeechRenderer,
+    VoiceSettings,
+    create_tts_service,
+)
 from mary.voice.providers import ElevenLabsTextToSpeechProvider
 
 
@@ -31,12 +36,45 @@ class DesktopVoiceStatus:
         }
 
 
+def _env_float(
+    name: str,
+    default: float,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float:
+    raw = os.getenv(name, "").strip()
+    try:
+        value = float(raw) if raw else float(default)
+    except ValueError:
+        value = float(default)
+    return max(minimum, min(maximum, value))
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
+
+
 class DesktopVoiceEngine:
     """Optional TTS engine used by the desktop presentation surface."""
 
-    def __init__(self, *, service=None, status: DesktopVoiceStatus | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        service=None,
+        status: DesktopVoiceStatus | None = None,
+        renderer: SpeechRenderer | None = None,
+    ) -> None:
         self.service = service
         self.status = status or DesktopVoiceStatus(enabled=False)
+        self.renderer = renderer or SpeechRenderer()
 
     @classmethod
     def from_environment(cls) -> "DesktopVoiceEngine":
@@ -66,6 +104,12 @@ class DesktopVoiceEngine:
                 )
             )
 
+        stability = _env_float("MARY_TTS_STABILITY", 0.42, minimum=0.0, maximum=1.0)
+        similarity = _env_float("MARY_TTS_SIMILARITY", 0.82, minimum=0.0, maximum=1.0)
+        style = _env_float("MARY_TTS_STYLE", 0.11, minimum=0.0, maximum=1.0)
+        speed = _env_float("MARY_TTS_SPEED", 0.97, minimum=0.7, maximum=1.2)
+        speaker_boost = _env_bool("MARY_TTS_SPEAKER_BOOST", True)
+
         provider = ElevenLabsTextToSpeechProvider(
             api_key=api_key,
             voice_id=voice_id,
@@ -74,7 +118,14 @@ class DesktopVoiceEngine:
         )
         settings = VoiceSettings(
             voice=voice_id,
+            speed=speed,
             output_format=SpeechAudioFormat.MP3,
+            metadata={
+                "stability": stability,
+                "similarity_boost": similarity,
+                "style": style,
+                "use_speaker_boost": speaker_boost,
+            },
         )
         service = create_tts_service(provider, settings=settings)
         return cls(
@@ -94,7 +145,15 @@ class DesktopVoiceEngine:
                 "status": "disabled",
             }
 
-        speech = self.service.synthesize(str(text))
+        spoken_text = self.renderer.render(str(text))
+        if not spoken_text:
+            return {
+                **self.status.to_dict(),
+                "status": "empty",
+                "spoken_text": "",
+            }
+
+        speech = self.service.synthesize(spoken_text)
         if not speech.is_successful:
             return {
                 **self.status.to_dict(),
@@ -109,4 +168,5 @@ class DesktopVoiceEngine:
             "mime_type": mime_type,
             "audio_base64": base64.b64encode(speech.audio).decode("ascii"),
             "audio_size": len(speech.audio),
+            "spoken_text": spoken_text,
         }
