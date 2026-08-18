@@ -26,13 +26,13 @@
         "key": "preferred_style",
         "value": "be direct and concise",
         "status": "current",
-        "source": "explicit_memory_import",
+        "source": "creator_explicit",
         "confidence": 1.0,
         "explicitly_shared": true,
-        "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
-        "observation_id": "observation_89af1509169a",
+        "evidence_id": null,
+        "observation_id": "observation_4e5b5c35140b",
         "created_at": "2026-08-18T08:02:01.984374+00:00",
-        "updated_at": "2026-08-18T09:52:21.993381+00:00"
+        "updated_at": "2026-08-18T10:49:22.959216+00:00"
       },
       {
         "id": "profile_2",
@@ -106,7 +106,7 @@
       }
     ],
     "created_at": "2026-08-18T08:02:01.790107+00:00",
-    "updated_at": "2026-08-18T09:52:21.993391+00:00"
+    "updated_at": "2026-08-18T10:49:22.959224+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -260,10 +260,25 @@
           "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d"
         },
         "created_at": "2026-08-18T02:52:21.993402"
+      },
+      {
+        "id": "relationship_1ade18325f04",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_1",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T03:49:22.959234"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-18T02:52:21.993405"
+    "updated_at": "2026-08-18T03:49:22.959237"
   },
   "understanding": {
     "observations": [
@@ -356,11 +371,20 @@
         "confidence": 1.0,
         "evidence": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
         "created_at": "2026-08-18T02:52:21.993366"
+      },
+      {
+        "id": "observation_4e5b5c35140b",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I prefer you to be direct and concise",
+        "created_at": "2026-08-18T03:49:22.959204"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-18T02:52:21.993373"
+    "updated_at": "2026-08-18T03:49:22.959209"
   },
   "milestones": []
 }
