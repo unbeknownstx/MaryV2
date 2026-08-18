@@ -733,10 +733,10 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         preferred = str(disposition.get("preferred_length", "medium")).lower().strip()
 
         if preferred == "brief":
-            return 320
+            return 400
         if preferred == "detailed":
-            return 1_000
-        return 640
+            return 1_200
+        return 800
 
     @staticmethod
     def _compact_creator_profile(

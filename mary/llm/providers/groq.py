@@ -58,18 +58,38 @@ class GroqProvider(LLMInterface):
                 "Set GROQ_API_KEY in the environment."
             )
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        request = {
+            "model": self.model,
+            "messages": [
                 {
                     "role": message.role,
                     "content": message.content,
                 }
                 for message in messages
             ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+            "temperature": temperature,
+        }
+
+        if self.model.startswith("openai/gpt-oss-"):
+            # GPT-OSS is a reasoning model. Groq defaults it to medium
+            # reasoning effort, which can spend most of a small completion
+            # budget on hidden reasoning during ordinary conversation. Mary
+            # uses Groq as her fast free conversational lane, so default to
+            # low effort and suppress returned reasoning. Harder reasoning can
+            # still be routed to another provider or opt into a different
+            # effort later without changing Mary's identity/cognition layer.
+            request["max_completion_tokens"] = int(max_tokens)
+            request["reasoning_effort"] = os.getenv(
+                "MARY_GROQ_REASONING_EFFORT",
+                "low",
+            ).strip().lower() or "low"
+            request["include_reasoning"] = False
+        else:
+            # max_tokens remains broadly compatible with non-reasoning Groq
+            # models. GPT-OSS uses Groq's preferred max_completion_tokens.
+            request["max_tokens"] = int(max_tokens)
+
+        response = self.client.chat.completions.create(**request)
 
         choice = response.choices[0]
 
@@ -93,6 +113,19 @@ class GroqProvider(LLMInterface):
                     0,
                 ),
             }
+
+            details = getattr(
+                response.usage,
+                "completion_tokens_details",
+                None,
+            )
+            reasoning_tokens = getattr(
+                details,
+                "reasoning_tokens",
+                None,
+            ) if details is not None else None
+            if reasoning_tokens is not None:
+                usage["reasoning_tokens"] = reasoning_tokens
 
         return LLMResponse(
             content=choice.message.content or "",

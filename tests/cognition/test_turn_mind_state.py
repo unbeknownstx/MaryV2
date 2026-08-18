@@ -144,7 +144,7 @@ def test_normal_conversation_uses_compact_llm_projection_and_bounded_completion(
     assert "Compact TurnMindState" in combined
     assert "TurnMindState (authoritative integrated Mary state for this turn)" not in combined
     assert len(combined) < 14_000
-    assert kwargs["max_tokens"] <= 1_000
+    assert kwargs["max_tokens"] == 800
 
 
 def test_self_grounded_turn_uses_small_completion_budget():

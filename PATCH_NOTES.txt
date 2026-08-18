@@ -1,69 +1,44 @@
-MaryV2 - Conversation Context + Free Router Efficiency Patch
-=============================================================
+MaryV2 Groq Conversation Efficiency Patch
+=========================================
 
-What this patch changes
------------------------
-1. Updates Gemini's default route from gemini-2.5-flash to gemini-3.6-flash.
-   Existing .env files that still explicitly name gemini-2.5-flash are
-   transparently migrated by GeminiProvider at runtime.
+Purpose
+-------
+Fix normal Groq GPT-OSS conversation replies being cut off with
+finish_reason='length' even when the visible reply is short.
 
-2. Stops serializing Mary's entire TurnMindState into every ordinary dialogue
-   request. The full state remains inside Mary; the LLM receives a compact
-   projection containing the character/personality/relationship/emotion/
-   continuity details needed to perform the current turn.
+Changes
+-------
+1. GPT-OSS requests now use Groq's max_completion_tokens parameter.
+2. GPT-OSS defaults to reasoning_effort='low' for Mary's fast conversational lane.
+3. GPT-OSS sets include_reasoning=False so reasoning is not returned to Mary as output.
+4. Groq usage metadata records reasoning_tokens when the API reports them.
+5. Normal conversation completion budgets are now:
+   - brief: 400
+   - medium: 800
+   - detailed: 1200
+6. MARY_GROQ_REASONING_EFFORT can override the default later (low/medium/high).
 
-3. Removes duplicate creator-profile record metadata (IDs/timestamps) from
-   normal LLM prompts while retaining normalized creator facts/preferences/
-   goals/communication style and the strict Mary-vs-Unbe identity boundary.
-
-4. Uses bounded completion budgets for dialogue:
-      brief    -> 320 tokens
-      medium   -> 640 tokens
-      detailed -> 1000 tokens
-      grounded self-introspection -> 500 tokens
-   Local-tool analysis retains its existing 1400-token allowance.
-
-5. Distinguishes Groq HTTP 413/request-too-large failures from genuine rate
-   limits. Oversized requests still fall through to the next provider, but no
-   longer put Groq into a 5-minute cooldown. Genuine 429/quota failures still
-   trigger cooldown.
-
-Measured offline on the lazy-day test prompt
----------------------------------------------
-Before:
-  system + user prompt chars ~= 25,185
-  normal completion reserve   = 2,048 tokens
-
-After:
-  system + user prompt chars ~= 11,667
-  normal completion reserve   = 640 tokens
-
-This is not a provider-reported token count, but it is a large reduction in
-what Mary sends to the model. The live provider metadata on your PC will show
-actual prompt_tokens after installation.
-
-Validation in the supplied MaryV2 package
------------------------------------------
-343 passed, 1 skipped
-41 / 41 diagnostics passed
-Healthy: True
+Validated in the provided MaryV2 codebase:
+- 345 passed, 1 skipped
+- diagnostics: 41/41 passed, Healthy=True
 
 Install
 -------
-Merge/copy this patch into the MaryV2 repo root. Replace files when asked.
-Do NOT replace your real .env with .env.example.
+Merge the mary/ and tests/ folders into the MaryV2 repo.
+Do not replace your real .env.
 
-Then run:
-  python -m pytest tests -q
-  python -m scripts.run_diagnostics
-  python -m scripts.check_llm_routes
+Test
+----
+python -m pytest tests -q
+python -m scripts.run_diagnostics
 
-Live test:
-  python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('Hey Mary, what would your perfect lazy day look like?'); print(); print('RESPONSE:', r.final_response); print(); print('META:', r.reasoning.metadata)"
+Then rerun:
+python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('Hey Mary, what would your perfect lazy day look like?'); print(); print('RESPONSE:', r.final_response); print(); print('META:', r.reasoning.metadata)"
 
-Expected routing behavior:
-- Groq is attempted first for a normal free-first turn.
-- If Groq genuinely rate-limits, it enters cooldown and Mary tries Gemini.
-- Gemini should now report gemini-3.6-flash.
-- OpenRouter free remains the next fallback.
-- Ollama remains the final free/local fallback.
+Expected
+--------
+- provider: groq, unless Groq is rate limited and Mary falls through
+- finish_reason: stop (ideally)
+- prompt_tokens remains around the optimized ~3K range rather than ~7K
+- completion no longer cuts off mid-sentence
+- usage may now include reasoning_tokens
