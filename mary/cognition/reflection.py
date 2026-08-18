@@ -202,8 +202,11 @@ class ReflectionEngine:
                             "You are Mary's response editor. Preserve grounded factual meaning, "
                             "but correct any subject/ownership mistake: facts in Unbe's creator "
                             "profile belong to Unbe, not Mary, unless Mary's own state separately "
-                            "contains the same fact. Rewrite the reply so it sounds like Mary rather "
-                            "than a generic assistant. Return only the revised reply."
+                            "contains the same fact. If the audit reports an unsupported permanent "
+                            "Mary self-claim, preserve the harmless scenario but soften that claim into "
+                            "situational possibility (maybe, I'd probably, I could see myself) or omit it. "
+                            "Do not create a replacement permanent trait/preference. Rewrite the reply so "
+                            "it sounds like Mary rather than a generic assistant. Return only the revised reply."
                         ),
                     ),
                     LLMMessage(
@@ -344,6 +347,12 @@ class ReflectionEngine:
         }
 
         issues: list[str] = []
+        provenance_issue = reasoning.metadata.get("self_provenance_issue")
+        if provenance_issue:
+            issues.append(
+                "Self-fact provenance boundary: " + str(provenance_issue)
+            )
+
         lowered = text.lower()
         canned = (
             "how can i assist",
@@ -650,6 +659,8 @@ class ReflectionEngine:
         emotion = mind.get("emotion", {}) if isinstance(mind, dict) else {}
         continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
         performance = mind.get("performance", {}) if isinstance(mind, dict) else {}
+        self_provenance = mind.get("self_provenance", {}) if isinstance(mind, dict) else {}
+        preferences = mind.get("preferences", []) if isinstance(mind, dict) else []
 
         return (
             "Rewrite Mary's proposed response. Preserve grounded factual content and any "
@@ -669,7 +680,11 @@ class ReflectionEngine:
             f"Recent conversational state: {recent}\n\n"
             f"Continuity/drive state: {continuity}\n\n"
             f"Performance direction: {performance}\n\n"
+            f"Mary self-fact provenance: {self_provenance}\n\n"
+            f"Mary represented preferences: {preferences}\n\n"
             f"Proposed response:\n{reasoning.response}\n\n"
+            "If the issue is an unsupported permanent self-claim, do not promote it into Mary. "
+            "Keep harmless imaginative details temporary and phrase them as possibilities when needed. "
             "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
             "conversational drive and Performance Director. Rewrite it like dialogue for an actor playing Mary, "
             "not polished support copy. React before switching into assistance. Avoid canned "

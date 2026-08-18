@@ -64,6 +64,7 @@ from mary.audio import (
 
 from mary.identity.biography import create_default_biography
 from mary.identity.self_model import SelfModel
+from mary.identity.self_provenance import SelfProvenance
 
 from mary.personality.personality import Personality
 from mary.personality.development import PersonalityDevelopment
@@ -186,6 +187,23 @@ class Mary:
         # ============================================================
 
         self.biography = create_default_biography()
+
+        # ============================================================
+        # SELF-FACT PROVENANCE
+        # ============================================================
+
+        # This is a read-only projection over Mary's existing self systems.
+        # It does not become another identity database.  Its job is to make
+        # the boundary between canonical/developed state and temporary model
+        # improvisation explicit to cognition.
+        self.self_provenance = SelfProvenance(
+            biography=self.biography,
+            personality=self.personality,
+            character=self.character,
+            values=self.values,
+            preferences=self.preferences,
+            personality_development=self.personality_development,
+        )
 
         # ============================================================
         # RELATIONSHIP
@@ -397,6 +415,7 @@ class Mary:
             character=self.character,
             values=self.values,
             preferences=self.preferences,
+            self_provenance=self.self_provenance,
             relationship=self.relationship,
             knowledge=self.knowledge,
             learner=self.learner,

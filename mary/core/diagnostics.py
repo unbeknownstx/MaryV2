@@ -393,6 +393,7 @@ class MaryDiagnostics:
                 "identity",
                 "self_model",
                 "biography",
+                "self_provenance",
             ),
         )
 

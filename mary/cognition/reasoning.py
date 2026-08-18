@@ -182,6 +182,8 @@ class ReasoningEngine:
                 "usage": {},
                 "local_tool_grounded": local_tool_grounded,
                 "self_grounded": self_grounded,
+                "self_provenance_policy": "model_output_is_situational_until_promoted",
+                "self_provenance_issue": None,
                 "llm_unavailable": True,
                 "llm_rate_limited": rate_limited,
                 "llm_error": str(exc),
@@ -203,6 +205,13 @@ class ReasoningEngine:
                         final_response = fallback
                         self_grounding_rejected = True
 
+            provenance_issue = None
+            if not self_grounded:
+                provenance_issue = self._conversational_self_provenance_issue(
+                    response=final_response,
+                    context=context,
+                )
+
             metadata = {
                 "provider": response.provider,
                 "model": response.model,
@@ -212,6 +221,8 @@ class ReasoningEngine:
                 "self_grounded": self_grounded,
                 "self_grounding_rejected": self_grounding_rejected,
                 "self_grounding_issue": self_grounding_issue,
+                "self_provenance_policy": "model_output_is_situational_until_promoted",
+                "self_provenance_issue": provenance_issue,
                 "llm_unavailable": False,
                 "provider_attempts": list(getattr(self.llm, "last_generation_attempts", [])),
             }
@@ -574,6 +585,69 @@ class ReasoningEngine:
 
         return None
 
+    @staticmethod
+    def _conversational_self_provenance_issue(
+        *,
+        response: str,
+        context: CognitiveContext,
+    ) -> str | None:
+        """Flag high-confidence permanent self-claims absent from durable state.
+
+        This is deliberately conservative.  It does not try to parse every
+        first-person sentence or police harmless imagination.  The hard
+        persistence boundary is structural: model output never writes Mary's
+        self systems.  This audit only surfaces especially strong wording so
+        tests/debugging can catch provider drift without false-positive-heavy
+        rewriting of normal dialogue.
+        """
+
+        text = str(response or "").lower().replace("’", "'")
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        provenance = mind.get("self_provenance", {}) if isinstance(mind, dict) else {}
+
+        durable_text_parts: list[str] = []
+        if isinstance(provenance, dict):
+            for bucket in ("canonical", "developed"):
+                for item in list(provenance.get(bucket, []) or []):
+                    if not isinstance(item, dict):
+                        continue
+                    durable_text_parts.append(str(item.get("key", "")))
+                    durable_text_parts.append(str(item.get("value", "")))
+        durable_text = " ".join(durable_text_parts).lower()
+
+        # Strong claims that semantically declare a lasting self fact.  If the
+        # claimed remainder is already present in durable state, it is fine.
+        patterns = (
+            r"\bmy (?:favorite|favourite) [^.!?]{1,40} (?:is|are) ([^.!?]{1,60})",
+            r"\bi(?:'ve| have) always (?:loved|liked|hated|preferred) ([^.!?]{1,60})",
+            r"\bi(?:'m| am) (?:definitely |secretly |a secret )?(?:a |an )([^.!?]{2,50})",
+        )
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                claim = str(match.group(1)).strip(" ,;:-")
+                if not claim:
+                    continue
+                # Keep the broad identity pattern conservative: only flag when
+                # the model itself strengthens it with secret/definite/always-
+                # style language, not ordinary "I'm a little tired" dialogue.
+                whole = match.group(0)
+                if pattern.endswith(r"([^.!?]{2,50})") and not any(
+                    marker in whole
+                    for marker in ("secret", "definitely")
+                ):
+                    continue
+                meaningful = [
+                    token for token in re.findall(r"[a-z][a-z-]{2,}", claim)
+                    if token not in {"the", "and", "with", "that", "this", "really"}
+                ]
+                if meaningful and not any(token in durable_text for token in meaningful):
+                    return (
+                        "Provider dialogue used permanent self-fact wording for an "
+                        f"unrepresented claim: {match.group(0).strip()}"
+                    )
+
+        return None
+
     def _system_prompt(
         self,
         context: CognitiveContext,
@@ -619,7 +693,13 @@ class ReasoningEngine:
             "service-offer closers. Do not default to headings, bullet lists, or tables for "
             "casual conversation. Use structure when the task itself needs structure. "
             "Never invent memories, capabilities, actions, relationship facts, dates, or "
-            "emotions absent from local state. Unbe's traits/values/emotions are not yours.\n\n"
+            "emotions absent from local state. Unbe's traits/values/emotions are not yours. "
+            "You may improvise harmless situational detail in hypotheticals, but do not turn that "
+            "improvisation into a permanent self-fact. If a food, scent, animal, hobby detail, "
+            "aesthetic, or one-off behavior is not represented as Mary's canonical/developed state, "
+            "phrase it as temporary possibility (for example: maybe, probably, I'd try, I could see "
+            "myself) rather than 'my favorite', 'I've always', or a new permanent identity claim. "
+            "Model output itself never changes Mary's durable self-state.\n\n"
             f"Current interaction mode: {mode}. Preferred response length: {length}. "
             f"Primary conversational drive: {drive}. "
             f"Follow-up question allowed this turn: {question_allowed}. "
@@ -860,6 +940,12 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "preferences": {
                 "likes": positives,
                 "dislikes": negatives,
+            },
+            "self_provenance": {
+                "policy": dict((mind.get("self_provenance", {}) or {}).get("policy", {}))
+                if isinstance(mind.get("self_provenance", {}), dict) else {},
+                "developed": list((mind.get("self_provenance", {}) or {}).get("developed", []) or [])[:8]
+                if isinstance(mind.get("self_provenance", {}), dict) else [],
             },
             "relationship": {
                 "creator_name": relationship.get("creator_name") if isinstance(relationship, dict) else None,

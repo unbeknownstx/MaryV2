@@ -78,6 +78,7 @@ class TurnMindState:
     character: dict[str, Any]
     values: list[dict[str, Any]]
     preferences: list[dict[str, Any]]
+    self_provenance: dict[str, Any]
     relationship: dict[str, Any]
     memory: dict[str, Any]
     knowledge: dict[str, Any]
@@ -103,6 +104,7 @@ class TurnMindState:
             "character": dict(self.character),
             "values": [dict(item) for item in self.values],
             "preferences": [dict(item) for item in self.preferences],
+            "self_provenance": dict(self.self_provenance),
             "relationship": dict(self.relationship),
             "memory": dict(self.memory),
             "knowledge": dict(self.knowledge),
@@ -128,6 +130,7 @@ class TurnMindState:
             "character": self.character,
             "values": self.values,
             "preferences": self.preferences,
+            "self_provenance": self.self_provenance,
             "relationship": self.relationship,
             "memory": self.memory,
             "knowledge": self.knowledge,
@@ -157,6 +160,7 @@ class TurnMindStateBuilder:
         character: Any,
         values: Any,
         preferences: Any,
+        self_provenance: Any,
         relationship: Any,
         knowledge: Any,
         learner: Any,
@@ -173,6 +177,7 @@ class TurnMindStateBuilder:
         self.character = character
         self.values = values
         self.preferences = preferences
+        self.self_provenance = self_provenance
         self.relationship = relationship
         self.knowledge = knowledge
         self.learner = learner
@@ -236,6 +241,7 @@ class TurnMindStateBuilder:
             character=character,
             values=self._value_snapshot(),
             preferences=self._preference_snapshot(),
+            self_provenance=self._self_provenance_snapshot(),
             relationship=relationship,
             memory=self._memory_snapshot(relevant_memories or []),
             knowledge=self._knowledge_snapshot(input_text),
@@ -252,6 +258,9 @@ class TurnMindStateBuilder:
                 "Mary is distinct from Unbe; do not copy his traits, values, preferences, or emotions as Mary's own.",
                 "Use only represented memories/profile facts as facts about Unbe; uncertainty stays uncertainty.",
                 "Never invent capabilities, actions, memories, relationships, dates, or experiences that are absent from local state.",
+                "Conversational imagination is temporary: an improvised food, scent, hobby detail, aesthetic, or activity does not become a durable fact about Mary just because a model said it.",
+                "Do not state an unrepresented permanent self-claim as established fact. Use situational/modal language such as maybe, probably, I'd try, or I could see myself when inventing harmless hypothetical detail.",
+                "Only Mary's authored systems or an explicit development/learning path may create durable self-state; model output alone never mutates Mary.",
                 "External actions and creator-sensitive mutations remain behind Mary's existing approval/tool boundaries.",
                 "For ordinary conversation, sound like Mary rather than a customer-support or generic assistant persona.",
             ],
@@ -354,6 +363,22 @@ class TurnMindStateBuilder:
                 "source": str(item.get("source", "")),
             })
         return compact
+
+    def _self_provenance_snapshot(self) -> dict[str, Any]:
+        """Return Mary's explicit self-fact provenance boundary for this turn."""
+
+        snapshot = getattr(self.self_provenance, "snapshot", None)
+        if not callable(snapshot):
+            return {
+                "canonical": [],
+                "developed": [],
+                "policy": {
+                    "model_output_is_persistence_source": False,
+                    "situational_imagination_is_persisted": False,
+                },
+            }
+        result = snapshot()
+        return dict(result) if isinstance(result, dict) else {}
 
     def _relationship_snapshot(self) -> dict[str, Any]:
         user_model = getattr(self.relationship, "user_model", None)
