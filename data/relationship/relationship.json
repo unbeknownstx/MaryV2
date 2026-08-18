@@ -22,13 +22,13 @@
         "confidence": 1.0,
         "explicitly_shared": true,
         "evidence_id": null,
-        "observation_id": "observation_0f12b6034bac",
+        "observation_id": "observation_c26209daf161",
         "created_at": "2026-08-18T08:02:01.984374+00:00",
-        "updated_at": "2026-08-18T08:02:01.984374+00:00"
+        "updated_at": "2026-08-18T08:07:21.596324+00:00"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790107+00:00",
-    "updated_at": "2026-08-18T08:02:01.984384+00:00"
+    "updated_at": "2026-08-18T08:07:21.596332+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -47,10 +47,25 @@
           "evidence_id": null
         },
         "created_at": "2026-08-18T08:02:01.984395"
+      },
+      {
+        "id": "relationship_e18381d64514",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_1",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T01:07:21.596344"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-18T08:02:01.984398"
+    "updated_at": "2026-08-18T01:07:21.596347"
   },
   "understanding": {
     "observations": [
@@ -62,11 +77,20 @@
         "confidence": 1.0,
         "evidence": "I prefer you to be direct and concise",
         "created_at": "2026-08-18T08:02:01.984364"
+      },
+      {
+        "id": "observation_c26209daf161",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I prefer you to be direct and concise",
+        "created_at": "2026-08-18T01:07:21.596312"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-18T08:02:01.984368"
+    "updated_at": "2026-08-18T01:07:21.596317"
   },
   "milestones": []
 }
