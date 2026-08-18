@@ -63,6 +63,7 @@ def main() -> int:
         ('MARY_TTS_SPEED", 0.97' in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice speed baseline is calibrated"),
         ("spoken_text = self.renderer.render" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "desktop renders natural spoken text separately from GUI text"),
         ("class SpeechRenderer" in (root / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8"), "local deterministic speech renderer is installed"),
+        ("grid-template-rows: auto minmax(0, 1fr) auto" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8"), "desktop pins composer while messages scroll"),
     ]
 
     failed = False

@@ -91,3 +91,17 @@ def test_groq_provider_has_bounded_interactive_timeout_without_sdk_retries() -> 
 
     assert "timeout=20.0" in source
     assert "max_retries=0" in source
+
+
+def test_conversation_composer_stays_visible_while_messages_scroll() -> None:
+    source = (_root() / "desktop" / "src" / "style.css").read_text(encoding="utf-8")
+
+    assert "grid-template-rows: auto minmax(0, 1fr) auto" in source
+    assert ".conversation-pane" in source
+    assert "height: 100%" in source
+    assert "overflow: hidden" in source
+    assert ".messages" in source
+    assert "min-height: 0" in source
+    assert "overflow-y: auto" in source
+    assert ".composer" in source
+    assert "z-index: 2" in source
