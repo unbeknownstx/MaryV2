@@ -25,7 +25,12 @@ def _json(data: Any) -> str:
 
 @dataclass(frozen=True)
 class DesktopTurnPayload:
+    # ``text`` is the conversational transcript shown in the normal desktop
+    # chat and is intentionally the same wording sent to TTS.
     text: str
+    # Keep Mary's canonical backend response available for debug/history
+    # without making the normal transcript disagree with what she actually says.
+    canonical_text: str
     avatar: dict[str, Any]
     voice: dict[str, Any]
     runtime: dict[str, Any]
@@ -33,6 +38,7 @@ class DesktopTurnPayload:
     def to_dict(self) -> dict[str, Any]:
         return {
             "text": self.text,
+            "canonical_text": self.canonical_text,
             "avatar": dict(self.avatar),
             "voice": dict(self.voice),
             "runtime": dict(self.runtime),
@@ -99,14 +105,26 @@ class _ConversationWorker(QObject):
                 )
             except Exception as exc:
                 voice_error = f"{type(exc).__name__}: {exc}"
+                # Speech rendering is local/deterministic, so preserve the
+                # conversational transcript even if the remote TTS request
+                # itself fails.
+                spoken_text = self.voice.render_text(
+                    response_text,
+                    user_text=self.text,
+                )
                 voice_payload = {
                     **self.voice.status.to_dict(),
                     "status": "failed",
                     "error": voice_error,
+                    "spoken_text": spoken_text,
                 }
 
+            spoken_text = str(voice_payload.get("spoken_text") or "").strip()
+            display_text = spoken_text or response_text
+
             payload = DesktopTurnPayload(
-                text=response_text,
+                text=display_text,
+                canonical_text=response_text,
                 avatar=avatar_payload,
                 voice=voice_payload,
                 runtime={

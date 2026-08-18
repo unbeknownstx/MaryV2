@@ -47,10 +47,11 @@ def test_desktop_voice_uses_calibrated_mary_settings_from_environment() -> None:
     assert 'MARY_TTS_SPEAKER_BOOST", True' in source
 
 
-def test_desktop_voice_renders_spoken_text_separately_from_gui_text() -> None:
+def test_desktop_voice_always_renders_spoken_text_for_transcript_sync() -> None:
     source = (_root() / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8")
     renderer = (_root() / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8")
-    assert "spoken_text = self.renderer.render" in source
+    assert "def render_text(" in source
+    assert "spoken_text = self.render_text" in source
     assert '"spoken_text": spoken_text' in source
     assert "class SpeechRenderer" in renderer
 
@@ -61,3 +62,28 @@ def test_desktop_voice_passes_creator_turn_context_into_speech_renderer() -> Non
     assert "user_text: str | None = None" in voice
     assert "user_text=user_text" in voice
     assert "user_text=self.text" in bridge
+
+
+def test_desktop_transcript_matches_the_exact_spoken_text() -> None:
+    bridge = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    frontend = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "canonical_text: str" in bridge
+    assert '"canonical_text": self.canonical_text' in bridge
+    assert 'spoken_text = str(voice_payload.get("spoken_text") or "").strip()' in bridge
+    assert "display_text = spoken_text or response_text" in bridge
+    assert "text=display_text" in bridge
+    assert "canonical_text=response_text" in bridge
+    # Frontend's normal Mary bubble already displays payload.text, which is
+    # now the speech-synchronized transcript.
+    assert "appendMessage('Mary', payload.text || '[No response]', 'mary')" in frontend
+
+
+def test_voice_failure_still_preserves_speech_synchronized_transcript() -> None:
+    bridge = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    voice = (_root() / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8")
+
+    assert "self.voice.render_text(" in bridge
+    assert '"spoken_text": spoken_text' in bridge
+    assert '"status": "disabled",' in voice
+    assert '"spoken_text": spoken_text' in voice

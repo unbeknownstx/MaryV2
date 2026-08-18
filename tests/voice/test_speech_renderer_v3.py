@@ -3,7 +3,7 @@ from __future__ import annotations
 from mary.voice import SpeechRenderer
 
 
-def test_learning_ack_speaks_naturally_without_losing_gui_truth() -> None:
+def test_learning_ack_speaks_naturally_without_losing_canonical_truth() -> None:
     renderer = SpeechRenderer()
     canonical = (
         "Got it. I've preserved that in memory and added it to my structured "

@@ -148,6 +148,16 @@ class DesktopVoiceEngine:
             ),
         )
 
+    def render_text(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+    ) -> str:
+        """Return the exact conversational text Mary should speak/display."""
+
+        return self.renderer.render(str(text), user_text=user_text)
+
     def synthesize(
         self,
         text: str,
@@ -155,13 +165,18 @@ class DesktopVoiceEngine:
         user_text: str | None = None,
         emotional_state: EmotionalState | None = None,
     ) -> dict[str, Any]:
+        # Render first even when TTS is disabled or the provider later fails.
+        # The desktop transcript should still be able to show the exact
+        # conversational wording Mary intended to speak.
+        spoken_text = self.render_text(text, user_text=user_text)
+
         if self.service is None or not self.status.enabled:
             return {
                 **self.status.to_dict(),
                 "status": "disabled",
+                "spoken_text": spoken_text,
             }
 
-        spoken_text = self.renderer.render(str(text), user_text=user_text)
         if not spoken_text:
             return {
                 **self.status.to_dict(),
@@ -181,6 +196,7 @@ class DesktopVoiceEngine:
             return {
                 **self.status.to_dict(),
                 "status": speech.status.value,
+                "spoken_text": spoken_text,
             }
 
         mime_type = (

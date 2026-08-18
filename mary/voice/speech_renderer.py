@@ -1,13 +1,14 @@
 """Natural spoken-text rendering for MaryV2.
 
 The renderer converts a canonical text response into a TTS-friendly variant
-without changing the response displayed in the GUI. It is deliberately local
+without changing Mary's canonical backend response. It is deliberately local
 and deterministic: no provider, LLM, network request, memory mutation, or
 reasoning step is involved.
 
 SpeechRenderer V3 also recognizes a small set of MaryV2's deterministic
-system-facing responses. Those responses stay exact in the GUI, while the
-spoken form is rewritten into natural first-person conversation.
+system-facing responses. The desktop transcript uses the spoken form so the
+text bubble matches what Mary actually says, while the canonical response is
+retained separately for debugging/history.
 """
 
 from __future__ import annotations
@@ -68,8 +69,8 @@ class SpeechRenderer:
             return ""
 
         # First turn deterministic/backend phrasing into something Mary would
-        # naturally say out loud. The exact canonical response remains in the
-        # GUI and logs.
+        # naturally say out loud. The exact canonical response remains
+        # available separately for debug/history.
         value = self._render_known_mary_response(value, user_text=user_text)
 
         # Do not make Mary read source-code bodies aloud. The full code remains
