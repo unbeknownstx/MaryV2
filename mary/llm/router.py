@@ -204,19 +204,21 @@ class LLMRouter:
         return str(provider or self.config.llm.provider).lower().strip()
 
     def model_name(self, provider: str | None = None) -> str:
-        if provider == "groq":
+        provider_name = self.provider_name(provider)
+
+        if provider_name == "groq":
             return (
                 self.config.llm.model
                 if self.config.llm.provider == "groq"
                 else "openai/gpt-oss-20b"
             )
-        if provider == "gemini":
+        if provider_name == "gemini":
             return self.get_provider("gemini").model_name()
-        if provider == "openrouter":
+        if provider_name == "openrouter":
             return self.get_provider("openrouter").model_name()
-        if provider == "ollama":
+        if provider_name == "ollama":
             return self.get_provider("ollama").model_name()
-        if provider == "openai":
+        if provider_name == "openai":
             return (
                 self.config.llm.model
                 if self.config.llm.provider == "openai"

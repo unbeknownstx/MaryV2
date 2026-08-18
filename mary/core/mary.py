@@ -121,7 +121,7 @@ class Mary:
         # CONFIGURATION
         # ============================================================
 
-        self.config = Config()
+        self.config = Config.from_environment()
 
         # ============================================================
         # LIFECYCLE
