@@ -116,3 +116,23 @@ def test_desktop_voice_and_avatar_share_marys_existing_emotion_state() -> None:
     assert "resolve_emotion_voice_settings" in voice
     assert '"emotion_profile"' in voice
     assert '"voice_settings"' in voice
+
+
+def test_desktop_lip_sync_uses_real_speech_audio_waveform() -> None:
+    source = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "createMediaElementSource(audio)" in source
+    assert "context.createAnalyser()" in source
+    assert "getByteTimeDomainData(speechWaveform)" in source
+    assert "const rms = Math.sqrt(sumSquares / speechWaveform.length)" in source
+    assert "updateLipSync();" in source
+
+
+def test_desktop_lip_sync_drives_standard_vrm_mouth_expression_and_resets() -> None:
+    source = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    assert "const MOUTH_PRESET_CANDIDATES = ['aa', 'oh', 'ou', 'ih', 'ee'];" in source
+    assert "manager.getExpression?.(preset)" in source
+    assert "manager.setValue(activeMouthExpression, lipSyncWeight)" in source
+    assert "resetLipSyncMouth()" in source
+    assert "disconnectLipSyncGraph();" in source

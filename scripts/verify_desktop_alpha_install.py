@@ -74,6 +74,10 @@ def main() -> int:
         ("structured understanding" in (root / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8"), "SpeechRenderer V3 naturalizes backend-facing responses"),
         ('Emotion.CONCERN: EmotionVoiceAdjustment("concerned", -0.01, 0.015, -0.01)' in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "concern voice stays close to Mary's calibrated baseline"),
         ('Emotion.PRIDE: EmotionVoiceAdjustment("proud", -0.03, 0.025, 0.015)' in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "pride voice remains expressive without changing identity"),
+        ("createMediaElementSource(audio)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync analyses Mary's actual playback audio"),
+        ("getByteTimeDomainData(speechWaveform)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync reads real-time speech waveform amplitude"),
+        ("manager.setValue(activeMouthExpression, lipSyncWeight)" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync drives a standard VRM mouth expression"),
+        ("disconnectLipSyncGraph();" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "lip sync resets mouth and audio graph after speech"),
     ]
 
     failed = False

@@ -19,6 +19,12 @@ let currentVrm = null;
 let modelBaseY = 0;
 let busy = false;
 let activeSpeechAudio = null;
+let speechAudioContext = null;
+let speechAudioSource = null;
+let speechAnalyser = null;
+let speechWaveform = null;
+let activeMouthExpression = null;
+let lipSyncWeight = 0;
 
 // ---------------------------------------------------------------------------
 // Three.js / VRM presentation
@@ -214,6 +220,7 @@ function animate(now = performance.now()) {
   const elapsed = now / 1000;
 
   if (currentVrm) {
+    updateLipSync();
     currentVrm.update(delta);
     currentVrm.scene.position.y = modelBaseY + Math.sin(elapsed * 1.25) * 0.006;
 
@@ -268,13 +275,133 @@ function parsePayload(value) {
 }
 
 
-function stopVoicePlayback() {
-  if (!activeSpeechAudio) return;
+const MOUTH_PRESET_CANDIDATES = ['aa', 'oh', 'ou', 'ih', 'ee'];
+
+function resolveMouthExpression() {
+  const manager = currentVrm?.expressionManager;
+  if (!manager) return null;
+
+  for (const preset of MOUTH_PRESET_CANDIDATES) {
+    try {
+      if (manager.getExpression?.(preset)) return preset;
+    } catch (_) { /* optional expression */ }
+  }
+
+  return null;
+}
+
+function resetLipSyncMouth() {
+  const manager = currentVrm?.expressionManager;
+  if (manager) {
+    for (const preset of MOUTH_PRESET_CANDIDATES) {
+      try { manager.setValue(preset, 0); } catch (_) { /* optional preset */ }
+    }
+  }
+
+  activeMouthExpression = null;
+  lipSyncWeight = 0;
+}
+
+function disconnectLipSyncGraph() {
+  resetLipSyncMouth();
+
+  try { speechAudioSource?.disconnect(); } catch (_) { /* best-effort */ }
+  try { speechAnalyser?.disconnect(); } catch (_) { /* best-effort */ }
+
+  speechAudioSource = null;
+  speechAnalyser = null;
+  speechWaveform = null;
+}
+
+function ensureSpeechAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+
+  if (!speechAudioContext) {
+    speechAudioContext = new AudioContextClass();
+  }
+
+  return speechAudioContext;
+}
+
+function attachLipSyncToAudio(audio) {
+  disconnectLipSyncGraph();
+
+  const context = ensureSpeechAudioContext();
+  if (!context) return;
+
   try {
-    activeSpeechAudio.pause();
-    activeSpeechAudio.currentTime = 0;
-  } catch (_) { /* best-effort */ }
+    const source = context.createMediaElementSource(audio);
+    const analyser = context.createAnalyser();
+
+    // A short time-domain window is responsive enough for speech while the
+    // attack/release smoothing below prevents Mary's mouth from chattering.
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.45;
+
+    source.connect(analyser);
+    analyser.connect(context.destination);
+
+    speechAudioSource = source;
+    speechAnalyser = analyser;
+    speechWaveform = new Uint8Array(analyser.fftSize);
+    activeMouthExpression = resolveMouthExpression();
+
+    if (context.state === 'suspended') {
+      context.resume().catch(() => {});
+    }
+  } catch (error) {
+    console.warn('Lip sync audio analyser could not be attached:', error);
+    disconnectLipSyncGraph();
+  }
+}
+
+function updateLipSync() {
+  const manager = currentVrm?.expressionManager;
+  if (!manager || !speechAnalyser || !speechWaveform || !activeMouthExpression) {
+    return;
+  }
+
+  let target = 0;
+
+  if (activeSpeechAudio && !activeSpeechAudio.paused && !activeSpeechAudio.ended) {
+    speechAnalyser.getByteTimeDomainData(speechWaveform);
+
+    let sumSquares = 0;
+    for (let index = 0; index < speechWaveform.length; index += 1) {
+      const sample = (speechWaveform[index] - 128) / 128;
+      sumSquares += sample * sample;
+    }
+
+    const rms = Math.sqrt(sumSquares / speechWaveform.length);
+
+    // Remove the quiet noise floor, then expand normal speech amplitudes into
+    // the full VRM expression range. The square root makes quieter syllables
+    // visible without forcing loud speech permanently wide-open.
+    const gated = Math.max(0, (rms - 0.018) * 7.5);
+    target = Math.min(1, Math.sqrt(gated));
+  }
+
+  const response = target > lipSyncWeight ? 0.48 : 0.24;
+  lipSyncWeight += (target - lipSyncWeight) * response;
+
+  if (lipSyncWeight < 0.015 && target === 0) lipSyncWeight = 0;
+
+  try {
+    manager.setValue(activeMouthExpression, lipSyncWeight);
+  } catch (_) { /* optional mouth preset */ }
+}
+
+function stopVoicePlayback() {
+  if (activeSpeechAudio) {
+    try {
+      activeSpeechAudio.pause();
+      activeSpeechAudio.currentTime = 0;
+    } catch (_) { /* best-effort */ }
+  }
+
   activeSpeechAudio = null;
+  disconnectLipSyncGraph();
 }
 
 function playVoice(voice = {}) {
@@ -285,6 +412,7 @@ function playVoice(voice = {}) {
   const mimeType = voice.mime_type || 'audio/mpeg';
   const audio = new Audio(`data:${mimeType};base64,${voice.audio_base64}`);
   activeSpeechAudio = audio;
+  attachLipSyncToAudio(audio);
 
   audio.addEventListener('play', () => {
     if (activeSpeechAudio === audio) setConnected(true, 'Mary speaking');
@@ -293,6 +421,7 @@ function playVoice(voice = {}) {
   audio.addEventListener('ended', () => {
     if (activeSpeechAudio === audio) {
       activeSpeechAudio = null;
+      disconnectLipSyncGraph();
       setConnected(true, 'Mary ready');
     }
   });
@@ -300,6 +429,7 @@ function playVoice(voice = {}) {
   audio.addEventListener('error', () => {
     if (activeSpeechAudio === audio) {
       activeSpeechAudio = null;
+      disconnectLipSyncGraph();
       setConnected(true, 'Mary ready');
     }
     appendMessage('System', 'Mary generated voice audio, but playback failed.', 'system');
@@ -307,6 +437,7 @@ function playVoice(voice = {}) {
 
   audio.play().catch((error) => {
     if (activeSpeechAudio === audio) activeSpeechAudio = null;
+    disconnectLipSyncGraph();
     setConnected(true, 'Mary ready');
     appendMessage('System', `Voice playback failed: ${error}`, 'system');
   });
