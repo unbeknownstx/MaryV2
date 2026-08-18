@@ -152,6 +152,7 @@ class DesktopVoiceEngine:
         self,
         text: str,
         *,
+        user_text: str | None = None,
         emotional_state: EmotionalState | None = None,
     ) -> dict[str, Any]:
         if self.service is None or not self.status.enabled:
@@ -160,7 +161,7 @@ class DesktopVoiceEngine:
                 "status": "disabled",
             }
 
-        spoken_text = self.renderer.render(str(text))
+        spoken_text = self.renderer.render(str(text), user_text=user_text)
         if not spoken_text:
             return {
                 **self.status.to_dict(),

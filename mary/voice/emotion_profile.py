@@ -1,11 +1,11 @@
 """Emotion-aware voice profile resolution for MaryV2.
 
-This module maps Mary's existing expressive emotional state into small,
-provider-independent adjustments around a calibrated baseline voice.
+This module maps Mary's existing expressive emotional state into tiny,
+provider-independent adjustments around the calibrated Mary voice.
 
-It does not infer emotion, call an LLM, access the network, mutate Mary's
-emotional state, or change voice identity.  It only translates an already
-existing ``EmotionalState`` into subtle delivery settings.
+SpeechRenderer V3 intentionally keeps these shifts close to the user's tuned
+baseline. Emotion should color Mary's delivery, not overpower the identity of
+the cloned voice or make serious/concerned responses sound stiff.
 """
 
 from __future__ import annotations
@@ -26,118 +26,29 @@ class EmotionVoiceAdjustment:
     speed_delta: float = 0.0
 
 
-# These are deliberately conservative.  The cloned voice remains Mary's
-# identity; expression changes delivery only.
+# Keep Mary's calibrated clone as the anchor. Even at intensity 1.0 these are
+# intentionally small changes; the text and punctuation are allowed to carry
+# most of the performance.
 _ADJUSTMENTS: dict[Emotion, EmotionVoiceAdjustment] = {
     Emotion.NEUTRAL: EmotionVoiceAdjustment("neutral"),
-    Emotion.CALM: EmotionVoiceAdjustment(
-        "calm",
-        stability_delta=0.05,
-        style_delta=-0.03,
-        speed_delta=-0.04,
-    ),
-    Emotion.CURIOSITY: EmotionVoiceAdjustment(
-        "curious",
-        stability_delta=-0.03,
-        style_delta=0.025,
-        speed_delta=0.01,
-    ),
-    Emotion.JOY: EmotionVoiceAdjustment(
-        "joyful",
-        stability_delta=-0.06,
-        style_delta=0.05,
-        speed_delta=0.03,
-    ),
-    Emotion.EXCITEMENT: EmotionVoiceAdjustment(
-        "excited",
-        stability_delta=-0.08,
-        style_delta=0.06,
-        speed_delta=0.04,
-    ),
-    Emotion.SURPRISE: EmotionVoiceAdjustment(
-        "surprised",
-        stability_delta=-0.06,
-        style_delta=0.05,
-        speed_delta=0.03,
-    ),
-    Emotion.LOVE: EmotionVoiceAdjustment(
-        "warm",
-        stability_delta=0.03,
-        style_delta=0.02,
-        speed_delta=-0.025,
-    ),
-    Emotion.AFFECTION: EmotionVoiceAdjustment(
-        "affectionate",
-        stability_delta=0.03,
-        style_delta=0.02,
-        speed_delta=-0.02,
-    ),
-    Emotion.GRATITUDE: EmotionVoiceAdjustment(
-        "grateful",
-        stability_delta=0.03,
-        style_delta=0.02,
-        speed_delta=-0.02,
-    ),
-    Emotion.HOPE: EmotionVoiceAdjustment(
-        "hopeful",
-        stability_delta=-0.02,
-        style_delta=0.025,
-        speed_delta=0.01,
-    ),
-    Emotion.PRIDE: EmotionVoiceAdjustment(
-        "proud",
-        stability_delta=-0.02,
-        style_delta=0.03,
-        speed_delta=0.01,
-    ),
-    Emotion.SADNESS: EmotionVoiceAdjustment(
-        "sad",
-        stability_delta=0.05,
-        style_delta=0.015,
-        speed_delta=-0.05,
-    ),
-    Emotion.LONELINESS: EmotionVoiceAdjustment(
-        "lonely",
-        stability_delta=0.05,
-        style_delta=0.015,
-        speed_delta=-0.05,
-    ),
-    Emotion.DISAPPOINTMENT: EmotionVoiceAdjustment(
-        "disappointed",
-        stability_delta=0.05,
-        style_delta=0.02,
-        speed_delta=-0.04,
-    ),
-    Emotion.CONCERN: EmotionVoiceAdjustment(
-        "concerned",
-        stability_delta=0.04,
-        style_delta=0.015,
-        speed_delta=-0.035,
-    ),
-    Emotion.CONFUSION: EmotionVoiceAdjustment(
-        "confused",
-        stability_delta=-0.02,
-        style_delta=0.025,
-        speed_delta=-0.01,
-    ),
-    Emotion.FRUSTRATION: EmotionVoiceAdjustment(
-        "frustrated",
-        stability_delta=-0.04,
-        style_delta=0.045,
-        speed_delta=0.02,
-    ),
-    Emotion.ANGER: EmotionVoiceAdjustment(
-        "firm",
-        stability_delta=-0.035,
-        style_delta=0.04,
-        speed_delta=0.015,
-    ),
-    Emotion.FEAR: EmotionVoiceAdjustment(
-        "uneasy",
-        stability_delta=-0.025,
-        style_delta=0.035,
-        speed_delta=0.015,
-    ),
+    Emotion.CALM: EmotionVoiceAdjustment("calm", 0.01, -0.005, -0.015),
+    Emotion.CURIOSITY: EmotionVoiceAdjustment("curious", -0.02, 0.015, 0.005),
+    Emotion.JOY: EmotionVoiceAdjustment("joyful", -0.03, 0.02, 0.015),
+    Emotion.EXCITEMENT: EmotionVoiceAdjustment("excited", -0.04, 0.025, 0.025),
+    Emotion.SURPRISE: EmotionVoiceAdjustment("surprised", -0.035, 0.025, 0.02),
+    Emotion.LOVE: EmotionVoiceAdjustment("warm", 0.005, 0.01, -0.01),
+    Emotion.AFFECTION: EmotionVoiceAdjustment("affectionate", 0.005, 0.01, -0.01),
+    Emotion.GRATITUDE: EmotionVoiceAdjustment("grateful", 0.0, 0.01, -0.005),
+    Emotion.HOPE: EmotionVoiceAdjustment("hopeful", -0.015, 0.015, 0.005),
+    Emotion.PRIDE: EmotionVoiceAdjustment("proud", -0.03, 0.025, 0.015),
+    Emotion.SADNESS: EmotionVoiceAdjustment("sad", 0.01, 0.005, -0.02),
+    Emotion.LONELINESS: EmotionVoiceAdjustment("lonely", 0.01, 0.005, -0.02),
+    Emotion.DISAPPOINTMENT: EmotionVoiceAdjustment("disappointed", 0.01, 0.01, -0.015),
+    Emotion.CONCERN: EmotionVoiceAdjustment("concerned", -0.01, 0.015, -0.01),
+    Emotion.CONFUSION: EmotionVoiceAdjustment("confused", -0.015, 0.015, -0.005),
+    Emotion.FRUSTRATION: EmotionVoiceAdjustment("frustrated", -0.025, 0.02, 0.01),
+    Emotion.ANGER: EmotionVoiceAdjustment("firm", -0.02, 0.015, 0.005),
+    Emotion.FEAR: EmotionVoiceAdjustment("uneasy", -0.02, 0.02, 0.01),
 }
 
 
@@ -149,12 +60,7 @@ def resolve_emotion_voice_settings(
     base: VoiceSettings,
     emotional_state: EmotionalState | None,
 ) -> VoiceSettings:
-    """Return a copy of ``base`` subtly adapted to Mary's current emotion.
-
-    The input settings are never mutated.  Emotion affects delivery only; the
-    selected voice, similarity target, speaker boost, and output format stay
-    anchored to Mary's calibrated profile.
-    """
+    """Return a copy of ``base`` subtly adapted to Mary's current emotion."""
 
     if emotional_state is None:
         emotion = Emotion.NEUTRAL

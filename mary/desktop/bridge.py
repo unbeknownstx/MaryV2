@@ -94,6 +94,7 @@ class _ConversationWorker(QObject):
             try:
                 voice_payload = self.voice.synthesize(
                     response_text,
+                    user_text=self.text,
                     emotional_state=mary.emotion.state,
                 )
             except Exception as exc:

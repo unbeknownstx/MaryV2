@@ -53,3 +53,11 @@ def test_desktop_voice_renders_spoken_text_separately_from_gui_text() -> None:
     assert "spoken_text = self.renderer.render" in source
     assert '"spoken_text": spoken_text' in source
     assert "class SpeechRenderer" in renderer
+
+
+def test_desktop_voice_passes_creator_turn_context_into_speech_renderer() -> None:
+    voice = (_root() / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8")
+    bridge = (_root() / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    assert "user_text: str | None = None" in voice
+    assert "user_text=user_text" in voice
+    assert "user_text=self.text" in bridge

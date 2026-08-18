@@ -113,14 +113,14 @@
         "source": "creator_explicit",
         "confidence": 1.0,
         "explicitly_shared": true,
-        "evidence_id": "episode_6419ef6832484ab1a958710d208e3590",
-        "observation_id": "observation_4a91ed96c303",
+        "evidence_id": "episode_956f7cb73a4d45798bc358e694453ed0",
+        "observation_id": "observation_eb271d94ff90",
         "created_at": "2026-08-18T01:40:32.274060+00:00",
-        "updated_at": "2026-08-18T01:40:32.274060+00:00"
+        "updated_at": "2026-08-18T01:48:57.658805+00:00"
       }
     ],
     "created_at": "2026-08-17T22:13:26.842107+00:00",
-    "updated_at": "2026-08-18T01:40:32.274082+00:00"
+    "updated_at": "2026-08-18T01:48:57.658818+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -229,10 +229,25 @@
           "evidence_id": "episode_6419ef6832484ab1a958710d208e3590"
         },
         "created_at": "2026-08-17T18:40:32.274096"
+      },
+      {
+        "id": "relationship_c295c7418b88",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared explicit statement: I really love creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "general",
+          "key": "statement_i_really_love_creating_stories",
+          "profile_record_id": "profile_7",
+          "evidence_id": "episode_956f7cb73a4d45798bc358e694453ed0"
+        },
+        "created_at": "2026-08-17T18:48:57.658831"
       }
     ],
     "created_at": "2026-08-17T22:13:26.842111",
-    "updated_at": "2026-08-17T18:40:32.274099"
+    "updated_at": "2026-08-17T18:48:57.658834"
   },
   "understanding": {
     "observations": [
@@ -298,11 +313,20 @@
         "confidence": 1.0,
         "evidence": "episode_6419ef6832484ab1a958710d208e3590",
         "created_at": "2026-08-17T18:40:32.274043"
+      },
+      {
+        "id": "observation_eb271d94ff90",
+        "observation": "I really love creating stories",
+        "category": "general",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "episode_956f7cb73a4d45798bc358e694453ed0",
+        "created_at": "2026-08-17T18:48:57.658790"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-17T18:40:32.274051"
+    "updated_at": "2026-08-17T18:48:57.658797"
   },
   "milestones": []
 }

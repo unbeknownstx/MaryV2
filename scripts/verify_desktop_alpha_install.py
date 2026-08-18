@@ -68,6 +68,10 @@ def main() -> int:
         ("emotional_state=mary.emotion.state" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop voice and avatar share Mary's existing emotion state"),
         ("resolve_emotion_voice_settings" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice delivery resolves from emotional state"),
         ("class EmotionVoiceAdjustment" in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "emotion voice profile is local and provider-independent"),
+        ("user_text=user_text" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "speech renderer receives creator-turn context"),
+        ("structured understanding" in (root / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8"), "SpeechRenderer V3 naturalizes backend-facing responses"),
+        ('Emotion.CONCERN: EmotionVoiceAdjustment("concerned", -0.01, 0.015, -0.01)' in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "concern voice stays close to Mary's calibrated baseline"),
+        ('Emotion.PRIDE: EmotionVoiceAdjustment("proud", -0.03, 0.025, 0.015)' in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "pride voice remains expressive without changing identity"),
     ]
 
     failed = False
