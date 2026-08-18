@@ -100,9 +100,9 @@
         "confidence": 1.0,
         "explicitly_shared": true,
         "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
-        "observation_id": "observation_9fa663d8cc51",
+        "observation_id": "observation_42d7c66be2ab",
         "created_at": "2026-08-17T22:18:17.926226+00:00",
-        "updated_at": "2026-08-17T22:18:17.926226+00:00"
+        "updated_at": "2026-08-18T07:19:30.984217+00:00"
       },
       {
         "id": "profile_7",
@@ -120,7 +120,7 @@
       }
     ],
     "created_at": "2026-08-17T22:13:26.842107+00:00",
-    "updated_at": "2026-08-18T01:55:42.226049+00:00"
+    "updated_at": "2026-08-18T07:19:30.984232+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -259,10 +259,40 @@
           "evidence_id": "episode_528dc2c2083d44b798ce0a927f1e1289"
         },
         "created_at": "2026-08-17T18:55:42.226064"
+      },
+      {
+        "id": "relationship_88c8a1906b5d",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_6",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T00:19:10.097084"
+      },
+      {
+        "id": "relationship_e606373bfa13",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_6",
+          "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d"
+        },
+        "created_at": "2026-08-18T00:19:30.984247"
       }
     ],
     "created_at": "2026-08-17T22:13:26.842111",
-    "updated_at": "2026-08-17T18:55:42.226067"
+    "updated_at": "2026-08-18T00:19:30.984251"
   },
   "understanding": {
     "observations": [
@@ -346,11 +376,29 @@
         "confidence": 1.0,
         "evidence": "episode_528dc2c2083d44b798ce0a927f1e1289",
         "created_at": "2026-08-17T18:55:42.226023"
+      },
+      {
+        "id": "observation_423e073018b8",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I prefer you to be direct and concise",
+        "created_at": "2026-08-18T00:19:10.097053"
+      },
+      {
+        "id": "observation_42d7c66be2ab",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "created_at": "2026-08-18T00:19:30.984197"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-17T18:55:42.226030"
+    "updated_at": "2026-08-18T00:19:30.984207"
   },
   "milestones": []
 }
