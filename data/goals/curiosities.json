@@ -76,6 +76,17 @@
             "updated_at": "2026-08-18T22:05:32.475142+00:00",
             "resolved_at": null,
             "metadata": {}
+        },
+        {
+            "id": "curiosity_8",
+            "description": "Learn more about Unbe",
+            "importance": 1.0,
+            "source": "test",
+            "status": "open",
+            "created_at": "2026-08-18T22:45:50.592364+00:00",
+            "updated_at": "2026-08-18T22:45:50.592364+00:00",
+            "resolved_at": null,
+            "metadata": {}
         }
     ]
 }
