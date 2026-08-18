@@ -38,6 +38,18 @@ class LLMRouter:
             )
             return GroqProvider(model=model)
 
+        if name == "gemini":
+            from .providers.gemini import GeminiProvider
+            return GeminiProvider()
+
+        if name == "openrouter":
+            from .providers.openrouter import OpenRouterProvider
+            return OpenRouterProvider()
+
+        if name == "ollama":
+            from .providers.ollama import OllamaProvider
+            return OllamaProvider()
+
         if name == "openai":
             from .providers.openai import OpenAIProvider
             model = (
@@ -198,6 +210,12 @@ class LLMRouter:
                 if self.config.llm.provider == "groq"
                 else "openai/gpt-oss-20b"
             )
+        if provider == "gemini":
+            return self.get_provider("gemini").model_name()
+        if provider == "openrouter":
+            return self.get_provider("openrouter").model_name()
+        if provider == "ollama":
+            return self.get_provider("ollama").model_name()
         if provider == "openai":
             return (
                 self.config.llm.model
