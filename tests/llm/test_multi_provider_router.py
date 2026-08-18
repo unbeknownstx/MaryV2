@@ -102,3 +102,23 @@ def test_free_first_openrouter_allows_specific_free_model(monkeypatch):
     provider = router._create_provider("openrouter")
 
     assert provider.model_name() == "some-provider/model:free"
+
+
+def test_gemini_uses_current_free_first_default(monkeypatch):
+    monkeypatch.delenv("MARY_GEMINI_MODEL", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    router = LLMRouter(Config())
+    provider = router._create_provider("gemini")
+
+    assert provider.model_name() == "gemini-3.6-flash"
+
+
+def test_gemini_migrates_legacy_flash_model(monkeypatch):
+    monkeypatch.setenv("MARY_GEMINI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    router = LLMRouter(Config())
+    provider = router._create_provider("gemini")
+
+    assert provider.model_name() == "gemini-3.6-flash"

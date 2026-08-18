@@ -131,3 +131,46 @@ def test_clear_provider_cooldown_reenables_provider():
     router.clear_provider_cooldown("primary")
 
     assert router._cooldown_remaining("primary") == 0
+
+class OversizeProvider(LLMInterface):
+    def __init__(self, name: str = "primary"):
+        self.name = name
+        self.calls = 0
+
+    def generate(self, messages, temperature=0.7, max_tokens=2048):
+        self.calls += 1
+        exc = RuntimeError(
+            "Error code: 413 - Request too large for model on tokens per minute (TPM); rate_limit_exceeded"
+        )
+        exc.status_code = 413
+        raise exc
+
+    def is_available(self):
+        return True
+
+    def provider_name(self):
+        return self.name
+
+    def model_name(self):
+        return "oversize"
+
+
+def test_request_too_large_falls_through_without_rate_limit_cooldown():
+    config = Config()
+    config.llm.provider = "primary"
+    config.llm.fallback_providers = ["secondary"]
+
+    router = LLMRouter(config)
+    primary = OversizeProvider("primary")
+    router.register_provider("primary", primary)
+    router.register_provider("secondary", GoodProvider("secondary"))
+
+    first = router.generate([LLMMessage(role="user", content="hello")])
+    assert first.provider == "secondary"
+    assert router._cooldown_remaining("primary") == 0
+
+    second = router.generate([LLMMessage(role="user", content="hello again")])
+    assert second.provider == "secondary"
+    assert primary.calls == 2
+    assert router.last_generation_attempts[0]["provider"] == "primary"
+    assert router.last_generation_attempts[0]["status"] == "failed"

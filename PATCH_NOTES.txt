@@ -1,80 +1,69 @@
-MaryV2 Free-First Adaptive LLM Router Patch
-===========================================
+MaryV2 - Conversation Context + Free Router Efficiency Patch
+=============================================================
 
-Goal
-----
-Keep Mary's normal LLM usage zero-cost while avoiding the old problem where
-Groq hitting a free-tier limit made Mary stop, or Ollama became the slow primary
-for every turn.
-
-Default automatic route
+What this patch changes
 -----------------------
-Groq -> Gemini -> OpenRouter free -> Ollama
+1. Updates Gemini's default route from gemini-2.5-flash to gemini-3.6-flash.
+   Existing .env files that still explicitly name gemini-2.5-flash are
+   transparently migrated by GeminiProvider at runtime.
 
-- Missing cloud API keys are skipped automatically.
-- OpenAI is NOT selected automatically in free_first mode.
-- OpenRouter is forced to openrouter/free unless MARY_OPENROUTER_MODEL is an
-  explicit :free model.
-- Ollama remains Mary's local/offline final fallback.
-- route="private", route="local", or route="offline" forces Ollama only.
+2. Stops serializing Mary's entire TurnMindState into every ordinary dialogue
+   request. The full state remains inside Mary; the LLM receives a compact
+   projection containing the character/personality/relationship/emotion/
+   continuity details needed to perform the current turn.
 
-Rate-limit behavior
--------------------
-When a provider returns a rate-limit error (including HTTP 429), Mary:
-1. records that provider failure in provider_attempts,
-2. immediately tries the next free provider,
-3. locally cools down the rate-limited provider so following turns skip it
-   instead of wasting time hitting the same exhausted route again.
+3. Removes duplicate creator-profile record metadata (IDs/timestamps) from
+   normal LLM prompts while retaining normalized creator facts/preferences/
+   goals/communication style and the strict Mary-vs-Unbe identity boundary.
 
-Default cooldown: 300 seconds.
-If an SDK exposes Retry-After, Mary uses that value instead.
+4. Uses bounded completion budgets for dialogue:
+      brief    -> 320 tokens
+      medium   -> 640 tokens
+      detailed -> 1000 tokens
+      grounded self-introspection -> 500 tokens
+   Local-tool analysis retains its existing 1400-token allowance.
 
-Ollama availability
--------------------
-Ollama now checks the local /api/tags endpoint with a short cached health check.
-If the Ollama service is stopped, Mary can skip it quickly instead of treating
-MARY_OLLAMA_ENABLED=true as proof that the server is actually reachable.
+5. Distinguishes Groq HTTP 413/request-too-large failures from genuine rate
+   limits. Oversized requests still fall through to the next provider, but no
+   longer put Groq into a 5-minute cooldown. Genuine 429/quota failures still
+   trigger cooldown.
 
-Environment
------------
-The patch includes an updated .env.example. Do NOT overwrite your real .env.
-Add these to your existing .env if desired:
+Measured offline on the lazy-day test prompt
+---------------------------------------------
+Before:
+  system + user prompt chars ~= 25,185
+  normal completion reserve   = 2,048 tokens
 
-MARY_LLM_ROUTING_STRATEGY=free_first
-MARY_LLM_FREE_ORDER=groq,gemini,openrouter,ollama
-MARY_LLM_RATE_LIMIT_COOLDOWN=300
-MARY_GROQ_MODEL=openai/gpt-oss-20b
-MARY_GEMINI_MODEL=gemini-2.5-flash
-MARY_OPENROUTER_MODEL=openrouter/free
+After:
+  system + user prompt chars ~= 11,667
+  normal completion reserve   = 640 tokens
 
-Keep your existing keys; never paste them into chat.
+This is not a provider-reported token count, but it is a large reduction in
+what Mary sends to the model. The live provider metadata on your PC will show
+actual prompt_tokens after installation.
 
-Optional free provider keys:
-GROQ_API_KEY=...
-GEMINI_API_KEY=...
-OPENROUTER_API_KEY=...
+Validation in the supplied MaryV2 package
+-----------------------------------------
+343 passed, 1 skipped
+41 / 41 diagnostics passed
+Healthy: True
 
-Ollama settings can stay as they are. For the current RX 480, 4096 context is a
-reasonable normal-turn target if you want to reduce local memory pressure:
-MARY_OLLAMA_NUM_CTX=4096
+Install
+-------
+Merge/copy this patch into the MaryV2 repo root. Replace files when asked.
+Do NOT replace your real .env with .env.example.
 
-Safe route status check
------------------------
-python -m scripts.check_llm_routes
+Then run:
+  python -m pytest tests -q
+  python -m scripts.run_diagnostics
+  python -m scripts.check_llm_routes
 
-This prints READY / NOT CONFIGURED and model names only. It does not print API
-keys or their values.
+Live test:
+  python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('Hey Mary, what would your perfect lazy day look like?'); print(); print('RESPONSE:', r.final_response); print(); print('META:', r.reasoning.metadata)"
 
-Validation used for this patch
-------------------------------
-python -m pytest tests -q
-Result in patch environment: 338 passed, 1 skipped
-
-python -m scripts.run_diagnostics
-Result: 41 passed, 0 warnings, 0 failed, Healthy: True
-
-Recommended live test
----------------------
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What are you like when you are really comfortable around someone?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
-
-Watch REASONING META -> provider and provider_attempts.
+Expected routing behavior:
+- Groq is attempted first for a normal free-first turn.
+- If Groq genuinely rate-limits, it enters cooldown and Mary tries Gemini.
+- Gemini should now report gemini-3.6-flash.
+- OpenRouter free remains the next fallback.
+- Ollama remains the final free/local fallback.

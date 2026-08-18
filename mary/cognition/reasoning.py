@@ -136,6 +136,18 @@ class ReasoningEngine:
             # Keep local grounded analysis compact enough to coexist with the
             # exact source evidence under tight provider TPM limits.
             generation_kwargs["max_tokens"] = 1_400
+        elif self_grounded:
+            # Self-introspection is already grounded locally. The model only
+            # needs enough output room to express Mary's answer naturally.
+            generation_kwargs["max_tokens"] = 500
+        else:
+            # Ordinary dialogue should not reserve a 2K-token completion on a
+            # free provider. Besides wasting quota, Groq counts the requested
+            # completion budget toward TPM. Scale the allowance to Mary's
+            # selected response disposition instead.
+            generation_kwargs["max_tokens"] = self._conversation_max_tokens(
+                context
+            )
 
         try:
             response = self.llm.generate(
@@ -710,6 +722,200 @@ Continuity:
 
 Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
+    @staticmethod
+    def _conversation_max_tokens(
+        context: CognitiveContext,
+    ) -> int:
+        """Return a bounded completion budget for ordinary conversation."""
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        preferred = str(disposition.get("preferred_length", "medium")).lower().strip()
+
+        if preferred == "brief":
+            return 320
+        if preferred == "detailed":
+            return 1_000
+        return 640
+
+    @staticmethod
+    def _compact_creator_profile(
+        user_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Keep creator context useful without shipping empty/profile metadata."""
+
+        if not isinstance(user_context, dict):
+            return {}
+
+        compact: dict[str, Any] = {}
+        for key in (
+            "creator_id",
+            "name",
+            "facts",
+            "preferences",
+            "interests",
+            "values",
+            "goals",
+            "communication_style",
+        ):
+            value = user_context.get(key)
+            if value not in (None, "", [], {}):
+                compact[key] = value
+
+        # profile_records duplicate the normalized facts/preferences/goals above
+        # and carry IDs/timestamps that do not help dialogue generation. Keep them
+        # in Mary's runtime state, not in every LLM request.
+        return compact
+
+    @staticmethod
+    def _compact_turn_mind_state(
+        context: CognitiveContext,
+    ) -> dict[str, Any]:
+        """Project TurnMindState into the information dialogue actually needs.
+
+        Mary's runtime still owns the full integrated state. This projection is
+        only the LLM-facing view for ordinary conversation, preventing every
+        turn from serializing biography, agency, character, disposition, and
+        performance structures in full.
+        """
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        if not mind:
+            return {}
+
+        personality = mind.get("personality", {}) or {}
+        character = mind.get("character", {}) or {}
+        relationship = mind.get("relationship", {}) or {}
+        continuity = mind.get("continuity", {}) or {}
+        disposition = mind.get("disposition", {}) or {}
+        performance = mind.get("performance", {}) or {}
+        agency = mind.get("agency", {}) or {}
+
+        traits = personality.get("traits", {}) if isinstance(personality, dict) else {}
+        style = personality.get("style", {}) if isinstance(personality, dict) else {}
+
+        values = []
+        for item in list(mind.get("values", []) or [])[:8]:
+            if isinstance(item, dict):
+                values.append({
+                    "name": item.get("name"),
+                    "strength": item.get("strength"),
+                })
+
+        positives: list[dict[str, Any]] = []
+        negatives: list[dict[str, Any]] = []
+        for item in list(mind.get("preferences", []) or []):
+            if not isinstance(item, dict):
+                continue
+            view = {
+                "name": item.get("name"),
+                "category": item.get("category"),
+            }
+            polarity = float(item.get("polarity", 0.0) or 0.0)
+            if polarity > 0 and len(positives) < 8:
+                positives.append(view)
+            elif polarity < 0 and len(negatives) < 8:
+                negatives.append(view)
+            if len(positives) >= 8 and len(negatives) >= 8:
+                break
+
+        behavior = character.get("behavior", {}) if isinstance(character, dict) else {}
+        speech = character.get("speech", {}) if isinstance(character, dict) else {}
+        romance = character.get("romance", {}) if isinstance(character, dict) else {}
+        vulnerabilities = character.get("vulnerabilities", {}) if isinstance(character, dict) else {}
+
+        return {
+            "identity": mind.get("identity", {}),
+            "personality": {
+                "traits": traits,
+                "style": style,
+            },
+            "character": {
+                "archetype": character.get("archetype") if isinstance(character, dict) else None,
+                "qualities": list(character.get("qualities", []) or [])[:10] if isinstance(character, dict) else [],
+                "mannerisms": list(character.get("mannerisms", []) or [])[:6] if isinstance(character, dict) else [],
+                "humor_style": list(character.get("humor_style", []) or [])[:6] if isinstance(character, dict) else [],
+                "behavior": behavior,
+                "social_modes": {
+                    key: (character.get("social_modes", {}) or {}).get(key)
+                    for key in ("strangers", "close_people", "distrust")
+                    if isinstance(character, dict) and key in (character.get("social_modes", {}) or {})
+                },
+                "reactions": {
+                    key: (character.get("reactions", {}) or {}).get(key)
+                    for key in ("anger", "embarrassment", "excitement")
+                    if isinstance(character, dict) and key in (character.get("reactions", {}) or {})
+                },
+                "quirks": list(character.get("quirks", []) or [])[:6] if isinstance(character, dict) else [],
+                "speech": {
+                    "vocabulary": list(speech.get("vocabulary", []) or [])[:7] if isinstance(speech, dict) else [],
+                    "style": speech.get("style") if isinstance(speech, dict) else None,
+                    "rule": speech.get("rule") if isinstance(speech, dict) else None,
+                },
+                "romance": romance,
+                "vulnerabilities": vulnerabilities,
+                "private_activities": list(character.get("private_activities", []) or [])[:10] if isinstance(character, dict) else [],
+            },
+            "values": values,
+            "preferences": {
+                "likes": positives,
+                "dislikes": negatives,
+            },
+            "relationship": {
+                "creator_name": relationship.get("creator_name") if isinstance(relationship, dict) else None,
+                "role": relationship.get("role") if isinstance(relationship, dict) else None,
+                "familiarity": relationship.get("familiarity") if isinstance(relationship, dict) else None,
+            },
+            "emotion": mind.get("emotion", {}),
+            "agency": {
+                "top_priorities": list(agency.get("top_priorities", []) or [])[:5] if isinstance(agency, dict) else [],
+                "active_curiosities": list(agency.get("active_curiosities", []) or [])[:5] if isinstance(agency, dict) else [],
+            },
+            "continuity": {
+                "drive": continuity.get("drive") if isinstance(continuity, dict) else None,
+                "allow_follow_up_question": continuity.get("allow_follow_up_question") if isinstance(continuity, dict) else None,
+                "recent_openings": list(continuity.get("recent_openings", []) or [])[-4:] if isinstance(continuity, dict) else [],
+                "recent_distinctive_terms": list(continuity.get("recent_distinctive_terms", []) or [])[-8:] if isinstance(continuity, dict) else [],
+            },
+            "disposition": {
+                key: disposition.get(key)
+                for key in (
+                    "mode",
+                    "warmth",
+                    "curiosity",
+                    "playfulness",
+                    "directness",
+                    "formality",
+                    "verbosity",
+                    "independence",
+                    "expressiveness",
+                    "familiarity",
+                    "preferred_length",
+                    "allow_teasing",
+                    "allow_opinion",
+                )
+                if key in disposition
+            },
+            "performance": {
+                key: performance.get(key)
+                for key in (
+                    "energy",
+                    "spontaneity",
+                    "theatricality",
+                    "intimacy",
+                    "pacing",
+                    "emotional_color",
+                    "opening_style",
+                    "ending_style",
+                    "allow_fragments",
+                    "allow_interjections",
+                    "allow_thinking_aloud",
+                )
+                if key in performance
+            },
+            "constraints": list(mind.get("constraints", []) or []),
+        }
+
     def _build_prompt(
         self,
         context: CognitiveContext,
@@ -829,35 +1035,24 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
         if context.mind_state:
             sections.append(
-                "TurnMindState (authoritative integrated Mary state for this turn):\n"
-                f"{context.mind_state}"
+                "Compact TurnMindState (authoritative Mary state selected for this turn):\n"
+                f"{self._compact_turn_mind_state(context)}"
             )
-            performance = context.mind_state.get("performance", {})
-            if performance:
-                sections.append(
-                    "Performance Director (how Mary should embody this line):\n"
-                    f"{performance}\n"
-                    "Write the response as speakable character dialogue. The performance plan affects "
-                    "cadence, energy, intimacy, timing, and texture—not factual content. Prefer natural "
-                    "spoken phrasing over polished essay cadence. Do not include bracketed acting notes."
-                )
 
         if context.user_context:
-            sections.append(
-                "Creator profile — facts about Unbe only, NOT Mary:\n"
-                "Everything in this block describes Unbe, Mary's creator/user. "
-                "Never adopt these facts, preferences, interests, values, goals, "
-                "communication traits, memories, or profile records as Mary's own. "
-                "When referring to them, say 'you/your' or 'Unbe/Unbe\'s', never "
-                "'I/my' unless directly quoting Unbe.\n"
-                f"{context.user_context}"
+            creator_profile = self._compact_creator_profile(
+                context.user_context
             )
-
-        if context.personality_context:
-            sections.append(
-                "Personality context:\n"
-                f"{context.personality_context}"
-            )
+            if creator_profile:
+                sections.append(
+                    "Creator profile — facts about Unbe only, NOT Mary:\n"
+                    "Everything in this block describes Unbe, Mary's creator/user. "
+                    "Never adopt these facts, preferences, interests, values, goals, "
+                    "communication traits, memories, or profile records as Mary's own. "
+                    "When referring to them, say 'you/your' or 'Unbe/Unbe\'s', never "
+                    "'I/my' unless directly quoting Unbe.\n"
+                    f"{creator_profile}"
+                )
 
         if context.active_goals:
             sections.append(
@@ -868,18 +1063,13 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         continuity = context.mind_state.get("continuity", {}) if isinstance(context.mind_state, dict) else {}
         drive = continuity.get("drive", "react")
         allow_question = bool(continuity.get("allow_follow_up_question", True))
-        recent_openings = continuity.get("recent_openings", [])
-        recent_terms = continuity.get("recent_distinctive_terms", [])
 
         sections.append(
             "Conversation continuity instructions:\n"
-            f"Primary drive: {drive}.\n"
-            f"Follow-up question allowed: {allow_question}.\n"
-            f"Recent Mary openings to avoid repeating: {recent_openings}.\n"
-            f"Recent Mary vocabulary for continuity awareness: {recent_terms}. Avoid reusing it as decorative metaphor/punchline material; reuse factual topic terms when they are actually needed.\n"
-            "Do not repeat the same metaphor, opening, punchline, or question pattern from the immediately recent dialogue. "
-            "If the previous Mary turn ended in a question, strongly prefer a statement/opinion/reaction now. "
-            "A curious Mary can wonder internally or make an observation without asking anything."
+            f"Primary drive: {drive}. Follow-up question allowed: {allow_question}. "
+            "Avoid repeating Mary's immediately recent opening, metaphor, punchline, or question pattern. "
+            "If the previous Mary turn ended in a question, prefer a statement/opinion/reaction now unless another "
+            "question genuinely improves the turn. Curiosity does not require a question."
         )
 
         sections.append(

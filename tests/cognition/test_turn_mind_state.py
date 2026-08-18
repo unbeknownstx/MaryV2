@@ -130,3 +130,28 @@ def test_explicit_creator_communication_preference_shapes_disposition():
     assert disposition["directness"] >= 0.85
     assert disposition["verbosity"] <= 0.34
     assert disposition["preferred_length"] == "brief"
+
+
+def test_normal_conversation_uses_compact_llm_projection_and_bounded_completion():
+    router = CharacterAwareFakeRouter()
+    mary = _mary(router)
+
+    mary.process("Hey Mary, what would your perfect lazy day look like?")
+
+    messages, kwargs = router.calls[0]
+    combined = "\n".join(str(message.content) for message in messages)
+
+    assert "Compact TurnMindState" in combined
+    assert "TurnMindState (authoritative integrated Mary state for this turn)" not in combined
+    assert len(combined) < 14_000
+    assert kwargs["max_tokens"] <= 1_000
+
+
+def test_self_grounded_turn_uses_small_completion_budget():
+    router = CharacterAwareFakeRouter()
+    mary = _mary(router)
+
+    mary.process("What color is your hair?")
+
+    _messages, kwargs = router.calls[0]
+    assert kwargs["max_tokens"] == 500

@@ -378,6 +378,21 @@ class LLMRouter:
         lowered = message.lower()
         status_code = getattr(exc, "status_code", None)
 
+        # A provider can report a token-budget problem with rate-limit wording
+        # while using HTTP 413. That is a property of this request, not evidence
+        # that the provider itself is exhausted, so do not place it on cooldown.
+        if (
+            status_code == 413
+            or "request too large" in lowered
+            or "payload too large" in lowered
+            or "context length exceeded" in lowered
+        ):
+            return LLMProviderError(
+                message,
+                provider=provider_name,
+                retryable=False,
+            )
+
         if (
             status_code == 429
             or "rate limit" in lowered
