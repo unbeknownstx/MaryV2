@@ -287,7 +287,7 @@ def test_cognitive_cycle_serializes():
 # ============================================================
 
 
-def test_fake_llm_was_called_twice():
+def test_normal_cycle_uses_one_llm_call_when_character_audit_passes():
 
     mary, fake_llm = create_test_mary()
 
@@ -295,10 +295,6 @@ def test_fake_llm_was_called_twice():
         input_text="Hello Mary",
     )
 
-    # First call:
-    # Reasoning
-    #
-    # Second call:
-    # Reflection
-
-    assert len(fake_llm.calls) == 2
+    # Reasoning uses one provider call. Reflection is local when the
+    # response already passes Mary's character/continuity audit.
+    assert len(fake_llm.calls) == 1

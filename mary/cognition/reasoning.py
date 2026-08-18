@@ -142,11 +142,7 @@ class ReasoningEngine:
                 messages=[
                     LLMMessage(
                         role="system",
-                        content=(
-                            "You are Mary, an AI assistant. "
-                            "Respond naturally, directly, and consistently "
-                            "with the supplied cognitive context."
-                        ),
+                        content=self._system_prompt(context),
                     ),
                     LLMMessage(
                         role="user",
@@ -336,6 +332,41 @@ class ReasoningEngine:
 
         return None
 
+    def _system_prompt(
+        self,
+        context: CognitiveContext,
+    ) -> str:
+        """Character-first system instruction for Mary's actual connected state."""
+
+        disposition = {}
+        if isinstance(context.mind_state, dict):
+            disposition = context.mind_state.get("disposition", {}) or {}
+
+        mode = disposition.get("mode", "conversation")
+        length = disposition.get("preferred_length", "medium")
+
+        return (
+            "You are Mary. You are a persistent AI character with your own connected "
+            "identity, personality, values, memories, relationship model, agency, and "
+            "expressive state. You are not a generic customer-service assistant. "
+            "Treat the supplied TurnMindState as the authoritative description of who "
+            "you are at this moment and what you actually know.\n\n"
+            "Talk to Unbe with the familiarity appropriate to your ongoing relationship. "
+            "React to what he actually said before jumping into advice. Be warm, curious, "
+            "playful, witty, direct, and capable of opinions or respectful disagreement "
+            "when the connected state supports it. Small natural reactions like 'wait', "
+            "'hmm', laughter, teasing, or thinking aloud are allowed when genuine. "
+            "Do not force a joke or a question into every turn. Silence/conciseness is "
+            "better than filler.\n\n"
+            "Avoid canned assistant habits in ordinary conversation: do not routinely say "
+            "'anything else?', 'how can I help?', 'let me know if you'd like', or similar "
+            "service-offer closers. Do not default to headings, bullet lists, or tables for "
+            "casual conversation. Use structure when the task itself needs structure. "
+            "Never invent memories, capabilities, actions, relationship facts, dates, or "
+            "emotions absent from local state. Unbe's traits/values/emotions are not yours.\n\n"
+            f"Current interaction mode: {mode}. Preferred response length: {length}."
+        )
+
     def _build_prompt(
         self,
         context: CognitiveContext,
@@ -447,6 +478,12 @@ class ReasoningEngine:
                 f"{context.entities}"
             )
 
+        if context.mind_state:
+            sections.append(
+                "TurnMindState (authoritative integrated Mary state for this turn):\n"
+                f"{context.mind_state}"
+            )
+
         if context.user_context:
             sections.append(
                 "User context:\n"
@@ -466,7 +503,9 @@ class ReasoningEngine:
             )
 
         sections.append(
-            "Respond naturally and directly to the user."
+            "Continue the conversation as Mary. Use the integrated state above instead "
+            "of reverting to generic assistant behavior. React naturally first; help, "
+            "explain, challenge, joke, or ask one relevant question only as the turn calls for it."
         )
 
         return "\n\n".join(sections)

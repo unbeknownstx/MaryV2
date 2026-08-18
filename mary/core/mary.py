@@ -101,6 +101,7 @@ from mary.cognition.reflection import (
 from mary.cognition.context import CognitiveContext
 from mary.cognition.code_change import CodeChangePlanner
 from mary.cognition.self_introspection import SelfIntrospection
+from mary.cognition.mind_state import TurnMindStateBuilder
 from mary.cognition.intent import Intent, IntentType
 
 
@@ -375,6 +376,27 @@ class Mary:
             tools=self.tools,
         )
 
+        # ============================================================
+        # UNIFIED TURN MIND STATE
+        # ============================================================
+
+        self.turn_mind = TurnMindStateBuilder(
+            identity=self.identity,
+            self_model=self.self_model,
+            biography=self.biography,
+            personality=self.personality,
+            character=self.character,
+            values=self.values,
+            relationship=self.relationship,
+            knowledge=self.knowledge,
+            learner=self.learner,
+            agency=self.agency,
+            autonomy=self.autonomy,
+            tools=self.tools,
+            emotion=self.emotion,
+            dialogue=self.dialogue,
+        )
+
     # ================================================================
     # PRIMARY ENTRY POINT
     # ================================================================
@@ -391,13 +413,29 @@ class Mary:
             input_text
         )
 
-        context = self._build_context(
-            input_text
+        # Capture the conversation that existed *before* this turn so the
+        # current user message is not duplicated in LLM context.
+        recent_conversation = self.dialogue.messages_for_llm(
+            limit=10
         )
 
         intent = self._detect_intent(
             input_text
         )
+
+        context = self._build_context(
+            input_text,
+            intent=intent,
+            recent_conversation=recent_conversation,
+        )
+
+        self.dialogue.begin_turn(
+            input_text,
+            metadata={
+                "intent": intent.intent_type.value,
+            },
+        )
+        self.dialogue.begin_thinking()
 
         system_response: str | None = None
         external_knowledge: list[Any] = []
@@ -565,7 +603,7 @@ class Mary:
                 context=context,
                 metadata=metadata,
             )
-            return self._apply_conversation_emotion(
+            return self._finalize_turn(
                 input_text=input_text,
                 result=cycle,
             )
@@ -573,6 +611,7 @@ class Mary:
         result = self.cognition.process(
             input_text=input_text,
             intent=intent,
+            conversation=context.get("conversation", []),
             memories=context["memory"].get(
                 "relevant_memories",
                 [],
@@ -580,6 +619,10 @@ class Mary:
             knowledge=external_knowledge,
             user_context=context["user"],
             personality_context=context["personality"],
+            active_goals=context.get("mind_state", {}).get(
+                "agency", {}
+            ).get("active_goals", []),
+            mind_state=context.get("mind_state", {}),
         )
 
         if system_response is not None:
@@ -609,10 +652,51 @@ class Mary:
                 }
             )
 
-        return self._apply_conversation_emotion(
+        return self._finalize_turn(
             input_text=input_text,
             result=result,
         )
+
+    def _finalize_turn(
+        self,
+        *,
+        input_text: str,
+        result: CognitiveCycleResult,
+    ) -> CognitiveCycleResult:
+        """Apply expression state and commit the completed turn to dialogue."""
+
+        result = self._apply_conversation_emotion(
+            input_text=input_text,
+            result=result,
+        )
+
+        try:
+            response = self.expression.build_response(
+                result.final_response,
+                emotional_state=self.emotion.state,
+                directed_to=str(
+                    self.user_model.name or self.identity.creator or "Unbe"
+                ).title(),
+                metadata_extra={
+                    "intent": (
+                        result.intent.intent_type.value
+                        if result.intent is not None
+                        else "unknown"
+                    ),
+                    "reflection_mode": result.reflection.metadata.get("mode"),
+                },
+            )
+            self.expression.record_response(response)
+            self.dialogue.finish_turn()
+            result.metadata["dialogue_turn"] = self.dialogue.state.turn_number
+            result.metadata["dialogue_recorded"] = True
+        except Exception as exc:
+            # Dialogue continuity should enrich cognition, never prevent a valid
+            # grounded response from reaching the creator.
+            result.metadata["dialogue_recorded"] = False
+            result.metadata["dialogue_error"] = f"{type(exc).__name__}: {exc}"
+
+        return result
 
     def _apply_conversation_emotion(
         self,
@@ -672,17 +756,29 @@ class Mary:
     def _build_context(
         self,
         input_text: str,
+        *,
+        intent: Intent | None = None,
+        recent_conversation: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """
-        Build the subsystem context required for one cognitive cycle.
-        """
+        """Build one integrated cognitive context from Mary's real subsystems."""
+
+        memory_context = self.memory.build_context(
+            input_text
+        )
+        conversation = list(recent_conversation or [])
+        mind_state = self.turn_mind.build(
+            input_text=input_text,
+            intent=intent,
+            relevant_memories=memory_context.get("relevant_memories", []),
+            recent_conversation=conversation,
+        )
 
         return {
-            "memory": self.memory.build_context(
-                input_text
-            ),
+            "memory": memory_context,
             "user": self._user_context(),
             "personality": self._personality_context(),
+            "conversation": conversation,
+            "mind_state": mind_state.prompt_view(),
         }
 
     # ================================================================
@@ -1318,6 +1414,9 @@ class Mary:
 
         cognitive_context = CognitiveContext(
             input_text=input_text,
+            conversation=list(
+                context.get("conversation", [])
+            ),
             memories=list(
                 context.get("memory", {}).get(
                     "relevant_memories",
@@ -1329,6 +1428,9 @@ class Mary:
             ),
             personality_context=dict(
                 context.get("personality", {})
+            ),
+            mind_state=dict(
+                context.get("mind_state", {})
             ),
         )
 
@@ -2359,6 +2461,7 @@ class Mary:
             "cognition": {
                 "reasoning": True,
                 "reflection": True,
+                "turn_mind": True,
                 "llm": self.llm.provider_name(),
                 "model": self.llm.model_name(),
             },

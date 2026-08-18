@@ -23,17 +23,43 @@ class CaptureLLM:
         )
 
 
-def test_normal_reflection_uses_small_completion_budget():
+def test_normal_reflection_is_local_when_character_audit_passes():
     llm = CaptureLLM()
     engine = ReflectionEngine(llm=llm)
 
     result = engine.reflect(
-        context=CognitiveContext(input_text="hello"),
-        reasoning=ReasoningResult(response="Hi."),
+        context=CognitiveContext(
+            input_text="hello",
+            mind_state={
+                "disposition": {"mode": "relational_conversation"},
+            },
+        ),
+        reasoning=ReasoningResult(response="Hey. Good to see you."),
     )
 
     assert result.decision == ReflectionDecision.ACCEPT
-    assert llm.calls[0][1]["max_tokens"] == 512
+    assert result.metadata["mode"] == "local_character_audit"
+    assert llm.calls == []
+
+
+def test_generic_assistant_reflection_uses_targeted_revision_budget():
+    llm = CaptureLLM()
+    engine = ReflectionEngine(llm=llm)
+
+    result = engine.reflect(
+        context=CognitiveContext(
+            input_text="I finally fixed it",
+            mind_state={
+                "disposition": {"mode": "relational_conversation"},
+            },
+        ),
+        reasoning=ReasoningResult(
+            response="Great to hear that! Anything else you'd like to tackle next?"
+        ),
+    )
+
+    assert result.decision == ReflectionDecision.REVISE
+    assert llm.calls[0][1]["max_tokens"] == 700
 
 
 def test_research_reflection_reuses_evidence_result_without_llm_call():

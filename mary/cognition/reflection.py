@@ -14,13 +14,14 @@ Reflection asks:
 
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 from typing import Any
 
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent
 from mary.cognition.reasoning import ReasoningResult
 from mary.llm.router import LLMRouter
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import LLMMessage, LLMProviderError
 
 
 class ReflectionDecision(str, Enum):
@@ -53,6 +54,8 @@ class ReflectionResult:
         default_factory=dict
     )
 
+    revised_response: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Convert the reflection result into a serializable dictionary."""
 
@@ -63,6 +66,7 @@ class ReflectionResult:
             "issues": self.issues,
             "suggestions": self.suggestions,
             "metadata": self.metadata,
+            "revised_response": self.revised_response,
         }
 
 
@@ -154,41 +158,181 @@ class ReflectionEngine:
                 },
             )
 
-        prompt = self._build_prompt(
+        issues = self._character_audit(
             context=context,
             reasoning=reasoning,
             intent=intent,
         )
 
-        response = self.llm.generate(
-            messages=[
-                LLMMessage(
-                    role="system",
-                    content=(
-                        "You are Mary's reflection system. "
-                        "Evaluate the proposed response objectively."
+        if not issues:
+            return ReflectionResult(
+                decision=ReflectionDecision.ACCEPT,
+                confidence=0.94,
+                assessment=(
+                    "Response passed Mary's local character/continuity audit."
+                ),
+                metadata={
+                    "mode": "local_character_audit",
+                    "llm_calls": 0,
+                },
+            )
+
+        prompt = self._build_revision_prompt(
+            context=context,
+            reasoning=reasoning,
+            intent=intent,
+            issues=issues,
+        )
+
+        try:
+            response = self.llm.generate(
+                messages=[
+                    LLMMessage(
+                        role="system",
+                        content=(
+                            "You are Mary's response editor. Preserve factual meaning and "
+                            "grounding, but rewrite the reply so it sounds like Mary rather "
+                            "than a generic assistant. Return only the revised reply."
+                        ),
                     ),
+                    LLMMessage(
+                        role="user",
+                        content=prompt,
+                    ),
+                ],
+                max_tokens=700,
+            )
+        except LLMProviderError as exc:
+            return ReflectionResult(
+                decision=ReflectionDecision.ACCEPT,
+                confidence=0.70,
+                assessment=(
+                    "Character audit found issues, but revision provider was unavailable; "
+                    "the grounded original response was preserved."
                 ),
-                LLMMessage(
-                    role="user",
-                    content=prompt,
-                ),
+                issues=issues,
+                metadata={
+                    "mode": "character_revision_unavailable",
+                    "llm_calls": 1,
+                    "llm_error": str(exc),
+                },
+            )
+
+        revised = str(response.content or "").strip()
+        if not revised:
+            return ReflectionResult(
+                decision=ReflectionDecision.ACCEPT,
+                confidence=0.72,
+                assessment="Revision returned empty text; original response preserved.",
+                issues=issues,
+                metadata={
+                    "mode": "character_revision_empty",
+                    "llm_calls": 1,
+                },
+            )
+
+        return ReflectionResult(
+            decision=ReflectionDecision.REVISE,
+            confidence=0.90,
+            assessment="Response was revised to better match Mary's connected character state.",
+            issues=issues,
+            suggestions=[
+                "Preserve grounding while sounding more like Mary."
             ],
-            max_tokens=512,
+            revised_response=revised,
+            metadata={
+                "mode": "character_revision",
+                "provider": response.provider,
+                "model": response.model,
+                "finish_reason": response.finish_reason,
+                "usage": response.usage,
+                "llm_calls": 1,
+            },
         )
 
-        result = self._parse_response(
-            response=response.content,
+    def _character_audit(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+        intent: Intent | None,
+    ) -> list[str]:
+        """Find obvious assistant-shaped habits without another model call."""
+
+        text = str(reasoning.response or "").strip()
+        if not text:
+            return ["Response is empty."]
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        mode = str(disposition.get("mode", "conversation"))
+        conversational = mode in {
+            "relational_conversation",
+            "conversation",
+            "creative_collaboration",
+        }
+
+        issues: list[str] = []
+        lowered = text.lower()
+        canned = (
+            "how can i assist",
+            "how can i help you today",
+            "anything else you'd like",
+            "anything else you would like",
+            "let me know if you'd like",
+            "let me know if you would like",
+            "feel free to",
+            "what can i do for you today",
+            "great to hear that!",
+            "i'm here to help",
+            "i am here to help",
         )
+        if any(phrase in lowered for phrase in canned):
+            issues.append("Uses canned generic-assistant/helpdesk phrasing.")
 
-        result.metadata.update({
-            "provider": response.provider,
-            "model": response.model,
-            "finish_reason": response.finish_reason,
-            "usage": response.usage,
-        })
+        if lowered.startswith(("as an ai", "as an artificial intelligence")):
+            issues.append("Leads with generic AI-assistant identity framing.")
 
-        return result
+        if conversational and (text.count("\n-") >= 3 or text.count("\n*") >= 3):
+            short_input = len(context.input_text.split()) <= 18
+            if short_input:
+                issues.append("Over-formats a casual conversational reply as a list.")
+
+        if conversational and "|" in text and text.count("|") >= 6 and len(context.input_text.split()) <= 18:
+            issues.append("Uses a table for a casual conversational reply.")
+
+        return issues
+
+    def _build_revision_prompt(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+        intent: Intent | None,
+        issues: list[str],
+    ) -> str:
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        recent = mind.get("conversation", {}) if isinstance(mind, dict) else {}
+        relationship = mind.get("relationship", {}) if isinstance(mind, dict) else {}
+        emotion = mind.get("emotion", {}) if isinstance(mind, dict) else {}
+
+        return (
+            "Rewrite Mary's proposed response. Preserve all factual content and any "
+            "grounding/tool limitations. Do not add new facts.\n\n"
+            f"Unbe's current input:\n{context.input_text}\n\n"
+            f"Detected intent: {intent.intent_type.value if intent else 'unknown'}\n\n"
+            f"Issues found: {issues}\n\n"
+            f"Mary response disposition: {disposition}\n\n"
+            f"Relationship context: {relationship}\n\n"
+            f"Current emotion: {emotion}\n\n"
+            f"Recent conversational state: {recent}\n\n"
+            f"Proposed response:\n{reasoning.response}\n\n"
+            "Make it conversational, specific, and recognizably Mary. React before "
+            "switching into assistance. Avoid canned service-offer closers. Use no "
+            "headings/table/list unless the user's task actually needs structure. "
+            "Return only the revised reply."
+        )
 
     def _build_prompt(
         self,

@@ -62,6 +62,10 @@ class CognitiveContext:
         default_factory=list
     )
 
+    mind_state: dict[str, Any] = field(
+        default_factory=dict
+    )
+
     metadata: dict[str, Any] = field(
         default_factory=dict
     )
@@ -129,5 +133,6 @@ class CognitiveContext:
             "user_context": self.user_context,
             "personality_context": self.personality_context,
             "active_goals": self.active_goals,
+            "mind_state": self.mind_state,
             "metadata": self.metadata,
         }

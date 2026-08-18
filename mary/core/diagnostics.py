@@ -375,6 +375,7 @@ class MaryDiagnostics:
                 "cognition",
                 "reasoning",
                 "reflection",
+                "turn_mind",
             ),
         )
 

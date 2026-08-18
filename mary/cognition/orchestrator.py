@@ -123,6 +123,7 @@ class CognitiveOrchestrator:
         user_context: dict[str, Any] | None = None,
         personality_context: dict[str, Any] | None = None,
         active_goals: list[Any] | None = None,
+        mind_state: dict[str, Any] | None = None,
     ) -> CognitiveCycleResult:
         """
         Run one complete cognitive cycle.
@@ -169,6 +170,11 @@ class CognitiveOrchestrator:
         if active_goals:
             context.active_goals.extend(
                 active_goals
+            )
+
+        if mind_state:
+            context.mind_state.update(
+                mind_state
             )
 
         # --------------------------------------------------------
@@ -1395,8 +1401,9 @@ class CognitiveOrchestrator:
 
         if (
             reflection.decision
-            == ReflectionDecision.ESCALATE
+            == ReflectionDecision.REVISE
+            and reflection.revised_response
         ):
-            return reasoning.response
+            return reflection.revised_response
 
         return reasoning.response
