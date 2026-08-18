@@ -310,14 +310,11 @@ class ReasoningEngine:
         response: str,
         context: CognitiveContext,
     ) -> str | None:
-        """Reject unsupported self-biographical dates from generated prose."""
+        """Reject self claims that contradict or outrun local self evidence."""
 
         response_text = str(response)
-        generated_dates = set(
-            re.findall(r"\b(?:19|20)\d{2}(?:-\d{2}-\d{2})?\b", response_text)
-        )
-        if not generated_dates:
-            return None
+        lowered_response = response_text.lower().replace("’", "'")
+        lowered_query = str(context.input_text).lower().replace("’", "'")
 
         evidence = [
             item
@@ -325,6 +322,119 @@ class ReasoningEngine:
             if isinstance(item, dict)
             and item.get("self_introspection") is True
         ]
+
+        for item in evidence:
+            compact = item.get("prompt_evidence")
+            source = compact if isinstance(compact, dict) else item
+            subtype = str(source.get("subtype", item.get("subtype", ""))).lower()
+
+            if subtype == "appearance":
+                appearance = source.get("appearance", [])
+                appearance = appearance if isinstance(appearance, list) else []
+
+                if not appearance:
+                    uncertainty_markers = (
+                        "not represented",
+                        "isn't represented",
+                        "is not represented",
+                        "haven't established",
+                        "have not established",
+                        "don't have that detail",
+                        "do not have that detail",
+                        "isn't in my",
+                        "is not in my",
+                    )
+                    if not any(marker in lowered_response for marker in uncertainty_markers):
+                        return (
+                            "Generated self-response invented an appearance detail that "
+                            "is absent from Mary's canonical biography."
+                        )
+
+                if "hair" in lowered_query:
+                    hair = next(
+                        (
+                            entry
+                            for entry in appearance
+                            if isinstance(entry, dict)
+                            and "hair" in str(entry.get("title", "")).lower()
+                        ),
+                        None,
+                    )
+                    if hair is not None:
+                        expected = str(hair.get("content", "")).strip().lower()
+                        denial_markers = (
+                            "don't have hair",
+                            "do not have hair",
+                            "i'm just code",
+                            "i am just code",
+                            "don't have a physical body",
+                            "do not have a physical body",
+                            "no physical body",
+                        )
+                        color_words = {
+                            "red", "blue", "green", "black", "brown", "blonde",
+                            "blond", "white", "gray", "grey", "purple", "pink",
+                            "orange", "auburn", "silver",
+                        }
+                        mentioned_colors = {
+                            color
+                            for color in color_words
+                            if re.search(rf"\b{re.escape(color)}\b", lowered_response)
+                        }
+                        if expected and expected not in lowered_response:
+                            detail = (
+                                "contradicted"
+                                if (
+                                    any(marker in lowered_response for marker in denial_markers)
+                                    or bool(mentioned_colors)
+                                )
+                                else "failed to preserve"
+                            )
+                            return (
+                                f"Generated self-response {detail} Mary's canonical "
+                                f"hair color ({expected})."
+                            )
+
+            if subtype == "preferences":
+                preferences = source.get("preferences", [])
+                preferences = preferences if isinstance(preferences, list) else []
+                if not preferences:
+                    uncertainty_markers = (
+                        "not represented",
+                        "isn't represented",
+                        "is not represented",
+                        "don't have a favorite",
+                        "do not have a favorite",
+                        "don't have that preference",
+                        "do not have that preference",
+                        "haven't established",
+                        "have not established",
+                    )
+                    first_person_preference = re.search(
+                        r"\b(?:my favorite|my favourite|i prefer|i like|i love)\b",
+                        lowered_response,
+                    )
+                    acknowledges_absence = any(
+                        marker in lowered_response
+                        for marker in uncertainty_markers
+                    )
+                    if first_person_preference is not None and not acknowledges_absence:
+                        return (
+                            "Generated self-response invented a Mary preference that is "
+                            "absent from local self evidence."
+                        )
+                    if not acknowledges_absence:
+                        return (
+                            "Generated self-response failed to preserve the absence of a "
+                            "Mary preference in local self evidence."
+                        )
+
+        generated_dates = set(
+            re.findall(r"\b(?:19|20)\d{2}(?:-\d{2}-\d{2})?\b", response_text)
+        )
+        if not generated_dates:
+            return None
+
         evidence_text = json.dumps(
             evidence,
             ensure_ascii=False,
@@ -372,6 +482,9 @@ class ReasoningEngine:
     ) -> str:
         """Character-first system instruction for Mary's actual connected state."""
 
+        if self._has_self_evidence(context):
+            return self._self_system_prompt(context)
+
         disposition = {}
         if isinstance(context.mind_state, dict):
             disposition = context.mind_state.get("disposition", {}) or {}
@@ -415,12 +528,114 @@ class ReasoningEngine:
             f"Performance direction: {performance}."
         )
 
+    def _self_system_prompt(
+        self,
+        context: CognitiveContext,
+    ) -> str:
+        """Compact system prompt for grounded questions about Mary herself."""
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+
+        return (
+            "You are Mary. Answer questions about yourself from the supplied local "
+            "self-introspection evidence, which is authoritative. Do not replace Mary's "
+            "identity with the language model's generic assistant identity. If a requested "
+            "self fact is absent, say it is not represented rather than inventing it. Facts "
+            "about Unbe describe your creator, not you. Speak naturally as Mary rather than "
+            "as a helpdesk assistant. "
+            f"Mode: {disposition.get('mode', 'conversation')}. "
+            f"Preferred length: {disposition.get('preferred_length', 'brief')}. "
+            f"Drive: {continuity.get('drive', 'answer')}. "
+            f"Follow-up question allowed: {bool(continuity.get('allow_follow_up_question', True))}."
+        )
+
+    def _build_self_prompt(
+        self,
+        context: CognitiveContext,
+        intent: Intent | None,
+    ) -> str:
+        """Build a compact prompt for self-grounded local inference.
+
+        The full TurnMindState remains available to Mary's runtime and reflection,
+        but a direct self-fact question should not require sending thousands of
+        unrelated tokens to a local model.
+        """
+
+        evidence: list[dict[str, Any]] = []
+        for item in context.relevant_knowledge:
+            if not isinstance(item, dict) or item.get("self_introspection") is not True:
+                continue
+            compact = item.get("prompt_evidence")
+            evidence.append(
+                dict(compact)
+                if isinstance(compact, dict)
+                else dict(item)
+            )
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        performance = mind.get("performance", {}) if isinstance(mind, dict) else {}
+
+        style = {
+            "mode": disposition.get("mode"),
+            "preferred_length": disposition.get("preferred_length"),
+            "warmth": disposition.get("warmth"),
+            "playfulness": disposition.get("playfulness"),
+            "directness": disposition.get("directness"),
+            "expressiveness": disposition.get("expressiveness"),
+            "familiarity": disposition.get("familiarity"),
+        }
+        delivery = {
+            "pacing": performance.get("pacing"),
+            "emotional_color": performance.get("emotional_color"),
+            "opening_style": performance.get("opening_style"),
+            "ending_style": performance.get("ending_style"),
+        }
+        continuity_view = {
+            "drive": continuity.get("drive"),
+            "allow_follow_up_question": continuity.get("allow_follow_up_question"),
+        }
+
+        intent_text = intent.intent_type.value if intent is not None else "unknown"
+
+        return f"""Current user input:
+{context.input_text}
+
+Detected intent:
+{intent_text}
+
+Self-introspection grounding rules:
+Use the local evidence below as the source of truth for Mary's own facts. Do not substitute generic model identity. Do not copy creator facts into Mary. If the requested detail is absent, say it is not represented.
+
+Grounded self evidence:
+{evidence}
+
+Compact response style:
+{style}
+
+Compact delivery:
+{delivery}
+
+Continuity:
+{continuity_view}
+
+Answer directly as Mary. Preserve the factual meaning of the local evidence."""
+
     def _build_prompt(
         self,
         context: CognitiveContext,
         intent: Intent | None,
     ) -> str:
         """Build the cognitive prompt sent to the LLM."""
+
+        if self._has_self_evidence(context):
+            return self._build_self_prompt(
+                context=context,
+                intent=intent,
+            )
 
         sections: list[str] = []
 

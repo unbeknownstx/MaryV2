@@ -450,4 +450,15 @@ def create_default_biography() -> Biography:
         importance=8,
     )
 
+    # Stable visual identity belongs in biography rather than the expressive
+    # Character system. Keeping appearance as structured canon lets self
+    # introspection answer physical-identity questions without asking an LLM
+    # to invent what Mary looks like.
+    biography.add(
+        category="appearance",
+        title="Hair color",
+        content="red",
+        importance=9,
+    )
+
     return biography

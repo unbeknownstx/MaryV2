@@ -44,10 +44,21 @@ class SelfIntrospection:
         self.autonomy = autonomy
         self.tools = tools
 
-    def build(self, subtype: str) -> dict[str, Any]:
-        """Return grounded local evidence plus a deterministic fallback."""
+    def build(
+        self,
+        subtype: str,
+        query: str | None = None,
+    ) -> dict[str, Any]:
+        """Return grounded local evidence plus a deterministic fallback.
+
+        ``query`` is optional so existing callers can still request a broad
+        self-introspection category.  When present, narrow factual categories
+        such as appearance can expose only the locally represented detail the
+        creator actually asked about.
+        """
 
         subtype = str(subtype).strip().lower() or "identity"
+        query_text = str(query or "").strip()
 
         common = {
             "self_introspection": True,
@@ -72,13 +83,29 @@ class SelfIntrospection:
             "capabilities": self._capabilities,
         }
 
-        builder = builders.get(subtype, self._identity)
-        specific = builder()
+        if subtype == "appearance":
+            specific = self._appearance(query_text)
+        elif subtype == "preferences":
+            specific = self._preferences(query_text)
+        else:
+            builder = builders.get(subtype, self._identity)
+            specific = builder()
 
-        return {
+        result = {
             **common,
             **specific,
         }
+
+        # Reasoning does not need the entire self-model/profile payload for a
+        # grounded factual self query.  Keep the complete evidence above for
+        # local inspection/debugging, while exposing a compact prompt view for
+        # the model.  This matters especially for local inference.
+        result["prompt_evidence"] = self._prompt_evidence(
+            subtype=subtype,
+            specific=specific,
+        )
+
+        return result
 
     def _identity(self) -> dict[str, Any]:
         return {
@@ -92,6 +119,117 @@ class SelfIntrospection:
                 "meant to stay coherent across interactions rather than existing "
                 "only as one isolated reply."
             ),
+        }
+
+    def _appearance(self, query: str = "") -> dict[str, Any]:
+        """Return canonical appearance facts relevant to the current query."""
+
+        entries = self._biography_category("appearance")
+        lowered = str(query).lower()
+
+        # A broad appearance question should expose all represented appearance
+        # facts.  A specific physical-feature question should not answer with a
+        # different fact merely because that is the only appearance fact stored.
+        feature_terms = {
+            "hair": ("hair",),
+            "eyes": ("eye", "eyes"),
+            "height": ("height", "tall", "short"),
+            "outfit": ("outfit", "clothes", "clothing", "wear", "wearing"),
+        }
+        requested_terms = {
+            key
+            for key, terms in feature_terms.items()
+            if any(term in lowered for term in terms)
+        }
+
+        relevant = list(entries)
+        if requested_terms:
+            relevant = []
+            for entry in entries:
+                searchable = (
+                    f"{entry.get('title', '')} {entry.get('content', '')}"
+                ).lower()
+                if any(
+                    any(term in searchable for term in feature_terms[key])
+                    for key in requested_terms
+                ):
+                    relevant.append(entry)
+
+        hair = next(
+            (
+                entry
+                for entry in relevant
+                if "hair" in str(entry.get("title", "")).lower()
+            ),
+            None,
+        )
+        if hair is not None and "hair" in lowered:
+            value = str(hair.get("content", "")).strip()
+            fallback = (
+                f"My hair is {value}."
+                if value
+                else "I don't have my hair color represented in my canonical appearance yet."
+            )
+        elif relevant:
+            readable = "; ".join(
+                f"{entry.get('title', 'detail')}: {entry.get('content', '')}"
+                for entry in relevant
+            )
+            fallback = f"My currently represented appearance is: {readable}."
+        else:
+            fallback = (
+                "I don't have that appearance detail represented in my canonical "
+                "biography yet."
+            )
+
+        return {
+            "appearance": relevant,
+            "fallback_response": fallback,
+        }
+
+    def _preferences(self, query: str = "") -> dict[str, Any]:
+        """Return only preferences represented as Mary's own canonical facts."""
+
+        entries = self._biography_category("preferences")
+        lowered = str(query).lower()
+
+        relevant = list(entries)
+        if entries and ("favorite" in lowered or "favourite" in lowered):
+            query_terms = {
+                token
+                for token in lowered.replace("?", "").split()
+                if token not in {
+                    "what", "which", "is", "are", "your", "favorite", "favourite",
+                    "do", "you", "like", "prefer", "the", "a", "an",
+                }
+            }
+            matches = []
+            for entry in entries:
+                searchable = (
+                    f"{entry.get('title', '')} {entry.get('content', '')}"
+                ).lower()
+                if not query_terms or any(term in searchable for term in query_terms):
+                    matches.append(entry)
+            relevant = matches
+
+        if relevant:
+            readable = "; ".join(
+                f"{entry.get('title', 'preference')}: {entry.get('content', '')}"
+                for entry in relevant
+            )
+            fallback = f"My currently represented preferences are: {readable}."
+        elif "favorite color" in lowered or "favourite colour" in lowered:
+            fallback = (
+                "I don't have a favorite color represented as one of my own facts right now."
+            )
+        else:
+            fallback = (
+                "I don't have that preference represented as one of my own facts right now."
+            )
+
+        return {
+            "preferences": relevant,
+            "fallback_response": fallback,
         }
 
     def _creator(self) -> dict[str, Any]:
@@ -301,6 +439,28 @@ class SelfIntrospection:
                 "together without pretending to be more than I am. My canonical biography "
                 f"already points in that direction: {canonical}"
             ),
+        }
+
+    def _prompt_evidence(
+        self,
+        *,
+        subtype: str,
+        specific: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return the minimal authoritative self evidence needed by the LLM."""
+
+        identity = self._identity_profile()
+        compact_identity = {
+            key: identity.get(key)
+            for key in ("name", "version", "creator", "description", "purpose")
+            if identity.get(key) not in (None, "")
+        }
+
+        return {
+            "self_introspection": True,
+            "subtype": subtype,
+            "identity": compact_identity,
+            **specific,
         }
 
     def _identity_profile(self) -> dict[str, Any]:

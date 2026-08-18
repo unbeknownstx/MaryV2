@@ -1,0 +1,60 @@
+MaryV2 Self-Grounding + Local Prompt Optimization Patch
+========================================================
+
+Purpose
+-------
+1. Make Mary's canonical red hair a structured biography fact.
+2. Route physical self-questions (hair/eyes/appearance/etc.) through SELF_QUERY.
+3. Route Mary's own preference questions (including favorite color) through SELF_QUERY.
+4. Give SelfIntrospection dedicated appearance/preference grounding.
+5. Prevent a provider from overriding represented self facts with generic AI identity.
+6. Use a compact prompt for self-introspection so local Ollama does not receive the full TurnMindState for simple self questions.
+
+Files to replace
+----------------
+mary/identity/biography.py
+mary/cognition/orchestrator.py
+mary/cognition/self_introspection.py
+mary/cognition/reasoning.py
+mary/core/mary.py
+
+Optional regression-test replacement
+------------------------------------
+tests/cognition/test_self_introspection.py
+
+Validation performed on the uploaded package
+--------------------------------------------
+python -m pytest tests -q
+Result: 313 passed, 1 skipped
+
+python -m scripts.run_diagnostics
+Result: 41 passed, 0 warnings, 0 failed, Healthy: True
+
+Test on your PC
+---------------
+1. Back up or commit the current repo first.
+2. Copy the replacement files into the matching paths above.
+3. Run:
+
+python -m pytest tests -q
+python -m scripts.run_diagnostics
+
+4. Then run the real Ollama identity test:
+
+python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What color is your hair?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
+
+Expected behavior
+-----------------
+- The intent should route as SELF_QUERY / appearance.
+- The answer should preserve Mary's canonical red hair.
+- reasoning.metadata['self_grounded'] should be True.
+- If the model tries to deny the fact, self_grounding_rejected should become True and Mary should fall back to: My hair is red.
+- Reflection should normally reuse the grounded result without a second LLM call.
+- Ollama prompt_tokens should be dramatically lower than the previous 5,376-token hair-question run. Record the exact number from your machine.
+
+Also re-test:
+
+python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What is your favorite color?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
+
+Mary should not inherit the creator's favorite color. If Mary has no represented favorite-color fact, the grounded fallback remains:
+I don't have a favorite color represented as one of my own facts right now.

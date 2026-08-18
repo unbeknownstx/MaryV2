@@ -806,6 +806,24 @@ class CognitiveOrchestrator:
                 "what can you do",
                 "what are your capabilities",
             )),
+            ("appearance", (
+                "what color is your hair",
+                "what colour is your hair",
+                "what does your hair look like",
+                "what do you look like",
+                "what is your appearance",
+                "what's your appearance",
+                "describe your appearance",
+                "describe what you look like",
+            )),
+            ("preferences", (
+                "what is your favorite color",
+                "what's your favorite color",
+                "what is your favourite colour",
+                "what's your favourite colour",
+                "what are your preferences",
+                "what do you like",
+            )),
             ("identity", (
                 "who are you",
                 "who are you, and what makes you different from a generic ai assistant",
@@ -814,20 +832,53 @@ class CognitiveOrchestrator:
             )),
         )
 
+        def self_intent(subtype: str) -> Intent:
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.98,
+                description=(
+                    "Input asks about Mary's own connected identity or runtime state."
+                ),
+                parameters={
+                    "self_query_type": subtype,
+                    "query": text,
+                },
+                source="basic_detector",
+            )
+
         for subtype, phrases in patterns:
             if normalized in phrases:
-                return Intent(
-                    intent_type=IntentType.SELF_QUERY,
-                    confidence=0.98,
-                    description=(
-                        "Input asks about Mary's own connected identity or runtime state."
-                    ),
-                    parameters={
-                        "self_query_type": subtype,
-                        "query": text,
-                    },
-                    source="basic_detector",
-                )
+                return self_intent(subtype)
+
+        # Physical self-questions have too many natural phrasings to maintain
+        # as a brittle exact-phrase list. Route them to Mary's canonical
+        # appearance evidence instead of letting a provider answer from its own
+        # generic "I am only software" identity.
+        appearance_markers = (
+            "your hair",
+            "your eyes",
+            "your eye color",
+            "your eye colour",
+            "your height",
+            "your appearance",
+            "your outfit",
+            "your clothes",
+            "your clothing",
+            "you look like",
+        )
+        if any(marker in normalized for marker in appearance_markers):
+            return self_intent("appearance")
+
+        # Preference questions about Mary must stay separate from the creator
+        # profile. This also prevents a creator preference such as a favorite
+        # color from being adopted as Mary's merely because it appears nearby in
+        # conversational context.
+        if (
+            "your favorite " in normalized
+            or "your favourite " in normalized
+            or normalized.startswith("what do you prefer")
+        ):
+            return self_intent("preferences")
 
         return None
 

@@ -1259,7 +1259,13 @@ class Mary:
         ).strip().lower()
 
         evidence = self.self_introspection.build(
-            subtype
+            subtype,
+            query=str(
+                intent.parameters.get(
+                    "query",
+                    "",
+                )
+            ),
         )
 
         # Dynamic agency rankings are runtime state, not prose-generation tasks.
