@@ -63,15 +63,20 @@ def main() -> int:
             mary = Mary()
             _wire(mary, router)
 
-            mary.process("We've spent all day building you.")
+            first = mary.process("We've spent all day building you.")
             second = mary.process("I think we might have overengineered some of this.")
             continuity = second.context.mind_state.get("continuity", {})
             if continuity.get("drive") != "opine":
                 raise AssertionError("overengineering turn did not select OPINE drive")
-            if continuity.get("allow_follow_up_question") is not False:
+            if continuity.get("drive") == "ask":
+                raise AssertionError("opinion turn incorrectly selected ASK")
+            # If the first response still contains a question, the question budget
+            # must close. Performance Pass may instead remove that unnecessary
+            # question on the first turn, which is an even stronger result.
+            if "?" in first.final_response and continuity.get("allow_follow_up_question") is not False:
                 raise AssertionError("question budget did not close after a recent Mary question")
             if "?" in second.final_response:
-                raise AssertionError("second consecutive follow-up question was not revised away")
+                raise AssertionError("opinion turn still ended with an unnecessary follow-up question")
             _pass("conversational drives and question budget shape actual responses")
 
             disagree = mary.process("You can disagree with me, you know.")

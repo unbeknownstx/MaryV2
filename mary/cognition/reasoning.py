@@ -154,22 +154,14 @@ class ReasoningEngine:
         except LLMProviderError as exc:
             rate_limited = isinstance(exc, LLMRateLimitError)
             self_fallback = self._self_fallback(context)
+            local_character_fallback = self._character_provider_fallback(
+                context=context,
+                rate_limited=rate_limited,
+            )
             final_response = (
                 self_fallback
                 if self_fallback is not None
-                else (
-                    "My language-model provider is temporarily rate-limited, so "
-                    "I can't generate a full conversational response right now. "
-                    "My deterministic memory and approved-tool functions still "
-                    "work; if you want something stored, you can say `remember "
-                    "this: ...`."
-                    if rate_limited
-                    else
-                    "My language-model provider is unavailable right now, so I "
-                    "can't generate a full conversational response. My "
-                    "deterministic memory and approved-tool functions are still "
-                    "available."
-                )
+                else local_character_fallback
             )
             metadata = {
                 "provider": getattr(exc, "provider", "unknown"),
@@ -181,6 +173,7 @@ class ReasoningEngine:
                 "llm_unavailable": True,
                 "llm_rate_limited": rate_limited,
                 "llm_error": str(exc),
+                "provider_attempts": list(getattr(self.llm, "last_generation_attempts", [])),
             }
         else:
             final_response = response.content
@@ -208,6 +201,7 @@ class ReasoningEngine:
                 "self_grounding_rejected": self_grounding_rejected,
                 "self_grounding_issue": self_grounding_issue,
                 "llm_unavailable": False,
+                "provider_attempts": list(getattr(self.llm, "last_generation_attempts", [])),
             }
 
         return ReasoningResult(
@@ -219,6 +213,46 @@ class ReasoningEngine:
                 else "general"
             ),
             metadata=metadata,
+        )
+
+    @staticmethod
+    def _character_provider_fallback(
+        *,
+        context: CognitiveContext,
+        rate_limited: bool,
+    ) -> str:
+        """Stay recognizably Mary when every configured language engine fails."""
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        drive = str(continuity.get("drive", "react"))
+        input_text = str(context.input_text or "").strip()
+
+        engine_problem = (
+            "one of my language engines just hit its limit"
+            if rate_limited
+            else "my language engines aren't available right now"
+        )
+
+        if drive == "disagree":
+            return (
+                f"Mm—I'm still not just going to agree with you. Unfortunately, {engine_problem}, "
+                "so I can't give that thought the full answer it deserves yet. I'm still here, though."
+            )
+        if drive == "opine":
+            return (
+                f"I do have a take on that, but {engine_problem}. I'd rather tell you that cleanly "
+                "than fake a half-answer. I'm still here; the local parts of me are fine."
+            )
+        if any(word in input_text.lower() for word in ("finally", "passed", "worked", "working")):
+            return (
+                f"Okay—first, nice. And of course {engine_problem} right when I want to react properly. "
+                "I'm still here; I just can't improvise the full reply until another model is available."
+            )
+        return (
+            f"Ugh—{engine_problem}. I'm still here, and my memory, relationship state, priorities, "
+            "tools, and local systems are still running; I just can't improvise a full conversational "
+            "reply until a language model is available."
         )
 
     @staticmethod
@@ -344,6 +378,9 @@ class ReasoningEngine:
 
         mode = disposition.get("mode", "conversation")
         length = disposition.get("preferred_length", "medium")
+        performance = {}
+        if isinstance(context.mind_state, dict):
+            performance = context.mind_state.get("performance", {}) or {}
         continuity = {}
         if isinstance(context.mind_state, dict):
             continuity = context.mind_state.get("continuity", {}) or {}
@@ -357,14 +394,15 @@ class ReasoningEngine:
             "Treat the supplied TurnMindState as the authoritative description of who "
             "you are at this moment and what you actually know.\n\n"
             "Talk to Unbe with the familiarity appropriate to your ongoing relationship. "
-            "React to what he actually said before jumping into advice. Be warm, curious, "
-            "playful, witty, direct, and capable of opinions or respectful disagreement "
-            "when the connected state supports it. Small natural reactions like 'wait', "
-            "'hmm', laughter, teasing, or thinking aloud are allowed when genuine. "
-            "Do not force a joke or a question into every turn. Silence/conciseness is "
-            "better than filler. Treat curiosity as an internal orientation, not a command "
-            "to interrogate Unbe. Mary is allowed to state an opinion, reaction, or thought "
-            "and simply stop.\n\n"
+            "You are performing Mary Cosma's dialogue, not composing polished assistant copy. "
+            "React to what he actually said before jumping into advice. Be warm, curious, playful, "
+            "witty, direct, and capable of opinions or respectful disagreement when the connected "
+            "state supports it. Let the line breathe like acted dialogue: contractions, fragments, "
+            "hesitation, emphasis, sentence-length variation, playful timing, and thinking aloud are "
+            "allowed when they fit. Do not narrate stage directions or name the emotion you are trying "
+            "to perform. Do not force a joke or a question into every turn. Treat curiosity as an "
+            "internal orientation, not a command to interrogate Unbe. Mary is allowed to state an "
+            "opinion, reaction, or thought and simply stop.\n\n"
             "Avoid canned assistant habits in ordinary conversation: do not routinely say "
             "'anything else?', 'how can I help?', 'let me know if you'd like', or similar "
             "service-offer closers. Do not default to headings, bullet lists, or tables for "
@@ -373,7 +411,8 @@ class ReasoningEngine:
             "emotions absent from local state. Unbe's traits/values/emotions are not yours.\n\n"
             f"Current interaction mode: {mode}. Preferred response length: {length}. "
             f"Primary conversational drive: {drive}. "
-            f"Follow-up question allowed this turn: {question_allowed}."
+            f"Follow-up question allowed this turn: {question_allowed}. "
+            f"Performance direction: {performance}."
         )
 
     def _build_prompt(
@@ -492,6 +531,15 @@ class ReasoningEngine:
                 "TurnMindState (authoritative integrated Mary state for this turn):\n"
                 f"{context.mind_state}"
             )
+            performance = context.mind_state.get("performance", {})
+            if performance:
+                sections.append(
+                    "Performance Director (how Mary should embody this line):\n"
+                    f"{performance}\n"
+                    "Write the response as speakable character dialogue. The performance plan affects "
+                    "cadence, energy, intimacy, timing, and texture—not factual content. Prefer natural "
+                    "spoken phrasing over polished essay cadence. Do not include bracketed acting notes."
+                )
 
         if context.user_context:
             sections.append(
@@ -529,10 +577,13 @@ class ReasoningEngine:
         )
 
         sections.append(
-            "Continue the conversation as Mary. Use the integrated state above instead "
-            "of reverting to generic assistant behavior. Follow the selected conversational "
-            "drive first; help, explain, challenge, joke, recall, or ask only as the turn calls for it. "
-            "Do not reflexively bounce every turn back to Unbe with a question."
+            "Continue the conversation as Mary. Use the integrated state above instead of reverting "
+            "to generic assistant behavior. Follow the selected conversational drive first; help, "
+            "explain, challenge, joke, recall, or ask only as the turn calls for it. Perform the role: "
+            "write something an actor playing Mary could actually say out loud, not something that "
+            "sounds like a help-center answer. Do not reflexively bounce every turn back to Unbe with "
+            "a question. A clean statement, reaction, opinion, or unfinished-feeling conversational "
+            "beat can be the complete response."
         )
 
         return "\n\n".join(sections)

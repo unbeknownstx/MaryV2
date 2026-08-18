@@ -205,8 +205,19 @@ def run_conversation_continuity_check() -> bool:
     return completed.returncode == 0
 
 
+
+def run_performance_pass_check() -> bool:
+    _heading("15. PERFORMANCE PASS V1 CHECK")
+    completed = subprocess.run(
+        [sys.executable, "-m", "scripts.verify_performance_pass_install"],
+        cwd=ROOT,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_local_safety_smoke() -> bool:
-    _heading("15. LOCAL TOOL SAFETY SMOKE")
+    _heading("16. LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -275,7 +286,7 @@ def run_local_safety_smoke() -> bool:
 
 
 def run_live_web() -> bool:
-    _heading("16. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("17. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -348,6 +359,7 @@ def main() -> int:
         ("conversation_runtime", run_conversation_runtime_install_check()),
         ("turn_mind", run_turn_mind_integration_check()),
         ("conversation_continuity", run_conversation_continuity_check()),
+        ("performance_pass", run_performance_pass_check()),
         ("local_safety", run_local_safety_smoke()),
     ]
 

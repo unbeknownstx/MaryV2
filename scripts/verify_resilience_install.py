@@ -98,11 +98,12 @@ def main() -> int:
         )
         require(conversational.success, "Rate-limit fallback failed.")
         require(provider.calls == 1, "Expected exactly one conversational LLM attempt.")
+        lowered = str(conversational.output).lower()
         require(
-            "temporarily rate-limited" in str(conversational.output).lower(),
-            "Rate-limit fallback message was not returned.",
+            "still here" in lowered and "language engines" in lowered,
+            "In-character rate-limit fallback message was not returned.",
         )
-        print("PASS ordinary conversation degrades gracefully on simulated 429")
+        print("PASS ordinary conversation stays in-character on simulated 429")
 
     print("=" * 72)
     print("RESILIENCE UPDATE INSTALLED CORRECTLY")

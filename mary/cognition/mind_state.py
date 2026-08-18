@@ -13,6 +13,7 @@ from typing import Any
 
 from mary.cognition.intent import Intent, IntentType
 from mary.cognition.continuity import ConversationContinuity
+from mary.cognition.performance import PerformanceDirector
 
 
 def _clamp(value: float) -> float:
@@ -87,6 +88,7 @@ class TurnMindState:
     conversation: dict[str, Any]
     continuity: dict[str, Any]
     disposition: ResponseDisposition
+    performance: dict[str, Any]
     constraints: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -110,6 +112,7 @@ class TurnMindState:
             "conversation": dict(self.conversation),
             "continuity": dict(self.continuity),
             "disposition": self.disposition.to_dict(),
+            "performance": dict(self.performance),
             "constraints": list(self.constraints),
             "metadata": dict(self.metadata),
         }
@@ -133,6 +136,7 @@ class TurnMindState:
             "conversation": self.conversation,
             "continuity": self.continuity,
             "disposition": self.disposition.to_dict(),
+            "performance": self.performance,
             "constraints": self.constraints,
         }
 
@@ -173,6 +177,7 @@ class TurnMindStateBuilder:
         self.emotion = emotion
         self.dialogue = dialogue
         self.continuity = ConversationContinuity()
+        self.performance = PerformanceDirector()
 
     def build(
         self,
@@ -211,6 +216,12 @@ class TurnMindStateBuilder:
             continuity=continuity,
         )
 
+        performance = self.performance.plan(
+            disposition=disposition.to_dict(),
+            emotion=emotion,
+            continuity=continuity,
+        ).to_dict()
+
         return TurnMindState(
             input_text=str(input_text),
             intent=intent_name,
@@ -230,6 +241,7 @@ class TurnMindStateBuilder:
             conversation=conversation,
             continuity=continuity,
             disposition=disposition,
+            performance=performance,
             constraints=[
                 "Mary is distinct from Unbe; do not copy his traits, values, preferences, or emotions as Mary's own.",
                 "Use only represented memories/profile facts as facts about Unbe; uncertainty stays uncertainty.",
@@ -565,9 +577,19 @@ class TurnMindStateBuilder:
         if "direct" in creator_style:
             directness = max(directness, 0.85)
         if any(word in creator_style for word in ("concise", "brief", "short")):
-            verbosity = min(verbosity, 0.34)
+            # Concise should remove bloat, not flatten Mary's performance. In
+            # relational conversation keep enough room for character beats.
+            verbosity = min(verbosity, 0.46 if mode == "relational_conversation" else 0.34)
         elif any(word in creator_style for word in ("detailed", "thorough", "long")):
             verbosity = max(verbosity, 0.72)
+
+        drive = str(continuity.get("drive", "react"))
+        emotion_intensity = _clamp(emotion.get("intensity", 0.0) or 0.0)
+        if mode == "relational_conversation":
+            if drive in {"opine", "disagree", "reflect"}:
+                verbosity = max(verbosity, 0.48)
+            elif drive == "react":
+                verbosity = min(max(verbosity, 0.36), 0.56)
 
         preferred_length = (
             "brief" if verbosity < 0.4
@@ -592,7 +614,8 @@ class TurnMindStateBuilder:
             "Use familiar conversational language with Unbe; do not sound like customer support.",
             "Prefer natural sentences over headings, tables, or bullet lists unless the task genuinely benefits from structure.",
             "Do not end ordinary conversation with canned service offers such as 'anything else?', 'how can I help?', or 'let me know if you'd like'.",
-            "It is okay to be brief, witty, teasing, opinionated, uncertain, or to say 'wait', 'hmm', or similar natural reactions when they fit.",
+            "Mary is a performed character, not polished support copy. Natural fragments, contractions, pauses, interjections, uneven sentence lengths, playful emphasis, and thinking aloud are welcome when they fit.",
+            "Concise means no unnecessary bloat; it does not mean emotionally flat or mechanically brief.",
             "Ask at most one follow-up question, and only when it grows naturally from the conversation or an active curiosity. Follow the continuity question budget; curiosity does not require a question.",
             "Use callbacks to recent conversation or relevant memories when they genuinely fit; do not force them.",
             *tuple(continuity.get("instructions", [])),
@@ -614,7 +637,12 @@ class TurnMindStateBuilder:
             formality=_clamp(style.get("formality", 0.3)),
             verbosity=verbosity,
             independence=_clamp(traits.get("independence", 0.6)),
-            expressiveness=_clamp(behavior.get("expressiveness", 0.9)),
+            expressiveness=_clamp(
+                float(behavior.get("expressiveness", 0.9))
+                + (0.08 if mode == "relational_conversation" else 0.0)
+                + (0.08 * emotion_intensity)
+                + (0.05 if drive in {"react", "opine", "disagree"} else 0.0)
+            ),
             familiarity=str(relationship.get("familiarity", "developing")),
             preferred_length=preferred_length,
             follow_up_urge=follow_up_urge,

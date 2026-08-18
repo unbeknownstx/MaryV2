@@ -26,6 +26,7 @@ class LLMConfig:
     model: str = "openai/gpt-oss-20b"
     temperature: float = 0.7
     max_tokens: int = 2048
+    fallback_providers: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -126,6 +127,13 @@ class Config:
             "MARY_LLM_MODEL",
             config.llm.model
         )
+
+        fallback_value = os.getenv("MARY_LLM_FALLBACKS", "")
+        config.llm.fallback_providers = [
+            item.strip().lower()
+            for item in fallback_value.split(",")
+            if item.strip()
+        ]
 
         config.runtime.environment = os.getenv(
             "MARY_ENVIRONMENT",

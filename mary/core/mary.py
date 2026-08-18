@@ -400,6 +400,7 @@ class Mary:
         # Conversation continuity is owned by the TurnMind builder so there is
         # only one authoritative drive/question-budget implementation.
         self.continuity = self.turn_mind.continuity
+        self.performance = self.turn_mind.performance
 
     # ================================================================
     # PRIMARY ENTRY POINT

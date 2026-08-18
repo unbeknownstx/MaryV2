@@ -68,7 +68,7 @@ def main() -> int:
                 "identity", "biography", "personality", "character", "values",
                 "relationship", "memory", "knowledge", "learning", "agency",
                 "autonomy", "tools", "emotion", "conversation", "disposition",
-                "constraints",
+                "performance", "constraints",
             }
             if not required.issubset(mind):
                 raise AssertionError(f"TurnMindState missing: {sorted(required - set(mind))}")

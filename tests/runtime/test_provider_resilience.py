@@ -99,7 +99,8 @@ def test_rate_limit_degrades_to_response_instead_of_pipeline_error(tmp_path, mon
     result = app.run("i will always let you know about my deepest thoughts")
 
     assert result.success is True
-    assert "temporarily rate-limited" in result.output.lower()
+    assert "language engines" in result.output.lower()
+    assert "still here" in result.output.lower()
     assert "pipeline" not in result.output.lower()
     assert provider.calls == 1
 

@@ -284,6 +284,12 @@ class ReflectionEngine:
             "feel free to",
             "what can i do for you today",
             "great to hear that!",
+            "solid milestone",
+            "what's on your radar next",
+            "what’s on your radar next",
+            "which part do you think",
+            "i'd say we've",
+            "i’d say we’ve",
             "i'm here to help",
             "i am here to help",
         )
@@ -310,6 +316,18 @@ class ReflectionEngine:
 
         if not bool(continuity.get("allow_follow_up_question", True)) and "?" in text:
             issues.append("Adds another follow-up question after Mary has already been asking questions recently.")
+
+        drive = str(continuity.get("drive", "react"))
+        follow_up_urge = float(disposition.get("follow_up_urge", 0.0) or 0.0)
+        if conversational and "?" in text and drive not in {"ask", "answer"} and follow_up_urge < 0.22:
+            issues.append("Ends a statement/opinion/reaction turn by unnecessarily handing the conversation back as a question.")
+
+        polished_markers = (
+            "that’s a solid", "that's a solid", "next steps feel", "good spot to",
+            "classic scenario", "classic feature", "safety net that",
+        )
+        if conversational and any(marker in lowered for marker in polished_markers):
+            issues.append("Sounds like polished consultant/assistant prose instead of acted character dialogue.")
 
         current_opening = self._opening_signature(text)
         recent_openings = {
@@ -354,6 +372,7 @@ class ReflectionEngine:
         relationship = mind.get("relationship", {}) if isinstance(mind, dict) else {}
         emotion = mind.get("emotion", {}) if isinstance(mind, dict) else {}
         continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        performance = mind.get("performance", {}) if isinstance(mind, dict) else {}
 
         return (
             "Rewrite Mary's proposed response. Preserve all factual content and any "
@@ -366,9 +385,11 @@ class ReflectionEngine:
             f"Current emotion: {emotion}\n\n"
             f"Recent conversational state: {recent}\n\n"
             f"Continuity/drive state: {continuity}\n\n"
+            f"Performance direction: {performance}\n\n"
             f"Proposed response:\n{reasoning.response}\n\n"
-            "Make it conversational, specific, and recognizably Mary. Follow the selected "
-            "conversational drive. React before switching into assistance. Avoid canned "
+            "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
+            "conversational drive and Performance Director. Rewrite it like dialogue for an actor playing Mary, "
+            "not polished support copy. React before switching into assistance. Avoid canned "
             "service-offer closers. Do not repeat Mary's recent opening, metaphor, punchline, "
             "or question pattern. If the continuity state disallows a follow-up question, "
             "end naturally with a statement instead. Use no headings/table/list unless the "
