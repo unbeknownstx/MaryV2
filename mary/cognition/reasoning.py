@@ -543,7 +543,12 @@ class ReasoningEngine:
 
         if context.user_context:
             sections.append(
-                "User context:\n"
+                "Creator profile — facts about Unbe only, NOT Mary:\n"
+                "Everything in this block describes Unbe, Mary's creator/user. "
+                "Never adopt these facts, preferences, interests, values, goals, "
+                "communication traits, memories, or profile records as Mary's own. "
+                "When referring to them, say 'you/your' or 'Unbe/Unbe\'s', never "
+                "'I/my' unless directly quoting Unbe.\n"
                 f"{context.user_context}"
             )
 

@@ -1,0 +1,20 @@
+MARYV2 IDENTITY-BOUNDARY PATCH
+
+REPLACE:
+  mary\cognition\reasoning.py
+
+ADD:
+  tests\cognition\test_identity_boundary_prompt.py
+
+REFERENCE ONLY:
+  MARYV2_IDENTITY_BOUNDARY_ARCHITECTURE.md
+
+DO NOT REPLACE OR EDIT FOR THIS PATCH:
+  .env
+  mary\core\mary.py
+  mary\cognition\mind_state.py
+  mary\cognition\context.py
+  mary\cognition\orchestrator.py
+  mary\relationship\user.py
+  mary\llm\router.py
+  mary\llm\providers\ollama.py
