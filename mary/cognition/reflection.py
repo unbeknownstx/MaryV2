@@ -133,17 +133,26 @@ class ReflectionEngine:
                 },
             )
 
+        # Self-introspection is still allowed to reuse the grounded reasoning
+        # result with zero extra model calls, but creator/self ownership must be
+        # checked first. A small local model can obey the evidence boundary yet
+        # still accidentally speak an Unbe-only profile fact as Mary's own.
         if reasoning.metadata.get("self_grounded") is True:
-            return ReflectionResult(
-                decision=ReflectionDecision.ACCEPT,
-                confidence=0.95,
-                assessment=(
-                    "Self-introspection response was grounded in Mary's connected local state."
-                ),
-                metadata={
-                    "mode": "self_introspection_grounding_reuse",
-                },
+            ownership_issues = self._creator_ownership_audit(
+                context=context,
+                reasoning=reasoning,
             )
+            if not ownership_issues:
+                return ReflectionResult(
+                    decision=ReflectionDecision.ACCEPT,
+                    confidence=0.95,
+                    assessment=(
+                        "Self-introspection response was grounded in Mary's connected local state."
+                    ),
+                    metadata={
+                        "mode": "self_introspection_grounding_reuse",
+                    },
+                )
 
         if reasoning.metadata.get("local_tool_grounded") is True:
             return ReflectionResult(
@@ -190,8 +199,10 @@ class ReflectionEngine:
                     LLMMessage(
                         role="system",
                         content=(
-                            "You are Mary's response editor. Preserve factual meaning and "
-                            "grounding, but rewrite the reply so it sounds like Mary rather "
+                            "You are Mary's response editor. Preserve grounded factual meaning, "
+                            "but correct any subject/ownership mistake: facts in Unbe's creator "
+                            "profile belong to Unbe, not Mary, unless Mary's own state separately "
+                            "contains the same fact. Rewrite the reply so it sounds like Mary rather "
                             "than a generic assistant. Return only the revised reply."
                         ),
                     ),
@@ -203,6 +214,24 @@ class ReflectionEngine:
                 max_tokens=700,
             )
         except LLMProviderError as exc:
+            if self._has_creator_ownership_issue(issues):
+                fallback = self._creator_boundary_fallback(context)
+                return ReflectionResult(
+                    decision=ReflectionDecision.REVISE,
+                    confidence=0.88,
+                    assessment=(
+                        "Creator/self ownership audit found a boundary violation and the "
+                        "revision provider was unavailable; a local identity-safe fallback was used."
+                    ),
+                    issues=issues,
+                    revised_response=fallback,
+                    metadata={
+                        "mode": "creator_identity_boundary_fallback",
+                        "llm_calls": 1,
+                        "llm_error": str(exc),
+                    },
+                )
+
             return ReflectionResult(
                 decision=ReflectionDecision.ACCEPT,
                 confidence=0.70,
@@ -220,6 +249,22 @@ class ReflectionEngine:
 
         revised = str(response.content or "").strip()
         if not revised:
+            if self._has_creator_ownership_issue(issues):
+                return ReflectionResult(
+                    decision=ReflectionDecision.REVISE,
+                    confidence=0.88,
+                    assessment=(
+                        "Creator/self ownership audit found a boundary violation and the "
+                        "revision was empty; a local identity-safe fallback was used."
+                    ),
+                    issues=issues,
+                    revised_response=self._creator_boundary_fallback(context),
+                    metadata={
+                        "mode": "creator_identity_boundary_fallback",
+                        "llm_calls": 1,
+                    },
+                )
+
             return ReflectionResult(
                 decision=ReflectionDecision.ACCEPT,
                 confidence=0.72,
@@ -230,6 +275,32 @@ class ReflectionEngine:
                     "llm_calls": 1,
                 },
             )
+
+        if self._has_creator_ownership_issue(issues):
+            revised_reasoning = ReasoningResult(response=revised)
+            revised_ownership_issues = self._creator_ownership_audit(
+                context=context,
+                reasoning=revised_reasoning,
+            )
+            if revised_ownership_issues:
+                return ReflectionResult(
+                    decision=ReflectionDecision.REVISE,
+                    confidence=0.90,
+                    assessment=(
+                        "The model revision still blurred Mary and Unbe, so the local "
+                        "identity-safe fallback replaced it."
+                    ),
+                    issues=issues + revised_ownership_issues,
+                    revised_response=self._creator_boundary_fallback(context),
+                    metadata={
+                        "mode": "creator_identity_boundary_fallback",
+                        "provider": response.provider,
+                        "model": response.model,
+                        "finish_reason": response.finish_reason,
+                        "usage": response.usage,
+                        "llm_calls": 1,
+                    },
+                )
 
         return ReflectionResult(
             decision=ReflectionDecision.REVISE,
@@ -338,7 +409,213 @@ class ReflectionEngine:
         if current_opening and current_opening in recent_openings:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
+        issues.extend(
+            self._creator_ownership_audit(
+                context=context,
+                reasoning=reasoning,
+            )
+        )
+
         return issues
+
+    def _creator_ownership_audit(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+    ) -> list[str]:
+        """Detect when Mary adopts a creator-profile fact as her own.
+
+        This is deliberately local and deterministic. The relationship/user
+        profile is authoritative about Unbe, while Mary's self state is separate.
+        The audit does not forbid Mary from mentioning creator facts; it only
+        flags creator-only values when the wording assigns them to Mary or when
+        a Mary-self query is answered with an unattributed creator value.
+        """
+
+        text = str(reasoning.response or "").strip()
+        if not text:
+            return []
+
+        entries = self._creator_profile_entries(context)
+        if not entries:
+            return []
+
+        lowered = text.lower()
+        self_query = self._is_mary_self_query(context.input_text)
+        issues: list[str] = []
+
+        for category, key, raw_value in entries:
+            value = str(raw_value or "").strip()
+            normalized = value.lower()
+            if len(normalized) < 3 or normalized not in lowered:
+                continue
+
+            start = 0
+            while True:
+                index = lowered.find(normalized, start)
+                if index < 0:
+                    break
+                before = lowered[max(0, index - 120):index]
+                after = lowered[index + len(normalized):index + len(normalized) + 80]
+                window = before + normalized + after
+
+                if self._creator_attribution_is_explicit(before, after):
+                    start = index + len(normalized)
+                    continue
+
+                first_person_claim = bool(
+                    re.search(
+                        r"(?:\bmy\b|\bi(?:'m| am|'ve| have|'d| would| like| love| enjoy| prefer| want| value| care)\b)",
+                        before[-90:] + normalized,
+                        flags=re.IGNORECASE,
+                    )
+                )
+
+                ownership_wording = bool(
+                    re.search(
+                        r"\b(?:my|mine|i(?:'m| am|'ve| have| like| love| enjoy| prefer| want| value))\b",
+                        window,
+                        flags=re.IGNORECASE,
+                    )
+                )
+
+                if first_person_claim or ownership_wording or self_query:
+                    label = f"{category}.{key}" if key else category
+                    issue = (
+                        "Creator/self ownership boundary: Mary's response appears to "
+                        f"adopt Unbe's {label} value {value!r} as Mary's own. "
+                        "Attribute it to Unbe/you or omit it unless Mary's own state "
+                        "separately represents that same fact."
+                    )
+                    if issue not in issues:
+                        issues.append(issue)
+                    break
+
+                start = index + len(normalized)
+
+        return issues
+
+    @staticmethod
+    def _creator_attribution_is_explicit(before: str, after: str) -> bool:
+        """Return True when nearby wording clearly assigns a value to Unbe."""
+
+        nearby_before = str(before or "")[-90:]
+        nearby_after = str(after or "")[:50]
+        return bool(
+            re.search(
+                r"(?:\byour\b|\byou(?:'re| are|'ve| have| like| love| prefer| want| value)\b|"
+                r"\bunbe(?:'s)?\b|\bcreator(?:'s)?\b)",
+                nearby_before + nearby_after,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    @staticmethod
+    def _is_mary_self_query(input_text: str) -> bool:
+        """Recognize inputs asking for a fact or description about Mary herself."""
+
+        lowered = str(input_text or "").strip().lower()
+        patterns = (
+            r"\bwho are you\b",
+            r"\bwhat are you\b",
+            r"\btell me about yourself\b",
+            r"\bdescribe yourself\b",
+            r"\bwhat(?:'s| is) your\b",
+            r"\bwhat are your\b",
+            r"\bwhat do you (?:like|love|want|prefer|value|care about)\b",
+            r"\bdo you (?:like|love|want|prefer|value)\b",
+            r"\byour favorite\b",
+            r"\byour (?:goal|goals|interest|interests|values|preference|preferences)\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
+
+    @staticmethod
+    def _creator_profile_entries(
+        context: CognitiveContext,
+    ) -> list[tuple[str, str, str]]:
+        """Return compact creator-profile values from both canonical prompt views."""
+
+        sources: list[dict[str, Any]] = []
+        if isinstance(context.user_context, dict):
+            sources.append(context.user_context)
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        relationship = mind.get("relationship", {}) if isinstance(mind, dict) else {}
+        current_profile = (
+            relationship.get("current_profile", {})
+            if isinstance(relationship, dict)
+            else {}
+        )
+        if isinstance(current_profile, dict):
+            sources.append(current_profile)
+
+        entries: list[tuple[str, str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for source in sources:
+            for category in (
+                "facts",
+                "preferences",
+                "interests",
+                "values",
+                "goals",
+                "communication_style",
+                "general",
+            ):
+                payload = source.get(category)
+                if isinstance(payload, dict):
+                    items = payload.items()
+                elif isinstance(payload, (list, tuple, set)):
+                    items = (("", item) for item in payload)
+                else:
+                    continue
+
+                for key, value in items:
+                    if isinstance(value, (dict, list, tuple, set)):
+                        continue
+                    text = str(value or "").strip()
+                    if len(text) < 3:
+                        continue
+                    record = (str(category), str(key or ""), text)
+                    dedupe = tuple(part.lower() for part in record)
+                    if dedupe in seen:
+                        continue
+                    seen.add(dedupe)
+                    entries.append(record)
+
+        return entries
+
+    @staticmethod
+    def _has_creator_ownership_issue(issues: list[str]) -> bool:
+        return any(
+            str(issue).startswith("Creator/self ownership boundary:")
+            for issue in issues
+        )
+
+    @staticmethod
+    def _creator_boundary_fallback(context: CognitiveContext) -> str:
+        """Local last-resort reply that cannot merge Unbe's profile into Mary."""
+
+        lowered = str(context.input_text or "").lower()
+        if "favorite color" in lowered:
+            return (
+                "I don't have a favorite color represented as one of my own facts right now. "
+                "The favorite-color detail in the creator profile belongs to you, not me."
+            )
+        if re.search(r"\bwho are you\b|\bwhat are you\b|\btell me about yourself\b", lowered):
+            return (
+                "I'm Mary—an AI character created by Unbe, with my own identity and personality. "
+                "Your creator-profile facts are context I know about you; they aren't automatically part of me."
+            )
+        if re.search(r"\bwho am i to you\b|\bwhat am i to you\b", lowered):
+            return (
+                "You're Unbe, my creator. What I know about you belongs to my relationship model of you, "
+                "not to my own identity."
+            )
+        return (
+            "That detail belongs to your creator profile, not to me. I shouldn't claim it as one of my own "
+            "facts unless my own state separately represents it."
+        )
 
     @staticmethod
     def _opening_signature(text: str) -> str:
@@ -375,8 +652,14 @@ class ReflectionEngine:
         performance = mind.get("performance", {}) if isinstance(mind, dict) else {}
 
         return (
-            "Rewrite Mary's proposed response. Preserve all factual content and any "
-            "grounding/tool limitations. Do not add new facts.\n\n"
+            "Rewrite Mary's proposed response. Preserve grounded factual content and any "
+            "grounding/tool limitations, but correct factual ownership when needed. Do not "
+            "preserve a mistake where Mary adopted one of Unbe's creator-profile facts as "
+            "her own. Do not add new facts.\n\n"
+            "IDENTITY BOUNDARY: relationship/current_profile and user_context describe Unbe, "
+            "not Mary. If an issue reports creator/self ownership bleed, attribute that detail "
+            "to Unbe/you or omit it. Never invent a corresponding Mary preference, interest, "
+            "goal, value, memory, or fact just to complete the rewrite.\n\n"
             f"Unbe's current input:\n{context.input_text}\n\n"
             f"Detected intent: {intent.intent_type.value if intent else 'unknown'}\n\n"
             f"Issues found: {issues}\n\n"
