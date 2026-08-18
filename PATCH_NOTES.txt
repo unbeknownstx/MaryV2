@@ -1,112 +1,80 @@
-MaryV2 Character Core Pass
-==========================
+MaryV2 Free-First Adaptive LLM Router Patch
+===========================================
 
-Purpose
--------
-Populate the existing MaryV2 architecture with Mary's established core
-appearance, personality, values, preferences, social behavior, vulnerabilities,
-romance, quirks, activities, speech habits, and personal goals without adding
-unrevealed story-canon knowledge.
+Goal
+----
+Keep Mary's normal LLM usage zero-cost while avoiding the old problem where
+Groq hitting a free-tier limit made Mary stop, or Ollama became the slow primary
+for every turn.
 
-This patch assumes the previous self-grounding/Ollama patch is already installed.
+Default automatic route
+-----------------------
+Groq -> Gemini -> OpenRouter free -> Ollama
 
-What changed
-------------
-1. NEW mary/personality/character_core.py
-   - One authored source of truth for Mary's established character core.
-   - No Miralonaz secret/canon is added.
-   - No favorite color is invented.
+- Missing cloud API keys are skipped automatically.
+- OpenAI is NOT selected automatically in free_first mode.
+- OpenRouter is forced to openrouter/free unless MARY_OPENROUTER_MODEL is an
+  explicit :free model.
+- Ollama remains Mary's local/offline final fallback.
+- route="private", route="local", or route="offline" forces Ollama only.
 
-2. personality.py
-   - Uses Mary's authored trait/style baseline.
-   - Adds dimensions such as sociability, wit, romanticism, fieryness,
-     artistic sensitivity, and protectiveness while preserving existing tested
-     curiosity/creativity/empathy values.
+Rate-limit behavior
+-------------------
+When a provider returns a rate-limit error (including HTTP 429), Mary:
+1. records that provider failure in provider_attempts,
+2. immediately tries the next free provider,
+3. locally cools down the rate-limited provider so following turns skip it
+   instead of wasting time hitting the same exhausted route again.
 
-3. character.py
-   - Expands character state with social modes, emotional reactions, quirks,
-     speech/slang rules, romance, vulnerabilities/soft spots, and private-life
-     activities.
+Default cooldown: 300 seconds.
+If an SDK exposes Retry-After, Mary uses that value instead.
 
-4. preferences.py
-   - Seeds Mary's authored likes/dislikes as real Preferences state.
-   - Core preferences remain separate from later learned preferences.
-   - reset() restores authored defaults rather than erasing Mary's established core.
+Ollama availability
+-------------------
+Ollama now checks the local /api/tags endpoint with a short cached health check.
+If the Ollama service is stopped, Mary can skip it quickly instead of treating
+MARY_OLLAMA_ENABLED=true as proof that the server is actually reachable.
 
-5. values.py
-   - Adds Mary's stronger authored priorities: compassion, justice, integrity,
-     protection, loyalty, equality, honesty, creativity, care, respect, curiosity,
-     growth, and independence.
+Environment
+-----------
+The patch includes an updated .env.example. Do NOT overwrite your real .env.
+Add these to your existing .env if desired:
 
-6. biography.py
-   - Adds structured appearance:
-       height 5'5"-5'6"
-       red hair
-       blue eyes
-       purple beanie
-       blue jacket
-       purple shirt
-       blue skirt
-       knee-high socks
-       boots
-   - Adds personal goals: homestead, lasting love, travel, and justice.
-   - Does NOT add unrevealed story canon.
+MARY_LLM_ROUTING_STRATEGY=free_first
+MARY_LLM_FREE_ORDER=groq,gemini,openrouter,ollama
+MARY_LLM_RATE_LIMIT_COOLDOWN=300
+MARY_GROQ_MODEL=openai/gpt-oss-20b
+MARY_GEMINI_MODEL=gemini-2.5-flash
+MARY_OPENROUTER_MODEL=openrouter/free
 
-7. self_model.py / mary.py / mind_state.py
-   - Connects the existing Preferences subsystem to live Mary.
-   - Adds compact preference state and richer character-expression state to
-     TurnMindState.
-   - Adds contextual character instructions without forcing catchphrases or
-     every trait into every reply.
+Keep your existing keys; never paste them into chat.
 
-8. self_introspection.py / orchestrator.py / reasoning.py
-   - Grounds questions about appearance, fears, romance, anger/embarrassment,
-     strangers vs close friends, distrust, being watched, private activities,
-     slang, goals, likes/dislikes, and humor.
-   - Rejects provider inventions such as wrong eye color, unrelated fears, or
-     unrelated food dislikes when answering Mary-self questions.
-   - Keeps these self queries on the compact self-grounded prompt path.
+Optional free provider keys:
+GROQ_API_KEY=...
+GEMINI_API_KEY=...
+OPENROUTER_API_KEY=...
 
-Validation in the supplied package environment
-----------------------------------------------
+Ollama settings can stay as they are. For the current RX 480, 4096 context is a
+reasonable normal-turn target if you want to reduce local memory pressure:
+MARY_OLLAMA_NUM_CTX=4096
+
+Safe route status check
+-----------------------
+python -m scripts.check_llm_routes
+
+This prints READY / NOT CONFIGURED and model names only. It does not print API
+keys or their values.
+
+Validation used for this patch
+------------------------------
 python -m pytest tests -q
-=> 332 passed, 1 skipped
+Result in patch environment: 338 passed, 1 skipped
 
 python -m scripts.run_diagnostics
-=> 41 passed, 0 warnings, 0 failed, Healthy: True
+Result: 41 passed, 0 warnings, 0 failed, Healthy: True
 
-Your machine previously had one environment-dependent test that was not skipped,
-so your exact pass/skip count may differ by one. The important result is no failures.
+Recommended live test
+---------------------
+python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What are you like when you are really comfortable around someone?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
 
-Install
--------
-Copy the included mary/ and tests/ folders into the root of your MaryV2 repo and
-allow these specific files to replace the existing versions. character_core.py
-and the two new test files are new files.
-
-Do NOT replace your .env or data/ folders.
-
-Run after installing
---------------------
-python -m pytest tests -q
-python -m scripts.run_diagnostics
-
-Then run these real Ollama checks one at a time:
-
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What do you look like?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
-
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What are you afraid of?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
-
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What are you like romantically?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
-
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('What food do you hate?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
-
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('How do you behave around strangers vs close friends?'); print(); print('RESPONSE:', r.final_response); print(); print('REASONING META:', r.reasoning.metadata); print(); print('REFLECTION META:', getattr(r.reflection,'metadata',{}))"
-
-What to look for
-----------------
-- provider: ollama
-- self_grounded: True for direct Mary-self queries
-- reflection mode: self_introspection_grounding_reuse
-- substantially smaller prompts than the old 5K-token self query path
-- answers that sound like Mary while preserving the established facts
+Watch REASONING META -> provider and provider_attempts.

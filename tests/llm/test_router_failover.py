@@ -82,3 +82,52 @@ def test_router_skips_unavailable_fallbacks_and_keeps_order():
         "missing",
         "secondary",
     ]
+
+
+def test_router_cools_down_rate_limited_provider_on_next_turn():
+    config = Config()
+    config.llm.provider = "primary"
+    config.llm.fallback_providers = ["secondary"]
+    config.llm.rate_limit_cooldown_seconds = 300
+
+    router = LLMRouter(config)
+    router.register_provider("primary", FailingProvider("primary"))
+    router.register_provider("secondary", GoodProvider("secondary"))
+
+    first = router.generate([
+        LLMMessage(role="user", content="hello"),
+    ])
+    assert first.provider == "secondary"
+
+    second = router.generate([
+        LLMMessage(role="user", content="hello again"),
+    ])
+
+    assert second.provider == "secondary"
+    assert router.last_generation_attempts[0]["provider"] == "primary"
+    assert router.last_generation_attempts[0]["status"] == "cooldown"
+    assert router.last_generation_attempts[1] == {
+        "provider": "secondary",
+        "status": "success",
+        "error": "",
+    }
+
+
+def test_clear_provider_cooldown_reenables_provider():
+    config = Config()
+    config.llm.provider = "primary"
+    config.llm.fallback_providers = ["secondary"]
+
+    router = LLMRouter(config)
+    router.register_provider("primary", FailingProvider("primary"))
+    router.register_provider("secondary", GoodProvider("secondary"))
+
+    router.generate([
+        LLMMessage(role="user", content="hello"),
+    ])
+
+    assert router._cooldown_remaining("primary") > 0
+
+    router.clear_provider_cooldown("primary")
+
+    assert router._cooldown_remaining("primary") == 0

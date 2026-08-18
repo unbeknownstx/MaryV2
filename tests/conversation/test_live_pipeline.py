@@ -37,7 +37,6 @@ def test_live_conversation_pipeline():
 
     stage = ConversationStage(
         conversation,
-        provider=config.llm.provider,
     )
 
     state = RuntimeState()

@@ -27,6 +27,16 @@ class LLMConfig:
     temperature: float = 0.7
     max_tokens: int = 2048
     fallback_providers: list[str] = field(default_factory=list)
+    routing_strategy: str = "free_first"
+    free_provider_order: list[str] = field(
+        default_factory=lambda: [
+            "groq",
+            "gemini",
+            "openrouter",
+            "ollama",
+        ]
+    )
+    rate_limit_cooldown_seconds: float = 300.0
 
 
 @dataclass
@@ -134,6 +144,34 @@ class Config:
             for item in fallback_value.split(",")
             if item.strip()
         ]
+
+        config.llm.routing_strategy = os.getenv(
+            "MARY_LLM_ROUTING_STRATEGY",
+            config.llm.routing_strategy,
+        ).strip().lower()
+
+        free_order_value = os.getenv(
+            "MARY_LLM_FREE_ORDER",
+            "",
+        )
+        if free_order_value.strip():
+            config.llm.free_provider_order = [
+                item.strip().lower()
+                for item in free_order_value.split(",")
+                if item.strip()
+            ]
+
+        cooldown_value = os.getenv(
+            "MARY_LLM_RATE_LIMIT_COOLDOWN",
+        )
+        if cooldown_value is not None:
+            try:
+                config.llm.rate_limit_cooldown_seconds = max(
+                    0.0,
+                    float(cooldown_value),
+                )
+            except ValueError:
+                pass
 
         config.runtime.environment = os.getenv(
             "MARY_ENVIRONMENT",

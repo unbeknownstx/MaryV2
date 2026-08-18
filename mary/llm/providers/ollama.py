@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -54,6 +55,20 @@ class OllamaProvider(LLMInterface):
                 "8192",
             )
         )
+        self.health_timeout = float(
+            os.getenv(
+                "MARY_OLLAMA_HEALTH_TIMEOUT",
+                "1.0",
+            )
+        )
+        self.health_ttl = float(
+            os.getenv(
+                "MARY_OLLAMA_HEALTH_TTL",
+                "5.0",
+            )
+        )
+        self._health_checked_at = 0.0
+        self._health_available = False
 
     def generate(
         self,
@@ -153,10 +168,41 @@ class OllamaProvider(LLMInterface):
         )
 
     def is_available(self) -> bool:
-        return os.getenv(
+        enabled = os.getenv(
             "MARY_OLLAMA_ENABLED",
             "true",
         ).strip().lower() in _TRUE_VALUES
+
+        if not enabled:
+            return False
+
+        now = time.monotonic()
+        if (
+            self._health_checked_at > 0.0
+            and (now - self._health_checked_at) < self.health_ttl
+        ):
+            return self._health_available
+
+        request = urllib.request.Request(
+            f"{self.base_url}/api/tags",
+            headers={
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=self.health_timeout,
+            ) as response:
+                available = 200 <= int(response.status) < 300
+        except Exception:
+            available = False
+
+        self._health_checked_at = now
+        self._health_available = available
+        return available
 
     def provider_name(self) -> str:
         return "ollama"
