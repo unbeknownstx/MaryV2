@@ -30,9 +30,9 @@
         "confidence": 1.0,
         "explicitly_shared": true,
         "evidence_id": null,
-        "observation_id": "observation_a5d2cfad3824",
+        "observation_id": "observation_e03b2ed1d501",
         "created_at": "2026-08-18T08:02:01.984374+00:00",
-        "updated_at": "2026-08-19T06:04:03.654345+00:00"
+        "updated_at": "2026-08-19T06:16:51.929120+00:00"
       },
       {
         "id": "profile_2",
@@ -58,9 +58,9 @@
         "confidence": 1.0,
         "explicitly_shared": true,
         "evidence_id": null,
-        "observation_id": "observation_94f6534a2094",
+        "observation_id": "observation_c75c8819921c",
         "created_at": "2026-08-18T08:57:19.506306+00:00",
-        "updated_at": "2026-08-19T06:04:03.351516+00:00"
+        "updated_at": "2026-08-19T06:16:51.598049+00:00"
       },
       {
         "id": "profile_4",
@@ -86,9 +86,9 @@
         "confidence": 1.0,
         "explicitly_shared": true,
         "evidence_id": null,
-        "observation_id": "observation_6e102e063d4b",
+        "observation_id": "observation_add6667260bc",
         "created_at": "2026-08-18T08:57:19.509231+00:00",
-        "updated_at": "2026-08-19T06:04:03.356341+00:00"
+        "updated_at": "2026-08-19T06:16:51.603343+00:00"
       },
       {
         "id": "profile_6",
@@ -100,13 +100,13 @@
         "confidence": 1.0,
         "explicitly_shared": true,
         "evidence_id": null,
-        "observation_id": "observation_c97459ea2317",
+        "observation_id": "observation_1a76c5fc23eb",
         "created_at": "2026-08-18T08:57:19.510437+00:00",
-        "updated_at": "2026-08-19T06:04:03.361011+00:00"
+        "updated_at": "2026-08-19T06:16:51.608181+00:00"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790107+00:00",
-    "updated_at": "2026-08-19T06:04:03.654354+00:00"
+    "updated_at": "2026-08-19T06:16:51.929130+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -1745,10 +1745,130 @@
           "evidence_id": null
         },
         "created_at": "2026-08-18T23:04:03.654364"
+      },
+      {
+        "id": "relationship_bfd08c2be00c",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: green",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_3",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:33.098163"
+      },
+      {
+        "id": "relationship_91530d26419f",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "creating_stories",
+          "profile_record_id": "profile_5",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:33.103144"
+      },
+      {
+        "id": "relationship_db33572f852c",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared goal: finish MaryV2",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "goal",
+          "key": "finish_maryv2",
+          "profile_record_id": "profile_6",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:33.108111"
+      },
+      {
+        "id": "relationship_c66399232d90",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_1",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:33.414290"
+      },
+      {
+        "id": "relationship_3b74078a2f89",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: green",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_3",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:51.598077"
+      },
+      {
+        "id": "relationship_cee78e52b030",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "creating_stories",
+          "profile_record_id": "profile_5",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:51.603378"
+      },
+      {
+        "id": "relationship_92c28cfbbe7f",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared goal: finish MaryV2",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "goal",
+          "key": "finish_maryv2",
+          "profile_record_id": "profile_6",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:51.608213"
+      },
+      {
+        "id": "relationship_b2b201355faf",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_1",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T23:16:51.929139"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-18T23:04:03.654366"
+    "updated_at": "2026-08-18T23:16:51.929141"
   },
   "understanding": {
     "observations": [
@@ -2732,11 +2852,83 @@
         "confidence": 1.0,
         "evidence": "I prefer you to be direct and concise",
         "created_at": "2026-08-18T23:04:03.654335"
+      },
+      {
+        "id": "observation_1479f300fed3",
+        "observation": "my favorite color is green",
+        "category": "preference",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "my favorite color is green",
+        "created_at": "2026-08-18T23:16:33.098130"
+      },
+      {
+        "id": "observation_240d713089f3",
+        "observation": "I love creating stories",
+        "category": "interest",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I love creating stories",
+        "created_at": "2026-08-18T23:16:33.103086"
+      },
+      {
+        "id": "observation_24f48a8f3b56",
+        "observation": "my main goal is finish MaryV2",
+        "category": "goal",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "my main goal is finish MaryV2",
+        "created_at": "2026-08-18T23:16:33.108068"
+      },
+      {
+        "id": "observation_c339f582ba57",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I prefer you to be direct and concise",
+        "created_at": "2026-08-18T23:16:33.414263"
+      },
+      {
+        "id": "observation_c75c8819921c",
+        "observation": "my favorite color is green",
+        "category": "preference",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "my favorite color is green",
+        "created_at": "2026-08-18T23:16:51.598030"
+      },
+      {
+        "id": "observation_add6667260bc",
+        "observation": "I love creating stories",
+        "category": "interest",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I love creating stories",
+        "created_at": "2026-08-18T23:16:51.603322"
+      },
+      {
+        "id": "observation_1a76c5fc23eb",
+        "observation": "my main goal is finish MaryV2",
+        "category": "goal",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "my main goal is finish MaryV2",
+        "created_at": "2026-08-18T23:16:51.608166"
+      },
+      {
+        "id": "observation_e03b2ed1d501",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I prefer you to be direct and concise",
+        "created_at": "2026-08-18T23:16:51.929112"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-18T23:04:03.654340"
+    "updated_at": "2026-08-18T23:16:51.929116"
   },
   "milestones": []
 }
