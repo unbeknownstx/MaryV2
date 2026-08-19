@@ -1,31 +1,71 @@
+from __future__ import annotations
+
+import os
+
 import pytest
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-from mary.core.config import Config
 from mary.conversation.service import ConversationService
 from mary.conversation.stage import ConversationStage
+from mary.core.config import Config
+from mary.llm.interface import LLMProviderError
 from mary.llm.router import LLMRouter
 from mary.runtime.pipeline import Pipeline, PipelineStageError
 from mary.runtime.state import RuntimeState
 
 
-def test_live_conversation_pipeline():
-    config = Config.from_environment()
+RUN_LIVE_TESTS = (
+    os.getenv(
+        "MARY_RUN_LIVE_TESTS",
+        "",
+    ).strip()
+    == "1"
+)
 
+
+@pytest.mark.skipif(
+    not RUN_LIVE_TESTS,
+    reason=(
+        "Live LLM test disabled. "
+        "Set MARY_RUN_LIVE_TESTS=1 to run it."
+    ),
+)
+def test_live_conversation_pipeline():
+    """
+    Explicit live smoke test for Mary's conversation pipeline.
+
+    This test makes a real external model request and is therefore
+    disabled during the normal deterministic/offline test suite.
+
+    Set:
+
+        MARY_RUN_LIVE_TESTS=1
+
+    to run it intentionally.
+
+    LLMRouter chooses Mary's active adaptive route:
+
+        Groq -> Gemini -> OpenRouter -> Ollama
+
+    External-provider outages, quotas, and timeouts skip this live
+    smoke test. Non-provider pipeline failures still fail normally.
+    """
+
+    config = Config.from_environment()
     router = LLMRouter(config)
 
     try:
         available = router.is_available()
     except (ImportError, ModuleNotFoundError) as exc:
         pytest.skip(
-            f"Configured live LLM provider SDK is unavailable: {exc}"
+            "Configured live LLM provider SDK "
+            f"is unavailable: {exc}"
         )
 
     if not available:
-        pytest.skip("Configured live LLM provider is not available.")
+        pytest.skip(
+            "No configured live LLM route "
+            "is currently available."
+        )
 
     conversation = ConversationService(
         router,
@@ -35,8 +75,11 @@ def test_live_conversation_pipeline():
         ),
     )
 
+    # provider=None lets Mary's adaptive router choose the route.
+    # Do not pin this test to config.llm.provider.
     stage = ConversationStage(
         conversation,
+        provider=None,
     )
 
     state = RuntimeState()
@@ -49,36 +92,31 @@ def test_live_conversation_pipeline():
 
     try:
         result = pipeline.run(
-            "Hello Mary. This is your first live conversation."
+            "Hello Mary. "
+            "This is your first live conversation."
         )
     except PipelineStageError as exc:
-        # This is a live-provider integration test. A provider quota/rate-limit
-        # means the external dependency is temporarily unavailable; it is not
-        # a MaryV2 implementation regression. Keep all other failures hard.
-        message = str(exc).lower()
-        if (
-            "429" in message
-            or "rate limit" in message
-            or "rate_limit_exceeded" in message
-            or "tokens per day" in message
+        cause = exc.__cause__
+
+        if isinstance(
+            cause,
+            LLMProviderError,
         ):
             pytest.skip(
-                "Configured live LLM provider is temporarily rate-limited."
+                "Live LLM route is temporarily "
+                f"unavailable: {cause}"
             )
+
         raise
 
-    assert result.success
+    assert result is not None
     assert result.output
-    assert isinstance(result.output, str)
 
-    print("\n--- MARY ---")
-    print(result.output)
-
-    print("\n--- PIPELINE ---")
-    print("Status:", result.status.value)
-    print("Turn:", result.turn_id)
-    print("Elapsed:", result.elapsed)
-
-
-if __name__ == "__main__":
-    test_live_conversation_pipeline()
+    assert (
+        getattr(
+            result.status,
+            "value",
+            str(result.status),
+        )
+        == "completed"
+    )
