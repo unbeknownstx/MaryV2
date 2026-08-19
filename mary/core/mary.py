@@ -71,6 +71,7 @@ from mary.personality.development import PersonalityDevelopment
 from mary.personality.character import Character
 from mary.personality.values import Values
 from mary.personality.preferences import Preferences
+from mary.personality.developed_state import DevelopedSelfStateStore
 
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
@@ -149,10 +150,6 @@ class Mary:
             name="Mary",
         )
 
-        self.personality_development = PersonalityDevelopment(
-            personality=self.personality,
-        )
-
         # ============================================================
         # CHARACTER
         # ============================================================
@@ -170,6 +167,26 @@ class Mary:
         # ============================================================
 
         self.preferences = Preferences()
+
+        # ============================================================
+        # PERSONALITY DEVELOPMENT / DEVELOPED SELF STATE
+        # ============================================================
+
+        # Construct development only after the live Values and Preferences
+        # objects exist, then wire those exact authoritative instances into it.
+        self.personality_development = PersonalityDevelopment(
+            personality=self.personality,
+        )
+        self._wire_personality_development()
+
+        # This store is intentionally unconfigured in plain Mary().  The
+        # canonical persistent runtime enables it explicitly after construction.
+        self.developed_self_state = DevelopedSelfStateStore(
+            personality=self.personality,
+            values=self.values,
+            preferences=self.preferences,
+            personality_development=self.personality_development,
+        )
 
         # ============================================================
         # SELF MODEL
@@ -2824,6 +2841,7 @@ class Mary:
                 "likes": len(self.preferences.get_likes()),
                 "dislikes": len(self.preferences.get_dislikes()),
             },
+            "developed_self": self.developed_self_state.status(),
             "user": self._user_context(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),
@@ -3002,6 +3020,121 @@ class Mary:
 
         return {}
 
+    def _wire_personality_development(self) -> None:
+        """Wire development to Mary's authoritative live self objects."""
+
+        bindings = {
+            "personality": self.personality,
+            "values": self.values,
+            "preferences": self.preferences,
+        }
+
+        for name, value in bindings.items():
+            try:
+                setattr(self.personality_development, name, value)
+            except (AttributeError, TypeError):
+                # PersonalityDevelopment historically required only personality.
+                # Older implementations can still run while newer ones receive
+                # the richer live bindings when those attributes are supported.
+                continue
+
+    def configure_developed_self_persistence(
+        self,
+        path: str | Any,
+        *,
+        auto_save: bool = True,
+        load: bool = True,
+    ) -> bool:
+        """Enable durable developed-self persistence for this Mary instance."""
+
+        self._wire_personality_development()
+        self.developed_self_state.rebind(
+            personality=self.personality,
+            values=self.values,
+            preferences=self.preferences,
+            personality_development=self.personality_development,
+        )
+        loaded = self.developed_self_state.configure(
+            path,
+            auto_save=auto_save,
+            load=load,
+        )
+        self._wire_personality_development()
+        return loaded
+
+    def save_developed_self_state(self) -> bool:
+        """Persist developed state when the persistent runtime configured it."""
+
+        return self.developed_self_state.save()
+
+    def set_developed_preference(
+        self,
+        name: str,
+        *,
+        category: str = "general",
+        strength: float = 0.5,
+        polarity: float = 1.0,
+        confidence: float = 0.5,
+        source: str = "experience",
+    ) -> dict[str, Any]:
+        """Create/update a durable preference through an explicit self path."""
+
+        normalized_source = str(source).strip().lower() or "experience"
+        if normalized_source in {
+            "model",
+            "model_dialogue",
+            "llm",
+            "llm_output",
+            "situational",
+            "imagination",
+        }:
+            raise ValueError(
+                "Model/situational output cannot be a durable preference source."
+            )
+
+        preference = self.preferences.set_preference(
+            name=name,
+            category=category,
+            strength=strength,
+            polarity=polarity,
+            confidence=confidence,
+            source=normalized_source,
+        )
+        self.developed_self_state.save_if_configured()
+        return preference
+
+    def adjust_developed_preference(
+        self,
+        name: str,
+        amount: float,
+        *,
+        confidence: float | None = None,
+        source: str = "experience",
+    ) -> dict[str, Any] | None:
+        """Adjust a durable preference through the experience path."""
+
+        normalized_source = str(source).strip().lower() or "experience"
+        if normalized_source in {
+            "model",
+            "model_dialogue",
+            "llm",
+            "llm_output",
+            "situational",
+            "imagination",
+        }:
+            raise ValueError(
+                "Model/situational output cannot be a durable preference source."
+            )
+
+        preference = self.preferences.adjust(
+            name=name,
+            amount=amount,
+            confidence=confidence,
+            source=normalized_source,
+        )
+        self.developed_self_state.save_if_configured()
+        return preference
+
     def personality_development_summary(
         self,
     ) -> dict[str, Any]:
@@ -3040,9 +3173,16 @@ class Mary:
         Apply an approved personality-development proposal.
         """
 
-        return self.personality_development.apply(
+        applied = self.personality_development.apply(
             proposal,
         )
+
+        if applied:
+            self.developed_self_state.record_approved_personality_change(
+                proposal
+            )
+
+        return bool(applied)
 
     def reject_personality_change(
         self,

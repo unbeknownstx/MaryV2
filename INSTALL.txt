@@ -1,44 +1,28 @@
-MARYV2 RUNTIME ARCHITECTURE INTROSPECTION PATCH
-
-PC/GitHub baseline only. Replit is not part of this step.
+MARYV2 DEVELOPED SELF-STATE PERSISTENCE PATCH
 
 REPLACE:
-1. mary/cognition/orchestrator.py
-2. mary/core/mary.py
-3. tests/integration/test_long_session_hardening.py
-4. scripts/verify_long_session_hardening.py
+  mary/core/mary.py
+  mary/runtime/application.py
 
-WHAT THIS ADDS
-- Routes Mary-runtime questions to SELF_QUERY/runtime_architecture before generic LLM conversation.
-- Answers runtime/model/provider/architecture questions deterministically from Mary's real runtime state.
-- Records the most recent successful model-backed provider/model metadata ephemerally in-process.
-- Never persists that last-generation metadata.
-- Allows Mary to answer "What generated your last answer?" without asking a provider to guess.
-- Deterministic SELF_QUERY results report self_grounded=True in /last.
+ADD:
+  mary/personality/developed_state.py
+  tests/runtime/test_developed_self_persistence.py
+  scripts/verify_developed_self_persistence.py
 
-AFTER REPLACING FILES
-Run from the MaryV2 project root in the activated .venv:
+DO NOT replace .env or anything under data/.
 
-python -m compileall -q mary scripts tests
-python -m pytest tests -q
-python -m scripts.run_diagnostics
-python -m scripts.verify_long_session_hardening
+VERIFY FROM THE MARYV2 ROOT:
+  python -m compileall -q mary scripts tests
+  python -m pytest tests -q
+  python -m scripts.run_diagnostics
+  python -m scripts.verify_long_session_hardening
+  python -m scripts.verify_developed_self_persistence
 
-Then live test:
-python -m scripts.run_mary
-
-Ask:
-What's your underlying architecture running on?
-/last
-
-Then ask a normal model-backed question, then:
-What generated your last answer?
-/last
-
-EXPECTED ARCHITECTURE TURN
-- intent: self_query
-- provider: local/system
-- self_grounded: True
-- reflection_mode: deterministic_system_action
-- Response identifies MaryV2/Python architecture and configured provider route.
-- Response does NOT claim Mary is GPT-4 or a generic OpenAI assistant.
+EXPECTED PRINCIPLES:
+- Plain Mary() does not configure or touch developed_self.json.
+- create_application/create_persistent_mary use developed self persistence.
+- Default file: data/personality/developed_self.json.
+- Authored character_core preferences are not duplicated into that file.
+- Experience preferences persist.
+- Successful approved personality changes are marked for exact-state persistence.
+- Model/situational output is rejected as a durable preference source.
