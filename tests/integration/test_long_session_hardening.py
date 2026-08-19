@@ -136,3 +136,39 @@ def test_unsupported_background_ping_promise_is_revised():
     lowered = result.final_response.lower()
     assert "ping you when" not in lowered
     assert "quick updates" in lowered
+
+
+def test_runtime_architecture_query_is_local_and_deterministic():
+    router = SequenceRouter(["I am GPT-4 running in the OpenAI cloud."])
+    mary = _mary(router)
+
+    calls_before = len(router.calls)
+    result = mary.process("What's your underlying architecture running on?")
+
+    assert result.intent.intent_type == IntentType.SELF_QUERY
+    assert result.intent.parameters["self_query_type"] == "runtime_architecture"
+    assert len(router.calls) == calls_before
+    lowered = result.final_response.lower()
+    assert "maryv2" in lowered
+    assert "python architecture" in lowered
+    assert "language model" in lowered
+    assert "gpt-4" not in lowered
+    assert result.reasoning.metadata.get("llm_skipped") is True
+
+
+def test_runtime_architecture_reports_previous_generation_metadata():
+    router = SequenceRouter(["A normal generated response."])
+    mary = _mary(router)
+
+    first = mary.process("Hello Mary")
+    assert first.reasoning.metadata.get("provider") == "test"
+    calls_before = len(router.calls)
+
+    result = mary.process("What generated your last answer?")
+
+    assert len(router.calls) == calls_before
+    lowered = result.final_response.lower()
+    assert "most recent successful model-backed turn" in lowered
+    assert "test" in lowered
+    assert "fake" in lowered
+    assert "no language model is being asked to guess" in lowered

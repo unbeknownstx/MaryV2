@@ -755,6 +755,23 @@ class CognitiveOrchestrator:
         normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
 
         patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
+            ("runtime_architecture", (
+                "what is your underlying architecture running on",
+                "what's your underlying architecture running on",
+                "what is your underlying architecture",
+                "what's your underlying architecture",
+                "what model are you using",
+                "what model are you running",
+                "which model are you using",
+                "which provider are you using",
+                "what provider are you using",
+                "which api are you using",
+                "what api are you using",
+                "what are you running on",
+                "are you local or cloud",
+                "what generated your last answer",
+                "what generated your last response",
+            )),
             ("creator", (
                 "who is unbe to you",
                 "who is your creator",
@@ -920,6 +937,27 @@ class CognitiveOrchestrator:
         for subtype, phrases in patterns:
             if normalized in phrases:
                 return self_intent(subtype)
+
+        runtime_markers = (
+            "your underlying architecture",
+            "your architecture running",
+            "model are you using",
+            "model are you running",
+            "model do you use",
+            "provider are you using",
+            "provider do you use",
+            "api are you using",
+            "api do you use",
+            "are you local or cloud",
+            "running locally or",
+            "running in the cloud",
+            "generated your last answer",
+            "generated your last response",
+            "generated that answer",
+            "generated that response",
+        )
+        if any(marker in normalized for marker in runtime_markers):
+            return self_intent("runtime_architecture")
 
         # Physical self-questions have too many natural phrasings to maintain
         # as a brittle exact-phrase list. Route them to Mary's canonical

@@ -29,6 +29,15 @@ def main() -> None:
         and feeling.parameters.get("self_query_type") == "current_state",
     )
 
+    runtime_architecture = mary.cognition.detect_intent(
+        "What's your underlying architecture running on?"
+    )
+    check(
+        "runtime architecture question stays local instead of provider-improvised",
+        runtime_architecture.intent_type == IntentType.SELF_QUERY
+        and runtime_architecture.parameters.get("self_query_type") == "runtime_architecture",
+    )
+
     creator_memory = mary.cognition.detect_intent(
         "Do you remember anything about me?"
     )

@@ -229,6 +229,12 @@ class Mary:
 
         self.llm = self._create_llm_router()
 
+        # Ephemeral runtime metadata only. This is intentionally not persisted:
+        # it records which provider/model generated the most recent successful
+        # model-backed turn in this process so Mary can answer runtime questions
+        # without asking a model to guess about itself.
+        self._last_generation_metadata: dict[str, Any] | None = None
+
         # ============================================================
         # TOOLS
         # ============================================================
@@ -769,6 +775,25 @@ class Mary:
             )
             if isinstance(lifecycle, dict) and lifecycle:
                 result.metadata["context_lifecycle"] = dict(lifecycle)
+        except Exception:
+            pass
+
+        try:
+            reasoning_metadata = dict(
+                getattr(result.reasoning, "metadata", {}) or {}
+            )
+            provider = reasoning_metadata.get("provider")
+            if (
+                provider
+                and not reasoning_metadata.get("llm_skipped", False)
+                and not reasoning_metadata.get("llm_unavailable", False)
+            ):
+                self._last_generation_metadata = {
+                    "provider": provider,
+                    "model": reasoning_metadata.get("model"),
+                    "finish_reason": reasoning_metadata.get("finish_reason"),
+                    "usage": dict(reasoning_metadata.get("usage", {}) or {}),
+                }
         except Exception:
             pass
 
@@ -1421,6 +1446,19 @@ class Mary:
             )
         ).strip().lower()
 
+        if subtype == "runtime_architecture":
+            return {
+                "system_response": self._runtime_architecture_response(
+                    query=str(
+                        intent.parameters.get(
+                            "query",
+                            "",
+                        )
+                    )
+                ),
+                "skip_cognition": True,
+            }
+
         evidence = self.self_introspection.build(
             subtype,
             query=str(
@@ -1446,6 +1484,88 @@ class Mary:
         return {
             "knowledge": [evidence],
         }
+
+    def _runtime_architecture_response(
+        self,
+        *,
+        query: str = "",
+    ) -> str:
+        """Describe Mary's actual runtime without provider self-invention."""
+
+        cognition_status = dict(
+            self.status().get(
+                "cognition",
+                {},
+            )
+        )
+        strategy = str(
+            cognition_status.get(
+                "routing_strategy",
+                "configured",
+            )
+        )
+        provider_order = [
+            str(item)
+            for item in cognition_status.get(
+                "provider_order",
+                [],
+            )
+            if str(item).strip()
+        ]
+        route_text = (
+            " -> ".join(provider_order)
+            if provider_order
+            else str(cognition_status.get("llm", "unknown"))
+        )
+
+        parts = [
+            (
+                "I'm MaryV2. My identity, memory, personality, relationship "
+                "model, cognition, agency, tools, expression, and other "
+                "connected systems run in my Python architecture. The "
+                "language model is a generation engine I route to; it is not "
+                "my identity."
+            ),
+            (
+                f"My LLM routing strategy is {strategy}, with the configured "
+                f"route: {route_text}."
+            ),
+        ]
+
+        if "ollama" in {item.lower() for item in provider_order}:
+            parts.append(
+                "That lets me use cloud providers first and Ollama as a local "
+                "fallback when Ollama is available in the environment."
+            )
+
+        previous = dict(self._last_generation_metadata or {})
+        if previous:
+            provider = str(previous.get("provider") or "unknown")
+            model = str(previous.get("model") or "unknown")
+            finish_reason = str(previous.get("finish_reason") or "unknown")
+            parts.append(
+                f"The most recent successful model-backed turn in this process "
+                f"used {provider} with {model} (finish reason: {finish_reason})."
+            )
+        elif any(
+            phrase in str(query).lower()
+            for phrase in (
+                "last answer",
+                "last response",
+                "generated that",
+            )
+        ):
+            parts.append(
+                "I don't have a previous successful model-backed turn recorded "
+                "in this process yet."
+            )
+
+        parts.append(
+            "This architecture answer itself is coming directly from my runtime "
+            "state, so no language model is being asked to guess the answer."
+        )
+
+        return " ".join(parts)
 
     # ================================================================
     # TOOLS / WEB RESEARCH
@@ -1682,6 +1802,10 @@ class Mary:
             intent=intent,
             metadata={
                 "llm_skipped": True,
+                "self_grounded": bool(
+                    intent is not None
+                    and intent.intent_type == IntentType.SELF_QUERY
+                ),
             },
         )
         reflection = ReflectionResult(
