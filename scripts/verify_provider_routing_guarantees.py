@@ -8,9 +8,16 @@ from mary.llm.router import LLMRouter
 
 
 class FakeProvider(LLMInterface):
-    def __init__(self, name: str, *, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        error: Exception | None = None,
+        finish_reason: str | None = None,
+    ) -> None:
         self.name = name
         self.error = error
+        self.finish_reason = finish_reason
         self.calls = 0
 
     def generate(self, messages, temperature=0.7, max_tokens=2048):
@@ -21,6 +28,7 @@ class FakeProvider(LLMInterface):
             content=f"{self.name} ok",
             provider=self.name,
             model=f"fake-{self.name}",
+            finish_reason=self.finish_reason,
         )
 
     def is_available(self):
@@ -93,6 +101,17 @@ def main() -> int:
     require(response.provider == "ollama", "Private route did not force Ollama.")
     require(providers["openai"].calls == 0, "Private route leaked to OpenAI.")
     print("PASS  private/offline policy is Ollama-only")
+
+    router, providers = make_router()
+    providers["groq"].error = RuntimeError("groq failed")
+    providers["gemini"].finish_reason = "length"
+    response = router.generate(message)
+    require(response.provider == "openrouter", "Truncated Gemini response was incorrectly accepted.")
+    require(
+        router.last_generation_attempts[1]["status"] == "incomplete",
+        "Incomplete-response metadata missing.",
+    )
+    print("PASS  output-limit truncation fails over instead of reaching Mary")
 
     router, providers = make_router()
     providers["groq"].error = LLMRateLimitError("quota reached", provider="groq")

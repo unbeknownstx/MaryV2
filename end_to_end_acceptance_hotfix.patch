@@ -1,0 +1,196 @@
+--- /tmp/orchestrator.before	2026-08-19 07:27:35.940734628 +0000
++++ mary/cognition/orchestrator.py	2026-08-19 07:27:37.240295618 +0000
+@@ -940,6 +940,10 @@
+ 
+         runtime_markers = (
+             "your underlying architecture",
++            # Natural architecture questions should never fall through to a
++            # language model that can invent its own provider-centric identity.
++            # Keep this deliberately scoped to *Mary's* architecture.
++            "your architecture",
+             "your architecture running",
+             "model are you using",
+             "model are you running",
+--- /tmp/router.before	2026-08-19 07:27:35.950132223 +0000
++++ mary/llm/router.py	2026-08-19 07:27:37.240569981 +0000
+@@ -525,6 +525,30 @@
+                 last_error = error
+                 continue
+ 
++            finish_reason = str(
++                response.finish_reason or ""
++            ).strip().lower()
++            if finish_reason in {
++                "length",
++                "max_tokens",
++                "max_output_tokens",
++            }:
++                error = LLMProviderError(
++                    (
++                        "Provider returned an incomplete response because "
++                        "its output limit was reached."
++                    ),
++                    provider=provider_name,
++                    retryable=True,
++                )
++                self.last_generation_attempts.append({
++                    "provider": provider_name,
++                    "status": "incomplete",
++                    "error": str(error),
++                })
++                last_error = error
++                continue
++
+             self.clear_provider_cooldown(
+                 provider_name
+             )
+--- /tmp/longtest.before	2026-08-19 07:27:35.958049605 +0000
++++ tests/integration/test_long_session_hardening.py	2026-08-19 07:27:37.240686637 +0000
+@@ -156,6 +156,28 @@
+     assert result.reasoning.metadata.get("llm_skipped") is True
+ 
+ 
++def test_natural_compound_runtime_architecture_query_stays_local():
++    router = SequenceRouter([
++        "I am a persona built on top of a language model and I love to doodle."
++    ])
++    mary = _mary(router)
++
++    calls_before = len(router.calls)
++    result = mary.process(
++        "Who are you, and how do language models fit into your architecture?"
++    )
++
++    assert result.intent.intent_type == IntentType.SELF_QUERY
++    assert result.intent.parameters["self_query_type"] == "runtime_architecture"
++    assert len(router.calls) == calls_before
++    lowered = result.final_response.lower()
++    assert "python architecture" in lowered
++    assert "generation engine" in lowered
++    assert "built on top of a language model" not in lowered
++    assert "doodle" not in lowered
++    assert result.reasoning.metadata.get("llm_skipped") is True
++
++
+ def test_runtime_architecture_reports_previous_generation_metadata():
+     router = SequenceRouter(["A normal generated response."])
+     mary = _mary(router)
+--- /tmp/routetest.before	2026-08-19 07:27:35.966688573 +0000
++++ tests/llm/test_provider_routing_guarantees.py	2026-08-19 07:27:37.240786097 +0000
+@@ -22,11 +22,13 @@
+         available: bool = True,
+         availability_error: Exception | None = None,
+         generation_error: Exception | None = None,
++        finish_reason: str | None = None,
+     ) -> None:
+         self.name = name
+         self.available = available
+         self.availability_error = availability_error
+         self.generation_error = generation_error
++        self.finish_reason = finish_reason
+         self.availability_checks = 0
+         self.calls = 0
+ 
+@@ -38,6 +40,7 @@
+             content=f"{self.name} response",
+             provider=self.name,
+             model=f"fake-{self.name}",
++            finish_reason=self.finish_reason,
+         )
+ 
+     def is_available(self):
+@@ -211,6 +214,29 @@
+     }
+ 
+ 
++def test_incomplete_length_response_falls_through_instead_of_being_spoken():
++    router, providers = _free_first_router()
++    providers["groq"].generation_error = RuntimeError("groq failed")
++    providers["gemini"].finish_reason = "length"
++
++    response = router.generate(_message())
++
++    assert response.provider == "openrouter"
++    assert providers["gemini"].calls == 1
++    assert router.last_generation_attempts == [
++        {"provider": "groq", "status": "failed", "error": "groq failed"},
++        {
++            "provider": "gemini",
++            "status": "incomplete",
++            "error": (
++                "Provider returned an incomplete response because its output "
++                "limit was reached."
++            ),
++        },
++        {"provider": "openrouter", "status": "success", "error": ""},
++    ]
++
++
+ def test_rate_limit_cooldown_skips_provider_on_next_turn_without_extra_call():
+     router, providers = _free_first_router()
+     providers["groq"].generation_error = LLMRateLimitError(
+--- /tmp/verifylong.before	2026-08-19 07:27:35.974167973 +0000
++++ scripts/verify_long_session_hardening.py	2026-08-19 07:27:37.240866609 +0000
+@@ -38,6 +38,16 @@
+         and runtime_architecture.parameters.get("self_query_type") == "runtime_architecture",
+     )
+ 
++    natural_runtime_architecture = mary.cognition.detect_intent(
++        "Who are you, and how do language models fit into your architecture?"
++    )
++    check(
++        "natural compound architecture question stays deterministic/local",
++        natural_runtime_architecture.intent_type == IntentType.SELF_QUERY
++        and natural_runtime_architecture.parameters.get("self_query_type")
++        == "runtime_architecture",
++    )
++
+     creator_memory = mary.cognition.detect_intent(
+         "Do you remember anything about me?"
+     )
+--- /tmp/verifyroute.before	2026-08-19 07:27:35.983625281 +0000
++++ scripts/verify_provider_routing_guarantees.py	2026-08-19 07:27:37.240945511 +0000
+@@ -8,9 +8,16 @@
+ 
+ 
+ class FakeProvider(LLMInterface):
+-    def __init__(self, name: str, *, error: Exception | None = None) -> None:
++    def __init__(
++        self,
++        name: str,
++        *,
++        error: Exception | None = None,
++        finish_reason: str | None = None,
++    ) -> None:
+         self.name = name
+         self.error = error
++        self.finish_reason = finish_reason
+         self.calls = 0
+ 
+     def generate(self, messages, temperature=0.7, max_tokens=2048):
+@@ -21,6 +28,7 @@
+             content=f"{self.name} ok",
+             provider=self.name,
+             model=f"fake-{self.name}",
++            finish_reason=self.finish_reason,
+         )
+ 
+     def is_available(self):
+@@ -95,6 +103,17 @@
+     print("PASS  private/offline policy is Ollama-only")
+ 
+     router, providers = make_router()
++    providers["groq"].error = RuntimeError("groq failed")
++    providers["gemini"].finish_reason = "length"
++    response = router.generate(message)
++    require(response.provider == "openrouter", "Truncated Gemini response was incorrectly accepted.")
++    require(
++        router.last_generation_attempts[1]["status"] == "incomplete",
++        "Incomplete-response metadata missing.",
++    )
++    print("PASS  output-limit truncation fails over instead of reaching Mary")
++
++    router, providers = make_router()
+     providers["groq"].error = LLMRateLimitError("quota reached", provider="groq")
+     router.generate(message)
+     router.generate(message)

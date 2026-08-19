@@ -940,6 +940,10 @@ class CognitiveOrchestrator:
 
         runtime_markers = (
             "your underlying architecture",
+            # Natural architecture questions should never fall through to a
+            # language model that can invent its own provider-centric identity.
+            # Keep this deliberately scoped to *Mary's* architecture.
+            "your architecture",
             "your architecture running",
             "model are you using",
             "model are you running",

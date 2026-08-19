@@ -1,69 +1,24 @@
-MARYV2 V2 RELEASE GATE CONSOLIDATION
-====================================
+MARYV2 END-TO-END RUNTIME ACCEPTANCE HOTFIX
 
-Source checkpoint before this patch:
-- 401 passed, 1 skipped
-- 43/43 diagnostics PASS
-- Provider Routing Guarantees PASS
+Replace/add only the included files in the matching MaryV2 paths.
+Do not replace .env, data/, memories, developed-self state, or runtime data.
 
-FILES
------
-REPLACE:
-  scripts/run_release_verification.py
-  scripts/verify_performance_pass_install.py
+This hotfix addresses two issues exposed by the real persistent-runtime acceptance session:
+1. Natural compound questions such as
+   "Who are you, and how do language models fit into your architecture?"
+   now route to Mary's deterministic local runtime-architecture response.
+2. Provider responses ending with an output-limit finish reason (for example
+   finish_reason="length") are no longer accepted as successful dialogue.
+   The router records the attempt as incomplete and continues failover.
 
-ADD:
-  tests/scripts/test_release_verification.py
-
-Do not replace the project folder wholesale.
-Do not modify .env, data/, memories, or runtime persistence files.
-
-WHAT THIS CHANGES
------------------
-1. The release gate is deterministic/offline by default.
-2. MARY_RUN_LIVE_TESTS is forcibly removed from the normal pytest child environment.
-3. All 21 current verify_*.py milestone verifiers are explicitly registered.
-4. A test guarantees new verifier scripts cannot silently be omitted from the gate.
-5. Live LLM testing is separate and explicit with --live-llm.
-6. Live web testing remains separate and explicit with --live-web.
-7. The stale Performance Pass verifier is updated for the current TurnMindState/performance prompt shape.
-8. Verifier CLI arguments are isolated so standalone argparse verifiers work inside the consolidated runner.
-
-VERIFY IN VS CODE POWERSHELL
-----------------------------
-From the MaryV2 repository with .venv active:
-
-python -m pytest tests/scripts/test_release_verification.py -q
-
-Expected:
-  5 passed
-
-python -m scripts.verify_performance_pass_install
-
-Expected final line:
-  MARYV2 PERFORMANCE PASS V1 INSTALLED CORRECTLY
-
+Verification:
+python -m pytest tests/integration/test_long_session_hardening.py tests/llm/test_provider_routing_guarantees.py -q
+python -m scripts.verify_long_session_hardening
+python -m scripts.verify_provider_routing_guarantees
 python -m pytest tests -q
-
-Expected:
-  406 passed, 1 skipped
-
 python -m scripts.run_release_verification --offline
 
-Expected final summary:
-  every item PASS
-  Release verification PASSED (deterministic/offline gate).
-
-The release gate itself includes the 43/43 diagnostics check.
-
-OPTIONAL LIVE CHECKS
---------------------
-Do not use these for normal deterministic verification.
-
-Dedicated live LLM smoke after the offline gate:
-  python -m scripts.run_release_verification --live-llm
-
-Explicit live web research after the offline gate:
-  python -m scripts.run_release_verification --live-web
-
---offline cannot be combined with either live flag.
+Expected full-suite checkpoint after this hotfix:
+408 passed, 1 skipped
+43/43 diagnostics PASS
+release gate PASS

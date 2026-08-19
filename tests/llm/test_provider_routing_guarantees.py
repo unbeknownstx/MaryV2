@@ -22,11 +22,13 @@ class FakeProvider(LLMInterface):
         available: bool = True,
         availability_error: Exception | None = None,
         generation_error: Exception | None = None,
+        finish_reason: str | None = None,
     ) -> None:
         self.name = name
         self.available = available
         self.availability_error = availability_error
         self.generation_error = generation_error
+        self.finish_reason = finish_reason
         self.availability_checks = 0
         self.calls = 0
 
@@ -38,6 +40,7 @@ class FakeProvider(LLMInterface):
             content=f"{self.name} response",
             provider=self.name,
             model=f"fake-{self.name}",
+            finish_reason=self.finish_reason,
         )
 
     def is_available(self):
@@ -209,6 +212,29 @@ def test_availability_check_failure_is_skipped_as_unavailable():
         "status": "unavailable",
         "error": "health check failed",
     }
+
+
+def test_incomplete_length_response_falls_through_instead_of_being_spoken():
+    router, providers = _free_first_router()
+    providers["groq"].generation_error = RuntimeError("groq failed")
+    providers["gemini"].finish_reason = "length"
+
+    response = router.generate(_message())
+
+    assert response.provider == "openrouter"
+    assert providers["gemini"].calls == 1
+    assert router.last_generation_attempts == [
+        {"provider": "groq", "status": "failed", "error": "groq failed"},
+        {
+            "provider": "gemini",
+            "status": "incomplete",
+            "error": (
+                "Provider returned an incomplete response because its output "
+                "limit was reached."
+            ),
+        },
+        {"provider": "openrouter", "status": "success", "error": ""},
+    ]
 
 
 def test_rate_limit_cooldown_skips_provider_on_next_turn_without_extra_call():

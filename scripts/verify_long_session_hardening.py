@@ -38,6 +38,16 @@ def main() -> None:
         and runtime_architecture.parameters.get("self_query_type") == "runtime_architecture",
     )
 
+    natural_runtime_architecture = mary.cognition.detect_intent(
+        "Who are you, and how do language models fit into your architecture?"
+    )
+    check(
+        "natural compound architecture question stays deterministic/local",
+        natural_runtime_architecture.intent_type == IntentType.SELF_QUERY
+        and natural_runtime_architecture.parameters.get("self_query_type")
+        == "runtime_architecture",
+    )
+
     creator_memory = mary.cognition.detect_intent(
         "Do you remember anything about me?"
     )

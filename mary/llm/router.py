@@ -525,6 +525,30 @@ class LLMRouter:
                 last_error = error
                 continue
 
+            finish_reason = str(
+                response.finish_reason or ""
+            ).strip().lower()
+            if finish_reason in {
+                "length",
+                "max_tokens",
+                "max_output_tokens",
+            }:
+                error = LLMProviderError(
+                    (
+                        "Provider returned an incomplete response because "
+                        "its output limit was reached."
+                    ),
+                    provider=provider_name,
+                    retryable=True,
+                )
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "incomplete",
+                    "error": str(error),
+                })
+                last_error = error
+                continue
+
             self.clear_provider_cooldown(
                 provider_name
             )

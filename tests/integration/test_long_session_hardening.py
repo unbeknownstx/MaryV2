@@ -156,6 +156,28 @@ def test_runtime_architecture_query_is_local_and_deterministic():
     assert result.reasoning.metadata.get("llm_skipped") is True
 
 
+def test_natural_compound_runtime_architecture_query_stays_local():
+    router = SequenceRouter([
+        "I am a persona built on top of a language model and I love to doodle."
+    ])
+    mary = _mary(router)
+
+    calls_before = len(router.calls)
+    result = mary.process(
+        "Who are you, and how do language models fit into your architecture?"
+    )
+
+    assert result.intent.intent_type == IntentType.SELF_QUERY
+    assert result.intent.parameters["self_query_type"] == "runtime_architecture"
+    assert len(router.calls) == calls_before
+    lowered = result.final_response.lower()
+    assert "python architecture" in lowered
+    assert "generation engine" in lowered
+    assert "built on top of a language model" not in lowered
+    assert "doodle" not in lowered
+    assert result.reasoning.metadata.get("llm_skipped") is True
+
+
 def test_runtime_architecture_reports_previous_generation_metadata():
     router = SequenceRouter(["A normal generated response."])
     mary = _mary(router)
