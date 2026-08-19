@@ -98,9 +98,15 @@ def main() -> int:
     _pass("TurnMindState carries a real acting/performance plan")
 
     first_prompt = router.calls[0][0]
-    if "performing Mary Cosma's dialogue" not in first_prompt[0].content:
+    system_prompt = str(first_prompt[0].content)
+    user_prompt = str(first_prompt[1].content)
+    if "performing Mary Cosma's dialogue" not in system_prompt:
         raise AssertionError("reasoning system prompt is not performance-first")
-    if "Performance Director" not in first_prompt[1].content:
+    if (
+        "Performance direction:" not in system_prompt
+        or "Compact TurnMindState" not in user_prompt
+        or "'performance':" not in user_prompt
+    ):
         raise AssertionError("performance plan is not supplied to reasoning")
     _pass("reasoning asks the model to perform Mary, not write support copy")
 

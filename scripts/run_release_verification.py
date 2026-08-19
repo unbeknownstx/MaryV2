@@ -1,23 +1,34 @@
 """
 MaryV2 release verification runner.
 
-This script is intentionally explicit about live external access.
+The release gate is offline and deterministic by default.
 
-Default behavior:
+Default / --offline behavior:
     - compile Mary/source files
-    - run the full pytest suite (including the configured live LLM test)
+    - run the full normal pytest suite with MARY_RUN_LIVE_TESTS forcibly disabled
     - run system diagnostics
-    - run local safety smoke checks
+    - run every current deterministic verify_*.py milestone verifier
+    - run local tool-safety smoke checks
 
-Use --offline to skip the live LLM pytest module.
-Use --live-web to additionally perform one explicit live Tavily/Mary research
-request.  The live-web check is never run unless the creator supplies that flag.
+Optional live checks are separate and explicit:
+    --live-llm
+        Run only tests/conversation/test_live_pipeline.py with
+        MARY_RUN_LIVE_TESTS=1 after the offline gate.
+
+    --live-web
+        Perform one explicit live Tavily/Mary research request after the
+        offline gate.
+
+Use --offline when you want to state the offline-only intent explicitly.
+It is also the default when no live flag is supplied.
 """
 
 from __future__ import annotations
 
 import argparse
 import compileall
+import importlib
+import os
 import subprocess
 import sys
 import tempfile
@@ -30,6 +41,34 @@ from mary.tools.manager import ToolManager
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LIVE_LLM_TEST = "tests/conversation/test_live_pipeline.py"
+
+# Keep this list explicit. New verify_*.py scripts must be deliberately added
+# here rather than silently entering the release gate. A unit test guards that
+# the registry stays synchronized with the scripts directory.
+OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
+    ("memory_restart", "scripts.verify_memory_restart"),
+    ("provider_resilience", "scripts.verify_resilience_install"),
+    ("self_introspection", "scripts.verify_self_introspection_install"),
+    ("creator_directives", "scripts.verify_creator_directives_install"),
+    ("relationship_development", "scripts.verify_relationship_development_install"),
+    ("curiosity_development", "scripts.verify_curiosity_development_install"),
+    ("priority_grounding", "scripts.verify_priority_grounding_install"),
+    ("emotion_appraisal", "scripts.verify_emotion_appraisal_install"),
+    ("desktop_alpha", "scripts.verify_desktop_alpha_install"),
+    ("voice_input", "scripts.verify_voice_input_install"),
+    ("conversation_runtime", "scripts.verify_conversation_runtime_install"),
+    ("turn_mind", "scripts.verify_turn_mind_integration_install"),
+    ("conversation_continuity", "scripts.verify_conversation_continuity_install"),
+    ("context_lifecycle", "scripts.verify_context_lifecycle"),
+    ("performance_pass", "scripts.verify_performance_pass_install"),
+    ("long_session_hardening", "scripts.verify_long_session_hardening"),
+    ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
+    ("preference_promotion", "scripts.verify_preference_promotion"),
+    ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
+    ("multi_provider_router", "scripts.verify_multi_provider_router_install"),
+    ("provider_routing_guarantees", "scripts.verify_provider_routing_guarantees"),
+)
 
 
 def _heading(title: str) -> None:
@@ -39,8 +78,25 @@ def _heading(title: str) -> None:
     print("=" * 80)
 
 
+def _offline_environment() -> dict[str, str]:
+    """Return a child-process environment that cannot enable live LLM pytest."""
+
+    environment = os.environ.copy()
+    environment.pop("MARY_RUN_LIVE_TESTS", None)
+    return environment
+
+
+def discover_verifier_modules() -> tuple[str, ...]:
+    """Return all verify_*.py modules currently present in scripts/."""
+
+    return tuple(
+        f"scripts.{path.stem}"
+        for path in sorted((ROOT / "scripts").glob("verify_*.py"))
+    )
+
+
 def run_compile_check() -> bool:
-    _heading("1. PYTHON COMPILE CHECK")
+    _heading("PYTHON COMPILE CHECK")
     ok = True
     for target in (ROOT / "mary", ROOT / "scripts"):
         ok = compileall.compile_dir(
@@ -59,30 +115,27 @@ def run_compile_check() -> bool:
     return bool(ok)
 
 
-def run_pytest(*, offline: bool) -> bool:
-    _heading("2. PYTEST")
-    command = [
-        sys.executable,
-        "-m",
-        "pytest",
-        "tests",
-        "-q",
-    ]
-    if offline:
-        command.extend([
-            "--ignore=tests/conversation/test_live_pipeline.py",
-        ])
+def run_pytest() -> bool:
+    """Run the canonical deterministic suite with live LLM testing disabled."""
 
+    _heading("PYTEST - DETERMINISTIC / OFFLINE")
     completed = subprocess.run(
-        command,
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests",
+            "-q",
+        ],
         cwd=ROOT,
+        env=_offline_environment(),
         check=False,
     )
     return completed.returncode == 0
 
 
 def run_diagnostics() -> bool:
-    _heading("3. SYSTEM DIAGNOSTICS")
+    _heading("SYSTEM DIAGNOSTICS")
     mary = Mary()
     diagnostics = MaryDiagnostics(mary)
     print(diagnostics.report())
@@ -93,131 +146,35 @@ def run_diagnostics() -> bool:
     )
 
 
-def run_resilience_install_check() -> bool:
-    _heading("4. PROVIDER RESILIENCE CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_resilience_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
+def run_verifier(name: str, module: str) -> bool:
+    """Run one registered deterministic milestone verifier in-process."""
 
+    _heading(f"MILESTONE VERIFIER - {name.replace('_', ' ').upper()}")
+    original_argv = sys.argv[:]
+    try:
+        # Some standalone verifiers define their own argparse options. They
+        # must not inherit release-runner flags such as --offline.
+        sys.argv = [module]
+        verifier = importlib.import_module(module)
+        result = verifier.main()
+    except SystemExit as exc:
+        code = exc.code
+        return code is None or code == 0
+    except Exception as exc:
+        print(f"FAIL: {type(exc).__name__}: {exc}")
+        return False
+    finally:
+        sys.argv = original_argv
 
-def run_self_introspection_install_check() -> bool:
-    _heading("5. SELF-INTROSPECTION CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_self_introspection_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_creator_directive_install_check() -> bool:
-    _heading("6. CREATOR DIRECTIVE CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_creator_directives_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_relationship_development_install_check() -> bool:
-    _heading("7. RELATIONSHIP DEVELOPMENT CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_relationship_development_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_curiosity_development_install_check() -> bool:
-    _heading("8. CURIOSITY DEVELOPMENT CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_curiosity_development_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_priority_grounding_install_check() -> bool:
-    _heading("9. PRIORITY GROUNDING CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_priority_grounding_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_emotion_appraisal_install_check() -> bool:
-    _heading("10. CONVERSATION EMOTION APPRAISAL CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_emotion_appraisal_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_voice_input_install_check() -> bool:
-    _heading("11. DESKTOP VOICE INPUT CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_voice_input_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def run_conversation_runtime_install_check() -> bool:
-    _heading("12. DESKTOP CONVERSATION RUNTIME CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_conversation_runtime_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-
-def run_turn_mind_integration_check() -> bool:
-    _heading("13. TURN-MIND INTEGRATION CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_turn_mind_integration_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-
-def run_conversation_continuity_check() -> bool:
-    _heading("14. CONVERSATION CONTINUITY V2 CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_conversation_continuity_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-
-def run_performance_pass_check() -> bool:
-    _heading("15. PERFORMANCE PASS V1 CHECK")
-    completed = subprocess.run(
-        [sys.executable, "-m", "scripts.verify_performance_pass_install"],
-        cwd=ROOT,
-        check=False,
-    )
-    return completed.returncode == 0
+    if result is None:
+        return True
+    if isinstance(result, int):
+        return result == 0
+    return bool(result)
 
 
 def run_local_safety_smoke() -> bool:
-    _heading("16. LOCAL TOOL SAFETY SMOKE")
+    _heading("LOCAL TOOL SAFETY SMOKE")
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -285,8 +242,35 @@ def run_local_safety_smoke() -> bool:
     return True
 
 
+def run_live_llm() -> bool:
+    """Run the one explicitly enabled real-provider conversation smoke test."""
+
+    _heading("EXPLICIT LIVE LLM PIPELINE")
+    print(
+        "This check is running because --live-llm was supplied. "
+        "It runs only the dedicated live conversation test."
+    )
+
+    environment = os.environ.copy()
+    environment["MARY_RUN_LIVE_TESTS"] = "1"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            LIVE_LLM_TEST,
+            "-q",
+            "-s",
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def run_live_web() -> bool:
-    _heading("17. EXPLICIT LIVE WEB + GROUNDED RESPONSE")
+    _heading("EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "
         "It performs one explicit public web search."
@@ -299,14 +283,9 @@ def run_live_web() -> bool:
             auto_save=False,
             load_memory=False,
         )
-        try:
-            result = app.run(
-                "search the web for the latest Python news"
-            )
-        finally:
-            # auto_save=False means close() may return False with a temp path
-            # that has not been saved. That is not relevant to this smoke test.
-            pass
+        result = app.run(
+            "search the web for the latest Python news"
+        )
 
         if not result.success:
             print(f"FAIL: {result.error}")
@@ -327,41 +306,50 @@ def run_live_web() -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run MaryV2 release verification checks."
+        description="Run the canonical MaryV2 release verification gate."
     )
     parser.add_argument(
         "--offline",
         action="store_true",
-        help="Skip the configured live LLM pytest module.",
+        help=(
+            "Run only the deterministic/offline release gate. This is already "
+            "the default and is provided for explicitness."
+        ),
+    )
+    parser.add_argument(
+        "--live-llm",
+        action="store_true",
+        help=(
+            "After the offline gate, intentionally run the dedicated real LLM "
+            "conversation smoke test."
+        ),
     )
     parser.add_argument(
         "--live-web",
         action="store_true",
         help=(
-            "Perform one explicit live web search through Mary after the "
-            "offline/system checks."
+            "After the offline gate, intentionally perform one public web "
+            "research request through Mary."
         ),
     )
     args = parser.parse_args()
 
-    checks = [
+    if args.offline and (args.live_llm or args.live_web):
+        parser.error("--offline cannot be combined with --live-llm or --live-web")
+
+    checks: list[tuple[str, bool]] = [
         ("compile", run_compile_check()),
-        ("pytest", run_pytest(offline=args.offline)),
+        ("pytest", run_pytest()),
         ("diagnostics", run_diagnostics()),
-        ("resilience", run_resilience_install_check()),
-        ("self_introspection", run_self_introspection_install_check()),
-        ("creator_directives", run_creator_directive_install_check()),
-        ("relationship_development", run_relationship_development_install_check()),
-        ("curiosity_development", run_curiosity_development_install_check()),
-        ("priority_grounding", run_priority_grounding_install_check()),
-        ("emotion_appraisal", run_emotion_appraisal_install_check()),
-        ("voice_input", run_voice_input_install_check()),
-        ("conversation_runtime", run_conversation_runtime_install_check()),
-        ("turn_mind", run_turn_mind_integration_check()),
-        ("conversation_continuity", run_conversation_continuity_check()),
-        ("performance_pass", run_performance_pass_check()),
-        ("local_safety", run_local_safety_smoke()),
     ]
+
+    for name, module in OFFLINE_VERIFIERS:
+        checks.append((name, run_verifier(name, module)))
+
+    checks.append(("local_safety", run_local_safety_smoke()))
+
+    if args.live_llm:
+        checks.append(("live_llm", run_live_llm()))
 
     if args.live_web:
         checks.append(("live_web", run_live_web()))
@@ -377,7 +365,10 @@ def main() -> int:
         return 1
 
     print()
-    print("Release verification PASSED.")
+    if args.live_llm or args.live_web:
+        print("Release verification PASSED, including requested live checks.")
+    else:
+        print("Release verification PASSED (deterministic/offline gate).")
     return 0
 
 
