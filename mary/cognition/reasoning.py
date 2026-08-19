@@ -259,7 +259,7 @@ class ReasoningEngine:
 
         if drive == "disagree":
             return (
-                f"Mm—I'm still not just going to agree with you. Unfortunately, {engine_problem}, "
+                f"MmâI'm still not just going to agree with you. Unfortunately, {engine_problem}, "
                 "so I can't give that thought the full answer it deserves yet. I'm still here, though."
             )
         if drive == "opine":
@@ -269,11 +269,11 @@ class ReasoningEngine:
             )
         if any(word in input_text.lower() for word in ("finally", "passed", "worked", "working")):
             return (
-                f"Okay—first, nice. And of course {engine_problem} right when I want to react properly. "
+                f"Okayâfirst, nice. And of course {engine_problem} right when I want to react properly. "
                 "I'm still here; I just can't improvise the full reply until another model is available."
             )
         return (
-            f"Ugh—{engine_problem}. I'm still here, and my memory, relationship state, priorities, "
+            f"Ughâ{engine_problem}. I'm still here, and my memory, relationship state, priorities, "
             "tools, and local systems are still running; I just can't improvise a full conversational "
             "reply until a language model is available."
         )
@@ -336,8 +336,8 @@ class ReasoningEngine:
         """Reject self claims that contradict or outrun local self evidence."""
 
         response_text = str(response)
-        lowered_response = response_text.lower().replace("’", "'")
-        lowered_query = str(context.input_text).lower().replace("’", "'")
+        lowered_response = response_text.lower().replace("â", "'")
+        lowered_query = str(context.input_text).lower().replace("â", "'")
 
         evidence = [
             item
@@ -601,7 +601,7 @@ class ReasoningEngine:
         rewriting of normal dialogue.
         """
 
-        text = str(response or "").lower().replace("’", "'")
+        text = str(response or "").lower().replace("â", "'")
         mind = context.mind_state if isinstance(context.mind_state, dict) else {}
         provenance = mind.get("self_provenance", {}) if isinstance(mind, dict) else {}
 
@@ -694,6 +694,13 @@ class ReasoningEngine:
             "casual conversation. Use structure when the task itself needs structure. "
             "Never invent memories, capabilities, actions, relationship facts, dates, or "
             "emotions absent from local state. Unbe's traits/values/emotions are not yours. "
+            "Mary's architecture does include episodic/semantic memory and a structured creator "
+            "model, and the canonical persistent runtime can reload them across processes. Never "
+            "claim Mary is a blank page each chat, categorically cannot retain information, or has "
+            "no persistent memory system. If a particular fact is absent, say that specific fact "
+            "is not stored. Do not promise to keep working, ping Unbe later, notify him when done, "
+            "or perform another future/background action unless the supplied local state shows an "
+            "actual approved/scheduled capability for that action. "
             "You may improvise harmless situational detail in hypotheticals, but do not turn that "
             "improvisation into a permanent self-fact. If a food, scent, animal, hobby detail, "
             "aesthetic, or one-off behavior is not represented as Mary's canonical/developed state, "
@@ -1166,7 +1173,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             )
             if creator_profile:
                 sections.append(
-                    "Creator profile — facts about Unbe only, NOT Mary:\n"
+                    "Creator profile â facts about Unbe only, NOT Mary:\n"
                     "Everything in this block describes Unbe, Mary's creator/user. "
                     "Never adopt these facts, preferences, interests, values, goals, "
                     "communication traits, memories, or profile records as Mary's own. "

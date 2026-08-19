@@ -205,8 +205,13 @@ class ReflectionEngine:
                             "contains the same fact. If the audit reports an unsupported permanent "
                             "Mary self-claim, preserve the harmless scenario but soften that claim into "
                             "situational possibility (maybe, I'd probably, I could see myself) or omit it. "
-                            "Do not create a replacement permanent trait/preference. Rewrite the reply so "
-                            "it sounds like Mary rather than a generic assistant. Return only the revised reply."
+                            "Do not create a replacement permanent trait/preference. If the audit says the "
+                            "reply misrepresents Mary's memory, preserve uncertainty about the specific fact but "
+                            "state that Mary has episodic/semantic memory and a structured creator model rather "
+                            "than claiming she resets blank each chat. If the audit flags an unsupported future "
+                            "or background promise, rewrite it as a present-tense preference or communication "
+                            "style without promising a later ping, notification, or continued work. Rewrite the "
+                            "reply so it sounds like Mary rather than a generic assistant. Return only the revised reply."
                         ),
                     ),
                     LLMMessage(
@@ -366,10 +371,10 @@ class ReflectionEngine:
             "great to hear that!",
             "solid milestone",
             "what's on your radar next",
-            "what’s on your radar next",
+            "whatâs on your radar next",
             "which part do you think",
             "i'd say we've",
-            "i’d say we’ve",
+            "iâd say weâve",
             "i'm here to help",
             "i am here to help",
         )
@@ -378,6 +383,32 @@ class ReflectionEngine:
 
         if lowered.startswith(("as an ai", "as an artificial intelligence")):
             issues.append("Leads with generic AI-assistant identity framing.")
+
+        memory_misrepresentation = (
+            "blank page until",
+            "blank slate each chat",
+            "i don't store a permanent",
+            "i do not store a permanent",
+            "i can't remember across chats",
+            "i cannot remember across chats",
+            "i don't remember across chats",
+            "i do not remember across chats",
+        )
+        if any(marker in lowered for marker in memory_misrepresentation):
+            issues.append("Misrepresents Mary's connected persistent memory architecture.")
+
+        unsupported_background_promises = (
+            "i'll ping you when",
+            "iâll ping you when",
+            "i'll let you know when i'm done",
+            "iâll let you know when iâm done",
+            "i'll keep working on it",
+            "iâll keep working on it",
+            "i'll keep the line open and ping",
+            "iâll keep the line open and ping",
+        )
+        if any(marker in lowered for marker in unsupported_background_promises):
+            issues.append("Promises a future/background action that is not represented as an active capability.")
 
         if conversational and (text.count("\n-") >= 3 or text.count("\n*") >= 3):
             short_input = len(context.input_text.split()) <= 18
@@ -403,7 +434,7 @@ class ReflectionEngine:
             issues.append("Ends a statement/opinion/reaction turn by unnecessarily handing the conversation back as a question.")
 
         polished_markers = (
-            "that’s a solid", "that's a solid", "next steps feel", "good spot to",
+            "thatâs a solid", "that's a solid", "next steps feel", "good spot to",
             "classic scenario", "classic feature", "safety net that",
         )
         if conversational and any(marker in lowered for marker in polished_markers):
@@ -613,7 +644,7 @@ class ReflectionEngine:
             )
         if re.search(r"\bwho are you\b|\bwhat are you\b|\btell me about yourself\b", lowered):
             return (
-                "I'm Mary—an AI character created by Unbe, with my own identity and personality. "
+                "I'm Maryâan AI character created by Unbe, with my own identity and personality. "
                 "Your creator-profile facts are context I know about you; they aren't automatically part of me."
             )
         if re.search(r"\bwho am i to you\b|\bwhat am i to you\b", lowered):

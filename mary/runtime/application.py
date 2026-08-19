@@ -129,6 +129,56 @@ def format_pending_requests(application: "MaryApplication") -> str:
     return "\n".join(lines)
 
 
+def format_last_turn(result: Any) -> str:
+    """Return a compact debug view of the most recent Mary turn."""
+
+    if result is None:
+        return "There is no completed Mary turn to inspect yet."
+
+    try:
+        values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
+        cycle = values.get("cognitive_cycle")
+    except Exception:
+        cycle = None
+
+    if cycle is None:
+        return "The last pipeline result does not contain a cognitive-cycle debug record."
+
+    intent = getattr(cycle, "intent", None)
+    intent_name = (
+        getattr(getattr(intent, "intent_type", None), "value", None)
+        or "unknown"
+    )
+    reasoning = getattr(cycle, "reasoning", None)
+    reflection = getattr(cycle, "reflection", None)
+    reasoning_meta = dict(getattr(reasoning, "metadata", {}) or {})
+    reflection_meta = dict(getattr(reflection, "metadata", {}) or {})
+    usage = dict(reasoning_meta.get("usage", {}) or {})
+
+    attempts = reasoning_meta.get("provider_attempts", []) or []
+    attempt_text = ", ".join(
+        f"{item.get('provider')}={item.get('status')}"
+        for item in attempts
+        if isinstance(item, dict)
+    ) or "none"
+
+    lines = [
+        "Last Mary turn:",
+        f"- intent: {intent_name}",
+        f"- provider: {reasoning_meta.get('provider', 'local/system')}",
+        f"- model: {reasoning_meta.get('model', 'n/a')}",
+        f"- finish_reason: {reasoning_meta.get('finish_reason', 'n/a')}",
+        f"- prompt_tokens: {usage.get('prompt_tokens', 'n/a')}",
+        f"- completion_tokens: {usage.get('completion_tokens', 'n/a')}",
+        f"- reasoning_tokens: {usage.get('reasoning_tokens', 'n/a')}",
+        f"- attempts: {attempt_text}",
+        f"- self_grounded: {reasoning_meta.get('self_grounded', False)}",
+        f"- self_provenance_issue: {reasoning_meta.get('self_provenance_issue')}",
+        f"- reflection_mode: {reflection_meta.get('mode', 'n/a')}",
+    ]
+    return "\n".join(lines)
+
+
 def interactive_help(application: "MaryApplication") -> str:
     """Explain the difference between Mary's prompt and PowerShell."""
 
@@ -149,7 +199,8 @@ def interactive_help(application: "MaryApplication") -> str:
         "Run those in a VS Code PowerShell terminal instead. You can open a "
         "second terminal while Mary stays running.\n\n"
         "Inside Mary, `/pending` shows pending approvals. If exactly one request "
-        "is pending, simply type `approve` or `reject`.\n\n"
+        "is pending, simply type `approve` or `reject`. `/last` shows compact "
+        "debug metadata for Mary's most recent completed turn.\n\n"
         f"Mary's bounded workspace is: {workspace}"
     )
 
@@ -323,15 +374,26 @@ def run_interactive(
             {},
         )
 
-        print(
-            "LLM Provider: "
-            f"{cognition.get('llm', 'unknown')}"
-        )
+        strategy = str(cognition.get("routing_strategy", "configured"))
+        provider_order = cognition.get("provider_order", [])
 
-        print(
-            "LLM Model: "
-            f"{cognition.get('model', 'unknown')}"
-        )
+        if strategy == "free_first" and isinstance(provider_order, list):
+            print(f"LLM Strategy: {strategy}")
+            print("LLM Route: " + " -> ".join(str(item) for item in provider_order))
+            try:
+                local_model = mary.llm.get_provider("ollama").model_name()
+            except Exception:
+                local_model = "unavailable"
+            print(f"Local fallback: ollama / {local_model}")
+        else:
+            print(
+                "LLM Provider: "
+                f"{cognition.get('llm', 'unknown')}"
+            )
+            print(
+                "LLM Model: "
+                f"{cognition.get('model', 'unknown')}"
+            )
 
     except Exception as exc:
         print(
@@ -342,9 +404,11 @@ def run_interactive(
     print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help' for examples, '/pending' for approvals, or 'exit' to stop.")
+    print("Type '/help' for examples, '/pending' for approvals, '/last' for turn debug, or 'exit' to stop.")
     print("=" * 60)
     print()
+
+    last_result = None
 
     try:
         while True:
@@ -380,6 +444,10 @@ def run_interactive(
                 print(f"Mary: {format_pending_requests(app)}")
                 continue
 
+            if command in {"/last", "/debug", "last turn"}:
+                print(format_last_turn(last_result))
+                continue
+
             if looks_like_terminal_command(user_input):
                 print(f"Mary: {terminal_command_guidance(user_input)}")
                 continue
@@ -388,6 +456,7 @@ def run_interactive(
                 result = app.run(
                     user_input
                 )
+                last_result = result
 
                 if result.success:
                     response = result.output
