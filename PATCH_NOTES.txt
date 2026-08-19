@@ -1,69 +1,53 @@
-MaryV2 Self-Fact Provenance / Imagination Boundary Patch
-========================================================
+MaryV2 Cross-Process Persistence Patch
+======================================
 
-PURPOSE
+Purpose
 -------
-Make the distinction between Mary's durable self-state and temporary model
-improvisation explicit and enforceable.
+Proves that Mary's durable episodic/semantic memory survives a completely new
+Python interpreter process, while keeping direct Mary() construction free of
+implicit reads/writes for tests and dependency injection.
 
-WHAT CHANGED
-------------
-1. Added mary/identity/self_provenance.py
-   - canonical: authored/stable Mary facts
-   - developed: durable state changed through explicit development/experience
-   - situational: temporary model/dialogue imagination
-   - unknown: absent self facts remain unknown
-
-2. TurnMindState now carries self_provenance.
-   Model output is explicitly NOT a persistence source.
-
-3. Ordinary dialogue prompts now allow harmless hypothetical imagination while
-   forbidding invented permanent self-claims.
-
-4. Reasoning performs a conservative post-generation provenance audit for
-   especially strong unsupported wording such as:
-       "my favorite ... is ..."
-       "I've always loved ..."
-       "I'm a secret ..."
-
-5. Reflection reuses the existing revision path when that audit fires. It asks
-   the provider to keep the harmless scenario but soften/omit the invented
-   permanent self-claim. A second LLM call is spent only on these exceptional
-   drift cases.
-
-6. No generated dialogue is written into Biography or Preferences simply
-   because a provider said it.
-
-7. Diagnostics now include:
-       Identity: self_provenance
-
-VALIDATION IN PATCH WORKSPACE
------------------------------
-pytest:       349 passed, 1 skipped
-diagnostics: 42 passed, 0 warnings, 0 failed
-
-Your Windows environment has been running the previously-skipped test, so your
-expected count is approximately 350 passed after applying this patch.
-
-INSTALL
+Changes
 -------
-Copy/merge the included mary and tests folders into your MaryV2 repo.
-Do NOT overwrite .env or data.
+1. mary/runtime/application.py
+   - Adds create_persistent_mary(...), a standalone Mary factory that enables
+     the same durable memory behavior as the canonical Mary application.
+   - Mary() remains intentionally side-effect-light.
 
-TEST
-----
+2. scripts/verify_memory_restart.py
+   - Spawns TWO separate Python processes.
+   - Process 1 stores a temporary probe memory and exits.
+   - Process 2 starts a fresh Mary application, reloads the same file, and
+     recalls the probe.
+   - Uses an OS temporary file, so data/memory/memory.json is not modified.
+
+3. tests/runtime/test_persistent_mary.py
+   - Regression coverage for create_persistent_mary and reload behavior.
+
+Install
+-------
+Copy/merge the mary, scripts, and tests folders into the MaryV2 repository.
+Do not overwrite .env or data.
+
+Verify
+------
 python -m pytest tests -q
 python -m scripts.run_diagnostics
+python -m scripts.verify_memory_restart
 
-LIVE TEST
----------
-python -c "from dotenv import load_dotenv; load_dotenv(); from mary.core.mary import Mary; m=Mary(); r=m.process('Hey Mary, if you had a totally lazy spa day what would you do?'); print(); print('RESPONSE:', r.final_response); print(); print('META:', r.reasoning.metadata); print(); print('REFLECTION:', r.reflection.metadata)"
+Expected restart verifier ending:
+RESULT: PASS
+A completely new Python process reloaded and recalled Mary's memory.
 
-Look for:
-    self_provenance_policy: model_output_is_situational_until_promoted
+Persistent one-line/debug usage
+-------------------------------
+Instead of:
+    from mary.core.mary import Mary
+    m = Mary()
 
-Normally:
-    self_provenance_issue: None
+Use:
+    from mary.runtime.application import create_persistent_mary
+    m = create_persistent_mary()
 
-If a provider invents a strong permanent self-claim, self_provenance_issue will
-explain it and Reflection should revise the response without persisting it.
+The canonical interactive runtime already persists automatically:
+    python -m scripts.run_mary

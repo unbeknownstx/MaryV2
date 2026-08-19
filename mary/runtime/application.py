@@ -191,6 +191,30 @@ class MaryApplication:
         return self.save()
 
 
+def create_persistent_mary(
+    *,
+    memory_path: str | Path | None = None,
+    auto_save: bool = True,
+    load_memory: bool = True,
+) -> Mary:
+    """
+    Construct a Mary coordinator with durable memory enabled.
+
+    ``Mary()`` intentionally remains a low-level, side-effect-light
+    coordinator constructor so unit tests and dependency-injection callers do
+    not silently read or write the creator's real memory files.  Scripts that
+    want a standalone Mary object *with* the same persistence behavior as the
+    canonical application runtime should use this factory instead.
+    """
+
+    return create_application(
+        memory_path=memory_path,
+        auto_save=auto_save,
+        load_memory=load_memory,
+        name="mary_persistent",
+    ).mary
+
+
 def create_application(
     *,
     mary: Mary | None = None,
