@@ -196,6 +196,7 @@ class TurnMindStateBuilder:
         intent: Intent | None,
         relevant_memories: list[Any] | None = None,
         recent_conversation: list[dict[str, str]] | None = None,
+        context_lifecycle: dict[str, Any] | None = None,
     ) -> TurnMindState:
         intent_type = (
             intent.intent_type
@@ -209,7 +210,10 @@ class TurnMindStateBuilder:
         relationship = self._relationship_snapshot()
         agency = self._agency_snapshot()
         emotion = self._emotion_snapshot()
-        conversation = self._conversation_snapshot(recent_conversation or [])
+        conversation = self._conversation_snapshot(
+            recent_conversation or [],
+            context_lifecycle=context_lifecycle,
+        )
         continuity = self.continuity.build(
             input_text=input_text,
             intent_type=intent_type,
@@ -566,7 +570,12 @@ class TurnMindStateBuilder:
             ),
         }
 
-    def _conversation_snapshot(self, recent: list[dict[str, str]]) -> dict[str, Any]:
+    def _conversation_snapshot(
+        self,
+        recent: list[dict[str, str]],
+        *,
+        context_lifecycle: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         normalized = [
             {
                 "role": str(item.get("role", "")),
@@ -588,6 +597,7 @@ class TurnMindStateBuilder:
             "last_user_message": last_user,
             "last_mary_response": last_mary,
             "turn_number": int(getattr(getattr(self.dialogue, "state", None), "turn_number", 0) or 0),
+            "lifecycle": dict(context_lifecycle or {}),
         }
 
     def _build_disposition(

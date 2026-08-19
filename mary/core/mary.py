@@ -104,6 +104,7 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.code_change import CodeChangePlanner
 from mary.cognition.self_introspection import SelfIntrospection
 from mary.cognition.mind_state import TurnMindStateBuilder
+from mary.cognition.context_lifecycle import ConversationContextLifecycle
 from mary.cognition.intent import Intent, IntentType
 
 
@@ -426,6 +427,11 @@ class Mary:
             dialogue=self.dialogue,
         )
 
+        # Active dialogue history remains owned by DialogueManager. The context
+        # lifecycle chooses only the bounded slice that cognition should send to
+        # an LLM on each turn; it never creates durable memory by itself.
+        self.context_lifecycle = ConversationContextLifecycle()
+
         # Conversation continuity is owned by the TurnMind builder so there is
         # only one authoritative drive/question-budget implementation.
         self.continuity = self.turn_mind.continuity
@@ -449,8 +455,8 @@ class Mary:
 
         # Capture the conversation that existed *before* this turn so the
         # current user message is not duplicated in LLM context.
-        recent_conversation = self.dialogue.messages_for_llm(
-            limit=10
+        session_history = self.dialogue.messages_for_llm(
+            limit=None
         )
 
         intent = self._detect_intent(
@@ -460,8 +466,12 @@ class Mary:
         context = self._build_context(
             input_text,
             intent=intent,
-            recent_conversation=recent_conversation,
+            recent_conversation=session_history,
         )
+        # From this point forward, "recent_conversation" means the bounded
+        # LLM-facing window selected by the context lifecycle, not the entire
+        # in-session transcript.
+        recent_conversation = list(context.get("conversation", []))
 
         self.dialogue.begin_turn(
             input_text,
@@ -742,6 +752,22 @@ class Mary:
             result.metadata["dialogue_recorded"] = False
             result.metadata["dialogue_error"] = f"{type(exc).__name__}: {exc}"
 
+        try:
+            conversation_state = (
+                result.context.mind_state.get("conversation", {})
+                if isinstance(result.context.mind_state, dict)
+                else {}
+            )
+            lifecycle = (
+                conversation_state.get("lifecycle", {})
+                if isinstance(conversation_state, dict)
+                else {}
+            )
+            if isinstance(lifecycle, dict) and lifecycle:
+                result.metadata["context_lifecycle"] = dict(lifecycle)
+        except Exception:
+            pass
+
         return result
 
     def _apply_conversation_emotion(
@@ -811,12 +837,22 @@ class Mary:
         memory_context = self.memory.build_context(
             input_text
         )
-        conversation = list(recent_conversation or [])
+
+        lifecycle_window = self.context_lifecycle.select(
+            recent_conversation or []
+        )
+        conversation = [
+            dict(item)
+            for item in lifecycle_window.messages
+        ]
+        lifecycle_context = lifecycle_window.to_dict()
+
         mind_state = self.turn_mind.build(
             input_text=input_text,
             intent=intent,
             relevant_memories=memory_context.get("relevant_memories", []),
             recent_conversation=conversation,
+            context_lifecycle=lifecycle_context,
         )
 
         return {
@@ -824,6 +860,7 @@ class Mary:
             "user": self._user_context(),
             "personality": self._personality_context(),
             "conversation": conversation,
+            "context_lifecycle": lifecycle_context,
             "mind_state": mind_state.prompt_view(),
         }
 
@@ -2574,6 +2611,7 @@ class Mary:
                 "reasoning": True,
                 "reflection": True,
                 "turn_mind": True,
+                "context_lifecycle": True,
                 "llm": self.llm.provider_name(),
                 "model": self.llm.model_name(),
             },

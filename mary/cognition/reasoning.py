@@ -957,6 +957,17 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "top_priorities": list(agency.get("top_priorities", []) or [])[:5] if isinstance(agency, dict) else [],
                 "active_curiosities": list(agency.get("active_curiosities", []) or [])[:5] if isinstance(agency, dict) else [],
             },
+            "conversation_lifecycle": {
+                key: ((mind.get("conversation", {}) or {}).get("lifecycle", {}) or {}).get(key)
+                for key in (
+                    "selected_messages",
+                    "dropped_messages",
+                    "selected_characters",
+                    "max_characters",
+                    "policy",
+                    "promotion_policy",
+                )
+            } if isinstance(mind.get("conversation", {}), dict) else {},
             "continuity": {
                 "drive": continuity.get("drive") if isinstance(continuity, dict) else None,
                 "allow_follow_up_question": continuity.get("allow_follow_up_question") if isinstance(continuity, dict) else None,
@@ -1035,8 +1046,32 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
         if context.conversation:
             sections.append(
-                "Recent conversation:\n"
+                "Recent conversation (bounded active-session window):\n"
                 f"{context.conversation}"
+            )
+
+        conversation_state = (
+            context.mind_state.get("conversation", {})
+            if isinstance(context.mind_state, dict)
+            else {}
+        )
+        lifecycle = (
+            conversation_state.get("lifecycle", {})
+            if isinstance(conversation_state, dict)
+            else {}
+        )
+        anchors = (
+            list(lifecycle.get("anchors", []) or [])
+            if isinstance(lifecycle, dict)
+            else []
+        )
+        if anchors:
+            sections.append(
+                "Earlier session anchors (temporary continuity hints, not durable memory):\n"
+                "These are short excerpts from older user turns that fell outside the active "
+                "conversation window. Use them only to preserve the thread when relevant; do not "
+                "treat them as newly stored facts or claim exact details beyond the excerpts.\n"
+                f"{anchors}"
             )
 
         if context.memories:

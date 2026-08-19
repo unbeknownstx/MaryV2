@@ -377,6 +377,7 @@ class MaryDiagnostics:
                 "reflection",
                 "turn_mind",
                 "continuity",
+                "context_lifecycle",
                 "performance",
             ),
         )

@@ -1,53 +1,48 @@
-MaryV2 Cross-Process Persistence Patch
-======================================
+MaryV2 Multi-Turn Context Lifecycle Patch
+==========================================
 
 Purpose
 -------
-Proves that Mary's durable episodic/semantic memory survives a completely new
-Python interpreter process, while keeping direct Mary() construction free of
-implicit reads/writes for tests and dependency injection.
+Keep long conversations coherent without retransmitting the entire active
+session to every LLM call.
 
-Changes
--------
-1. mary/runtime/application.py
-   - Adds create_persistent_mary(...), a standalone Mary factory that enables
-     the same durable memory behavior as the canonical Mary application.
-   - Mary() remains intentionally side-effect-light.
+What changed
+------------
+- Added mary/cognition/context_lifecycle.py.
+- DialogueManager still owns the complete in-session history (up to its existing
+  max_history); the new lifecycle only selects the bounded LLM-facing window.
+- Up to 4 newest completed turns / 8 messages are sent forward.
+- The selected recent-history character budget is 5,000 characters.
+- Individual old messages are clipped defensively when unusually large.
+- Up to 3 short excerpts from older USER turns become ephemeral session anchors.
+- Anchors are explicitly NOT durable memory and are not promoted automatically.
+- Ordinary conversation remains non-persistent unless it passes through Mary's
+  existing explicit memory, relationship, or development paths.
+- TurnMindState exposes lifecycle statistics for debugging/telemetry.
+- Reasoning sees the bounded recent window and temporary anchors.
+- Added Cognition: context_lifecycle diagnostics.
+- Added scripts.verify_context_lifecycle (offline; no API calls or memory writes).
 
-2. scripts/verify_memory_restart.py
-   - Spawns TWO separate Python processes.
-   - Process 1 stores a temporary probe memory and exits.
-   - Process 2 starts a fresh Mary application, reloads the same file, and
-     recalls the probe.
-   - Uses an OS temporary file, so data/memory/memory.json is not modified.
-
-3. tests/runtime/test_persistent_mary.py
-   - Regression coverage for create_persistent_mary and reload behavior.
-
-Install
--------
-Copy/merge the mary, scripts, and tests folders into the MaryV2 repository.
-Do not overwrite .env or data.
+Copy/merge
+----------
+Copy the included mary, scripts, and tests folders over the matching folders in
+MaryV2. Do NOT replace your .env or data directory.
 
 Verify
 ------
 python -m pytest tests -q
 python -m scripts.run_diagnostics
-python -m scripts.verify_memory_restart
+python -m scripts.verify_context_lifecycle
 
-Expected restart verifier ending:
-RESULT: PASS
-A completely new Python process reloaded and recalled Mary's memory.
+Expected shape on Windows
+-------------------------
+Your exact test count may be one higher than the build environment because one
+platform-specific test is skipped here. There should be zero failures.
+Diagnostics should report 43/43 healthy.
 
-Persistent one-line/debug usage
--------------------------------
-Instead of:
-    from mary.core.mary import Mary
-    m = Mary()
+Then test Mary normally
+-----------------------
+python -m scripts.run_mary
 
-Use:
-    from mary.runtime.application import create_persistent_mary
-    m = create_persistent_mary()
-
-The canonical interactive runtime already persists automatically:
-    python -m scripts.run_mary
+Talk for multiple turns. Context lifecycle metadata is also available on cycle
+results as result.metadata['context_lifecycle'].
