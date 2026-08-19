@@ -10,7 +10,8 @@
       "favorite_color": "green"
     },
     "interests": [
-      "creating stories"
+      "creating stories",
+      "rainy nights when I'm working on creative projects"
     ],
     "values": [],
     "goals": [
@@ -103,10 +104,24 @@
         "observation_id": "observation_d711336e6f3f",
         "created_at": "2026-08-18T08:57:19.510437+00:00",
         "updated_at": "2026-08-19T06:26:52.314026+00:00"
+      },
+      {
+        "id": "profile_7",
+        "category": "interest",
+        "key": "rainy_nights_when_i_m_working_on_creative_projects",
+        "value": "rainy nights when I'm working on creative projects",
+        "status": "current",
+        "source": "creator_natural",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_211fd0c530c549aa9092564f46d3d4a9",
+        "observation_id": "observation_d79e783388ea",
+        "created_at": "2026-08-19T07:22:42.658561+00:00",
+        "updated_at": "2026-08-19T07:22:42.658561+00:00"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790107+00:00",
-    "updated_at": "2026-08-19T06:26:52.610523+00:00"
+    "updated_at": "2026-08-19T07:22:42.658592+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -1985,10 +2000,25 @@
           "evidence_id": null
         },
         "created_at": "2026-08-18T23:26:52.610532"
+      },
+      {
+        "id": "relationship_315d8dcfe94f",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: rainy nights when I'm working on creative projects",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "rainy_nights_when_i_m_working_on_creative_projects",
+          "profile_record_id": "profile_7",
+          "evidence_id": "episode_211fd0c530c549aa9092564f46d3d4a9"
+        },
+        "created_at": "2026-08-19T00:22:42.658608"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-18T23:26:52.610535"
+    "updated_at": "2026-08-19T00:22:42.658612"
   },
   "understanding": {
     "observations": [
@@ -3116,11 +3146,20 @@
         "confidence": 1.0,
         "evidence": "I prefer you to be direct and concise",
         "created_at": "2026-08-18T23:26:52.610505"
+      },
+      {
+        "id": "observation_d79e783388ea",
+        "observation": "I like rainy nights when I'm working on creative projects.",
+        "category": "interest",
+        "source": "creator_natural",
+        "confidence": 1.0,
+        "evidence": "episode_211fd0c530c549aa9092564f46d3d4a9",
+        "created_at": "2026-08-19T00:22:42.658538"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-18T23:26:52.610510"
+    "updated_at": "2026-08-19T00:22:42.658551"
   },
   "milestones": []
 }
