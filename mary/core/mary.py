@@ -3000,4 +3000,5 @@ class Mary:
         from mary.llm.router import LLMRouter
 
         return LLMRouter(
-            config
+            config=self.config,
+        )

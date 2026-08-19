@@ -371,10 +371,10 @@ class ReflectionEngine:
             "great to hear that!",
             "solid milestone",
             "what's on your radar next",
-            "whatâs on your radar next",
+            "what’s on your radar next",
             "which part do you think",
             "i'd say we've",
-            "iâd say weâve",
+            "i’d say we’ve",
             "i'm here to help",
             "i am here to help",
         )
@@ -399,13 +399,13 @@ class ReflectionEngine:
 
         unsupported_background_promises = (
             "i'll ping you when",
-            "iâll ping you when",
+            "i’ll ping you when",
             "i'll let you know when i'm done",
-            "iâll let you know when iâm done",
+            "i’ll let you know when i’m done",
             "i'll keep working on it",
-            "iâll keep working on it",
+            "i’ll keep working on it",
             "i'll keep the line open and ping",
-            "iâll keep the line open and ping",
+            "i’ll keep the line open and ping",
         )
         if any(marker in lowered for marker in unsupported_background_promises):
             issues.append("Promises a future/background action that is not represented as an active capability.")
@@ -434,7 +434,7 @@ class ReflectionEngine:
             issues.append("Ends a statement/opinion/reaction turn by unnecessarily handing the conversation back as a question.")
 
         polished_markers = (
-            "thatâs a solid", "that's a solid", "next steps feel", "good spot to",
+            "that’s a solid", "that's a solid", "next steps feel", "good spot to",
             "classic scenario", "classic feature", "safety net that",
         )
         if conversational and any(marker in lowered for marker in polished_markers):
@@ -644,7 +644,7 @@ class ReflectionEngine:
             )
         if re.search(r"\bwho are you\b|\bwhat are you\b|\btell me about yourself\b", lowered):
             return (
-                "I'm Maryâan AI character created by Unbe, with my own identity and personality. "
+                "I'm Mary—an AI character created by Unbe, with my own identity and personality. "
                 "Your creator-profile facts are context I know about you; they aren't automatically part of me."
             )
         if re.search(r"\bwho am i to you\b|\bwhat am i to you\b", lowered):

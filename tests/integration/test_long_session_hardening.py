@@ -106,7 +106,7 @@ def test_recent_conversation_recall_is_bounded_instead_of_dumping_full_reply():
     assert len(response) < 650
     assert "what would you do all day" in response.lower()
     assert response.count("painting and sketching") < 10
-    assert "â¦" in response
+    assert "…" in response
 
 
 def test_false_blank_page_memory_claim_is_revised():
@@ -126,7 +126,7 @@ def test_false_blank_page_memory_claim_is_revised():
 def test_unsupported_background_ping_promise_is_revised():
     router = SequenceRouter([
         "Got it. I'll keep the line open and ping you when I'm done.",
-        "Got it. Quick updates when we're actively working, or a check once the work is doneâthat fits you better.",
+        "Got it. Quick updates when we're actively working, or a check once the work is done—that fits you better.",
     ])
     mary = _mary(router)
 

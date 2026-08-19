@@ -1,0 +1,27 @@
+MARYV2 PC CLEAN BASELINE RESTORE
+
+Replace these files in the repo with the files in this bundle:
+
+mary/cognition/orchestrator.py
+mary/cognition/reasoning.py
+mary/cognition/reflection.py
+mary/cognition/self_introspection.py
+mary/core/mary.py
+mary/runtime/application.py
+scripts/verify_long_session_hardening.py
+tests/integration/test_long_session_hardening.py
+tests/cognition/test_identity_boundary_prompt.py
+
+IMPORTANT:
+tests/conversation/test_live_pipeline.py was edited during the Replit cleanup but is NOT included here because the exact pristine pre-Replit file is not available in this baseline artifact. Restore that single file from the last known-good pre-Replit commit in GitHub Desktop History.
+
+Do not overwrite data/*.json or .env.
+
+Then run:
+python -m compileall -q mary scripts tests
+python -c "from pathlib import Path; bad=[str(p) for p in Path('mary').rglob('*.py') if 'â' in p.read_text(encoding='utf-8',errors='ignore')] + [str(p) for p in Path('tests').rglob('*.py') if 'â' in p.read_text(encoding='utf-8',errors='ignore')]; print('\\n'.join(bad) or 'NO_MOJIBAKE_FOUND')"
+python -m pytest tests -q
+python -m scripts.run_diagnostics
+python -m scripts.verify_long_session_hardening
+
+Only after everything is green: commit and push from GitHub Desktop, then make Replit pull that commit.

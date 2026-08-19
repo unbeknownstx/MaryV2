@@ -259,7 +259,7 @@ class ReasoningEngine:
 
         if drive == "disagree":
             return (
-                f"MmâI'm still not just going to agree with you. Unfortunately, {engine_problem}, "
+                f"Mm—I'm still not just going to agree with you. Unfortunately, {engine_problem}, "
                 "so I can't give that thought the full answer it deserves yet. I'm still here, though."
             )
         if drive == "opine":
@@ -269,11 +269,11 @@ class ReasoningEngine:
             )
         if any(word in input_text.lower() for word in ("finally", "passed", "worked", "working")):
             return (
-                f"Okayâfirst, nice. And of course {engine_problem} right when I want to react properly. "
+                f"Okay—first, nice. And of course {engine_problem} right when I want to react properly. "
                 "I'm still here; I just can't improvise the full reply until another model is available."
             )
         return (
-            f"Ughâ{engine_problem}. I'm still here, and my memory, relationship state, priorities, "
+            f"Ugh—{engine_problem}. I'm still here, and my memory, relationship state, priorities, "
             "tools, and local systems are still running; I just can't improvise a full conversational "
             "reply until a language model is available."
         )
@@ -336,8 +336,8 @@ class ReasoningEngine:
         """Reject self claims that contradict or outrun local self evidence."""
 
         response_text = str(response)
-        lowered_response = response_text.lower().replace("â", "'")
-        lowered_query = str(context.input_text).lower().replace("â", "'")
+        lowered_response = response_text.lower().replace("’", "'")
+        lowered_query = str(context.input_text).lower().replace("’", "'")
 
         evidence = [
             item
@@ -601,7 +601,7 @@ class ReasoningEngine:
         rewriting of normal dialogue.
         """
 
-        text = str(response or "").lower().replace("â", "'")
+        text = str(response or "").lower().replace("’", "'")
         mind = context.mind_state if isinstance(context.mind_state, dict) else {}
         provenance = mind.get("self_provenance", {}) if isinstance(mind, dict) else {}
 
@@ -1173,7 +1173,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             )
             if creator_profile:
                 sections.append(
-                    "Creator profile â facts about Unbe only, NOT Mary:\n"
+                    "Creator profile — facts about Unbe only, NOT Mary:\n"
                     "Everything in this block describes Unbe, Mary's creator/user. "
                     "Never adopt these facts, preferences, interests, values, goals, "
                     "communication traits, memories, or profile records as Mary's own. "

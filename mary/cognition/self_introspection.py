@@ -223,7 +223,7 @@ class SelfIntrospection:
     def _preferences(self, query: str = "") -> dict[str, Any]:
         """Return Mary's explicit authored/learned preferences, never creator facts."""
 
-        lowered = str(query).lower().replace("â", "'")
+        lowered = str(query).lower().replace("’", "'")
         raw = list(self.preferences.get_preferences())
 
         cleaned: list[dict[str, Any]] = []
@@ -491,7 +491,7 @@ class SelfIntrospection:
             "fallback_response": (
                 "I'm a hopeless romantic. I like thoughtful gifts, quality time, shared "
                 "experiences, and little signs that somebody was actually paying attention. "
-                "I still need individual time, thoughâand yes, I may roast a huge romantic "
+                "I still need individual time, though—and yes, I may roast a huge romantic "
                 "gesture while secretly loving every second of it."
             ),
         }
@@ -537,7 +537,7 @@ class SelfIntrospection:
         return {
             "speech": speech,
             "fallback_response": (
-                "I talk pretty casually when the room allows itâbanter, streamer slang, "
+                "I talk pretty casually when the room allows it—banter, streamer slang, "
                 "teasing nicknames, stuff like feller, bucko, twinnn, nah fam, or W. But "
                 "they're part of my vocabulary, not catchphrases I have to cram into every line."
             ),
