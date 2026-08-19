@@ -216,6 +216,7 @@ class MaryApplication:
     pipeline: Pipeline
     memory_path: Path
     developed_self_path: Path
+    preference_promotion_path: Path | None = None
 
     def run(
         self,
@@ -237,7 +238,8 @@ class MaryApplication:
 
         memory_saved = self.mary.memory.save()
         developed_saved = self.mary.save_developed_self_state()
-        return bool(memory_saved and developed_saved)
+        promotion_saved = self.mary.save_preference_promotion_state()
+        return bool(memory_saved and developed_saved and promotion_saved)
 
     def close(self) -> bool:
         """Persist state needed when the application exits."""
@@ -249,9 +251,11 @@ def create_persistent_mary(
     *,
     memory_path: str | Path | None = None,
     developed_self_path: str | Path | None = None,
+    preference_promotion_path: str | Path | None = None,
     auto_save: bool = True,
     load_memory: bool = True,
     load_developed_self: bool = True,
+    load_preference_promotion: bool = True,
 ) -> Mary:
     """
     Construct a Mary coordinator with durable memory enabled.
@@ -266,9 +270,11 @@ def create_persistent_mary(
     return create_application(
         memory_path=memory_path,
         developed_self_path=developed_self_path,
+        preference_promotion_path=preference_promotion_path,
         auto_save=auto_save,
         load_memory=load_memory,
         load_developed_self=load_developed_self,
+        load_preference_promotion=load_preference_promotion,
         name="mary_persistent",
     ).mary
 
@@ -278,9 +284,11 @@ def create_application(
     mary: Mary | None = None,
     memory_path: str | Path | None = None,
     developed_self_path: str | Path | None = None,
+    preference_promotion_path: str | Path | None = None,
     auto_save: bool = True,
     load_memory: bool = True,
     load_developed_self: bool = True,
+    load_preference_promotion: bool = True,
     name: str = "mary",
 ) -> MaryApplication:
     """
@@ -324,6 +332,20 @@ def create_application(
         load=load_developed_self,
     )
 
+    resolved_preference_promotion_path = (
+        Path(preference_promotion_path)
+        if preference_promotion_path is not None
+        else mary.config.paths.memory.parent
+        / "personality"
+        / "preference_promotion.json"
+    )
+
+    mary.configure_preference_promotion_persistence(
+        resolved_preference_promotion_path,
+        auto_save=auto_save,
+        load=load_preference_promotion,
+    )
+
     # Memory is loaded here, after Mary construction.  Give the relationship
     # system one conservative pass over durable explicit creator statements so
     # older V2 memories can populate the structured creator model without
@@ -354,6 +376,7 @@ def create_application(
         pipeline=pipeline,
         memory_path=resolved_memory_path,
         developed_self_path=resolved_developed_self_path,
+        preference_promotion_path=resolved_preference_promotion_path,
     )
 
 

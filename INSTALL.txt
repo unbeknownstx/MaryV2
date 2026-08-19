@@ -1,28 +1,48 @@
-MARYV2 DEVELOPED SELF-STATE PERSISTENCE PATCH
+MaryV2 Preference Promotion Patch
+================================
+
+Baseline expected before install:
+    369 passed, 1 skipped
 
 REPLACE:
-  mary/core/mary.py
-  mary/runtime/application.py
+    mary/core/mary.py
+    mary/runtime/application.py
 
 ADD:
-  mary/personality/developed_state.py
-  tests/runtime/test_developed_self_persistence.py
-  scripts/verify_developed_self_persistence.py
+    mary/personality/preference_promotion.py
+    tests/personality/test_preference_promotion.py
+    scripts/verify_preference_promotion.py
 
-DO NOT replace .env or anything under data/.
+UNCHANGED:
+    mary/personality/preferences.py
+    mary/personality/development.py
 
-VERIFY FROM THE MARYV2 ROOT:
-  python -m compileall -q mary scripts tests
-  python -m pytest tests -q
-  python -m scripts.run_diagnostics
-  python -m scripts.verify_long_session_hardening
-  python -m scripts.verify_developed_self_persistence
+Design boundary:
+    evidence -> candidate -> eligible -> explicit promotion -> developed self
 
-EXPECTED PRINCIPLES:
-- Plain Mary() does not configure or touch developed_self.json.
-- create_application/create_persistent_mary use developed self persistence.
-- Default file: data/personality/developed_self.json.
-- Authored character_core preferences are not duplicated into that file.
-- Experience preferences persist.
-- Successful approved personality changes are marked for exact-state persistence.
-- Model/situational output is rejected as a durable preference source.
+Rules:
+- One observation is never enough.
+- Default eligibility requires 3 observations.
+- Mean confidence >= 0.70.
+- Directional consistency >= 0.75.
+- Mean magnitude >= 0.50.
+- Model/LLM/situational/imagination output cannot count as evidence.
+- Duplicate evidence_id values do not increase observation count.
+- Eligibility never auto-mutates Mary's Preferences.
+- Canonical authored preferences cannot be overwritten through this path.
+- Tentative evidence persists separately in preference_promotion.json.
+- Promoted preferences persist through developed_self.json.
+- Plain Mary() keeps both persistence systems unconfigured.
+
+Validation:
+    python -m compileall -q mary scripts tests
+    python -m pytest tests -q --durations=10
+    python -m scripts.run_diagnostics
+    python -m scripts.verify_long_session_hardening
+    python -m scripts.verify_developed_self_persistence
+    python -m scripts.verify_preference_promotion
+
+Expected normal suite after install:
+    377 passed, 1 skipped
+
+The one skip remains the intentionally opt-in live provider test.

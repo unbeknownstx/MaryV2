@@ -72,6 +72,7 @@ from mary.personality.character import Character
 from mary.personality.values import Values
 from mary.personality.preferences import Preferences
 from mary.personality.developed_state import DevelopedSelfStateStore
+from mary.personality.preference_promotion import PreferencePromotionSystem
 
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
@@ -187,6 +188,12 @@ class Mary:
             preferences=self.preferences,
             personality_development=self.personality_development,
         )
+
+        # Preference-development evidence remains separate from Mary's
+        # represented Preferences until an explicit promotion path approves it.
+        # Plain Mary() keeps this ledger in memory only; persistent runtimes
+        # configure its own tentative-evidence file explicitly.
+        self.preference_promotion = PreferencePromotionSystem()
 
         # ============================================================
         # SELF MODEL
@@ -3066,6 +3073,126 @@ class Mary:
         """Persist developed state when the persistent runtime configured it."""
 
         return self.developed_self_state.save()
+
+    def configure_preference_promotion_persistence(
+        self,
+        path: str | Any,
+        *,
+        auto_save: bool = True,
+        load: bool = True,
+    ) -> bool:
+        """Enable persistence for tentative preference-development evidence."""
+
+        return self.preference_promotion.configure(
+            path,
+            auto_save=auto_save,
+            load=load,
+        )
+
+    def save_preference_promotion_state(self) -> bool:
+        """Persist tentative preference evidence when configured."""
+
+        return self.preference_promotion.save()
+
+    def observe_preference_experience(
+        self,
+        name: str,
+        *,
+        category: str = "general",
+        strength: float = 0.5,
+        polarity: float = 1.0,
+        confidence: float = 0.5,
+        source: str = "experience",
+        reason: str = "",
+        evidence_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record tentative non-model evidence without changing Mary's self."""
+
+        return self.preference_promotion.observe(
+            name,
+            category=category,
+            strength=strength,
+            polarity=polarity,
+            confidence=confidence,
+            source=source,
+            reason=reason,
+            evidence_id=evidence_id,
+        )
+
+    def evaluate_preference_candidate(
+        self,
+        name: str,
+    ) -> dict[str, Any]:
+        """Return deterministic promotion eligibility for a candidate."""
+
+        return self.preference_promotion.evaluate(name)
+
+    def promote_preference_candidate(
+        self,
+        name: str,
+    ) -> dict[str, Any]:
+        """Explicitly promote an eligible candidate into developed self-state."""
+
+        spec = self.preference_promotion.promotion_spec(name)
+        evaluation = self.preference_promotion.evaluate(name)
+
+        if spec is None:
+            return {
+                "promoted": False,
+                "reason": evaluation.get(
+                    "reason",
+                    "Preference candidate is not eligible.",
+                ),
+                "evaluation": evaluation,
+            }
+
+        existing = self.preferences.get_preference(spec["name"])
+        if isinstance(existing, dict):
+            existing_source = str(existing.get("source", "")).strip().lower()
+            if existing_source in {
+                "character_core",
+                "canonical",
+                "authored",
+                "authored_preferences",
+            }:
+                return {
+                    "promoted": False,
+                    "reason": (
+                        "Canonical authored preferences cannot be overwritten "
+                        "through experience promotion."
+                    ),
+                    "evaluation": evaluation,
+                }
+
+        preference = self.set_developed_preference(**spec)
+        self.preference_promotion.mark_promoted(
+            spec["name"],
+            preference=preference,
+        )
+
+        return {
+            "promoted": True,
+            "preference": preference,
+            "evaluation": evaluation,
+        }
+
+    def reject_preference_candidate(
+        self,
+        name: str,
+        *,
+        reason: str = "",
+    ) -> bool:
+        """Explicitly reject tentative evidence without changing Preferences."""
+
+        return self.preference_promotion.reject(
+            name,
+            reason=reason,
+        )
+
+    def preference_promotion_summary(self) -> dict[str, Any]:
+        """Return compact tentative preference-development state."""
+
+        return self.preference_promotion.summary()
 
     def set_developed_preference(
         self,
