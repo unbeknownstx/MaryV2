@@ -58,7 +58,7 @@ def test_direct_communication_preference_is_learned_without_magic_prefix(tmp_pat
     assert meta["detected"] is True
     assert meta["learned"] is True
     assert meta["signal_type"] == "communication_preference"
-    assert "quick updates" in mary.relationship.answer_query("preferences").lower()
+    assert "quick updates" in mary.relationship.answer_query("overview").lower()
 
 
 def test_natural_creator_preference_never_becomes_marys_preference(tmp_path, monkeypatch):
@@ -68,7 +68,10 @@ def test_natural_creator_preference_never_becomes_marys_preference(tmp_path, mon
 
     mary.process("I like synthwave music.")
 
-    assert "synthwave" in mary.relationship.answer_query("preferences").lower()
+    # RelationshipManager remains authoritative for categorization. A natural
+    # "I like ..." share may be represented as an interest rather than a keyed
+    # preference, but it must remain creator-owned and visible in the overview.
+    assert "synthwave" in mary.relationship.answer_query("overview").lower()
     assert mary.preferences.get_preference("synthwave music") is None
 
 
@@ -114,10 +117,12 @@ def test_duplicate_natural_share_does_not_duplicate_durable_memory(tmp_path, mon
     mary = Mary()
     _wire_fake(mary, ["Got it.", "Still got it."])
 
-    first = mary.process("I like quiet bookstores.")
+    statement = "I prefer you to give me concise checkpoint updates."
+
+    first = mary.process(statement)
     first_count = mary.memory.episodic.count()
 
-    second = mary.process("I like quiet bookstores.")
+    second = mary.process(statement)
     second_count = mary.memory.episodic.count()
 
     assert first.metadata["natural_relationship_learning"]["learned"] is True

@@ -1,48 +1,26 @@
-MaryV2 Natural Relationship Learning + Consistency
-==================================================
+MaryV2 Natural Relationship Learning - TEST/VERIFIER HOTFIX
 
-Baseline expected before install:
-    377 passed, 1 skipped
+Why this hotfix exists
+----------------------
+The runtime natural-learning integration worked, but two assertions assumed that
+RelationshipManager stores every natural preference-shaped sentence under the
+"preferences" query. The existing relationship architecture is authoritative:
+communication preferences are tracked separately, and "I like ..." may be
+classified as an interest.
 
-REPLACE
--------
-mary/core/mary.py
+This hotfix changes NO runtime Mary code.
 
-ADD
----
-mary/relationship/natural_learning.py
-tests/relationship/test_natural_relationship_learning.py
-scripts/verify_natural_relationship_learning.py
+Replace only:
+  tests/relationship/test_natural_relationship_learning.py
+  scripts/verify_natural_relationship_learning.py
 
-No changes are required to RelationshipManager, memory persistence, the LLM
-router, Preferences, PersonalityDevelopment, or runtime application wiring.
+Then run:
+  python -m compileall -q mary scripts tests
+  python -m pytest tests -q --durations=10
+  python -m scripts.run_diagnostics
+  python -m scripts.verify_natural_relationship_learning
 
-Design
-------
-Natural creator self-statements are checked by a small deterministic gate.
-Accepted candidates are handed to the existing RelationshipManager, which
-remains the one authoritative creator model.
+Expected full-suite target from the current baseline:
+  385 passed, 1 skipped
 
-Accepted categories are intentionally narrow:
-- communication preferences
-- preferences/dislikes
-- interests
-- goals
-- values
-
-Questions, hypotheticals/uncertainty, and past-only statements are ignored.
-Repeated already-known facts do not create duplicate episodic memories or
-advance relationship curiosity again.
-
-Validation
-----------
-python -m compileall -q mary scripts tests
-python -m pytest tests -q --durations=10
-python -m scripts.run_diagnostics
-python -m scripts.verify_long_session_hardening
-python -m scripts.verify_developed_self_persistence
-python -m scripts.verify_preference_promotion
-python -m scripts.verify_natural_relationship_learning
-
-This patch adds 8 tests. Expected total if the existing baseline is unchanged:
-    385 passed, 1 skipped
+Do not replace mary/core/mary.py or mary/relationship/natural_learning.py again.

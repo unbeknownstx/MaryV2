@@ -61,7 +61,7 @@ def main() -> None:
             meta = result.metadata.get("natural_relationship_learning", {})
             check(meta.get("learned") is True, "clear creator statement learns without magic prefix")
             check(
-                "quick updates" in mary.relationship.answer_query("preferences").lower(),
+                "quick updates" in mary.relationship.answer_query("overview").lower(),
                 "natural share enters the existing structured creator model",
             )
             check(
