@@ -1048,9 +1048,22 @@ class Mary:
         """Silently learn a clear creator fact from ordinary conversation.
 
         Natural learning is intentionally narrower than explicit
-        ``learn this about me:``.  The deterministic gate only recognizes
-        direct first-person creator statements.  RelationshipManager remains
-        authoritative for parsing, supersession, history, and persistence.
+        ``learn this about me:``. The deterministic gate only recognizes
+        direct first-person creator statements.
+
+        RelationshipManager remains authoritative for parsing, supersession,
+        history, deduplication, and persistence.
+
+        The relationship parser supports an evidence-less preview. A durable
+        relationship write follows the same proven transaction used by
+        explicit creator learning:
+
+            parse/validate
+                -> preserve creator-owned episodic evidence
+                -> learn_explicit(..., evidence_id=<memory id>)
+
+        This prevents a parse-only result from being mistaken for committed
+        creator state.
         """
 
         if intent is None:
@@ -1073,9 +1086,23 @@ class Mary:
         if candidate is None:
             return None
 
+        content = str(
+            candidate.get("content", "")
+        ).strip()
+        if not content:
+            return None
+
+        # ------------------------------------------------------------
+        # PARSE / DEDUP PREVIEW
+        # ------------------------------------------------------------
+        #
+        # evidence_id=None is intentionally used only as a preview here.
+        # The existing RelationshipManager can classify the creator share
+        # and report whether it is already known without treating this
+        # preview as durable evidence.
         try:
-            learned = self.relationship.learn_explicit(
-                candidate["content"],
+            preview = self.relationship.learn_explicit(
+                content,
                 source="creator_natural",
                 evidence_id=None,
                 force_general=False,
@@ -1091,7 +1118,7 @@ class Mary:
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
-        if learned is None:
+        if preview is None:
             return {
                 "detected": True,
                 "learned": False,
@@ -1099,30 +1126,105 @@ class Mary:
                 "reason": "relationship_parser_rejected",
             }
 
+        # If RelationshipManager already has this creator fact, do not
+        # create another episodic record and do not advance curiosity again.
+        if bool(preview.get("already_known", False)):
+            return {
+                "detected": True,
+                "learned": False,
+                "already_known": True,
+                "signal_type": candidate.get("signal_type"),
+                "category": preview.get("category"),
+                "label": preview.get("label"),
+                "value": preview.get("value"),
+                "memory_id": None,
+                "source": "creator_natural",
+            }
+
+        # ------------------------------------------------------------
+        # PRESERVE EVIDENCE
+        # ------------------------------------------------------------
+        #
+        # This mirrors the explicit relationship-share path: durable
+        # structured relationship state is backed by a creator-owned memory
+        # record whose ID is supplied to RelationshipManager.
+        memory = self.remember(
+            content,
+            memory_type="episodic",
+            importance=0.8,
+            metadata={
+                "source": "interaction",
+                "event_type": "creator_natural_share",
+                "owner": "creator",
+                "speaker": "Unbe",
+                "perspective": "creator_first_person",
+                "relationship_source": "creator_natural",
+            },
+        )
+
+        if memory is None:
+            return {
+                "detected": True,
+                "learned": False,
+                "already_known": False,
+                "signal_type": candidate.get("signal_type"),
+                "category": preview.get("category"),
+                "label": preview.get("label"),
+                "value": preview.get("value"),
+                "memory_id": None,
+                "source": "creator_natural",
+                "reason": "memory_store_failed",
+            }
+
+        memory_id = (
+            str(getattr(memory, "id", "") or "").strip()
+            or None
+        )
+
+        # ------------------------------------------------------------
+        # COMMIT STRUCTURED RELATIONSHIP STATE
+        # ------------------------------------------------------------
+        try:
+            learned = self.relationship.learn_explicit(
+                content,
+                source="creator_natural",
+                evidence_id=memory_id,
+                force_general=False,
+            )
+        except Exception as exc:
+            return {
+                "detected": True,
+                "learned": False,
+                "already_known": False,
+                "signal_type": candidate.get("signal_type"),
+                "category": preview.get("category"),
+                "label": preview.get("label"),
+                "value": preview.get("value"),
+                "memory_id": memory_id,
+                "source": "creator_natural",
+                "reason": "relationship_commit_error",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        if learned is None:
+            return {
+                "detected": True,
+                "learned": False,
+                "already_known": False,
+                "signal_type": candidate.get("signal_type"),
+                "category": preview.get("category"),
+                "label": preview.get("label"),
+                "value": preview.get("value"),
+                "memory_id": memory_id,
+                "source": "creator_natural",
+                "reason": "relationship_commit_rejected",
+            }
+
         already_known = bool(
             learned.get("already_known", False)
         )
-        memory_id: str | None = None
 
         if not already_known:
-            memory = self.remember(
-                candidate["content"],
-                memory_type="episodic",
-                importance=0.8,
-                metadata={
-                    "source": "interaction",
-                    "event_type": "creator_natural_share",
-                    "owner": "creator",
-                    "speaker": "Unbe",
-                    "perspective": "creator_first_person",
-                    "relationship_source": "creator_natural",
-                },
-            )
-            memory_id = (
-                str(getattr(memory, "id", "") or "") or None
-                if memory is not None
-                else None
-            )
             self._advance_creator_curiosity(
                 learned
             )
@@ -1132,9 +1234,18 @@ class Mary:
             "learned": not already_known,
             "already_known": already_known,
             "signal_type": candidate.get("signal_type"),
-            "category": learned.get("category"),
-            "label": learned.get("label"),
-            "value": learned.get("value"),
+            "category": learned.get(
+                "category",
+                preview.get("category"),
+            ),
+            "label": learned.get(
+                "label",
+                preview.get("label"),
+            ),
+            "value": learned.get(
+                "value",
+                preview.get("value"),
+            ),
             "memory_id": memory_id,
             "source": "creator_natural",
         }

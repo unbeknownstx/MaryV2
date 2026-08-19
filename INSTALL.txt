@@ -1,18 +1,9 @@
-MaryV2 Natural Relationship Learning - TEST/VERIFIER HOTFIX
+MaryV2 Natural Relationship Learning - Transaction Hotfix
 
-Why this hotfix exists
-----------------------
-The runtime natural-learning integration worked, but two assertions assumed that
-RelationshipManager stores every natural preference-shaped sentence under the
-"preferences" query. The existing relationship architecture is authoritative:
-communication preferences are tracked separately, and "I like ..." may be
-classified as an interest.
+Replace ONLY:
+  mary/core/mary.py
 
-This hotfix changes NO runtime Mary code.
-
-Replace only:
-  tests/relationship/test_natural_relationship_learning.py
-  scripts/verify_natural_relationship_learning.py
+Do not replace natural_learning.py, RelationshipManager, or persistence files.
 
 Then run:
   python -m compileall -q mary scripts tests
@@ -20,7 +11,7 @@ Then run:
   python -m scripts.run_diagnostics
   python -m scripts.verify_natural_relationship_learning
 
-Expected full-suite target from the current baseline:
+Expected baseline after success:
   385 passed, 1 skipped
-
-Do not replace mary/core/mary.py or mary/relationship/natural_learning.py again.
+  diagnostics 43/43
+  natural relationship learning RESULT: PASS
