@@ -465,8 +465,18 @@ class LLMRouter:
 
             try:
                 available = selected.is_available()
-            except Exception:
-                available = True
+            except Exception as exc:
+                error = self._normalize_error(
+                    exc,
+                    provider_name,
+                )
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "unavailable",
+                    "error": str(error),
+                })
+                last_error = error
+                continue
 
             if not available:
                 self.last_generation_attempts.append({

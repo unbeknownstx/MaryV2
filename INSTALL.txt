@@ -1,18 +1,27 @@
-MARYV2 NATURAL RELATIONSHIP CONSISTENCY FIX
+MaryV2 Provider Failover Stress + Routing Guarantees Patch
 
-Replace:
-  mary/core/mary.py
-  mary/relationship/manager.py
-  mary/relationship/natural_learning.py
-  tests/relationship/test_natural_relationship_learning.py
-  scripts/verify_natural_relationship_learning.py
+Replace/add ONLY these project files:
 
-Do not overwrite .env or data/.
+1. mary/llm/router.py                         REPLACE
+2. tests/llm/test_provider_routing_guarantees.py   ADD
+3. scripts/verify_multi_provider_router_install.py REPLACE
+4. scripts/verify_provider_routing_guarantees.py   ADD
 
-Run:
-  python -m compileall -q mary scripts tests
-  python -m pytest tests -q --durations=10
-  python -m scripts.run_diagnostics
-  python -m scripts.verify_natural_relationship_learning
+This patch does not contain or modify .env, API keys, data/, persistent memory,
+developed-self state, or runtime data.
 
-Expected baseline after this patch: 388 passed, 1 skipped if no unrelated tests changed.
+PowerShell verification from the MaryV2 repository root with .venv active:
+
+python -m pytest tests/llm/test_provider_routing_guarantees.py -q
+python -m scripts.verify_multi_provider_router_install
+python -m scripts.verify_provider_routing_guarantees
+python -m pytest tests -q
+python -m scripts.run_diagnostics
+
+Expected after this patch, based on the authoritative uploaded package:
+- provider routing guarantee tests: 13 passed
+- normal full test suite: 401 passed, 1 skipped
+- diagnostics: 43/43 PASS, Warnings 0, Failed 0, Healthy True
+
+Do NOT enable MARY_RUN_LIVE_TESTS during the deterministic regression above.
+Run the controlled live smoke test separately only after the offline milestone is green.

@@ -1,0 +1,439 @@
+--- a/mary/llm/router.py
++++ b/mary/llm/router.py
+@@ -465,8 +465,18 @@
+ 
+             try:
+                 available = selected.is_available()
+-            except Exception:
+-                available = True
++            except Exception as exc:
++                error = self._normalize_error(
++                    exc,
++                    provider_name,
++                )
++                self.last_generation_attempts.append({
++                    "provider": provider_name,
++                    "status": "unavailable",
++                    "error": str(error),
++                })
++                last_error = error
++                continue
+ 
+             if not available:
+                 self.last_generation_attempts.append({
+--- a/scripts/verify_multi_provider_router_install.py
++++ b/scripts/verify_multi_provider_router_install.py
+@@ -9,9 +9,13 @@
+         p=r._create_provider(name)
+         assert p.provider_name()==name
+         print(f"PASS  {name} provider adapter installed")
+-    c=Config(); c.llm.provider="groq"; c.llm.fallback_providers=["gemini","openrouter","ollama","openai"]
++    c=Config(); c.llm.provider="groq"; c.llm.routing_strategy="configured"; c.llm.fallback_providers=["gemini","openrouter","ollama","openai"]
+     assert LLMRouter(c)._provider_order(None)==["groq","gemini","openrouter","ollama","openai"]
+-    print("PASS  ordered provider pool is preserved")
++    print("PASS  configured strategy preserves the legacy provider pool")
++
++    free=Config(); free.llm.provider="groq"; free.llm.routing_strategy="free_first"; free.llm.fallback_providers=["openai"]
++    assert LLMRouter(free)._provider_order(None)==["groq","gemini","openrouter","ollama"]
++    print("PASS  free_first excludes paid OpenAI")
+     print("PASS  providers remain lazy and configuration-driven")
+     print("="*72)
+     print("MULTI-PROVIDER ROUTER V2 INSTALLED CORRECTLY")
+--- /dev/null
++++ b/tests/llm/test_provider_routing_guarantees.py
+@@ -0,0 +1,273 @@
++from __future__ import annotations
++
++import pytest
++
++from mary.core.config import Config
++from mary.llm.interface import (
++    LLMInterface,
++    LLMMessage,
++    LLMRateLimitError,
++    LLMResponse,
++)
++from mary.llm.router import LLMRouter
++
++
++class FakeProvider(LLMInterface):
++    """Deterministic provider used to prove routing without network calls."""
++
++    def __init__(
++        self,
++        name: str,
++        *,
++        available: bool = True,
++        availability_error: Exception | None = None,
++        generation_error: Exception | None = None,
++    ) -> None:
++        self.name = name
++        self.available = available
++        self.availability_error = availability_error
++        self.generation_error = generation_error
++        self.availability_checks = 0
++        self.calls = 0
++
++    def generate(self, messages, temperature=0.7, max_tokens=2048):
++        self.calls += 1
++        if self.generation_error is not None:
++            raise self.generation_error
++        return LLMResponse(
++            content=f"{self.name} response",
++            provider=self.name,
++            model=f"fake-{self.name}",
++        )
++
++    def is_available(self):
++        self.availability_checks += 1
++        if self.availability_error is not None:
++            raise self.availability_error
++        return self.available
++
++    def provider_name(self):
++        return self.name
++
++    def model_name(self):
++        return f"fake-{self.name}"
++
++
++def _free_first_router() -> tuple[LLMRouter, dict[str, FakeProvider]]:
++    config = Config()
++    config.llm.provider = "groq"
++    config.llm.routing_strategy = "free_first"
++    config.llm.free_provider_order = [
++        "groq",
++        "gemini",
++        "openrouter",
++        "ollama",
++    ]
++
++    router = LLMRouter(config)
++    providers = {
++        name: FakeProvider(name)
++        for name in ("groq", "gemini", "openrouter", "ollama", "openai")
++    }
++    for name, provider in providers.items():
++        router.register_provider(name, provider)
++    return router, providers
++
++
++def _message() -> list[LLMMessage]:
++    return [LLMMessage(role="user", content="routing guarantee test")]
++
++
++def test_groq_success_stops_the_free_first_route():
++    router, providers = _free_first_router()
++
++    response = router.generate(_message())
++
++    assert response.provider == "groq"
++    assert providers["groq"].calls == 1
++    assert providers["gemini"].calls == 0
++    assert providers["openrouter"].calls == 0
++    assert providers["ollama"].calls == 0
++    assert router.last_generation_attempts == [
++        {"provider": "groq", "status": "success", "error": ""},
++    ]
++
++
++def test_groq_failure_falls_through_to_gemini():
++    router, providers = _free_first_router()
++    providers["groq"].generation_error = RuntimeError("groq failed")
++
++    response = router.generate(_message())
++
++    assert response.provider == "gemini"
++    assert providers["groq"].calls == 1
++    assert providers["gemini"].calls == 1
++    assert providers["openrouter"].calls == 0
++    assert providers["ollama"].calls == 0
++    assert [item["provider"] for item in router.last_generation_attempts] == [
++        "groq",
++        "gemini",
++    ]
++
++
++def test_groq_and_gemini_failure_reaches_openrouter():
++    router, providers = _free_first_router()
++    providers["groq"].generation_error = RuntimeError("groq failed")
++    providers["gemini"].generation_error = RuntimeError("gemini failed")
++
++    response = router.generate(_message())
++
++    assert response.provider == "openrouter"
++    assert providers["openrouter"].calls == 1
++    assert providers["ollama"].calls == 0
++    assert [item["provider"] for item in router.last_generation_attempts] == [
++        "groq",
++        "gemini",
++        "openrouter",
++    ]
++
++
++def test_cloud_free_failures_reach_ollama():
++    router, providers = _free_first_router()
++    for name in ("groq", "gemini", "openrouter"):
++        providers[name].generation_error = RuntimeError(f"{name} failed")
++
++    response = router.generate(_message())
++
++    assert response.provider == "ollama"
++    assert providers["ollama"].calls == 1
++    assert [item["provider"] for item in router.last_generation_attempts] == [
++        "groq",
++        "gemini",
++        "openrouter",
++        "ollama",
++    ]
++
++
++@pytest.mark.parametrize("route", ["private", "local", "offline"])
++def test_private_routes_are_ollama_only(route):
++    router, providers = _free_first_router()
++
++    response = router.generate(
++        _message(),
++        provider="openai",
++        route=route,
++    )
++
++    assert response.provider == "ollama"
++    assert providers["ollama"].calls == 1
++    for name in ("groq", "gemini", "openrouter", "openai"):
++        assert providers[name].calls == 0
++    assert router.last_generation_attempts == [
++        {"provider": "ollama", "status": "success", "error": ""},
++    ]
++
++
++def test_paid_openai_never_silently_enters_free_first():
++    router, providers = _free_first_router()
++    router.config.llm.provider = "openai"
++    router.config.llm.fallback_providers = ["openai"]
++    for name in ("groq", "gemini", "openrouter"):
++        providers[name].generation_error = RuntimeError(f"{name} failed")
++
++    response = router.generate(_message())
++
++    assert response.provider == "ollama"
++    assert providers["openai"].availability_checks == 0
++    assert providers["openai"].calls == 0
++    assert "openai" not in [
++        item["provider"]
++        for item in router.last_generation_attempts
++    ]
++
++
++def test_not_configured_provider_is_skipped_without_generation():
++    router, providers = _free_first_router()
++    providers["groq"].available = False
++
++    response = router.generate(_message())
++
++    assert response.provider == "gemini"
++    assert providers["groq"].calls == 0
++    assert router.last_generation_attempts[0] == {
++        "provider": "groq",
++        "status": "not_configured",
++        "error": "provider is not configured/available",
++    }
++
++
++def test_availability_check_failure_is_skipped_as_unavailable():
++    router, providers = _free_first_router()
++    providers["groq"].availability_error = RuntimeError("health check failed")
++
++    response = router.generate(_message())
++
++    assert response.provider == "gemini"
++    assert providers["groq"].calls == 0
++    assert router.last_generation_attempts[0] == {
++        "provider": "groq",
++        "status": "unavailable",
++        "error": "health check failed",
++    }
++
++
++def test_rate_limit_cooldown_skips_provider_on_next_turn_without_extra_call():
++    router, providers = _free_first_router()
++    providers["groq"].generation_error = LLMRateLimitError(
++        "groq quota reached",
++        provider="groq",
++    )
++
++    first = router.generate(_message())
++    second = router.generate(_message())
++
++    assert first.provider == "gemini"
++    assert second.provider == "gemini"
++    assert providers["groq"].calls == 1
++    assert providers["gemini"].calls == 2
++    assert router.last_generation_attempts[0]["provider"] == "groq"
++    assert router.last_generation_attempts[0]["status"] == "cooldown"
++    assert router.last_generation_attempts[1] == {
++        "provider": "gemini",
++        "status": "success",
++        "error": "",
++    }
++
++
++def test_provider_attempts_reports_exact_route_results():
++    router, providers = _free_first_router()
++    providers["groq"].generation_error = RuntimeError("groq failed")
++    providers["gemini"].available = False
++
++    response = router.generate(_message())
++
++    assert response.provider == "openrouter"
++    assert router.last_generation_attempts == [
++        {"provider": "groq", "status": "failed", "error": "groq failed"},
++        {
++            "provider": "gemini",
++            "status": "not_configured",
++            "error": "provider is not configured/available",
++        },
++        {"provider": "openrouter", "status": "success", "error": ""},
++    ]
++
++
++def test_explicit_provider_override_bypasses_free_first_order():
++    router, providers = _free_first_router()
++    router.config.llm.fallback_providers = ["ollama"]
++
++    response = router.generate(
++        _message(),
++        provider="gemini",
++    )
++
++    assert response.provider == "gemini"
++    assert providers["groq"].availability_checks == 0
++    assert providers["groq"].calls == 0
++    assert providers["gemini"].calls == 1
++    assert providers["openrouter"].calls == 0
++    assert providers["ollama"].calls == 0
++    assert router.last_generation_attempts == [
++        {"provider": "gemini", "status": "success", "error": ""},
++    ]
+--- /dev/null
++++ b/scripts/verify_provider_routing_guarantees.py
+@@ -0,0 +1,119 @@
++"""Deterministically verify MaryV2 provider routing without network calls."""
++
++from __future__ import annotations
++
++from mary.core.config import Config
++from mary.llm.interface import LLMInterface, LLMMessage, LLMRateLimitError, LLMResponse
++from mary.llm.router import LLMRouter
++
++
++class FakeProvider(LLMInterface):
++    def __init__(self, name: str, *, error: Exception | None = None) -> None:
++        self.name = name
++        self.error = error
++        self.calls = 0
++
++    def generate(self, messages, temperature=0.7, max_tokens=2048):
++        self.calls += 1
++        if self.error is not None:
++            raise self.error
++        return LLMResponse(
++            content=f"{self.name} ok",
++            provider=self.name,
++            model=f"fake-{self.name}",
++        )
++
++    def is_available(self):
++        return True
++
++    def provider_name(self):
++        return self.name
++
++    def model_name(self):
++        return f"fake-{self.name}"
++
++
++def make_router() -> tuple[LLMRouter, dict[str, FakeProvider]]:
++    config = Config()
++    config.llm.provider = "groq"
++    config.llm.routing_strategy = "free_first"
++    config.llm.free_provider_order = ["groq", "gemini", "openrouter", "ollama"]
++    config.llm.fallback_providers = ["openai"]
++    router = LLMRouter(config)
++    providers = {
++        name: FakeProvider(name)
++        for name in ("groq", "gemini", "openrouter", "ollama", "openai")
++    }
++    for name, provider in providers.items():
++        router.register_provider(name, provider)
++    return router, providers
++
++
++def require(condition: bool, message: str) -> None:
++    if not condition:
++        raise AssertionError(message)
++
++
++def main() -> int:
++    message = [LLMMessage(role="user", content="routing verification")]
++
++    print("=" * 72)
++    print("MARYV2 PROVIDER ROUTING GUARANTEES")
++    print("=" * 72)
++
++    router, providers = make_router()
++    response = router.generate(message)
++    require(response.provider == "groq", "Groq did not win the healthy free-first route.")
++    require(sum(p.calls for p in providers.values()) == 1, "Lower providers were called after Groq success.")
++    print("PASS  Groq success stops failover")
++
++    router, providers = make_router()
++    providers["groq"].error = RuntimeError("groq failed")
++    response = router.generate(message)
++    require(response.provider == "gemini", "Gemini was not used after Groq failure.")
++    print("PASS  Groq failure reaches Gemini")
++
++    router, providers = make_router()
++    providers["groq"].error = RuntimeError("groq failed")
++    providers["gemini"].error = RuntimeError("gemini failed")
++    response = router.generate(message)
++    require(response.provider == "openrouter", "OpenRouter was not used after Groq + Gemini failure.")
++    print("PASS  Groq + Gemini failure reaches OpenRouter")
++
++    router, providers = make_router()
++    for name in ("groq", "gemini", "openrouter"):
++        providers[name].error = RuntimeError(f"{name} failed")
++    response = router.generate(message)
++    require(response.provider == "ollama", "Ollama did not receive final free-first fallback.")
++    require(providers["openai"].calls == 0, "Paid OpenAI silently entered free_first.")
++    print("PASS  cloud failure reaches Ollama without paid OpenAI")
++
++    router, providers = make_router()
++    response = router.generate(message, provider="openai", route="private")
++    require(response.provider == "ollama", "Private route did not force Ollama.")
++    require(providers["openai"].calls == 0, "Private route leaked to OpenAI.")
++    print("PASS  private/offline policy is Ollama-only")
++
++    router, providers = make_router()
++    providers["groq"].error = LLMRateLimitError("quota reached", provider="groq")
++    router.generate(message)
++    router.generate(message)
++    require(providers["groq"].calls == 1, "Cooldown retried rate-limited Groq too early.")
++    require(router.last_generation_attempts[0]["status"] == "cooldown", "Cooldown metadata missing.")
++    print("PASS  rate-limit cooldown preserves routing")
++
++    router, providers = make_router()
++    router.config.llm.fallback_providers = ["ollama"]
++    response = router.generate(message, provider="gemini")
++    require(response.provider == "gemini", "Explicit provider override was ignored.")
++    require(providers["groq"].calls == 0, "Free-first Groq ran before explicit Gemini override.")
++    print("PASS  explicit provider override remains intentional")
++
++    print("=" * 72)
++    print("PROVIDER ROUTING GUARANTEES VERIFIED")
++    print("=" * 72)
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
