@@ -60,13 +60,32 @@ def main() -> None:
             )
             meta = result.metadata.get("natural_relationship_learning", {})
             check(meta.get("learned") is True, "clear creator statement learns without magic prefix")
+            profile = mary.relationship.profile()
             check(
-                "quick updates" in mary.relationship.answer_query("overview").lower(),
+                "quick updates" in str(profile.get("communication_style", {})).lower()
+                and "quick updates" in mary.relationship.answer_query("overview").lower(),
                 "natural share enters the existing structured creator model",
             )
             check(
                 mary.preferences.get_preference("quick updates") is None,
                 "creator preference remains separate from Mary's preferences",
+            )
+
+            preview_before = len(mary.user_model.get_profile_records(current_only=False))
+            preview = mary.relationship.preview_explicit("I value patience.")
+            preview_after = len(mary.user_model.get_profile_records(current_only=False))
+            check(
+                preview is not None
+                and preview.get("already_known") is False
+                and preview_before == preview_after,
+                "relationship preview is pure and non-mutating",
+            )
+
+            liked = mary.process("I like synthwave music.")
+            check(
+                liked.metadata.get("natural_relationship_learning", {}).get("learned") is True
+                and "synthwave" in mary.relationship.answer_query("interests").lower(),
+                "direct I-like statement becomes creator-owned interest",
             )
 
             before = mary.memory.episodic.count()

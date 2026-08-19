@@ -58,6 +58,8 @@ def test_direct_communication_preference_is_learned_without_magic_prefix(tmp_pat
     assert meta["detected"] is True
     assert meta["learned"] is True
     assert meta["signal_type"] == "communication_preference"
+    profile = _creator_profile(mary)
+    assert "quick updates" in str(profile.get("communication_style", {})).lower()
     assert "quick updates" in mary.relationship.answer_query("overview").lower()
 
 
@@ -172,3 +174,70 @@ def test_natural_relationship_learning_survives_persistent_restart(tmp_path, mon
         for memory in second.mary.memory.episodic.all()
     )
     second.close()
+
+def test_relationship_preview_is_pure_and_reports_semantic_duplicate(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+
+    before_records = len(mary.user_model.get_profile_records(current_only=False))
+    preview = mary.relationship.preview_explicit(
+        "I prefer you to give me quick updates while you work."
+    )
+    after_records = len(mary.user_model.get_profile_records(current_only=False))
+
+    assert preview is not None
+    assert preview["category"] == "communication"
+    assert preview["already_known"] is False
+    assert after_records == before_records
+
+    committed = mary.relationship.learn_explicit(
+        "I prefer you to give me quick updates while you work.",
+        source="test",
+        evidence_id="event_1",
+    )
+    duplicate = mary.relationship.preview_explicit(
+        "I prefer you to give me quick updates while you work."
+    )
+
+    assert committed is not None
+    assert committed.get("already_known") is not True
+    assert duplicate is not None
+    assert duplicate["already_known"] is True
+
+
+def test_relationship_manager_accepts_direct_i_like_as_interest(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+
+    learned = mary.relationship.learn_explicit(
+        "I like synthwave music.",
+        source="test",
+        evidence_id="event_synthwave",
+    )
+
+    assert learned is not None
+    assert learned["category"] == "interest"
+    assert "synthwave" in mary.relationship.answer_query("interests").lower()
+
+
+def test_learn_explicit_semantically_deduplicates_new_evidence_ids(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+
+    first = mary.relationship.learn_explicit(
+        "I value honesty.",
+        source="test",
+        evidence_id="event_1",
+    )
+    second = mary.relationship.learn_explicit(
+        "I value honesty.",
+        source="test",
+        evidence_id="event_2",
+    )
+
+    assert first is not None
+    assert second is not None
+    assert second["already_known"] is True
+    current_values = mary.user_model.get_profile_records(category="value")
+    assert len(current_values) == 1
+

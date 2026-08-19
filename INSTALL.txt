@@ -1,17 +1,18 @@
-MaryV2 Natural Relationship Learning - Transaction Hotfix
+MARYV2 NATURAL RELATIONSHIP CONSISTENCY FIX
 
-Replace ONLY:
+Replace:
   mary/core/mary.py
+  mary/relationship/manager.py
+  mary/relationship/natural_learning.py
+  tests/relationship/test_natural_relationship_learning.py
+  scripts/verify_natural_relationship_learning.py
 
-Do not replace natural_learning.py, RelationshipManager, or persistence files.
+Do not overwrite .env or data/.
 
-Then run:
+Run:
   python -m compileall -q mary scripts tests
   python -m pytest tests -q --durations=10
   python -m scripts.run_diagnostics
   python -m scripts.verify_natural_relationship_learning
 
-Expected baseline after success:
-  385 passed, 1 skipped
-  diagnostics 43/43
-  natural relationship learning RESULT: PASS
+Expected baseline after this patch: 388 passed, 1 skipped if no unrelated tests changed.

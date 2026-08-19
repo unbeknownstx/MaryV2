@@ -1096,15 +1096,12 @@ class Mary:
         # PARSE / DEDUP PREVIEW
         # ------------------------------------------------------------
         #
-        # evidence_id=None is intentionally used only as a preview here.
-        # The existing RelationshipManager can classify the creator share
-        # and report whether it is already known without treating this
-        # preview as durable evidence.
+        # RelationshipManager.preview_explicit() is deliberately pure: it
+        # classifies the creator share and checks semantic duplication without
+        # writing profile/history/observation state.
         try:
-            preview = self.relationship.learn_explicit(
+            preview = self.relationship.preview_explicit(
                 content,
-                source="creator_natural",
-                evidence_id=None,
                 force_general=False,
             )
         except Exception as exc:

@@ -120,16 +120,14 @@ class NaturalRelationshipLearner:
             return "communication_preference"
 
         preference_patterns = (
-            r"^i (?:really )?(?:like|love|enjoy|prefer|dislike|hate)\b",
-            r"^i (?:do not|don't) like\b",
             r"^my (?:favorite|favourite)\s+.+\s+is\s+.+",
         )
         if any(re.match(pattern, text) for pattern in preference_patterns):
             return "preference"
 
         interest_patterns = (
+            r"^i (?:really )?(?:like|love|enjoy)\b",
             r"^i(?:'m| am) interested in\b",
-            r"^my interests? (?:include|includes|are|is)\b",
         )
         if any(re.match(pattern, text) for pattern in interest_patterns):
             return "interest"

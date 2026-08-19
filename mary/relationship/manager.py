@@ -111,6 +111,50 @@ class RelationshipManager:
     # EXPLICIT CREATOR SHARING
     # ============================================================
 
+    def preview_explicit(
+        self,
+        content: str,
+        *,
+        force_general: bool = False,
+    ) -> dict[str, Any] | None:
+        """Purely classify an explicit creator statement.
+
+        Unlike :meth:`learn_explicit`, this method performs no persistence,
+        observation, history, or profile mutation.  It also reports whether
+        the same semantic creator fact is already current.
+        """
+
+        content = str(content).strip()
+        if not content:
+            return None
+
+        parsed = self._parse_explicit_profile_statement(content)
+        if parsed is None and not force_general:
+            return None
+
+        if parsed is None:
+            parsed = {
+                "category": "general",
+                "key": self._general_key(content),
+                "value": content,
+                "label": "explicit statement",
+            }
+
+        existing = self._matching_current_profile_record(
+            category=parsed["category"],
+            key=parsed["key"],
+            value=parsed["value"],
+        )
+
+        return {
+            "category": parsed["category"],
+            "key": parsed["key"],
+            "value": parsed["value"],
+            "label": parsed["label"],
+            "profile_record": existing,
+            "already_known": existing is not None,
+        }
+
     def learn_explicit(
         self,
         content: str,
@@ -145,18 +189,25 @@ class RelationshipManager:
                         "already_known": True,
                     }
 
-        parsed = self._parse_explicit_profile_statement(content)
-        if parsed is None and not force_general:
+        preview = self.preview_explicit(
+            content,
+            force_general=force_general,
+        )
+        if preview is None:
             return None
 
-        if parsed is None:
-            parsed = {
-                "category": "general",
-                "key": self._general_key(content),
-                "value": content,
-                "label": "explicit statement",
+        if preview.get("already_known"):
+            return {
+                "category": preview.get("category"),
+                "key": preview.get("key"),
+                "value": preview.get("value"),
+                "label": preview.get("label"),
+                "profile_record": preview.get("profile_record"),
+                "observation": None,
+                "already_known": True,
             }
 
+        parsed = preview
         category = parsed["category"]
         key = parsed["key"]
         value = parsed["value"]
@@ -268,6 +319,7 @@ class RelationshipManager:
         values = profile.get("values", [])
         goals = profile.get("goals", [])
         facts = profile.get("facts", {})
+        communication = profile.get("communication_style", {})
         general = profile.get("general", [])
 
         if preferences:
@@ -288,6 +340,13 @@ class RelationshipManager:
                 "facts: " + ", ".join(
                     f"{self._readable_key(key)} = {value}"
                     for key, value in facts.items()
+                )
+            )
+        if communication:
+            sections.append(
+                "communication: " + ", ".join(
+                    f"{self._readable_key(key)} = {value}"
+                    for key, value in communication.items()
                 )
             )
         if general:
@@ -340,6 +399,7 @@ class RelationshipManager:
             }
 
         interest_patterns = (
+            r"i like (.+)",
             r"i love (.+)",
             r"i enjoy (.+)",
             r"i am interested in (.+)",
@@ -423,6 +483,39 @@ class RelationshipManager:
             }
 
         return None
+
+    def _matching_current_profile_record(
+        self,
+        *,
+        category: str,
+        key: str,
+        value: Any,
+    ) -> dict[str, Any] | None:
+        """Return an exact semantic match from the current creator profile."""
+
+        normalized_category = str(category).strip().lower()
+        normalized_key = str(key).strip().lower()
+        normalized_value = self._normalize_profile_value(value)
+
+        for record in self.user_model.get_profile_records(
+            category=normalized_category,
+            current_only=True,
+        ):
+            if normalized_category in {"interest", "value", "goal"}:
+                if self._normalize_profile_value(record.get("value")) == normalized_value:
+                    return record
+                continue
+
+            if str(record.get("key", "")).strip().lower() != normalized_key:
+                continue
+            if self._normalize_profile_value(record.get("value")) == normalized_value:
+                return record
+
+        return None
+
+    @staticmethod
+    def _normalize_profile_value(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
     @staticmethod
     def _original_tail(original: str, lowered_value: str) -> str:
