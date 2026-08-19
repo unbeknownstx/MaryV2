@@ -6,3 +6,4 @@ openai
 
 # Environment configuration
 python-dotenv
+openai
