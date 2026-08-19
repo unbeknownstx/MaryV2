@@ -26,13 +26,13 @@
         "key": "preferred_style",
         "value": "be direct and concise",
         "status": "current",
-        "source": "creator_explicit",
+        "source": "explicit_memory_import",
         "confidence": 1.0,
         "explicitly_shared": true,
-        "evidence_id": null,
-        "observation_id": "observation_1ae794506772",
+        "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "observation_id": "observation_7af6f0927068",
         "created_at": "2026-08-18T08:02:01.984374+00:00",
-        "updated_at": "2026-08-19T00:03:13.832973+00:00"
+        "updated_at": "2026-08-19T00:11:30.287151+00:00"
       },
       {
         "id": "profile_2",
@@ -54,13 +54,13 @@
         "key": "favorite_color",
         "value": "green",
         "status": "current",
-        "source": "creator_explicit",
+        "source": "explicit_memory_import",
         "confidence": 1.0,
         "explicitly_shared": true,
-        "evidence_id": null,
-        "observation_id": "observation_adb1f4f9b607",
+        "evidence_id": "episode_e630d1da5a164a149ba5437378031ed7",
+        "observation_id": "observation_83f0299980e9",
         "created_at": "2026-08-18T08:57:19.506306+00:00",
-        "updated_at": "2026-08-19T00:03:03.733517+00:00"
+        "updated_at": "2026-08-19T00:11:30.277090+00:00"
       },
       {
         "id": "profile_4",
@@ -82,13 +82,13 @@
         "key": "creating_stories",
         "value": "creating stories",
         "status": "current",
-        "source": "creator_explicit",
+        "source": "explicit_memory_import",
         "confidence": 1.0,
         "explicitly_shared": true,
-        "evidence_id": null,
-        "observation_id": "observation_bb573f6d1cc6",
+        "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c",
+        "observation_id": "observation_b308c8bd750d",
         "created_at": "2026-08-18T08:57:19.509231+00:00",
-        "updated_at": "2026-08-19T00:03:03.736929+00:00"
+        "updated_at": "2026-08-19T00:11:30.281040+00:00"
       },
       {
         "id": "profile_6",
@@ -96,17 +96,17 @@
         "key": "finish_maryv2",
         "value": "finish MaryV2",
         "status": "current",
-        "source": "creator_explicit",
+        "source": "explicit_memory_import",
         "confidence": 1.0,
         "explicitly_shared": true,
-        "evidence_id": null,
-        "observation_id": "observation_eee34a5e6f96",
+        "evidence_id": "episode_4fa79f08352a48f29816ba066c5e6839",
+        "observation_id": "observation_dec5a9d470c1",
         "created_at": "2026-08-18T08:57:19.510437+00:00",
-        "updated_at": "2026-08-19T00:03:03.740347+00:00"
+        "updated_at": "2026-08-19T00:11:30.284108+00:00"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790107+00:00",
-    "updated_at": "2026-08-19T00:03:13.832982+00:00"
+    "updated_at": "2026-08-19T00:11:30.287161+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -1025,10 +1025,130 @@
           "evidence_id": null
         },
         "created_at": "2026-08-18T17:03:13.832994"
+      },
+      {
+        "id": "relationship_a5fc3f84674d",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: green",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_3",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T17:11:00.783043"
+      },
+      {
+        "id": "relationship_8eb236df4981",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "creating_stories",
+          "profile_record_id": "profile_5",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T17:11:00.786666"
+      },
+      {
+        "id": "relationship_74fa558ae422",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared goal: finish MaryV2",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "goal",
+          "key": "finish_maryv2",
+          "profile_record_id": "profile_6",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T17:11:00.790119"
+      },
+      {
+        "id": "relationship_e4611fda1e6e",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_1",
+          "evidence_id": null
+        },
+        "created_at": "2026-08-18T17:11:09.693140"
+      },
+      {
+        "id": "relationship_4c606adb5dd6",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared favorite color: green",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "preference",
+          "key": "favorite_color",
+          "profile_record_id": "profile_3",
+          "evidence_id": "episode_e630d1da5a164a149ba5437378031ed7"
+        },
+        "created_at": "2026-08-18T17:11:30.277109"
+      },
+      {
+        "id": "relationship_20b9465473a4",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: creating stories",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "creating_stories",
+          "profile_record_id": "profile_5",
+          "evidence_id": "episode_3d85117d4c1442a5b3507937fb03077c"
+        },
+        "created_at": "2026-08-18T17:11:30.281061"
+      },
+      {
+        "id": "relationship_aeb4980ddcdb",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared goal: finish MaryV2",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "goal",
+          "key": "finish_maryv2",
+          "profile_record_id": "profile_6",
+          "evidence_id": "episode_4fa79f08352a48f29816ba066c5e6839"
+        },
+        "created_at": "2026-08-18T17:11:30.284127"
+      },
+      {
+        "id": "relationship_4275f2c37cc1",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared communication preference: be direct and concise",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "communication",
+          "key": "preferred_style",
+          "profile_record_id": "profile_1",
+          "evidence_id": "episode_8fd418c4b7164e208f1c32cedf5afb0d"
+        },
+        "created_at": "2026-08-18T17:11:30.287170"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-18T17:03:13.832996"
+    "updated_at": "2026-08-18T17:11:30.287173"
   },
   "understanding": {
     "observations": [
@@ -1580,11 +1700,83 @@
         "confidence": 1.0,
         "evidence": "I prefer you to be direct and concise",
         "created_at": "2026-08-18T17:03:13.832964"
+      },
+      {
+        "id": "observation_c03f42586f7b",
+        "observation": "my favorite color is green",
+        "category": "preference",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "my favorite color is green",
+        "created_at": "2026-08-18T17:11:00.783009"
+      },
+      {
+        "id": "observation_6f07a861c061",
+        "observation": "I love creating stories",
+        "category": "interest",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I love creating stories",
+        "created_at": "2026-08-18T17:11:00.786631"
+      },
+      {
+        "id": "observation_1ee48ecb60d7",
+        "observation": "my main goal is finish MaryV2",
+        "category": "goal",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "my main goal is finish MaryV2",
+        "created_at": "2026-08-18T17:11:00.790092"
+      },
+      {
+        "id": "observation_ec45382b91a0",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "creator_explicit",
+        "confidence": 1.0,
+        "evidence": "I prefer you to be direct and concise",
+        "created_at": "2026-08-18T17:11:09.693109"
+      },
+      {
+        "id": "observation_83f0299980e9",
+        "observation": "my favorite color is green",
+        "category": "preference",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_e630d1da5a164a149ba5437378031ed7",
+        "created_at": "2026-08-18T17:11:30.277080"
+      },
+      {
+        "id": "observation_b308c8bd750d",
+        "observation": "I love creating stories",
+        "category": "interest",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_3d85117d4c1442a5b3507937fb03077c",
+        "created_at": "2026-08-18T17:11:30.281029"
+      },
+      {
+        "id": "observation_dec5a9d470c1",
+        "observation": "my main goal is finish MaryV2",
+        "category": "goal",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_4fa79f08352a48f29816ba066c5e6839",
+        "created_at": "2026-08-18T17:11:30.284100"
+      },
+      {
+        "id": "observation_7af6f0927068",
+        "observation": "I prefer you to be direct and concise",
+        "category": "communication",
+        "source": "explicit_memory_import",
+        "confidence": 1.0,
+        "evidence": "episode_8fd418c4b7164e208f1c32cedf5afb0d",
+        "created_at": "2026-08-18T17:11:30.287141"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-18T17:03:13.832968"
+    "updated_at": "2026-08-18T17:11:30.287147"
   },
   "milestones": []
 }

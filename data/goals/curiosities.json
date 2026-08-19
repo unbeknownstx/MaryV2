@@ -142,6 +142,17 @@
             "updated_at": "2026-08-19T00:03:03.480043+00:00",
             "resolved_at": null,
             "metadata": {}
+        },
+        {
+            "id": "curiosity_14",
+            "description": "Learn more about Unbe",
+            "importance": 1.0,
+            "source": "test",
+            "status": "open",
+            "created_at": "2026-08-19T00:11:00.514168+00:00",
+            "updated_at": "2026-08-19T00:11:00.514168+00:00",
+            "resolved_at": null,
+            "metadata": {}
         }
     ]
 }
