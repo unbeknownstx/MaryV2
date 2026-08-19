@@ -1,0 +1,28 @@
+MaryV2 Replit/mobile install
+============================
+
+REPLACE these existing files:
+1. mary/cognition/orchestrator.py
+2. mary/cognition/reasoning.py
+3. mary/cognition/reflection.py
+4. mary/cognition/self_introspection.py
+5. mary/core/mary.py
+6. mary/runtime/application.py
+
+ADD these new files:
+7. scripts/verify_long_session_hardening.py
+8. tests/integration/test_long_session_hardening.py
+
+DO NOT change:
+- .env
+- data/
+- API keys
+- Ollama settings
+
+Then run:
+python -m pytest tests -q
+python -m scripts.run_diagnostics
+python -m scripts.verify_long_session_hardening
+python -m scripts.run_mary
+
+Inside Mary, use /last after a suspicious reply to inspect provider/model/token metadata.

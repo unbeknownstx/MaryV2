@@ -516,6 +516,10 @@ class CognitiveOrchestrator:
         normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
         query_map = {
             "what do you know about me": "overview",
+            "do you remember anything about me": "memory_overview",
+            "do you remember me": "memory_overview",
+            "what do you remember about me": "memory_overview",
+            "tell me what you remember about me": "memory_overview",
             "what do you know about my interests": "interests",
             "what interests do you know i have": "interests",
             "what are my interests": "interests",
@@ -761,6 +765,13 @@ class CognitiveOrchestrator:
                 "what parts of yourself do you understand",
                 "what do you understand about yourself",
             )),
+            ("current_state", (
+                "how are you feeling about yourself right now",
+                "how are you feeling about yourself",
+                "how do you feel about yourself right now",
+                "how do you feel about yourself",
+                "how are you feeling about who you are right now",
+            )),
             ("values", (
                 "what are your values",
                 "what do you value",
@@ -993,6 +1004,22 @@ class CognitiveOrchestrator:
             "your long-term goals", "your long term goals", "your personal goals", "you want in life"
         )):
             return self_intent("goals")
+
+        if (
+            "feel about yourself" in normalized
+            or "feeling about yourself" in normalized
+            or "feel about who you are" in normalized
+            or "feeling about who you are" in normalized
+        ):
+            return self_intent("current_state")
+
+        if any(marker in normalized for marker in (
+            "what kinds of people do you get along with",
+            "what kind of people do you get along with",
+            "who do you get along with",
+            "micromanag",
+        )):
+            return self_intent("social_behavior")
 
         return None
 

@@ -32,6 +32,7 @@ class SelfIntrospection:
         agency: Any,
         autonomy: Any,
         tools: Any,
+        emotion: Any,
     ) -> None:
         self.identity = identity
         self.self_model = self_model
@@ -45,6 +46,7 @@ class SelfIntrospection:
         self.agency = agency
         self.autonomy = autonomy
         self.tools = tools
+        self.emotion = emotion
 
     def build(
         self,
@@ -73,6 +75,7 @@ class SelfIntrospection:
 
         builders = {
             "identity": self._identity,
+            "current_state": self._current_state,
             "creator": self._creator,
             "self_understanding": self._self_understanding,
             "values": self._values,
@@ -220,7 +223,7 @@ class SelfIntrospection:
     def _preferences(self, query: str = "") -> dict[str, Any]:
         """Return Mary's explicit authored/learned preferences, never creator facts."""
 
-        lowered = str(query).lower().replace("’", "'")
+        lowered = str(query).lower().replace("â", "'")
         raw = list(self.preferences.get_preferences())
 
         cleaned: list[dict[str, Any]] = []
@@ -317,6 +320,49 @@ class SelfIntrospection:
 
         return {
             "preferences": relevant,
+            "fallback_response": fallback,
+        }
+
+    def _current_state(self) -> dict[str, Any]:
+        """Return Mary's current represented expressive state without web lookup."""
+
+        try:
+            emotional_state = dict(self.emotion.snapshot())
+        except Exception:
+            emotional_state = {
+                "primary": "neutral",
+                "intensity": 0.0,
+                "confidence": 0.0,
+            }
+
+        primary = str(emotional_state.get("primary", "neutral") or "neutral")
+        intensity = float(emotional_state.get("intensity", 0.0) or 0.0)
+
+        if primary == "neutral" or intensity < 0.2:
+            fallback = (
+                "My current represented emotional state is pretty neutral and steady. "
+                "I can still reflect on how coherent or developed I seem from my connected "
+                "identity, character, memory, and cognition, but I shouldn't invent a feeling "
+                "that isn't present in my actual expressive state."
+            )
+        else:
+            fallback = (
+                f"My current represented emotional state is {primary} at about "
+                f"{intensity:.2f} intensity. I can talk about that naturally, but it is "
+                "an expressive software state rather than a claim about biological emotion."
+            )
+
+        return {
+            "emotional_state": emotional_state,
+            "connected_self_systems": {
+                "identity": type(self.identity).__name__,
+                "biography": type(self.biography).__name__,
+                "personality": type(self.personality).__name__,
+                "character": type(self.character).__name__,
+                "values": type(self.values).__name__,
+                "preferences": type(self.preferences).__name__,
+                "agency": type(self.agency).__name__,
+            },
             "fallback_response": fallback,
         }
 
@@ -445,7 +491,7 @@ class SelfIntrospection:
             "fallback_response": (
                 "I'm a hopeless romantic. I like thoughtful gifts, quality time, shared "
                 "experiences, and little signs that somebody was actually paying attention. "
-                "I still need individual time, though—and yes, I may roast a huge romantic "
+                "I still need individual time, thoughâand yes, I may roast a huge romantic "
                 "gesture while secretly loving every second of it."
             ),
         }
@@ -491,7 +537,7 @@ class SelfIntrospection:
         return {
             "speech": speech,
             "fallback_response": (
-                "I talk pretty casually when the room allows it—banter, streamer slang, "
+                "I talk pretty casually when the room allows itâbanter, streamer slang, "
                 "teasing nicknames, stuff like feller, bucko, twinnn, nah fam, or W. But "
                 "they're part of my vocabulary, not catchphrases I have to cram into every line."
             ),

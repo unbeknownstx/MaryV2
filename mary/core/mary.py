@@ -402,6 +402,7 @@ class Mary:
             agency=self.agency,
             autonomy=self.autonomy,
             tools=self.tools,
+            emotion=self.emotion,
         )
 
         # ============================================================
@@ -492,7 +493,10 @@ class Mary:
             skip_cognition = True
 
         elif intent.intent_type == IntentType.RELATIONSHIP_QUERY:
-            relationship_action = self._handle_relationship_query(intent)
+            relationship_action = self._handle_relationship_query(
+                intent,
+                recent_conversation=session_history,
+            )
             system_response = relationship_action.get("system_response")
             skip_cognition = True
 
@@ -913,12 +917,7 @@ class Mary:
         self,
         recent_conversation: list[dict[str, str]],
     ) -> str:
-        """Recall the active dialogue before consulting long-term memory.
-
-        Dialogue history is intentionally separate from episodic/semantic memory.
-        Queries about what was *just* said belong here even when no durable memory
-        was created from the exchange.
-        """
+        """Recall recent dialogue concisely without dumping whole prior replies."""
 
         messages = [
             {
@@ -931,34 +930,36 @@ class Mary:
         if not messages:
             return "We haven't built up any recent conversation in this session yet."
 
-        # Prefer the latest completed creator/Mary pair and include one earlier
-        # creator point when available.  Quote the actual dialogue rather than
-        # inventing a summary that could drift from what was said.
-        latest_user = next(
-            (item["content"] for item in reversed(messages) if item["role"] == "user"),
-            None,
-        )
-        latest_mary = next(
-            (item["content"] for item in reversed(messages) if item["role"] == "assistant"),
-            None,
-        )
-        earlier_users = [item["content"] for item in messages if item["role"] == "user"]
+        user_messages = [item["content"] for item in messages if item["role"] == "user"]
+        mary_messages = [item["content"] for item in messages if item["role"] == "assistant"]
 
-        if latest_user and latest_mary:
-            if len(earlier_users) >= 2:
-                earlier = earlier_users[-2]
-                return (
-                    f"We were just talking about this: you said, ‘{earlier}’ Then you said, "
-                    f"‘{latest_user}’ and I replied, ‘{latest_mary}’"
-                )
-            return (
-                f"We were just talking about this: you said, ‘{latest_user}’ "
-                f"and I replied, ‘{latest_mary}’"
-            )
+        latest_user = user_messages[-1] if user_messages else None
+        earlier_user = user_messages[-2] if len(user_messages) >= 2 else None
+        latest_mary = mary_messages[-1] if mary_messages else None
 
+        def compact(text: str | None, limit: int = 180) -> str:
+            value = " ".join(str(text or "").split())
+            if len(value) <= limit:
+                return value
+            return value[: limit - 1].rstrip() + "…"
+
+        parts: list[str] = []
+        if earlier_user:
+            parts.append(f"you asked about ‘{compact(earlier_user, 120)}’")
         if latest_user:
-            return f"The most recent thing you said was, ‘{latest_user}’"
-        return f"The most recent thing I said was, ‘{latest_mary}’"
+            parts.append(f"then ‘{compact(latest_user, 120)}’")
+
+        if parts:
+            response = "We were just talking about this: " + ", ".join(parts) + "."
+        elif latest_user:
+            response = f"The most recent thing you said was ‘{compact(latest_user, 160)}’."
+        else:
+            response = "I remember the recent exchange, but there isn't a recent creator turn to quote."
+
+        if latest_mary:
+            response += f" My last reply was basically: ‘{compact(latest_mary, 220)}’"
+
+        return response
 
     # ================================================================
     # RELATIONSHIP DEVELOPMENT
@@ -1014,8 +1015,10 @@ class Mary:
     def _handle_relationship_query(
         self,
         intent: Intent,
+        *,
+        recent_conversation: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Answer from Mary's local structured creator model without web or LLM."""
+        """Answer from Mary's local creator model and durable/session memory."""
 
         query_type = str(
             intent.parameters.get("relationship_query_type", "overview")
@@ -1024,12 +1027,106 @@ class Mary:
             self.relationship_curiosity.sync()
             self.agency.rebuild_priorities()
             response = self.relationship_curiosity.answer_query()
+        elif query_type == "memory_overview":
+            response = self._creator_memory_overview(
+                recent_conversation=recent_conversation or [],
+            )
         else:
             response = self.relationship.answer_query(query_type)
 
         return {
             "system_response": response
         }
+
+    def _creator_memory_overview(
+        self,
+        *,
+        recent_conversation: list[dict[str, str]],
+    ) -> str:
+        """Summarize what Mary actually knows/remembers about her creator."""
+
+        creator_name = str(
+            self.user_model.name or self.identity.creator or "Unbe"
+        ).title()
+
+        profile = self.user_model.current_profile()
+        durable_parts: list[str] = []
+
+        preferences = profile.get("preferences", {}) if isinstance(profile, dict) else {}
+        interests = profile.get("interests", []) if isinstance(profile, dict) else []
+        goals = profile.get("goals", []) if isinstance(profile, dict) else []
+        values = profile.get("values", []) if isinstance(profile, dict) else []
+        facts = profile.get("facts", {}) if isinstance(profile, dict) else {}
+        general = profile.get("general", []) if isinstance(profile, dict) else []
+
+        if preferences:
+            rendered = ", ".join(
+                f"{str(key).replace('_', ' ')} = {value}"
+                for key, value in list(preferences.items())[:5]
+            )
+            durable_parts.append("preferences: " + rendered)
+        if interests:
+            durable_parts.append("interests: " + ", ".join(map(str, interests[:5])))
+        if goals:
+            durable_parts.append("goals: " + ", ".join(map(str, goals[:5])))
+        if values:
+            durable_parts.append("values: " + ", ".join(map(str, values[:5])))
+        if facts:
+            rendered = ", ".join(
+                f"{str(key).replace('_', ' ')} = {value}"
+                for key, value in list(facts.items())[:5]
+            )
+            durable_parts.append("facts: " + rendered)
+        if general:
+            durable_parts.append("other: " + "; ".join(map(str, general[:4])))
+
+        creator_memories: list[str] = []
+        for memory in reversed(self._all_available_memories()):
+            if not self._memory_is_creator_owned(memory):
+                continue
+            text = self._memory_to_text(memory)
+            if text and text not in creator_memories:
+                creator_memories.append(text)
+            if len(creator_memories) >= 4:
+                break
+
+        session_shares: list[str] = []
+        for item in reversed(recent_conversation):
+            if not isinstance(item, dict) or str(item.get("role", "")) != "user":
+                continue
+            text = " ".join(str(item.get("content", "")).split())
+            if not text or text.lower() in {"approve", "reject"}:
+                continue
+            # Prefer statements the creator volunteered over benchmark-like questions.
+            if text.rstrip().endswith("?"):
+                continue
+            if len(text.split()) < 4:
+                continue
+            if len(text) > 180:
+                text = text[:179].rstrip() + "…"
+            if text not in session_shares:
+                session_shares.append(text)
+            if len(session_shares) >= 3:
+                break
+        session_shares.reverse()
+
+        pieces = [f"Yeah. I remember that {creator_name} is my creator."]
+        if durable_parts:
+            pieces.append("In my structured long-term creator model I have " + " | ".join(durable_parts) + ".")
+        elif creator_memories:
+            pieces.append("I also have durable creator-owned memories, including: " + "; ".join(creator_memories) + ".")
+        else:
+            pieces.append("I don't currently have many additional durable creator facts stored yet.")
+
+        if creator_memories and durable_parts:
+            pieces.append("Some durable memories I can retrieve are: " + "; ".join(creator_memories) + ".")
+        if session_shares:
+            pieces.append("And in this current session I remember you saying: " + "; ".join(session_shares) + ".")
+
+        pieces.append(
+            "I can retain creator information through episodic/semantic memory and the structured creator model when the persistent Mary runtime is used."
+        )
+        return " ".join(pieces)
 
     def _advance_creator_curiosity(
         self,
@@ -2614,6 +2711,16 @@ class Mary:
                 "context_lifecycle": True,
                 "llm": self.llm.provider_name(),
                 "model": self.llm.model_name(),
+                "routing_strategy": (
+                    self.llm.routing_strategy()
+                    if callable(getattr(self.llm, "routing_strategy", None))
+                    else "configured"
+                ),
+                "provider_order": (
+                    self.llm._provider_order(None)
+                    if callable(getattr(self.llm, "_provider_order", None))
+                    else [self.llm.provider_name()]
+                ),
             },
         }
 
@@ -2893,5 +3000,4 @@ class Mary:
         from mary.llm.router import LLMRouter
 
         return LLMRouter(
-            config=self.config,
-        )
+            config
