@@ -1,9 +1,8 @@
 # MaryV2 dependencies
 
-# LLM providers
+# LLM providers / OpenAI-compatible clients
 groq
 openai
 
 # Environment configuration
 python-dotenv
-openai

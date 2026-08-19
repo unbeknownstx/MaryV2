@@ -68,6 +68,8 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
     ("multi_provider_router", "scripts.verify_multi_provider_router_install"),
     ("provider_routing_guarantees", "scripts.verify_provider_routing_guarantees"),
+    ("task_workspace", "scripts.verify_task_workspace"),
+    ("openai_expert", "scripts.verify_openai_expert_install"),
 )
 
 

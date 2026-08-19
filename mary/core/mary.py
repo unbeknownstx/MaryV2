@@ -93,6 +93,9 @@ from mary.knowledge.manager import KnowledgeManager
 
 from mary.memory.manager import MemoryManager
 
+from mary.orchestration.workspace import TaskWorkspaceManager
+from mary.orchestration.consultation import ExpertConsultant
+
 from mary.cognition.orchestrator import (
     CognitiveCycleResult,
     CognitiveOrchestrator,
@@ -265,6 +268,20 @@ class Mary:
         # model-backed turn in this process so Mary can answer runtime questions
         # without asking a model to guess about itself.
         self._last_generation_metadata: dict[str, Any] | None = None
+
+        # ============================================================
+        # ORCHESTRATION / EPHEMERAL TASK WORKSPACE
+        # ============================================================
+
+        # The task workspace is deliberately process-local. It gives future
+        # orchestration a structured place for hypotheses, evidence, model
+        # consultations, and decisions without turning temporary reasoning into
+        # durable memory, creator facts, or developed-self state.
+        self.task_workspace = TaskWorkspaceManager()
+        self.expert_consultant = ExpertConsultant(
+            router=self.llm,
+            workspace=self.task_workspace,
+        )
 
         # ============================================================
         # TOOLS
@@ -3085,6 +3102,10 @@ class Mary:
             "user": self._user_context(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),
+            "orchestration": {
+                "task_workspace": self.task_workspace.status(),
+                "expert_consultant": self.expert_consultant.status(),
+            },
             "tools": self.tools.status(),
             "cognition": {
                 "reasoning": True,

@@ -37,6 +37,9 @@ class LLMConfig:
         ]
     )
     rate_limit_cooldown_seconds: float = 300.0
+    expert_provider: str = "openai"
+    openai_model: str = "gpt-5.6-luna"
+    openai_reasoning_effort: str = "low"
 
 
 @dataclass
@@ -160,6 +163,23 @@ class Config:
                 for item in free_order_value.split(",")
                 if item.strip()
             ]
+
+        config.llm.expert_provider = os.getenv(
+            "MARY_LLM_EXPERT_PROVIDER",
+            config.llm.expert_provider,
+        ).strip().lower() or config.llm.expert_provider
+
+        config.llm.openai_model = os.getenv(
+            "MARY_OPENAI_MODEL",
+            config.llm.openai_model,
+        ).strip() or config.llm.openai_model
+
+        reasoning_effort = os.getenv(
+            "MARY_OPENAI_REASONING_EFFORT",
+            config.llm.openai_reasoning_effort,
+        ).strip().lower()
+        if reasoning_effort in {"none", "low", "medium", "high", "xhigh", "max"}:
+            config.llm.openai_reasoning_effort = reasoning_effort
 
         cooldown_value = os.getenv(
             "MARY_LLM_RATE_LIMIT_COOLDOWN",

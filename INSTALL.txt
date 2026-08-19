@@ -1,24 +1,55 @@
-MARYV2 END-TO-END RUNTIME ACCEPTANCE HOTFIX
+MARYV2 TASK WORKSPACE + OPENAI EXPERT V1
+========================================
 
-Replace/add only the included files in the matching MaryV2 paths.
-Do not replace .env, data/, memories, developed-self state, or runtime data.
+This patch is cumulative from the current verified MaryV2 checkpoint and
+includes Task Workspace V1 plus the intentional OpenAI paid expert bridge.
+It does NOT include or modify .env, data/, memories, or persistent state.
 
-This hotfix addresses two issues exposed by the real persistent-runtime acceptance session:
-1. Natural compound questions such as
-   "Who are you, and how do language models fit into your architecture?"
-   now route to Mary's deterministic local runtime-architecture response.
-2. Provider responses ending with an output-limit finish reason (for example
-   finish_reason="length") are no longer accepted as successful dialogue.
-   The router records the attempt as incomplete and continues failover.
+1. Copy the contents of this folder into the MaryV2 repository root,
+   preserving paths and replacing the matching files.
 
-Verification:
-python -m pytest tests/integration/test_long_session_hardening.py tests/llm/test_provider_routing_guarantees.py -q
-python -m scripts.verify_long_session_hardening
-python -m scripts.verify_provider_routing_guarantees
-python -m pytest tests -q
-python -m scripts.run_release_verification --offline
+2. In your activated .venv:
 
-Expected full-suite checkpoint after this hotfix:
-408 passed, 1 skipped
-43/43 diagnostics PASS
-release gate PASS
+   python -m pip install -r requirements.txt
+
+3. Add these lines to your LOCAL .env (do not paste the key into chat and do
+   not commit .env):
+
+   OPENAI_API_KEY=YOUR_REAL_KEY_HERE
+   MARY_LLM_EXPERT_PROVIDER=openai
+   MARY_OPENAI_MODEL=gpt-5.6-luna
+   MARY_OPENAI_REASONING_EFFORT=low
+   MARY_OPENAI_TIMEOUT=60
+
+   OpenAI remains EXCLUDED from Mary's normal free_first chain.
+   Normal route remains:
+       groq -> gemini -> openrouter -> ollama
+
+   Private/offline remains:
+       ollama only
+
+   Paid expert route becomes:
+       openai / gpt-5.6-luna
+
+4. Deterministic checks (no paid call):
+
+   python -m pytest tests/llm/test_openai_provider.py tests/orchestration/test_expert_consultation.py -q
+   python -m scripts.verify_openai_expert_install
+   python -m scripts.check_llm_routes
+   python -m pytest tests -q
+   python -m scripts.run_diagnostics
+   python -m scripts.run_release_verification --offline
+
+Expected current checkpoint:
+   426 passed, 1 skipped
+   45/45 diagnostics PASS
+   offline release gate PASS
+
+5. ONE intentional paid live smoke call:
+
+   $env:MARY_RUN_OPENAI_TESTS="1"
+   python -m scripts.smoke_openai_expert
+   Remove-Item Env:MARY_RUN_OPENAI_TESTS -ErrorAction SilentlyContinue
+
+The live smoke sends only a tiny temporary test task. It does NOT send Mary's
+persistent memories or creator profile.

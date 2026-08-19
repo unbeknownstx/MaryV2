@@ -39,6 +39,20 @@ def main() -> None:
 
     print()
     print("Private/offline route: ollama only")
+    expert_order = router._provider_order(None, route="expert")
+    expert_name = expert_order[0] if expert_order else "unknown"
+    try:
+        expert = router.get_provider(expert_name)
+        expert_ready = bool(expert.is_available())
+        expert_model = expert.model_name()
+    except Exception:
+        expert_ready = False
+        expert_model = router.model_name(expert_name)
+    expert_status = "READY" if expert_ready else "NOT CONFIGURED"
+    print(
+        f"Paid expert route: {expert_name} / {expert_model} "
+        f"({expert_status})"
+    )
     print("Paid OpenAI route: excluded from free_first")
 
 

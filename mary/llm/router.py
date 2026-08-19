@@ -45,6 +45,12 @@ _PRIVATE_ROUTES = {
     "offline",
 }
 
+_EXPERT_ROUTES = {
+    "expert",
+    "paid",
+    "openai",
+}
+
 
 class LLMRouter:
     """Route generation through Mary's configured language-model providers."""
@@ -110,12 +116,24 @@ class LLMRouter:
         if name == "openai":
             from .providers.openai import OpenAIProvider
 
-            model = (
-                self.config.llm.model
-                if self.config.llm.provider == "openai"
-                else "gpt-4.1-mini"
+            model = str(
+                getattr(
+                    self.config.llm,
+                    "openai_model",
+                    "gpt-5.6-luna",
+                )
+            ).strip() or "gpt-5.6-luna"
+            reasoning_effort = str(
+                getattr(
+                    self.config.llm,
+                    "openai_reasoning_effort",
+                    "low",
+                )
+            ).strip().lower() or "low"
+            return OpenAIProvider(
+                model=model,
+                reasoning_effort=reasoning_effort,
             )
-            return OpenAIProvider(model=model)
 
         raise ValueError(f"Unknown LLM provider: {name}")
 
@@ -236,6 +254,16 @@ class LLMRouter:
 
         if route_name in _PRIVATE_ROUTES:
             return ["ollama"]
+
+        if route_name in _EXPERT_ROUTES:
+            expert_provider = str(
+                getattr(
+                    self.config.llm,
+                    "expert_provider",
+                    "openai",
+                )
+            ).lower().strip() or "openai"
+            return [expert_provider]
 
         # An explicit provider is an intentional override. Preserve the old
         # provider + configured-fallback behavior for callers that request it.
@@ -632,9 +660,11 @@ class LLMRouter:
         if provider_name == "ollama":
             return self.get_provider("ollama").model_name()
         if provider_name == "openai":
-            return (
-                self.config.llm.model
-                if self.config.llm.provider == "openai"
-                else "gpt-4.1-mini"
-            )
+            return str(
+                getattr(
+                    self.config.llm,
+                    "openai_model",
+                    "gpt-5.6-luna",
+                )
+            ).strip() or "gpt-5.6-luna"
         return self.config.llm.model

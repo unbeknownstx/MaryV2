@@ -64,6 +64,7 @@ class MaryDiagnostics:
         results.extend(self._check_knowledge())
         results.extend(self._check_learning())
         results.extend(self._check_relationship())
+        results.extend(self._check_orchestration())
         results.extend(self._check_tools())
         results.extend(self._check_agency())
         results.extend(self._check_autonomy())
@@ -472,6 +473,23 @@ class MaryDiagnostics:
             self._check_attribute(
                 "Relationship Curiosity Development",
                 "relationship_curiosity",
+            ),
+        ]
+
+    # ============================================================
+    # ORCHESTRATION
+    # ============================================================
+
+    def _check_orchestration(self) -> List[DiagnosticResult]:
+
+        return [
+            self._check_attribute(
+                "Task Workspace",
+                "task_workspace",
+            ),
+            self._check_attribute(
+                "Expert Consultation",
+                "expert_consultant",
             ),
         ]
 
