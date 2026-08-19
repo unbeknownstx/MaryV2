@@ -77,6 +77,7 @@ from mary.personality.preference_promotion import PreferencePromotionSystem
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
 from mary.relationship.curiosity_development import RelationshipCuriosityDevelopment
+from mary.relationship.natural_learning import NaturalRelationshipLearner
 
 from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
@@ -243,6 +244,12 @@ class Mary:
         self.relationship_history = self.relationship.history
         self.relationship_understanding = self.relationship.understanding
         self.relationship_milestones = self.relationship.milestones
+
+        # Ordinary conversation may contain clear creator facts.  This gate is
+        # deliberately conservative and never calls an LLM or writes state on
+        # its own; accepted candidates are handed to the existing relationship
+        # system so there remains only one authoritative creator model.
+        self.natural_relationship_learning = NaturalRelationshipLearner()
 
         self.creator_directives = CreatorDirectiveSystem()
         self.creator_directives.load()
@@ -494,6 +501,15 @@ class Mary:
             input_text
         )
 
+        # Learn only clear, naturally volunteered creator facts before context
+        # assembly.  This lets the same turn see the updated creator model while
+        # preserving the normal conversational response path.  Explicit memory/
+        # relationship/tool/system intents keep their existing dedicated paths.
+        natural_relationship_learning = self._learn_natural_relationship_share(
+            input_text,
+            intent=intent,
+        )
+
         context = self._build_context(
             input_text,
             intent=intent,
@@ -675,6 +691,10 @@ class Mary:
                 "system_action": system_action,
                 "llm_calls_after_action": 0,
             }
+            if natural_relationship_learning is not None:
+                metadata["natural_relationship_learning"] = dict(
+                    natural_relationship_learning
+                )
             if system_action == "propose_code_change":
                 metadata.update({
                     "handled_by": "mary_code_change_planner",
@@ -709,6 +729,11 @@ class Mary:
             ).get("active_goals", []),
             mind_state=context.get("mind_state", {}),
         )
+
+        if natural_relationship_learning is not None:
+            result.metadata["natural_relationship_learning"] = dict(
+                natural_relationship_learning
+            )
 
         if system_response is not None:
             result.final_response = system_response
@@ -1013,6 +1038,106 @@ class Mary:
     # ================================================================
     # RELATIONSHIP DEVELOPMENT
     # ================================================================
+
+    def _learn_natural_relationship_share(
+        self,
+        input_text: str,
+        *,
+        intent: Intent | None,
+    ) -> dict[str, Any] | None:
+        """Silently learn a clear creator fact from ordinary conversation.
+
+        Natural learning is intentionally narrower than explicit
+        ``learn this about me:``.  The deterministic gate only recognizes
+        direct first-person creator statements.  RelationshipManager remains
+        authoritative for parsing, supersession, history, and persistence.
+        """
+
+        if intent is None:
+            return None
+
+        intent_name = str(
+            getattr(intent.intent_type, "value", intent.intent_type)
+        ).strip().lower()
+
+        if intent_name not in {
+            "conversation",
+            "goal",
+            "request",
+        }:
+            return None
+
+        candidate = self.natural_relationship_learning.detect(
+            input_text
+        )
+        if candidate is None:
+            return None
+
+        try:
+            learned = self.relationship.learn_explicit(
+                candidate["content"],
+                source="creator_natural",
+                evidence_id=None,
+                force_general=False,
+            )
+        except Exception as exc:
+            # Relationship learning should enrich an ordinary conversation,
+            # never prevent the conversation from continuing.
+            return {
+                "detected": True,
+                "learned": False,
+                "signal_type": candidate.get("signal_type"),
+                "reason": "relationship_error",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        if learned is None:
+            return {
+                "detected": True,
+                "learned": False,
+                "signal_type": candidate.get("signal_type"),
+                "reason": "relationship_parser_rejected",
+            }
+
+        already_known = bool(
+            learned.get("already_known", False)
+        )
+        memory_id: str | None = None
+
+        if not already_known:
+            memory = self.remember(
+                candidate["content"],
+                memory_type="episodic",
+                importance=0.8,
+                metadata={
+                    "source": "interaction",
+                    "event_type": "creator_natural_share",
+                    "owner": "creator",
+                    "speaker": "Unbe",
+                    "perspective": "creator_first_person",
+                    "relationship_source": "creator_natural",
+                },
+            )
+            memory_id = (
+                str(getattr(memory, "id", "") or "") or None
+                if memory is not None
+                else None
+            )
+            self._advance_creator_curiosity(
+                learned
+            )
+
+        return {
+            "detected": True,
+            "learned": not already_known,
+            "already_known": already_known,
+            "signal_type": candidate.get("signal_type"),
+            "category": learned.get("category"),
+            "label": learned.get("label"),
+            "value": learned.get("value"),
+            "memory_id": memory_id,
+            "source": "creator_natural",
+        }
 
     def _handle_relationship_share(
         self,

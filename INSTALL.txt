@@ -1,48 +1,48 @@
-MaryV2 Preference Promotion Patch
-================================
+MaryV2 Natural Relationship Learning + Consistency
+==================================================
 
 Baseline expected before install:
-    369 passed, 1 skipped
-
-REPLACE:
-    mary/core/mary.py
-    mary/runtime/application.py
-
-ADD:
-    mary/personality/preference_promotion.py
-    tests/personality/test_preference_promotion.py
-    scripts/verify_preference_promotion.py
-
-UNCHANGED:
-    mary/personality/preferences.py
-    mary/personality/development.py
-
-Design boundary:
-    evidence -> candidate -> eligible -> explicit promotion -> developed self
-
-Rules:
-- One observation is never enough.
-- Default eligibility requires 3 observations.
-- Mean confidence >= 0.70.
-- Directional consistency >= 0.75.
-- Mean magnitude >= 0.50.
-- Model/LLM/situational/imagination output cannot count as evidence.
-- Duplicate evidence_id values do not increase observation count.
-- Eligibility never auto-mutates Mary's Preferences.
-- Canonical authored preferences cannot be overwritten through this path.
-- Tentative evidence persists separately in preference_promotion.json.
-- Promoted preferences persist through developed_self.json.
-- Plain Mary() keeps both persistence systems unconfigured.
-
-Validation:
-    python -m compileall -q mary scripts tests
-    python -m pytest tests -q --durations=10
-    python -m scripts.run_diagnostics
-    python -m scripts.verify_long_session_hardening
-    python -m scripts.verify_developed_self_persistence
-    python -m scripts.verify_preference_promotion
-
-Expected normal suite after install:
     377 passed, 1 skipped
 
-The one skip remains the intentionally opt-in live provider test.
+REPLACE
+-------
+mary/core/mary.py
+
+ADD
+---
+mary/relationship/natural_learning.py
+tests/relationship/test_natural_relationship_learning.py
+scripts/verify_natural_relationship_learning.py
+
+No changes are required to RelationshipManager, memory persistence, the LLM
+router, Preferences, PersonalityDevelopment, or runtime application wiring.
+
+Design
+------
+Natural creator self-statements are checked by a small deterministic gate.
+Accepted candidates are handed to the existing RelationshipManager, which
+remains the one authoritative creator model.
+
+Accepted categories are intentionally narrow:
+- communication preferences
+- preferences/dislikes
+- interests
+- goals
+- values
+
+Questions, hypotheticals/uncertainty, and past-only statements are ignored.
+Repeated already-known facts do not create duplicate episodic memories or
+advance relationship curiosity again.
+
+Validation
+----------
+python -m compileall -q mary scripts tests
+python -m pytest tests -q --durations=10
+python -m scripts.run_diagnostics
+python -m scripts.verify_long_session_hardening
+python -m scripts.verify_developed_self_persistence
+python -m scripts.verify_preference_promotion
+python -m scripts.verify_natural_relationship_learning
+
+This patch adds 8 tests. Expected total if the existing baseline is unchanged:
+    385 passed, 1 skipped
