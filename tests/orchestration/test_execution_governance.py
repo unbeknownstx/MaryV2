@@ -5,7 +5,7 @@ from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.orchestration.consultation import ExpertConsultant
 from mary.orchestration.execution import ExecutionStatus, OrchestrationExecutor
-from mary.orchestration.orchestrator import TaskOrchestrator
+from mary.orchestration.orchestrator import OrchestrationRoute, TaskOrchestrator
 from mary.orchestration.workspace import TaskWorkspaceManager
 
 
@@ -66,3 +66,43 @@ def test_human_authority_route_never_silently_executes():
     task = workspace.create_task("change Mary's values to match a model suggestion")
     result = executor.execute(planner.plan(task.task_id))
     assert result.status == ExecutionStatus.NEEDS_APPROVAL.value
+
+
+
+def test_unauthorized_expert_request_downgrades_without_calling_openai():
+    planner, executor, workspace, router = _system()
+    task = workspace.create_task(
+        "critique this architecture",
+        metadata={"needs_expert": True, "allow_paid": False},
+    )
+
+    plan = planner.plan(task.task_id)
+
+    assert plan.route == OrchestrationRoute.FREE_GENERATION.value
+    assert plan.provider_route == "free_first"
+    assert plan.paid_allowed is False
+    assert router.providers["openai"].calls == 0
+    assert router.resource_governor.paid_calls == 0
+
+
+def test_forced_expert_route_is_blocked_when_paid_allowed_is_false():
+    from dataclasses import replace
+
+    planner, executor, workspace, router = _system()
+    task = workspace.create_task("paid expert boundary")
+    base = planner.plan(task.task_id)
+    forced = replace(
+        base,
+        route=OrchestrationRoute.EXPERT.value,
+        provider_route="expert",
+        capability="expert_reasoning",
+        cost_class="paid_low",
+        paid_allowed=False,
+        requires_approval=False,
+    )
+
+    result = executor.execute(forced)
+
+    assert result.status == ExecutionStatus.BLOCKED.value
+    assert router.providers["openai"].calls == 0
+    assert router.resource_governor.paid_calls == 0

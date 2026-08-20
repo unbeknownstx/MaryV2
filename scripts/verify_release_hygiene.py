@@ -1,17 +1,70 @@
-"""Static release-hygiene checks for a private MaryV2 source tree."""
+"""Static release-hygiene checks for a private MaryV2 working tree.
+
+A developer's real working tree is expected to contain a local ``.env``.
+Release hygiene therefore verifies that the file is ignored/excluded rather
+than requiring it to be deleted. The file itself is never opened or scanned.
+"""
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXT_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".txt", ".json", ".toml", ".yml", ".yaml", ".ps1", ".example"}
+TEXT_SUFFIXES = {
+    ".py",
+    ".js",
+    ".html",
+    ".css",
+    ".md",
+    ".txt",
+    ".json",
+    ".toml",
+    ".yml",
+    ".yaml",
+    ".ps1",
+    ".example",
+}
 SECRET_PATTERNS = [
     re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"),
     re.compile(r"sk-[A-Za-z0-9_-]{32,}"),
-    re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*=\s*['\"]?[A-Za-z0-9_-]{32,}"),
+    re.compile(
+        r"(?i)(?:api[_-]?key|secret|token)\s*=\s*['\"]?[A-Za-z0-9_-]{32,}"
+    ),
 ]
-SKIP_PARTS = {".git", ".venv", "node_modules", "__pycache__", "data", "dist", "build"}
+SKIP_PARTS = {
+    ".git",
+    ".venv",
+    "node_modules",
+    "__pycache__",
+    "data",
+    "dist",
+    "build",
+}
+LOCAL_SECRET_NAMES = {
+    ".env",
+    ".env.bak",
+    ".env.before_cleanup.bak",
+}
+
+
+def _gitignore_rules() -> set[str]:
+    path = ROOT / ".gitignore"
+    if not path.exists():
+        return set()
+    rules: set[str] = set()
+    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        rules.add(line.rstrip("/"))
+    return rules
+
+
+def _is_local_secret_file(path: Path) -> bool:
+    name = path.name
+    return name in LOCAL_SECRET_NAMES or (
+        name.startswith(".env.") and name != ".env.example"
+    )
 
 
 def main() -> int:
@@ -19,12 +72,21 @@ def main() -> int:
     print("MARYV2 RELEASE HYGIENE")
     print("=" * 72)
     problems: list[str] = []
+    ignore_rules = _gitignore_rules()
+
+    local_env = ROOT / ".env"
+    if local_env.exists() and ".env" not in ignore_rules:
+        problems.append("local .env exists but .gitignore does not exclude it")
+
     for path in ROOT.rglob("*"):
         if not path.is_file() or any(part in SKIP_PARTS for part in path.parts):
             continue
-        if path.name == ".env":
-            problems.append("source tree contains .env")
+
+        # Never inspect private local environment files. Their contract is
+        # exclusion from source/package output, not absence from a developer PC.
+        if _is_local_secret_file(path):
             continue
+
         if path.suffix.lower() not in TEXT_SUFFIXES and path.name != ".env.example":
             continue
         try:
@@ -35,13 +97,18 @@ def main() -> int:
             if pattern.search(text):
                 problems.append(f"possible secret in {path.relative_to(ROOT)}")
                 break
+
     if problems:
         for problem in problems:
             print(f"FAIL  {problem}")
         return 1
-    print("PASS  no .env file is part of the releasable source tree")
+
+    if local_env.exists():
+        print("PASS  local .env may exist in the working tree and is ignored")
+    else:
+        print("PASS  no local .env is present in this source snapshot")
     print("PASS  no obvious raw API-key pattern appears in releasable source")
-    print("PASS  runtime data/build/cache directories are excluded from scan scope")
+    print("PASS  private env/runtime/build/cache paths are excluded from release scan scope")
     print("=" * 72)
     print("RELEASE HYGIENE VERIFIED")
     return 0
