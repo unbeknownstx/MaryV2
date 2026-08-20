@@ -1,125 +1,27 @@
-# MaryV2 V2 Breakthrough 11 — State-Aware Local Conversation Rebuild
+# MaryV2 V2 Breakthrough 12 — Host Awareness + Dynamic Capability Resolution
 
-## Purpose
+Breakthrough 12 builds on the fully verified Breakthrough 11 system without replacing Mary's working identity, memory, relationship, cognition, agency, emotion, orchestration, or provider architecture.
 
-This checkpoint rebuilds the conversational supervision layer above the green
-Breakthrough 10 architecture without replacing Mary's established character,
-memory, relationship, learning, agency, tool, desktop, provider, or persistence
-systems.
+## New architectural boundary
 
-Breakthrough 10 established the correct division of labor:
+Mary now owns one process-local `RuntimeEnvironment` capability resolver. It does not own character state. It reports the current host/platform, provider availability, display-safe host capabilities, preferred provider policies, and effective provider routes for the current machine.
 
-```text
-personal/relational Mary conversation
-    Ollama -> Groq -> Gemini -> OpenRouter
+Ollama remains an optional provider. On a Windows/macOS/Linux host where Ollama is reachable, personal conversation can remain Ollama-first. On Replit, Codespaces, or another host where Ollama is unavailable, Mary keeps the same preferred policy but removes unavailable providers from the effective route and continues through configured cloud providers.
 
-detached factual/technical/task generation
-    Groq -> Gemini -> OpenRouter -> Ollama
+Runtime/environment questions are resolved from Mary's own process state before current-information web heuristics. Phrases such as `what models can u use right now?` and `does anything change because were not on my pc?` therefore stay local, while genuinely external current questions such as `what is the latest Python release?` still use the intentional web-approval path.
 
-private/offline
-    Ollama only
+## New terminal visibility
 
-paid expert
-    OpenAI, explicit one-task authorization only
-```
+`/route` now distinguishes preferred policy from effective host route and reports provider availability. `/environment` (also `/env` or `/capabilities`) shows the display-safe host/capability snapshot.
 
-Breakthrough 11 teaches Mary's runtime to supervise that local conversation with
-more of Mary's own state.
+## Verification
 
-## New/strengthened boundaries
-
-### Process-local relationship-question continuity
-- Explicit learning invitations still select one real unresolved relationship gap.
-- The selected question now keeps a bounded process-local reason/category/gap record.
-- Natural follow-ups such as `hmm why that question though` resolve deterministically.
-- The explanation uses zero LLM calls.
-- Accepted existing relationship-learning paths can resolve the matching pending question.
-- No second durable relationship/memory store was introduced.
-
-### Shared-history grounding
-- `everything we've done`, `how far we've come`, and similar natural wording can use creator-authored dialogue, current creator goals, and creator-owned memories.
-- Assistant-role improvisation remains excluded as evidence.
-- Real MaryV2 continuity can be acknowledged without inventing off-screen activity.
-
-### Grounded self-development
-- Natural `have you changed?` questions route to self-grounded development state.
-- Mary's authored canon remains distinct from controlled developed-self, relationship learning, preference development, and connected capability growth.
-
-### Grounded relationship feelings
-- `what does talking like this feel like from ur side` is a self-grounded query.
-- Represented emotion, relationship state, and current-turn appraisal provide substance before Ollama expresses it.
-
-### Rejected-hypothesis continuity
-- A recently rejected Mary interpretation is temporarily represented in process-local continuity state.
-- Reflection can block immediate resurrection of the same unsupported hypothesis without new creator evidence.
-
-### Semantic style-loop control
-- Recent Mary-only metaphor/style motifs are tracked in bounded continuity state.
-- Repeated semantic palettes can trigger local revision even when the wording is not a near-duplicate paragraph.
-- Slang, metaphor, emoji, warmth, and artistic phrasing remain optional character texture.
-
-### Mind-reading restraint
-- Direct claims such as `I can feel what you're holding` or `I know what you're feeling` are revised unless grounded by actual creator evidence.
-- Mary may describe tentative impressions from the creator's words/tone without claiming direct access to private mental state.
-
-### Local correction stays local
-- Provenance, semantic repetition, rejected-hypothesis, and mind-reading revisions preserve the conversation purpose.
-- Ollama can therefore revise its own local conversational output without silently escalating private dialogue to cloud.
-
-## Verification in the consolidation environment
-
-- Breakthrough 10 canonical baseline: **540 passed, 1 skipped**
-- Breakthrough 11 regressions added: **13**
-- Current deterministic Python suite: **553 passed, 1 skipped**
-- Focused historical/new acceptance slice: **64 passed**
-- Diagnostics: **53 / 53 PASS**, warnings 0, failures 0, Healthy True
-- `verify_breakthrough_11`: **PASS**
+- Breakthrough 12 focused regressions: **12 passed**
+- Current deterministic suite: **565 passed, 1 skipped**
+- Diagnostics: **54 / 54 PASS**
 - Complete deterministic/offline release gate: **PASS**
-- No live LLM/OpenAI call is required for deterministic verification.
+- Paid OpenAI/live network tests are not required by the gate.
 
-## Existing V2 guarantees retained
+## Persistence boundary
 
-- Mary identity/character canon independent from provider engines
-- personal conversation local-first and task/general cloud-first
-- private/offline Ollama-only
-- paid OpenAI explicit one-task advisory only
-- bounded context/persistence/resources/provider attempts
-- atomic recoverable persistence and finite backups
-- natural imperfect-input tolerance without rewriting creator evidence
-- creator/Mary provenance and ownership boundaries
-- test/probe residue excluded from normal model-facing context
-- corrupt/mixed-script output rejection
-- capability-use truthfulness
-- task workspace/orchestrator/executor authority boundaries
-- desktop/avatar/voice/STT/TTS/lip-sync/barge-in lifecycle
-- display-safe live state and architecture contract
-- Windows standalone source/build readiness
-
-## Release-overlay exclusions
-
-Never overwrite or package personal runtime state:
-
-- `.env`
-- `data/`
-- API keys/secrets
-- `.venv/`
-- `.git/`
-- `node_modules/`
-- generated `desktop/dist/`
-- VRM/Vroid source assets under `desktop/public/models/`
-- caches/bytecode
-
-## Canonical Windows verification
-
-```powershell
-python -m scripts.verify_breakthrough_11
-python -m pytest tests/integration/test_breakthrough_11.py -q
-python -m pytest tests -q
-python -m scripts.run_diagnostics
-powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
-python -m scripts.run_mary
-```
-
-During real acceptance, talk naturally. `/last` should show the actual provider,
-turn policy, and self-grounding metadata; `/route` shows conversation/task routes;
-`/contract` exposes the authority map.
+This consolidation intentionally does not include `.env`, `data/`, API keys, canonical memories, relationship state, developed-self state, local caches, generated frontend output, or personal VRM/Vroid source assets.

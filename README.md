@@ -108,3 +108,7 @@ See:
 - `docs/architecture/V2_FINAL_RUNTIME.md`
 - `docs/V2_HARD_TEST.md`
 - `desktop/README.md`
+
+## Breakthrough 12 host portability
+
+Mary's character/runtime core no longer assumes Ollama exists on every host. `RuntimeEnvironment` detects the current host and provider availability, while preserving separate preferred and effective routes. Use `/route` to inspect provider policy/effective routing and `/environment` to inspect display-safe host capabilities. Runtime questions are answered locally rather than being mistaken for web-search requests merely because they contain words such as `current` or `right now`.
