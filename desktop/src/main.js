@@ -14,6 +14,14 @@ const thinking = document.querySelector('#thinking');
 const statusDot = document.querySelector('#status-dot');
 const statusText = document.querySelector('#status-text');
 const modelLabel = document.querySelector('#model-label');
+const stateName = document.querySelector('#state-name');
+const stateContinuity = document.querySelector('#state-continuity');
+const stateRelationship = document.querySelector('#state-relationship');
+const stateMemories = document.querySelector('#state-memories');
+const stateMood = document.querySelector('#state-mood');
+const stateEnergy = document.querySelector('#state-energy');
+const stateRuntime = document.querySelector('#state-runtime');
+const stateTask = document.querySelector('#state-task');
 
 let bridge = null;
 let currentVrm = null;
@@ -320,6 +328,21 @@ function setConversationState(raw) {
   refreshConversationControls();
 }
 
+function applyCharacterState(raw) {
+  const payload = parsePayload(raw);
+  const character = payload.character || {};
+  const memory = payload.memory || {};
+
+  stateName.textContent = character.name || 'Mary';
+  stateContinuity.textContent = character.continuity === 'persistent_capable' ? 'Persistent' : (character.continuity || 'Unknown');
+  stateRelationship.textContent = character.relationship || 'Beginning';
+  stateMemories.textContent = String(character.memory_count ?? ((memory.episodic || 0) + (memory.semantic || 0)));
+  stateMood.textContent = String(character.mood || 'neutral').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  stateEnergy.textContent = String(character.energy || 'calm').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  stateRuntime.textContent = String(character.status || conversationState || 'idle').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  stateTask.textContent = character.current_task || 'None';
+}
+
 function setConnected(value, label = '') {
   statusDot.classList.toggle('connected', value);
   statusText.textContent = label || (value ? 'Mary ready' : 'Disconnected');
@@ -525,6 +548,9 @@ function connectBridge() {
     bridge.avatarStateChanged.connect((raw) => applyAvatarState(parsePayload(raw)));
     bridge.busyChanged.connect((value) => setBusy(value));
     bridge.conversationStateChanged.connect((raw) => setConversationState(raw));
+    if (bridge.characterStateChanged) {
+      bridge.characterStateChanged.connect((raw) => applyCharacterState(raw));
+    }
     bridge.voicePlaybackStopRequested.connect(() => {
       stopVoicePlayback({ notifyBridge: false });
     });
@@ -550,6 +576,9 @@ function connectBridge() {
     });
 
     bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));
+    if (bridge.getCharacterState) {
+      bridge.getCharacterState((raw) => applyCharacterState(raw));
+    }
   });
 }
 

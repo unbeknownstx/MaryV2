@@ -16,10 +16,12 @@ approval systems.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from mary.governance.bounds import bounded_payload, clip_text, enforce_capacity
+from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, load_json_recovering
 
 
 class CreatorDirectiveSystem:
@@ -34,53 +36,72 @@ class CreatorDirectiveSystem:
     def __init__(
         self,
         path: str | Path = "data/relationship/creator_directives.json",
+        *,
+        capacity: int = 512,
+        content_limit: int = 2000,
+        backup_generations: int = 3,
     ) -> None:
         self.path = Path(path)
+        self.capacity = max(1, int(capacity))
+        self.content_limit = max(128, int(content_limit))
+        self.backup_generations = max(1, int(backup_generations))
         self.directives: list[dict[str, Any]] = []
+        self.recovered_from_backup = False
 
     # ============================================================
     # LIFECYCLE
     # ============================================================
 
     def load(self) -> None:
-        """Load directives from persistent storage."""
-
-        if not self.path.exists():
+        """Load directives with finite-backup recovery."""
+        cleanup_stale_temps(self.path)
+        if not self.path.exists() and not any(
+            self.path.with_name(f"{self.path.name}.bak{i}").exists()
+            for i in range(1, self.backup_generations + 1)
+        ):
             self._ensure_directory()
             self.save()
             return
-
-        try:
-            with self.path.open("r", encoding="utf-8") as file:
-                payload = json.load(file)
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            self.directives = []
-            return
-
+        payload, source = load_json_recovering(
+            self.path, backup_generations=self.backup_generations
+        )
         if isinstance(payload, dict):
             raw = payload.get("directives", [])
         elif isinstance(payload, list):
             raw = payload
         else:
             raw = []
-
-        self.directives = [
-            item
-            for item in raw
-            if isinstance(item, dict)
-        ] if isinstance(raw, list) else []
+        self.directives = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+        self._compact()
+        self.recovered_from_backup = bool(source is not None and source != self.path)
 
     def save(self) -> None:
-        """Persist directive state."""
-
+        """Persist directives atomically after bounded compaction."""
         self._ensure_directory()
-        with self.path.open("w", encoding="utf-8") as file:
-            json.dump(
-                {"directives": self.directives},
-                file,
-                indent=4,
-                ensure_ascii=False,
-            )
+        self._compact()
+        atomic_write_json(
+            self.path,
+            {"directives": self.directives},
+            backup_generations=self.backup_generations,
+            indent=2,
+        )
+
+    def _compact(self) -> int:
+        before = len(self.directives)
+        for item in self.directives:
+            if isinstance(item, dict):
+                item["instruction"] = clip_text(item.get("instruction", ""), self.content_limit)
+                item["metadata"] = bounded_payload(item.get("metadata", {}), text_limit=self.content_limit)
+        enforce_capacity(
+            self.directives,
+            self.capacity,
+            keep_score=lambda item: (
+                1.0 if item.get("status") == "active" else 0.0,
+                float(item.get("priority", 0.0) or 0.0),
+                str(item.get("updated_at", item.get("created_at", ""))),
+            ),
+        )
+        return max(0, before - len(self.directives))
 
     def _ensure_directory(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,7 +122,7 @@ class CreatorDirectiveSystem:
     ) -> dict[str, Any] | None:
         """Create or refresh an active directive for the same category/target."""
 
-        instruction = str(instruction).strip()
+        instruction = clip_text(str(instruction).strip(), self.content_limit)
         category = str(category).strip().lower()
         target = str(target).strip().lower()
 
@@ -116,7 +137,7 @@ class CreatorDirectiveSystem:
             existing["instruction"] = instruction
             existing["priority"] = priority
             existing["source"] = source
-            existing["metadata"] = dict(metadata or {})
+            existing["metadata"] = bounded_payload(metadata or {}, text_limit=self.content_limit)
             existing["updated_at"] = now
             self.save()
             return existing
@@ -129,7 +150,7 @@ class CreatorDirectiveSystem:
             "priority": priority,
             "source": source,
             "status": "active",
-            "metadata": dict(metadata or {}),
+            "metadata": bounded_payload(metadata or {}, text_limit=self.content_limit),
             "created_at": now,
             "updated_at": now,
         }

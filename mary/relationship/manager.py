@@ -11,10 +11,13 @@ are never silently promoted to facts.
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
+
+from mary.governance.bounds import bounded_payload, clip_text, enforce_capacity
+from mary.governance.limits import RuntimeLimits
+from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, load_json_recovering
 
 from .history import RelationshipHistory
 from .milestones import MilestoneManager
@@ -31,8 +34,13 @@ class RelationshipManager:
         *,
         creator_id: str = "creator",
         creator_name: str = "unbe",
+        limits: RuntimeLimits | None = None,
     ) -> None:
         self.path = Path(path)
+        self.limits = limits or RuntimeLimits()
+        self.last_load_source: str | None = None
+        self.recovered_from_backup = False
+        self.stale_temps_removed = 0
         self.user_model = UserModel(
             creator_id=creator_id,
             name=creator_name,
@@ -51,61 +59,187 @@ class RelationshipManager:
     # ============================================================
 
     def load(self) -> None:
-        """Load relationship state if present, otherwise create a clean file."""
+        """Load relationship state with finite-backup recovery."""
 
-        if not self.path.exists():
+        self.stale_temps_removed += cleanup_stale_temps(self.path)
+        if not self.path.exists() and not any(
+            self.path.with_name(f"{self.path.name}.bak{i}").exists()
+            for i in range(1, self.limits.backup_generations + 1)
+        ):
             self.save()
             return
 
-        try:
-            with self.path.open("r", encoding="utf-8") as file:
-                payload = json.load(file)
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        payload, source = load_json_recovering(
+            self.path,
+            backup_generations=self.limits.backup_generations,
+            restore_primary=False,
+        )
+        if not isinstance(payload, dict) or source is None:
             return
 
-        if not isinstance(payload, dict):
-            return
-
-        self.user_model = UserModel.from_dict(
-            payload.get("user_model")
-        )
-        self.history = RelationshipHistory.from_dict(
-            payload.get("history")
-        )
+        self.user_model = UserModel.from_dict(payload.get("user_model"))
+        self.history = RelationshipHistory.from_dict(payload.get("history"))
         self.understanding = RelationshipUnderstanding.from_dict(
             payload.get("understanding"),
             user_model=self.user_model,
             history=self.history,
         )
-
         milestones = payload.get("milestones", [])
         self.milestones = MilestoneManager(
             milestones if isinstance(milestones, list) else []
         )
+        self._compact_state()
+        self.last_load_source = str(source)
+        self.recovered_from_backup = source != self.path
 
     def save(self) -> None:
-        """Atomically persist all relationship state."""
+        """Compact then atomically persist all relationship state."""
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._compact_state()
         payload = {
-            "version": 2,
+            "version": 3,
+            "policy": "bounded_relationship_continuity",
             "user_model": self.user_model.to_dict(),
             "history": self.history.to_dict(),
             "understanding": self.understanding.to_dict(),
             "milestones": self.milestones.export(),
         }
-
-        temporary = self.path.with_suffix(
-            self.path.suffix + ".tmp"
+        atomic_write_json(
+            self.path,
+            payload,
+            backup_generations=self.limits.backup_generations,
+            indent=2,
         )
-        with temporary.open("w", encoding="utf-8") as file:
-            json.dump(
-                payload,
-                file,
-                indent=2,
-                ensure_ascii=False,
+
+    def _compact_state(self) -> dict[str, int]:
+        """Apply hard ceilings while favoring current/high-value relationship state."""
+
+        def bound_metadata(item: dict[str, Any]) -> None:
+            if "metadata" in item:
+                item["metadata"] = bounded_payload(
+                    item.get("metadata"),
+                    text_limit=self.limits.relationship_text_characters,
+                    item_limit=self.limits.metadata_item_capacity,
+                    depth_limit=self.limits.metadata_depth,
+                )
+
+        removed: dict[str, int] = {}
+
+        before = len(self.history.events)
+        for event in self.history.events:
+            if isinstance(event, dict):
+                bound_metadata(event)
+                event["description"] = clip_text(
+                    event.get("description", ""),
+                    self.limits.relationship_text_characters,
+                )
+        enforce_capacity(
+            self.history.events,
+            self.limits.relationship_event_capacity,
+            keep_score=lambda item: (
+                float(item.get("importance", 0.0) or 0.0),
+                str(item.get("created_at", "")),
+            ),
+        )
+        removed["history"] = before - len(self.history.events)
+
+        before = len(self.user_model.profile_records)
+        for item in self.user_model.profile_records:
+            if isinstance(item, dict):
+                bound_metadata(item)
+                for key in ("key", "value", "category", "source"):
+                    if isinstance(item.get(key), str):
+                        item[key] = clip_text(item[key], self.limits.relationship_text_characters)
+        enforce_capacity(
+            self.user_model.profile_records,
+            self.limits.relationship_profile_capacity,
+            keep_score=lambda item: (
+                1.0 if item.get("status") == "current" else 0.0,
+                float(item.get("confidence", 0.0) or 0.0),
+                str(item.get("updated_at", item.get("created_at", ""))),
+            ),
+        )
+        removed["profile_records"] = before - len(self.user_model.profile_records)
+
+        collections = (
+            ("observations", self.understanding.observations, self.limits.relationship_observation_capacity),
+            ("inferences", self.understanding.inferences, self.limits.relationship_inference_capacity),
+            ("patterns", self.understanding.patterns, self.limits.relationship_pattern_capacity),
+        )
+        for name, values, capacity in collections:
+            before = len(values)
+            for item in values:
+                if not isinstance(item, dict):
+                    continue
+                bound_metadata(item)
+                for key in ("observation", "statement", "pattern", "description", "evidence"):
+                    if isinstance(item.get(key), str):
+                        item[key] = clip_text(item[key], self.limits.relationship_text_characters)
+            enforce_capacity(
+                values,
+                capacity,
+                keep_score=lambda item: (
+                    float(item.get("confidence", item.get("importance", 0.0)) or 0.0),
+                    int(item.get("frequency", 1) or 1),
+                    str(item.get("updated_at", item.get("created_at", ""))),
+                ),
             )
-        temporary.replace(self.path)
+            removed[name] = before - len(values)
+
+        before = len(self.milestones.milestones)
+        for item in self.milestones.milestones:
+            if isinstance(item, dict):
+                bound_metadata(item)
+                item["title"] = clip_text(item.get("title", ""), 512)
+                item["description"] = clip_text(
+                    item.get("description", ""),
+                    self.limits.relationship_text_characters,
+                )
+        enforce_capacity(
+            self.milestones.milestones,
+            self.limits.relationship_milestone_capacity,
+            keep_score=lambda item: (
+                float(item.get("importance", 0.0) or 0.0),
+                str(item.get("created_at", "")),
+            ),
+        )
+        removed["milestones"] = before - len(self.milestones.milestones)
+        return removed
+
+    def governance_status(self) -> dict[str, Any]:
+        file_size = 0
+        try:
+            file_size = self.path.stat().st_size
+        except OSError:
+            pass
+        return {
+            "policy": "bounded_relationship_continuity",
+            "counts": {
+                "history": len(self.history.events),
+                "profile_records": len(self.user_model.profile_records),
+                "observations": len(self.understanding.observations),
+                "inferences": len(self.understanding.inferences),
+                "patterns": len(self.understanding.patterns),
+                "milestones": len(self.milestones.milestones),
+            },
+            "capacities": {
+                "history": self.limits.relationship_event_capacity,
+                "profile_records": self.limits.relationship_profile_capacity,
+                "observations": self.limits.relationship_observation_capacity,
+                "inferences": self.limits.relationship_inference_capacity,
+                "patterns": self.limits.relationship_pattern_capacity,
+                "milestones": self.limits.relationship_milestone_capacity,
+            },
+            "persistence": {
+                "path": str(self.path),
+                "file_size_bytes": file_size,
+                "soft_limit_bytes": self.limits.state_file_soft_limit_bytes,
+                "backup_generations": self.limits.backup_generations,
+                "last_load_source": self.last_load_source,
+                "recovered_from_backup": self.recovered_from_backup,
+                "stale_temps_removed": self.stale_temps_removed,
+            },
+        }
 
     # ============================================================
     # EXPLICIT CREATOR SHARING
@@ -124,7 +258,7 @@ class RelationshipManager:
         the same semantic creator fact is already current.
         """
 
-        content = str(content).strip()
+        content = clip_text(str(content).strip(), self.limits.relationship_text_characters)
         if not content:
             return None
 
@@ -172,7 +306,7 @@ class RelationshipManager:
         command such as ``learn this about me: ...``.
         """
 
-        content = str(content).strip()
+        content = clip_text(str(content).strip(), self.limits.relationship_text_characters)
         if not content:
             return None
 
@@ -366,6 +500,7 @@ class RelationshipManager:
 
     def summary(self) -> dict[str, Any]:
         return {
+            "governance": self.governance_status(),
             "profile": self.user_model.current_profile(),
             "understanding": self.understanding.summary(),
             "history": self.history.summary(),

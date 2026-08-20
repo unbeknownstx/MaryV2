@@ -28,6 +28,8 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
+from mary.governance.bounds import clip_text, enforce_capacity
+
 
 class SemanticMemory:
     """
@@ -36,8 +38,33 @@ class SemanticMemory:
     Persistence can be handled by the MemoryManager/storage layer.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, capacity: int = 4096, content_limit: int = 4000) -> None:
+        self.capacity = max(1, int(capacity))
+        self.content_limit = max(128, int(content_limit))
         self.memories: list[dict[str, Any]] = []
+        self.evicted_count = 0
+
+    def _compact(self) -> int:
+        before = len(self.memories)
+        enforce_capacity(
+            self.memories,
+            self.capacity,
+            keep_score=lambda item: (
+                float(item.get("confidence", 0.0) or 0.0),
+                str(item.get("updated_at", item.get("created_at", ""))),
+            ),
+        )
+        removed = max(0, before - len(self.memories))
+        self.evicted_count += removed
+        return removed
+
+    def status(self) -> dict[str, int]:
+        return {
+            "count": self.count(),
+            "capacity": self.capacity,
+            "evicted": self.evicted_count,
+            "content_limit": self.content_limit,
+        }
 
     # ============================================================
     # ADD
@@ -64,8 +91,10 @@ class SemanticMemory:
         if not predicate or not str(predicate).strip():
             raise ValueError("predicate cannot be empty")
 
-        subject = str(subject).strip()
-        predicate = str(predicate).strip()
+        subject = clip_text(str(subject).strip(), self.content_limit)
+        predicate = clip_text(str(predicate).strip(), self.content_limit)
+        if isinstance(value, str):
+            value = clip_text(value, self.content_limit)
 
         confidence = self._clamp_confidence(
             confidence
@@ -111,6 +140,7 @@ class SemanticMemory:
         }
 
         self.memories.append(memory)
+        self._compact()
 
         return memory
 

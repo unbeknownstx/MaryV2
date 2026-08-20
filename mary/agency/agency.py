@@ -20,6 +20,8 @@ Execution belongs to the autonomy/action systems.
 
 from __future__ import annotations
 
+from mary.governance.limits import RuntimeLimits
+
 from typing import Any
 
 from mary.agency.curiosity import CuriositySystem
@@ -41,24 +43,38 @@ class Agency:
         curiosity_system: CuriositySystem | None = None,
         priority_system: PrioritySystem | None = None,
         decision_system: DecisionSystem | None = None,
+        limits: RuntimeLimits | None = None,
     ) -> None:
 
+        self.limits = limits or RuntimeLimits()
         self.goals = (
             goal_system
             if goal_system is not None
-            else GoalSystem()
+            else GoalSystem(
+                capacity=self.limits.goal_capacity,
+                content_limit=self.limits.agency_text_characters,
+                backup_generations=self.limits.backup_generations,
+            )
         )
 
         self.intentions = (
             intention_system
             if intention_system is not None
-            else IntentionSystem()
+            else IntentionSystem(
+                capacity=self.limits.intention_capacity,
+                content_limit=self.limits.agency_text_characters,
+                backup_generations=self.limits.backup_generations,
+            )
         )
 
         self.curiosities = (
             curiosity_system
             if curiosity_system is not None
-            else CuriositySystem()
+            else CuriositySystem(
+                capacity=self.limits.curiosity_capacity,
+                content_limit=self.limits.agency_text_characters,
+                backup_generations=self.limits.backup_generations,
+            )
         )
 
         self.priorities = (

@@ -65,6 +65,7 @@ class MaryDiagnostics:
         results.extend(self._check_learning())
         results.extend(self._check_relationship())
         results.extend(self._check_orchestration())
+        results.extend(self._check_governance())
         results.extend(self._check_tools())
         results.extend(self._check_agency())
         results.extend(self._check_autonomy())
@@ -491,7 +492,63 @@ class MaryDiagnostics:
                 "Expert Consultation",
                 "expert_consultant",
             ),
+            self._check_attribute(
+                "Task Orchestrator",
+                "task_orchestrator",
+            ),
+            self._check_attribute(
+                "Task Executor",
+                "task_executor",
+            ),
         ]
+
+    # ============================================================
+    # GOVERNANCE / LONG-LIVED RUNTIME SAFETY
+    # ============================================================
+
+    def _check_governance(self) -> List[DiagnosticResult]:
+        results: List[DiagnosticResult] = []
+
+        try:
+            governor = getattr(getattr(self.mary, "llm", None), "resource_governor", None)
+            limits = getattr(getattr(self.mary, "config", None), "governance", None)
+            ok = governor is not None and limits is not None
+            results.append(DiagnosticResult(
+                name="Resource Governance",
+                status="PASS" if ok else "FAIL",
+                message="bounded" if ok else "not connected",
+                details={"policy": getattr(governor, "status", lambda: {})().get("policy") if governor else None},
+            ))
+        except Exception as error:
+            results.append(DiagnosticResult("Resource Governance", "FAIL", f"diagnostic error: {error}"))
+
+        try:
+            memory = getattr(self.mary, "memory", None)
+            status = memory.status() if memory is not None else {}
+            capacities = status.get("capacities", {}) if isinstance(status, dict) else {}
+            persistence = status.get("persistence", {}) if isinstance(status, dict) else {}
+            ok = bool(capacities) and int(persistence.get("backup_generations", 0) or 0) >= 1
+            results.append(DiagnosticResult(
+                name="Bounded Persistence",
+                status="PASS" if ok else "FAIL",
+                message="bounded + recoverable" if ok else "limits/recovery unavailable",
+                details={"capacities": capacities, "backup_generations": persistence.get("backup_generations")},
+            ))
+        except Exception as error:
+            results.append(DiagnosticResult("Bounded Persistence", "FAIL", f"diagnostic error: {error}"))
+
+        try:
+            state = self.mary.live_state()
+            ok = isinstance(state, dict) and bool(state.get("character")) and bool(state.get("memory"))
+            results.append(DiagnosticResult(
+                name="Live Character State",
+                status="PASS" if ok else "FAIL",
+                message="display-safe" if ok else "unavailable",
+            ))
+        except Exception as error:
+            results.append(DiagnosticResult("Live Character State", "FAIL", f"diagnostic error: {error}"))
+
+        return results
 
     # ============================================================
     # TOOLS

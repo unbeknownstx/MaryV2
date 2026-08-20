@@ -95,6 +95,8 @@ from mary.memory.manager import MemoryManager
 
 from mary.orchestration.workspace import TaskWorkspaceManager
 from mary.orchestration.consultation import ExpertConsultant
+from mary.orchestration.orchestrator import TaskOrchestrator
+from mary.orchestration.execution import OrchestrationExecutor
 
 from mary.cognition.orchestrator import (
     CognitiveCycleResult,
@@ -197,7 +199,7 @@ class Mary:
         # represented Preferences until an explicit promotion path approves it.
         # Plain Mary() keeps this ledger in memory only; persistent runtimes
         # configure its own tentative-evidence file explicitly.
-        self.preference_promotion = PreferencePromotionSystem()
+        self.preference_promotion = PreferencePromotionSystem(limits=self.config.governance)
 
         # ============================================================
         # SELF MODEL
@@ -238,7 +240,9 @@ class Mary:
         # RELATIONSHIP
         # ============================================================
 
-        self.relationship = RelationshipManager()
+        self.relationship = RelationshipManager(
+            limits=self.config.governance,
+        )
         self.relationship.load()
 
         # Keep one authoritative creator model and expose the existing
@@ -254,7 +258,11 @@ class Mary:
         # system so there remains only one authoritative creator model.
         self.natural_relationship_learning = NaturalRelationshipLearner()
 
-        self.creator_directives = CreatorDirectiveSystem()
+        self.creator_directives = CreatorDirectiveSystem(
+            capacity=self.config.governance.creator_directive_capacity,
+            content_limit=self.config.governance.agency_text_characters,
+            backup_generations=self.config.governance.backup_generations,
+        )
         self.creator_directives.load()
 
         # ============================================================
@@ -277,10 +285,22 @@ class Mary:
         # orchestration a structured place for hypotheses, evidence, model
         # consultations, and decisions without turning temporary reasoning into
         # durable memory, creator facts, or developed-self state.
-        self.task_workspace = TaskWorkspaceManager()
+        self.task_workspace = TaskWorkspaceManager(
+            limits=self.config.governance,
+            on_evict=self.llm.resource_governor.forget_task,
+        )
         self.expert_consultant = ExpertConsultant(
             router=self.llm,
             workspace=self.task_workspace,
+        )
+        self.task_orchestrator = TaskOrchestrator(
+            workspace=self.task_workspace,
+            router=self.llm,
+        )
+        self.task_executor = OrchestrationExecutor(
+            router=self.llm,
+            workspace=self.task_workspace,
+            expert=self.expert_consultant,
         )
 
         # ============================================================
@@ -288,7 +308,7 @@ class Mary:
         # ============================================================
 
         self.tools = ToolManager(
-            workspace_root=self.config.paths.root,
+            workspace_root=self.config.paths.workspace,
         )
 
         self.code_change_planner = CodeChangePlanner(
@@ -312,7 +332,9 @@ class Mary:
 
         self.response = ResponseBuilder()
 
-        self.dialogue = DialogueManager()
+        self.dialogue = DialogueManager(
+            max_history=self.config.governance.dialogue_history_capacity,
+        )
 
         self.expression = ExpressionSystem(
             emotion=self.emotion,
@@ -351,10 +373,15 @@ class Mary:
         # LEARNING
         # ============================================================
 
-        self.learner = Learner()
+        self.learner = Learner(
+            capacity=self.config.governance.learning_event_capacity,
+            text_limit=self.config.governance.process_text_characters,
+        )
 
         self.evaluator = Evaluator(
             llm=self.llm,
+            capacity=self.config.governance.evaluation_capacity,
+            text_limit=self.config.governance.process_text_characters,
         )
 
         self.source_resolver = SourceResolver()
@@ -376,19 +403,28 @@ class Mary:
         # Researcher cannot bypass the creator-approval boundary.
         self.researcher = Researcher(
             web_tool=None,
+            request_capacity=self.config.governance.research_request_capacity,
+            result_capacity=self.config.governance.research_result_capacity,
+            text_limit=self.config.governance.process_text_characters,
         )
 
         # ============================================================
         # KNOWLEDGE
         # ============================================================
 
-        self.knowledge = KnowledgeManager()
+        self.knowledge = KnowledgeManager(
+            capacity=self.config.governance.knowledge_concept_capacity,
+            source_capacity=self.config.governance.knowledge_source_capacity,
+            text_limit=self.config.governance.process_text_characters,
+        )
 
         # ============================================================
         # MEMORY
         # ============================================================
 
-        self.memory = MemoryManager()
+        self.memory = MemoryManager(
+            limits=self.config.governance,
+        )
 
         # Build structured creator understanding from older explicit memories
         # using only the relationship manager's narrow high-confidence parser.
@@ -416,7 +452,7 @@ class Mary:
         # AGENCY
         # ============================================================
 
-        self.agency = Agency()
+        self.agency = Agency(limits=self.config.governance)
         self.agency.load()
 
         # Creator directives are the durable source of creator-directed
@@ -485,7 +521,12 @@ class Mary:
         # Active dialogue history remains owned by DialogueManager. The context
         # lifecycle chooses only the bounded slice that cognition should send to
         # an LLM on each turn; it never creates durable memory by itself.
-        self.context_lifecycle = ConversationContextLifecycle()
+        self.context_lifecycle = ConversationContextLifecycle(
+            max_turns=self.config.governance.context_turns,
+            max_characters=self.config.governance.context_characters,
+            max_message_characters=self.config.governance.context_message_characters,
+            max_anchors=self.config.governance.context_anchors,
+        )
 
         # Conversation continuity is owned by the TurnMind builder so there is
         # only one authoritative drive/question-budget implementation.
@@ -3102,11 +3143,24 @@ class Mary:
             "user": self._user_context(),
             "learning": self.learner.summarize(),
             "memory": self.memory.status(),
+            "relationship_governance": self.relationship.governance_status(),
+            "governance": {
+                "limits": self.config.governance.to_dict(),
+                "resources": (
+                    self.llm.resource_governor.status()
+                    if hasattr(self.llm, "resource_governor")
+                    else {"policy": "external_test_router"}
+                ),
+                "principle": "bounded_growth_no_unlimited_collection",
+            },
             "orchestration": {
                 "task_workspace": self.task_workspace.status(),
                 "expert_consultant": self.expert_consultant.status(),
+                "task_orchestrator": self.task_orchestrator.status(),
+                "task_executor": self.task_executor.status(),
             },
             "tools": self.tools.status(),
+            "live_character": self.live_state(),
             "cognition": {
                 "reasoning": True,
                 "reflection": True,
@@ -3126,6 +3180,13 @@ class Mary:
                 ),
             },
         }
+
+    def live_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
+        """Return a compact display-safe live character/runtime snapshot."""
+
+        from mary.runtime.live_state import build_live_character_state
+
+        return build_live_character_state(self, runtime_status=runtime_status)
 
     # ================================================================
     # SELF DESCRIPTION

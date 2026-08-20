@@ -191,6 +191,7 @@ class MaryDesktopBridge(QObject):
     listeningStateChanged = Signal(str)
     transcriptionReady = Signal(str)
     conversationStateChanged = Signal(str)
+    characterStateChanged = Signal(str)
     voicePlaybackStopRequested = Signal()
 
     def __init__(self, application: MaryApplication) -> None:
@@ -337,6 +338,17 @@ class MaryDesktopBridge(QObject):
     def getAvatarState(self) -> str:  # noqa: N802 - JS-facing API
         return _json(self.application.mary.avatar.state.to_dict())
 
+    @Slot(result=str)
+    def getCharacterState(self) -> str:  # noqa: N802 - JS-facing API
+        return _json(
+            self.application.mary.live_state(
+                runtime_status=self.conversation_runtime.state.value,
+            )
+        )
+
+    def _emit_character_state(self) -> None:
+        self.characterStateChanged.emit(self.getCharacterState())
+
     @Slot()
     def save(self) -> None:
         try:
@@ -458,6 +470,7 @@ class MaryDesktopBridge(QObject):
             flush=True,
         )
         self.conversationStateChanged.emit(_json(snapshot.to_dict()))
+        self._emit_character_state()
 
     def _set_busy(self, value: bool) -> None:
         self._busy = bool(value)
@@ -479,6 +492,7 @@ class MaryDesktopBridge(QObject):
         payload_dict = payload.to_dict()
         self.messageReady.emit(_json(payload_dict))
         self.avatarStateChanged.emit(_json(payload.avatar))
+        self._emit_character_state()
 
         voice = payload.voice
         voice_will_play = bool(

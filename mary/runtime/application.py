@@ -179,6 +179,37 @@ def format_last_turn(result: Any) -> str:
     return "\n".join(lines)
 
 
+def format_live_state(application: "MaryApplication") -> str:
+    """Return Mary's compact character card for terminal/UI parity."""
+
+    from mary.runtime.live_state import format_character_card
+
+    return format_character_card(application.mary.live_state())
+
+
+def format_resource_state(application: "MaryApplication") -> str:
+    """Return compact bounded-resource counters without prompt or secret data."""
+
+    state = application.mary.live_state()
+    resources = dict(state.get("resources", {}) or {})
+    memory = dict(state.get("memory", {}) or {})
+    capacities = dict(memory.get("capacities", {}) or {})
+    lines = [
+        "MARYV2 RESOURCE STATE",
+        "────────────────────────────────",
+        f"Provider attempts: {resources.get('provider_attempts', 0)}",
+        f"Paid calls:        {resources.get('paid_calls', 0)}",
+        f"Prompt tokens:     {resources.get('prompt_tokens', 0)}",
+        f"Completion tokens: {resources.get('completion_tokens', 0)}",
+        f"Reasoning tokens:  {resources.get('reasoning_tokens', 0)}",
+        f"Episodic memory:   {memory.get('episodic', 0)} / {capacities.get('episodic', '?')}",
+        f"Semantic memory:   {memory.get('semantic', 0)} / {capacities.get('semantic', '?')}",
+        f"Working memory:    {memory.get('working', 0)} / {capacities.get('working', '?')}",
+        "Paid expert policy: explicit task authorization",
+    ]
+    return "\n".join(lines)
+
+
 def interactive_help(application: "MaryApplication") -> str:
     """Explain the difference between Mary's prompt and PowerShell."""
 
@@ -200,7 +231,8 @@ def interactive_help(application: "MaryApplication") -> str:
         "second terminal while Mary stays running.\n\n"
         "Inside Mary, `/pending` shows pending approvals. If exactly one request "
         "is pending, simply type `approve` or `reject`. `/last` shows compact "
-        "debug metadata for Mary's most recent completed turn.\n\n"
+        "debug metadata for Mary's most recent completed turn. `/state` shows "
+        "Mary's live character state and `/resources` shows bounded usage.\n\n"
         f"Mary's bounded workspace is: {workspace}"
     )
 
@@ -449,9 +481,15 @@ def run_interactive(
         )
 
     print()
+    try:
+        print(format_live_state(app))
+        print()
+    except Exception as exc:
+        print(f"Warning: Could not render live character state: {type(exc).__name__}: {exc}")
+        print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help' for examples, '/pending' for approvals, '/last' for turn debug, or 'exit' to stop.")
+    print("Type '/help', '/state', '/resources', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -493,6 +531,14 @@ def run_interactive(
 
             if command in {"/last", "/debug", "last turn"}:
                 print(format_last_turn(last_result))
+                continue
+
+            if command in {"/state", "state", "character state"}:
+                print(format_live_state(app))
+                continue
+
+            if command in {"/resources", "/resource", "resources"}:
+                print(format_resource_state(app))
                 continue
 
             if looks_like_terminal_command(user_input):

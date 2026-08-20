@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text, timestamp_value
+
 from .concepts import (
     Concept,
     Evidence,
@@ -110,17 +112,33 @@ class KnowledgeManager:
     def __init__(
         self,
         source_manager: SourceManager | None = None,
+        *,
+        capacity: int = 4096,
+        source_capacity: int = 2048,
+        text_limit: int = 4000,
     ) -> None:
-        self.concepts: dict[
-            str,
-            Concept,
-        ] = {}
+        self.concepts: dict[str, Concept] = {}
+        self.capacity = max(1, int(capacity))
+        self.text_limit = max(256, int(text_limit))
 
         self.sources = (
             source_manager
             if source_manager is not None
-            else SourceManager()
+            else SourceManager(capacity=source_capacity, text_limit=text_limit)
         )
+
+    def _trim(self) -> None:
+        while len(self.concepts) > self.capacity:
+            victim = min(
+                self.concepts.values(),
+                key=lambda item: (
+                    1 if item.status == "trusted" else 0,
+                    float(item.importance),
+                    float(item.confidence),
+                    timestamp_value(item.last_updated or item.first_learned),
+                ),
+            )
+            self.concepts.pop(victim.id, None)
 
     # ============================================================
     # CONCEPT CREATION
@@ -151,12 +169,8 @@ class KnowledgeManager:
                 if concept_id
                 else self._next_concept_id()
             ),
-            name=str(
-                name
-            ).strip(),
-            statement=str(
-                statement
-            ).strip(),
+            name=clip_text(name, self.text_limit),
+            statement=clip_text(statement, self.text_limit),
             knowledge_type=knowledge_type,
             status=status,
             confidence=confidence,
@@ -178,12 +192,11 @@ class KnowledgeManager:
                 )
                 if str(alias).strip()
             ],
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.text_limit),
         )
 
-        self.concepts[
-            concept.id
-        ] = concept
+        self.concepts[concept.id] = concept
+        self._trim()
 
         return concept
 
@@ -1099,9 +1112,9 @@ class KnowledgeManager:
             )
 
             if concept.id:
-                self.concepts[
-                    concept.id
-                ] = concept
+                self.concepts[concept.id] = concept
+
+        self._trim()
 
     # ============================================================
     # INTERNAL HELPERS

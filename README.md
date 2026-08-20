@@ -1,68 +1,94 @@
 # MaryV2
 
-MaryV2 is a persistent AI character/runtime built around a single coordinated Mary instance. It connects identity, personality, memory, cognition, learning, knowledge, agency, bounded autonomy, conversation, expression, avatar/audio interfaces, web research, and approval-gated development tools.
+MaryV2 is a private persistent character runtime for **Mary**. Mary existed as a character before this software; the runtime is the machinery that lets the same character converse, remember selectively, learn through controlled paths, use tools/models, speak through the desktop, survive restarts, and remain independent from any one LLM provider.
 
-Creator identity in Mary-facing project logic: **Unbe**.
+## V2 invariants
 
-## Run Mary
+- Mary is not the provider. Groq, Gemini, OpenRouter, Ollama, and optional paid OpenAI are replaceable capabilities.
+- Persistent state is bounded. Persistence means continuity, not perfect recall or infinite storage.
+- Active LLM context is selective and bounded; stored history is never dumped wholesale into prompts.
+- Temporary task reasoning does not automatically become durable memory, relationship state, or developed self.
+- Model output is advisory evidence. Tests, local state, authoritative sources, and explicit creator statements can outrank it.
+- Paid OpenAI is excluded from `free_first` and requires explicit task-level authorization.
+- Private/offline generation uses Ollama only.
+- Tool capability and permission are separate. Consequential writes/actions remain approval-gated.
+- Persistent JSON state is atomically replaced with a finite backup chain and recovery support.
+- Every long-lived collection, task ledger, provider route, context path, and backup chain has a hard ceiling.
 
-```powershell
-python main.py
+## Normal provider policy
+
+```text
+free_first: Groq -> Gemini -> OpenRouter -> Ollama
+private/offline: Ollama only
+paid expert: OpenAI (explicit task authorization only)
 ```
 
-Equivalent entry points:
+## Run Mary in the terminal
+
+From the repository root with the virtual environment active:
 
 ```powershell
 python -m scripts.run_mary
-python -m mary.runtime.interactive
 ```
 
-All three use the canonical `MaryApplication` runtime.
+Useful commands while Mary is running:
 
-## Verify the release
+```text
+/help       command help
+/state      display-safe live character/runtime state
+/resources  provider/token/paid-resource counters
+/last       last-turn provider and reasoning metadata
+/pending    approval-gated tool requests
+```
 
-Run the complete local verification from the repository root:
+## Run the desktop
+
+Install/build once on Windows:
 
 ```powershell
-python -m scripts.run_release_verification
+python -m pip install -r requirements-desktop.txt
+cd desktop
+npm ci
+npm run build
+cd ..
 ```
 
-For deterministic/offline verification that skips the configured live LLM test:
+Then:
+
+```powershell
+python -m scripts.run_desktop
+```
+
+The desktop is a presentation layer over the same canonical `MaryApplication`; it does not own a second Mary.
+
+## Verify V2
+
+The canonical no-spend release gate is:
 
 ```powershell
 python -m scripts.run_release_verification --offline
 ```
 
-To explicitly include one live public web-search smoke test:
+This explicitly disables live LLM/OpenAI pytest flags in child processes. A normal test or release run must not spend paid OpenAI credits.
+
+For the full local hard-test sequence:
 
 ```powershell
-python -m scripts.run_release_verification --live-web
+powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 ```
 
-See [`docs/verification.md`](docs/verification.md) for the important difference between the PowerShell prompt and Mary's interactive `You:` prompt.
+## Standalone Windows build
 
-## Tool safety model
+After the hard-test gate is green:
 
-- Read-only project/file inspection is bounded to Mary's configured workspace.
-- Public web access is intentional and approval-scoped according to the request path.
-- Filesystem writes/deletes/moves require a separate creator approval turn.
-- Code changes are proposed as exact diffs, syntax-checked, and remain unchanged until approval.
-- Stale code proposals are rejected if the source changed after the proposal was created.
-- Static code analysis does not execute source code.
-- Arbitrary shell/Python execution is not provided through Mary's normal tool path.
-
-## Interactive help
-
-While Mary is running:
-
-```text
-/help
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 ```
 
-shows which commands belong in Mary versus PowerShell.
+The packaged app uses writable user state outside the frozen bundle by default. Set `MARY_PORTABLE=1` only when a portable side-by-side `data/` directory is intentionally desired.
 
-```text
-/pending
-```
+See:
 
-shows pending tool requests. If exactly one request is pending, `approve` or `reject` is enough; Mary will not guess when multiple requests are pending.
+- `docs/architecture/V2_FINAL_RUNTIME.md`
+- `docs/V2_HARD_TEST.md`
+- `desktop/README.md`

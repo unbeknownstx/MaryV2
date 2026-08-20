@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text
+
 
 # ================================================================
 # LEARNING EVENT
@@ -90,8 +92,13 @@ class Learner:
     information should become permanent knowledge.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, capacity: int = 512, text_limit: int = 4000) -> None:
         self.events: list[LearningEvent] = []
+        self.capacity = max(1, int(capacity))
+        self.text_limit = max(256, int(text_limit))
+
+    def _trim(self) -> None:
+        del self.events[:-self.capacity]
 
     # ============================================================
     # RECORD
@@ -114,24 +121,17 @@ class Learner:
 
         event = LearningEvent(
             id=self._next_id(),
-            event_type=str(
-                event_type
-            ),
-            subject=str(
-                subject
-            ).strip(),
-            content=str(
-                content
-            ).strip(),
+            event_type=clip_text(event_type, 160),
+            subject=clip_text(subject, self.text_limit),
+            content=clip_text(content, self.text_limit),
             source=source,
             confidence=confidence,
             usefulness=usefulness,
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.text_limit),
         )
 
-        self.events.append(
-            event
-        )
+        self.events.append(event)
+        self._trim()
 
         return event
 
@@ -474,9 +474,9 @@ class Learner:
                 ),
             )
 
-            self.events.append(
-                event
-            )
+            self.events.append(event)
+
+        self._trim()
 
     # ============================================================
     # ID GENERATION

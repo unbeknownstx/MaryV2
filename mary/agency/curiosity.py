@@ -23,10 +23,12 @@ research itself. Research belongs to the learning/research systems.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from mary.governance.bounds import bounded_payload, clip_text, enforce_capacity
+from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, load_json_recovering
 
 
 class CuriositySystem:
@@ -42,8 +44,15 @@ class CuriositySystem:
     def __init__(
         self,
         path: str | Path = "data/goals/curiosities.json",
+        capacity: int = 1024,
+        content_limit: int = 2000,
+        backup_generations: int = 3,
     ) -> None:
         self.path = Path(path)
+        self.capacity = max(1, int(capacity))
+        self.content_limit = max(128, int(content_limit))
+        self.backup_generations = max(1, int(backup_generations))
+        self.recovered_from_backup = False
         self.curiosities: list[dict[str, Any]] = []
 
     # ============================================================
@@ -51,69 +60,56 @@ class CuriositySystem:
     # ============================================================
 
     def load(self) -> None:
-        """Load curiosities from persistent storage."""
-
-        if not self.path.exists():
+        """Load state with finite-backup recovery."""
+        cleanup_stale_temps(self.path)
+        if not self.path.exists() and not any(
+            self.path.with_name(f"{self.path.name}.bak{i}").exists()
+            for i in range(1, self.backup_generations + 1)
+        ):
             self._ensure_directory()
             self.save()
             return
-
-        try:
-            with self.path.open(
-                "r",
-                encoding="utf-8",
-            ) as file:
-                data = json.load(file)
-
-            if isinstance(data, dict):
-                curiosities = data.get(
-                    "curiosities",
-                    [],
-                )
-            elif isinstance(data, list):
-                curiosities = data
-            else:
-                curiosities = []
-
-            if isinstance(curiosities, list):
-                self.curiosities = [
-                    curiosity
-                    for curiosity in curiosities
-                    if isinstance(
-                        curiosity,
-                        dict,
-                    )
-                ]
-            else:
-                self.curiosities = []
-
-        except (
-            OSError,
-            json.JSONDecodeError,
-            TypeError,
-            ValueError,
-        ):
-            self.curiosities = []
+        payload, source = load_json_recovering(
+            self.path, backup_generations=self.backup_generations
+        )
+        if isinstance(payload, dict):
+            raw = payload.get("curiosities", [])
+        elif isinstance(payload, list):
+            raw = payload
+        else:
+            raw = []
+        self.curiosities = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+        self._compact()
+        self.recovered_from_backup = bool(source is not None and source != self.path)
 
     def save(self) -> None:
-        """Persist curiosities to disk."""
-
+        """Persist bounded state atomically."""
         self._ensure_directory()
+        self._compact()
+        atomic_write_json(
+            self.path,
+            {"curiosities": self.curiosities},
+            backup_generations=self.backup_generations,
+            indent=2,
+        )
 
-        data = {
-            "curiosities": self.curiosities,
-        }
-
-        with self.path.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                data,
-                file,
-                indent=4,
-                ensure_ascii=False,
-            )
+    def _compact(self) -> int:
+        before = len(self.curiosities)
+        for item in self.curiosities:
+            if isinstance(item, dict):
+                if isinstance(item.get("description"), str):
+                    item["description"] = clip_text(item["description"], self.content_limit)
+                item["metadata"] = bounded_payload(item.get("metadata", {}), text_limit=self.content_limit)
+        enforce_capacity(
+            self.curiosities,
+            self.capacity,
+            keep_score=lambda item: (
+                1.0 if str(item.get("status", "")) in {'exploring', 'open'} else 0.0,
+                float(item.get("importance", item.get("priority", 0.0)) or 0.0),
+                str(item.get("updated_at", item.get("created_at", ""))),
+            ),
+        )
+        return max(0, before - len(self.curiosities))
 
     def _ensure_directory(self) -> None:
         """Create the storage directory if necessary."""
@@ -147,9 +143,9 @@ class CuriositySystem:
             autonomous
         """
 
-        description = str(
+        description = clip_text(str(
             description
-        ).strip()
+        ).strip(), self.content_limit)
 
         if not description:
             return None
@@ -169,7 +165,7 @@ class CuriositySystem:
             "created_at": now,
             "updated_at": now,
             "resolved_at": None,
-            "metadata": dict(metadata or {}),
+            "metadata": bounded_payload(metadata or {}, text_limit=self.content_limit),
         }
 
         self.curiosities.append(

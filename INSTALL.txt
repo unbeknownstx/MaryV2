@@ -1,55 +1,35 @@
-MARYV2 TASK WORKSPACE + OPENAI EXPERT V1
-========================================
+MARYV2 FINAL CONSOLIDATION OVERLAY
 
-This patch is cumulative from the current verified MaryV2 checkpoint and
-includes Task Workspace V1 plus the intentional OpenAI paid expert bridge.
-It does NOT include or modify .env, data/, memories, or persistent state.
+This source overlay is designed to be copied onto the existing MaryV2 project.
+It intentionally does NOT contain or replace the user's .env, data/, persistent
+character state, API keys, desktop VRM assets, node_modules, or built dist assets.
 
-1. Copy the contents of this folder into the MaryV2 repository root,
-   preserving paths and replacing the matching files.
-
-2. In your activated .venv:
+1. Make a backup / GitHub Desktop commit of the current working MaryV2 folder.
+2. Extract/copy the consolidation overlay into the MaryV2 root and replace files.
+3. Do NOT delete .env or data/.
+4. With .venv active, run:
 
    python -m pip install -r requirements.txt
-
-3. Add these lines to your LOCAL .env (do not paste the key into chat and do
-   not commit .env):
-
-   OPENAI_API_KEY=YOUR_REAL_KEY_HERE
-   MARY_LLM_EXPERT_PROVIDER=openai
-   MARY_OPENAI_MODEL=gpt-5.6-luna
-   MARY_OPENAI_REASONING_EFFORT=low
-   MARY_OPENAI_TIMEOUT=60
-
-   OpenAI remains EXCLUDED from Mary's normal free_first chain.
-   Normal route remains:
-       groq -> gemini -> openrouter -> ollama
-
-   Private/offline remains:
-       ollama only
-
-   Paid expert route becomes:
-       openai / gpt-5.6-luna
-
-4. Deterministic checks (no paid call):
-
-   python -m pytest tests/llm/test_openai_provider.py tests/orchestration/test_expert_consultation.py -q
-   python -m scripts.verify_openai_expert_install
-   python -m scripts.check_llm_routes
    python -m pytest tests -q
    python -m scripts.run_diagnostics
    python -m scripts.run_release_verification --offline
 
-Expected current checkpoint:
-   426 passed, 1 skipped
-   45/45 diagnostics PASS
-   offline release gate PASS
+5. Rebuild the desktop on Windows:
 
-5. ONE intentional paid live smoke call:
+   cd desktop
+   npm ci
+   npm run build
+   cd ..
+   python -m scripts.run_desktop
 
-   $env:MARY_RUN_OPENAI_TESTS="1"
-   python -m scripts.smoke_openai_expert
-   Remove-Item Env:MARY_RUN_OPENAI_TESTS -ErrorAction SilentlyContinue
+6. Terminal runtime:
 
-The live smoke sends only a tiny temporary test task. It does NOT send Mary's
-persistent memories or creator profile.
+   python -m scripts.run_mary
+
+   Use /state and /resources to inspect display-safe runtime state.
+
+7. Only after the source/runtime hard tests are green, build the standalone app:
+
+   powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+
+No live OpenAI call is required by this installation or hard-test sequence.

@@ -28,6 +28,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text
+
 
 # ================================================================
 # KNOWLEDGE CANDIDATE
@@ -109,10 +111,13 @@ class LearningKnowledge:
         "merged",
     }
 
-    def __init__(self) -> None:
-        self.candidates: list[
-            KnowledgeCandidate
-        ] = []
+    def __init__(self, *, capacity: int = 512, text_limit: int = 4000) -> None:
+        self.candidates: list[KnowledgeCandidate] = []
+        self.capacity = max(1, int(capacity))
+        self.text_limit = max(256, int(text_limit))
+
+    def _trim(self) -> None:
+        del self.candidates[:-self.capacity]
 
     # ============================================================
     # CREATE
@@ -136,25 +141,18 @@ class LearningKnowledge:
 
         candidate = KnowledgeCandidate(
             id=self._next_id(),
-            subject=str(
-                subject
-            ).strip(),
-            statement=str(
-                statement
-            ).strip(),
-            category=str(
-                category
-            ).strip(),
+            subject=clip_text(subject, self.text_limit),
+            statement=clip_text(statement, self.text_limit),
+            category=clip_text(category, 160),
             source=source,
             confidence=confidence,
             usefulness=usefulness,
             novelty=novelty,
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.text_limit),
         )
 
-        self.candidates.append(
-            candidate
-        )
+        self.candidates.append(candidate)
+        self._trim()
 
         return candidate
 
@@ -688,9 +686,9 @@ class LearningKnowledge:
                 ),
             )
 
-            self.candidates.append(
-                candidate
-            )
+            self.candidates.append(candidate)
+
+        self._trim()
 
     # ============================================================
     # ID GENERATION

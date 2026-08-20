@@ -50,6 +50,8 @@ class ExpertConsultant:
             "available": self.router.is_available(route="expert"),
             "persistence": "task_workspace_only",
             "authority": "advisory_only",
+            "paid_policy": "explicit_task_authorization",
+            "paid_calls_per_task": self.router.config.governance.paid_calls_per_task,
         }
 
     def consult(
@@ -60,7 +62,8 @@ class ExpertConsultant:
         role: str = "expert_reasoning",
         context: Iterable[str] = (),
         max_evidence: int = 8,
-        max_tokens: int = 1200,
+        max_tokens: int | None = None,
+        allow_paid: bool | None = None,
     ) -> ExpertConsultationResult:
         task = self.workspace.get(task_id)
         if task is None:
@@ -68,6 +71,24 @@ class ExpertConsultant:
         if not task.active:
             raise RuntimeError(
                 f"Task {task.task_id} is {task.status.value} and cannot be consulted."
+            )
+
+        paid_authorized = (
+            bool(task.metadata.get("allow_paid", False))
+            if allow_paid is None
+            else bool(allow_paid)
+        )
+        if not paid_authorized:
+            raise PermissionError(
+                "Paid expert consultation is disabled for this task. "
+                "Set task metadata allow_paid=True or explicitly authorize this consultation."
+            )
+
+        governor = self.router.resource_governor
+        if not governor.reserve_paid_call(task.task_id):
+            raise RuntimeError(
+                f"Paid-call budget exhausted for {task.task_id}; "
+                f"limit={governor.limits.paid_calls_per_task}."
             )
 
         prompt = self._build_prompt(
@@ -94,7 +115,10 @@ class ExpertConsultant:
                 LLMMessage(role="user", content=prompt),
             ],
             route="expert",
-            max_tokens=max_tokens,
+            max_tokens=min(
+                int(max_tokens or self.router.config.governance.expert_max_output_tokens),
+                int(self.router.config.governance.expert_max_output_tokens),
+            ),
         )
 
         attempts = tuple(

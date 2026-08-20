@@ -32,6 +32,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text, timestamp_value
+
 
 # ================================================================
 # SOURCE TYPES
@@ -478,11 +480,23 @@ class SourceManager:
     It does not fetch external information.
     """
 
-    def __init__(self) -> None:
-        self.sources: dict[
-            str,
-            Source,
-        ] = {}
+    def __init__(self, *, capacity: int = 2048, text_limit: int = 4000) -> None:
+        self.sources: dict[str, Source] = {}
+        self.capacity = max(1, int(capacity))
+        self.text_limit = max(256, int(text_limit))
+
+    def _trim(self) -> None:
+        while len(self.sources) > self.capacity:
+            victim = min(
+                self.sources.values(),
+                key=lambda item: (
+                    1 if item.status == "active" else 0,
+                    float(item.reliability),
+                    int(item.verification_count),
+                    timestamp_value(item.last_verified or item.accessed_at),
+                ),
+            )
+            self.sources.pop(victim.id, None)
 
     # ============================================================
     # CREATE
@@ -523,22 +537,12 @@ class SourceManager:
 
         source = Source(
             id=self._next_id(),
-            title=str(
-                title
-            ).strip(),
+            title=clip_text(title, self.text_limit),
             source_type=source_type,
-            location=str(
-                location
-            ).strip(),
-            author=str(
-                author
-            ).strip(),
-            publisher=str(
-                publisher
-            ).strip(),
-            description=str(
-                description
-            ).strip(),
+            location=clip_text(location, self.text_limit),
+            author=clip_text(author, self.text_limit),
+            publisher=clip_text(publisher, self.text_limit),
+            description=clip_text(description, self.text_limit),
             reliability=reliability,
             status=status,
             published_at=published_at,
@@ -549,12 +553,11 @@ class SourceManager:
                 )
                 if str(tag).strip()
             ],
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.text_limit),
         )
 
-        self.sources[
-            source.id
-        ] = source
+        self.sources[source.id] = source
+        self._trim()
 
         return source
 
@@ -845,9 +848,9 @@ class SourceManager:
             )
 
             if source.id:
-                self.sources[
-                    source.id
-                ] = source
+                self.sources[source.id] = source
+
+        self._trim()
 
     # ============================================================
     # ID GENERATION

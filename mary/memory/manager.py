@@ -1,36 +1,25 @@
-"""
-MaryV2 - Memory Manager
-
-Public interface for Mary's memory architecture.
-
-The MemoryManager coordinates:
-- episodic memory
-- semantic memory
-- working memory
-- retrieval
-- consolidation
-
-Individual memory systems remain responsible for their own
-storage and behavior.
-"""
+"""MaryV2 memory manager with bounded storage, retrieval, and recovery."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from mary.governance.limits import RuntimeLimits
+from mary.memory.consolidation import MemoryConsolidator
 from mary.memory.episodic import EpisodicMemoryStore
+from mary.memory.retrieval import MemoryRetriever
 from mary.memory.semantic import SemanticMemory
 from mary.memory.working import WorkingMemory
-from mary.memory.retrieval import MemoryRetriever
-from mary.memory.consolidation import MemoryConsolidator
+from mary.runtime.persistence import (
+    atomic_write_json,
+    cleanup_stale_temps,
+    load_json_recovering,
+)
 
 
 class MemoryManager:
-    """
-    Unified public interface for Mary's memory architecture.
-    """
+    """Unified public interface for Mary's bounded memory architecture."""
 
     def __init__(
         self,
@@ -42,61 +31,38 @@ class MemoryManager:
         storage_path: str | Path | None = None,
         auto_load: bool = False,
         auto_save: bool = False,
+        limits: RuntimeLimits | None = None,
     ) -> None:
-
-        self.episodic = (
-            episodic_memory
-            if episodic_memory is not None
-            else EpisodicMemoryStore()
+        self.limits = limits or RuntimeLimits()
+        self.episodic = episodic_memory or EpisodicMemoryStore(
+            capacity=self.limits.episodic_capacity,
+            content_limit=self.limits.memory_content_characters,
         )
-
-        self.semantic = (
-            semantic_memory
-            if semantic_memory is not None
-            else SemanticMemory()
+        self.semantic = semantic_memory or SemanticMemory(
+            capacity=self.limits.semantic_capacity,
+            content_limit=self.limits.memory_content_characters,
         )
-
-        self.working = (
-            working_memory
-            if working_memory is not None
-            else WorkingMemory()
+        self.working = working_memory or WorkingMemory(
+            capacity=self.limits.working_memory_capacity,
         )
-
-        self.retrieval = (
-            retrieval
-            if retrieval is not None
-            else MemoryRetriever(
-                episodic=self.episodic,
-                semantic=self.semantic,
-                working=self.working,
-            )
+        self.retrieval = retrieval or MemoryRetriever(
+            episodic=self.episodic,
+            semantic=self.semantic,
+            working=self.working,
         )
-
-        self.consolidation = (
-            consolidation
-            if consolidation is not None
-            else MemoryConsolidator(
-                episodic_memory=self.episodic,
-                semantic_memory=self.semantic,
-                working_memory=self.working,
-                retrieval=self.retrieval,
-            )
+        self.consolidation = consolidation or MemoryConsolidator(
+            episodic_memory=self.episodic,
+            semantic_memory=self.semantic,
+            working_memory=self.working,
+            retrieval=self.retrieval,
         )
-
-        self.storage_path = (
-            Path(storage_path)
-            if storage_path is not None
-            else None
-        )
-
+        self.storage_path = Path(storage_path) if storage_path is not None else None
         self.auto_save = bool(auto_save)
-
+        self.last_load_source: str | None = None
+        self.recovered_from_backup = False
+        self.stale_temps_removed = 0
         if auto_load and self.storage_path is not None:
             self.load()
-
-    # ========================================================
-    # REMEMBER
-    # ========================================================
 
     def remember(
         self,
@@ -106,97 +72,47 @@ class MemoryManager:
         importance: float = 0.5,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """
-        Store information in the requested memory system.
-        """
-
         if not content or not str(content).strip():
             return None
-
         content = str(content).strip()
         metadata = metadata or {}
-
         if memory_type == "episodic":
             result = self.episodic.create(
                 content=content,
                 importance=importance,
-                source=metadata.get(
-                    "source",
-                    "interaction",
-                ),
-                event_type=metadata.get(
-                    "event_type",
-                    "general",
-                ),
-                participants=metadata.get(
-                    "participants",
-                    [],
-                ),
-                emotional_context=metadata.get(
-                    "emotional_context",
-                    {},
-                ),
+                source=metadata.get("source", "interaction"),
+                event_type=metadata.get("event_type", "general"),
+                participants=metadata.get("participants", []),
+                emotional_context=metadata.get("emotional_context", {}),
                 metadata=metadata,
             )
-
             self._persist_if_enabled()
             return result
-
         if memory_type == "working":
             return self.working.add(
                 content=content,
-                category=metadata.get(
-                    "category",
-                    "general",
-                ),
+                category=metadata.get("category", "general"),
                 importance=importance,
-                source=metadata.get(
-                    "source",
-                ),
+                source=metadata.get("source"),
             )
-
         if memory_type == "semantic":
             subject = metadata.get("subject")
             predicate = metadata.get("predicate")
             value = metadata.get("value")
-
             if subject is None:
-                raise ValueError(
-                    "Semantic memory requires metadata['subject']."
-                )
-
+                raise ValueError("Semantic memory requires metadata['subject'].")
             if predicate is None:
-                raise ValueError(
-                    "Semantic memory requires metadata['predicate']."
-                )
-
+                raise ValueError("Semantic memory requires metadata['predicate'].")
             result = self.semantic.add(
                 subject=subject,
                 predicate=predicate,
-                value=(
-                    content
-                    if value is None
-                    else value
-                ),
-                confidence=metadata.get(
-                    "confidence",
-                    1.0,
-                ),
-                source=metadata.get(
-                    "source",
-                ),
+                value=content if value is None else value,
+                confidence=metadata.get("confidence", 1.0),
+                source=metadata.get("source"),
             )
-
             self._persist_if_enabled()
             return result
-
-        raise ValueError(
-            f"Unknown memory type: {memory_type}"
-        )
-
-    # ========================================================
-    # SPECIALIZED REMEMBER METHODS
-    # ========================================================
+        raise ValueError(f"Unknown memory type: {memory_type}")
 
     def remember_event(
         self,
@@ -209,10 +125,6 @@ class MemoryManager:
         emotional_context: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """
-        Store an episodic experience.
-        """
-
         result = self.episodic.create(
             content=content,
             importance=importance,
@@ -222,7 +134,6 @@ class MemoryManager:
             emotional_context=emotional_context,
             metadata=metadata,
         )
-
         self._persist_if_enabled()
         return result
 
@@ -235,10 +146,6 @@ class MemoryManager:
         confidence: float = 1.0,
         source: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Store durable semantic knowledge.
-        """
-
         result = self.semantic.add(
             subject=subject,
             predicate=predicate,
@@ -246,7 +153,6 @@ class MemoryManager:
             confidence=confidence,
             source=source,
         )
-
         self._persist_if_enabled()
         return result
 
@@ -258,10 +164,6 @@ class MemoryManager:
         importance: float = 0.5,
         source: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Store temporary working-memory information.
-        """
-
         return self.working.add(
             content=content,
             category=category,
@@ -269,70 +171,27 @@ class MemoryManager:
             source=source,
         )
 
-    # ========================================================
-    # RECALL
-    # ========================================================
-
-    def recall(
-        self,
-        query: str,
-        *,
-        limit: int = 5,
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant memories.
-        """
-
+    def recall(self, query: str, *, limit: int = 5) -> List[Dict[str, Any]]:
         if not query or not str(query).strip():
             return []
+        bounded_limit = max(1, min(int(limit), int(self.limits.memory_recall_limit)))
+        return self.retrieval.retrieve(str(query).strip(), limit=bounded_limit)
 
-        return self.retrieval.retrieve(
-            str(query).strip(),
-            limit=limit,
-        )
-
-    # ========================================================
-    # CONTEXT
-    # ========================================================
-
-    def build_context(
-        self,
-        query: str,
-        *,
-        limit: int = 5,
-    ) -> Dict[str, Any]:
-        """
-        Build structured memory context for cognition.
-        """
-
+    def build_context(self, query: str, *, limit: int = 5) -> Dict[str, Any]:
         return {
             "query": query,
-            "relevant_memories": self.recall(
-                query,
-                limit=limit,
+            "relevant_memories": self.recall(query, limit=limit),
+            "working_memory": self.working.recent(
+                max(1, int(self.limits.memory_context_working_limit))
             ),
-            "working_memory": self.working.all(),
         }
 
-    # ========================================================
-    # CONSOLIDATION
-    # ========================================================
-
     def consolidate(self) -> int:
-        """
-        Consolidate eligible memories into semantic memory.
-        """
-
         promoted = self.consolidation.consolidate_and_promote()
-
+        # Semantic/episodic stores enforce their own hard capacities.
         if promoted:
             self._persist_if_enabled()
-
         return promoted
-
-    # ========================================================
-    # PERSISTENCE
-    # ========================================================
 
     def configure_persistence(
         self,
@@ -341,186 +200,123 @@ class MemoryManager:
         auto_save: bool = True,
         load: bool = True,
     ) -> bool:
-        """
-        Configure durable episodic/semantic memory storage.
-
-        Working memory is intentionally not persisted.
-        """
-
         self.storage_path = Path(storage_path)
         self.auto_save = bool(auto_save)
-
         if load:
             return self.load()
-
         return True
 
     def save(self) -> bool:
-        """Persist durable memory to disk using an atomic replace."""
-
         if self.storage_path is None:
             return False
-
-        self.storage_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
         payload = {
-            "version": 1,
+            "version": 2,
+            "policy": "bounded_selective_persistence",
             "episodic": self.episodic.export(),
-            "semantic": [
-                dict(memory)
-                for memory in self.semantic.all()
-            ],
+            "semantic": [dict(memory) for memory in self.semantic.all()],
         }
-
-        temporary_path = self.storage_path.with_suffix(
-            self.storage_path.suffix + ".tmp"
+        return atomic_write_json(
+            self.storage_path,
+            payload,
+            backup_generations=self.limits.backup_generations,
+            indent=2,
         )
-
-        try:
-            with temporary_path.open(
-                "w",
-                encoding="utf-8",
-            ) as file:
-                json.dump(
-                    payload,
-                    file,
-                    indent=4,
-                    ensure_ascii=False,
-                    default=str,
-                )
-
-            temporary_path.replace(
-                self.storage_path
-            )
-
-        except OSError:
-            try:
-                temporary_path.unlink(
-                    missing_ok=True
-                )
-            except OSError:
-                pass
-
-            return False
-
-        return True
 
     def load(self) -> bool:
-        """Load durable episodic/semantic memory from disk."""
-
         if self.storage_path is None:
             return False
-
-        if not self.storage_path.exists():
-            return False
-
-        try:
-            with self.storage_path.open(
-                "r",
-                encoding="utf-8",
-            ) as file:
-                payload = json.load(file)
-
-        except (
-            OSError,
-            json.JSONDecodeError,
-            TypeError,
-            ValueError,
-        ):
-            return False
-
-        if not isinstance(payload, dict):
-            return False
-
-        episodic_data = payload.get(
-            "episodic",
-            [],
+        self.stale_temps_removed += cleanup_stale_temps(self.storage_path)
+        payload, source = load_json_recovering(
+            self.storage_path,
+            backup_generations=self.limits.backup_generations,
+            restore_primary=False,
         )
+        if not isinstance(payload, dict) or source is None:
+            return False
 
-        semantic_data = payload.get(
-            "semantic",
-            [],
-        )
-
+        episodic_data = payload.get("episodic", [])
+        semantic_data = payload.get("semantic", [])
         if not isinstance(episodic_data, list):
             episodic_data = []
-
         if not isinstance(semantic_data, list):
             semantic_data = []
 
-        self.episodic.import_data(
-            episodic_data
-        )
-
+        self.episodic.import_data(episodic_data)
         self.semantic.clear()
-
         for item in semantic_data:
             if not isinstance(item, dict):
                 continue
-
-            subject = item.get(
-                "subject"
-            )
-            predicate = item.get(
-                "predicate"
-            )
-
+            subject = item.get("subject")
+            predicate = item.get("predicate")
             if subject is None or predicate is None:
                 continue
-
             restored = self.semantic.add(
                 subject=str(subject),
                 predicate=str(predicate),
-                value=item.get(
-                    "value"
-                ),
-                confidence=item.get(
-                    "confidence",
-                    1.0,
-                ),
-                source=item.get(
-                    "source"
-                ),
+                value=item.get("value"),
+                confidence=item.get("confidence", 1.0),
+                source=item.get("source"),
             )
-
-            for field in (
-                "id",
-                "created_at",
-                "updated_at",
-            ):
+            for field in ("id", "created_at", "updated_at"):
                 if item.get(field) is not None:
                     restored[field] = item[field]
 
+        self.last_load_source = str(source)
+        self.recovered_from_backup = source != self.storage_path
         return True
 
+    def restore_recovered_primary(self) -> bool:
+        """If a backup was loaded, explicitly rewrite the healthy state as primary."""
+        if not self.recovered_from_backup:
+            return True
+        ok = self.save()
+        if ok:
+            self.recovered_from_backup = False
+            self.last_load_source = str(self.storage_path) if self.storage_path else None
+        return ok
+
     def _persist_if_enabled(self) -> None:
-        if (
-            self.auto_save
-            and self.storage_path is not None
-        ):
+        if self.auto_save and self.storage_path is not None:
             self.save()
 
-    # ========================================================
-    # STATUS
-    # ========================================================
-
     def status(self) -> Dict[str, Any]:
-        """
-        Return memory-system status.
-        """
-
+        file_size = 0
+        if self.storage_path is not None:
+            try:
+                file_size = self.storage_path.stat().st_size
+            except OSError:
+                file_size = 0
         return {
             "episodic": True,
             "semantic": True,
             "working": True,
             "retrieval": True,
             "consolidation": True,
+            "policy": "bounded_selective_persistence",
             "counts": {
                 "episodic": self.episodic.count(),
                 "semantic": self.semantic.count(),
                 "working": self.working.count(),
+            },
+            "capacities": {
+                "episodic": int(getattr(self.episodic, "capacity", self.limits.episodic_capacity)),
+                "semantic": int(getattr(self.semantic, "capacity", self.limits.semantic_capacity)),
+                "working": int(getattr(self.working, "capacity", self.limits.working_memory_capacity)),
+                "recall_limit": int(self.limits.memory_recall_limit),
+                "working_context_limit": int(self.limits.memory_context_working_limit),
+            },
+            "evicted": {
+                "episodic": int(getattr(self.episodic, "evicted_count", 0)),
+                "semantic": int(getattr(self.semantic, "evicted_count", 0)),
+            },
+            "persistence": {
+                "path": str(self.storage_path) if self.storage_path else None,
+                "backup_generations": int(self.limits.backup_generations),
+                "last_load_source": self.last_load_source,
+                "recovered_from_backup": self.recovered_from_backup,
+                "stale_temps_removed": self.stale_temps_removed,
+                "file_size_bytes": file_size,
+                "soft_limit_bytes": int(self.limits.state_file_soft_limit_bytes),
+                "over_soft_limit": file_size > int(self.limits.state_file_soft_limit_bytes),
             },
         }

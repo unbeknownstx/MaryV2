@@ -16,11 +16,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime
-import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
+
+from mary.governance.bounds import bounded_payload, clip_text
+from mary.governance.limits import RuntimeLimits
+from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, load_json_recovering
 
 
 class PreferencePromotionSystem:
@@ -44,8 +46,18 @@ class PreferencePromotionSystem:
         min_mean_confidence: float = 0.70,
         min_consistency: float = 0.75,
         min_mean_magnitude: float = 0.50,
+        limits: RuntimeLimits | None = None,
     ) -> None:
+        self.limits = limits or RuntimeLimits()
+        self.candidate_capacity = max(32, min(self.limits.knowledge_candidate_capacity, 2_048))
+        self.observation_capacity = max(self.min_observations if hasattr(self, "min_observations") else 3, 32)
+        self.history_capacity = max(64, min(self.limits.learning_event_capacity, 4_096))
+        self.text_limit = self.limits.process_text_characters
+        self.backup_generations = self.limits.backup_generations
+        self.last_load_source: str | None = None
+        self.recovered_from_backup = False
         self.min_observations = max(2, int(min_observations))
+        self.observation_capacity = max(self.min_observations, 32)
         self.min_mean_confidence = self._clamp(min_mean_confidence)
         self.min_consistency = self._clamp(min_consistency)
         self.min_mean_magnitude = self._clamp(min_mean_magnitude)
@@ -90,48 +102,36 @@ class PreferencePromotionSystem:
     def save(self) -> bool:
         if self.path is None:
             return True
-
-        path = self.path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.tmp")
-
-        try:
-            temporary.write_text(
-                json.dumps(
-                    self.to_dict(),
-                    indent=2,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-                encoding="utf-8",
-            )
-            os.replace(temporary, path)
-        finally:
-            if temporary.exists():
-                try:
-                    temporary.unlink()
-                except OSError:
-                    pass
-
-        return True
+        self._compact()
+        return atomic_write_json(
+            self.path,
+            self.to_dict(),
+            backup_generations=self.backup_generations,
+            indent=2,
+        )
 
     def load(self) -> bool:
         if self.path is None:
             return True
 
-        if not self.path.exists():
-            self.loaded = True
-            return True
-
-        try:
-            payload = json.loads(
-                self.path.read_text(encoding="utf-8")
-            )
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        cleanup_stale_temps(self.path)
+        payload, source = load_json_recovering(
+            self.path,
+            backup_generations=self.backup_generations,
+            restore_primary=False,
+        )
+        if payload is None:
+            if not self.path.exists():
+                self.loaded = True
+                return True
+            return False
+        if not isinstance(payload, dict):
             return False
 
         self.load_dict(payload)
         self.loaded = True
+        self.last_load_source = str(source) if source is not None else None
+        self.recovered_from_backup = source is not None and source != self.path
         return True
 
     # ============================================================
@@ -201,7 +201,7 @@ class PreferencePromotionSystem:
             "polarity": 1.0 if signed_score >= 0.0 else -1.0,
             "confidence": self._clamp(confidence),
             "source": normalized_source,
-            "reason": str(reason).strip(),
+            "reason": clip_text(str(reason).strip(), self.text_limit),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -209,7 +209,9 @@ class PreferencePromotionSystem:
             "category", "general"
         )
         candidate.setdefault("observations", []).append(observation)
+        candidate["observations"] = candidate["observations"][-self.observation_capacity:]
         candidate["updated_at"] = observation["timestamp"]
+        self._compact()
 
         evaluation = self.evaluate(normalized_name)
         candidate["status"] = "eligible" if evaluation["eligible"] else "candidate"
@@ -355,6 +357,7 @@ class PreferencePromotionSystem:
                 "timestamp": datetime.now().isoformat(),
             }
         )
+        self._compact()
         self.save_if_configured()
         return True
 
@@ -375,6 +378,7 @@ class PreferencePromotionSystem:
                 "timestamp": datetime.now().isoformat(),
             }
         )
+        self._compact()
         self.save_if_configured()
         return True
 
@@ -410,6 +414,12 @@ class PreferencePromotionSystem:
             "min_consistency": self.min_consistency,
             "min_mean_magnitude": self.min_mean_magnitude,
             "configured": self.configured,
+            "capacities": {
+                "candidates": self.candidate_capacity,
+                "observations_per_candidate": self.observation_capacity,
+                "history": self.history_capacity,
+            },
+            "recovered_from_backup": self.recovered_from_backup,
         }
 
     # ============================================================
@@ -467,6 +477,34 @@ class PreferencePromotionSystem:
             if isinstance(history, list)
             else []
         )
+        self._compact()
+
+    def _compact(self) -> None:
+        # Keep the newest tentative candidates and decision history while
+        # bounding every per-candidate observation ledger.
+        for candidate in self.candidates.values():
+            if not isinstance(candidate, dict):
+                continue
+            candidate["name"] = clip_text(candidate.get("name", ""), self.text_limit)
+            candidate["category"] = clip_text(candidate.get("category", "general"), 256)
+            observations = [item for item in candidate.get("observations", []) if isinstance(item, dict)]
+            for item in observations:
+                item["reason"] = clip_text(item.get("reason", ""), self.text_limit)
+            candidate["observations"] = observations[-self.observation_capacity:]
+
+        if len(self.candidates) > self.candidate_capacity:
+            ordered = sorted(
+                self.candidates.items(),
+                key=lambda pair: str(pair[1].get("updated_at", pair[1].get("created_at", ""))) if isinstance(pair[1], dict) else "",
+            )
+            for key, _value in ordered[: len(self.candidates) - self.candidate_capacity]:
+                self.candidates.pop(key, None)
+
+        self.history = [
+            bounded_payload(item, text_limit=self.text_limit)
+            for item in self.history[-self.history_capacity:]
+            if isinstance(item, dict)
+        ]
 
     # ============================================================
     # HELPERS

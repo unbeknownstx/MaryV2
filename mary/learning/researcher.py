@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text
+
 
 # ================================================================
 # RESEARCH DATA
@@ -180,16 +182,21 @@ class Researcher:
     def __init__(
         self,
         web_tool: Any | None = None,
+        *,
+        request_capacity: int = 256,
+        result_capacity: int = 256,
+        text_limit: int = 4000,
     ) -> None:
         self.web_tool = web_tool
+        self.request_capacity = max(1, int(request_capacity))
+        self.result_capacity = max(1, int(result_capacity))
+        self.text_limit = max(256, int(text_limit))
+        self.requests: list[ResearchRequest] = []
+        self.results: list[ResearchResult] = []
 
-        self.requests: list[
-            ResearchRequest
-        ] = []
-
-        self.results: list[
-            ResearchResult
-        ] = []
+    def _trim(self) -> None:
+        del self.requests[:-self.request_capacity]
+        del self.results[:-self.result_capacity]
 
     # ============================================================
     # REQUEST CREATION
@@ -210,20 +217,15 @@ class Researcher:
 
         request = ResearchRequest(
             id=self._next_request_id(),
-            query=str(
-                query
-            ).strip(),
-            purpose=str(
-                purpose
-            ).strip(),
+            query=clip_text(query, self.text_limit),
+            purpose=clip_text(purpose, self.text_limit),
             priority=priority,
             source_limit=source_limit,
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.text_limit),
         )
 
-        self.requests.append(
-            request
-        )
+        self.requests.append(request)
+        self._trim()
 
         return request
 
@@ -737,9 +739,7 @@ class Researcher:
                     ),
                 )
 
-                self.requests.append(
-                    request
-                )
+                self.requests.append(request)
 
         results = data.get(
             "results",
@@ -806,9 +806,9 @@ class Researcher:
                     ),
                 )
 
-                self.results.append(
-                    result
-                )
+                self.results.append(result)
+
+        self._trim()
 
     # ============================================================
     # ID GENERATION

@@ -11,11 +11,51 @@ the architecture itself.
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
+import sys
 
 from dotenv import load_dotenv
 
+from mary.governance.limits import RuntimeLimits
 
-load_dotenv()
+
+def _resource_root() -> Path:
+    bundled = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and bundled:
+        return Path(bundled).resolve()
+    return Path(__file__).resolve().parents[2]
+
+
+def _executable_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return _resource_root()
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_data_root(resource_root: Path) -> Path:
+    explicit = os.getenv("MARY_DATA_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if not getattr(sys, "frozen", False):
+        return resource_root / "data"
+    if _truthy_env("MARY_PORTABLE"):
+        return _executable_root() / "data"
+    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+    base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+    return base / "MaryV2" / "data"
+
+
+def _dotenv_path() -> Path:
+    explicit = os.getenv("MARY_ENV_FILE", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    return _executable_root() / ".env"
+
+
+load_dotenv(dotenv_path=_dotenv_path(), override=False)
 
 
 @dataclass
@@ -46,13 +86,19 @@ class LLMConfig:
 class PathConfig:
     """Filesystem locations used by Mary."""
 
-    root: Path = field(
-        default_factory=lambda: Path(__file__).resolve().parents[2]
-    )
+    root: Path = field(default_factory=_resource_root)
+    data_root: Path | None = None
 
     @property
     def data(self) -> Path:
-        return self.root / "data"
+        return self.data_root or _default_data_root(self.root)
+
+    @property
+    def workspace(self) -> Path:
+        explicit = os.getenv("MARY_WORKSPACE_ROOT", "").strip()
+        if explicit:
+            return Path(explicit).expanduser().resolve()
+        return self.data / "workspace" if getattr(sys, "frozen", False) else self.root
 
     @property
     def identity(self) -> Path:
@@ -121,6 +167,10 @@ class Config:
         default_factory=RuntimeConfig
     )
 
+    governance: RuntimeLimits = field(
+        default_factory=RuntimeLimits
+    )
+
     @classmethod
     def from_environment(cls):
         """
@@ -130,6 +180,7 @@ class Config:
         """
 
         config = cls()
+        config.governance = RuntimeLimits.from_environment()
 
         config.llm.provider = os.getenv(
             "MARY_LLM_PROVIDER",

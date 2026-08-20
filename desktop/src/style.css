@@ -176,3 +176,46 @@ button:disabled, textarea:disabled { opacity: .55; cursor: default; }
   background: linear-gradient(180deg, #b77ae8, #7343a4);
   box-shadow: 0 0 0 3px rgba(183,122,232,.10), 0 0 22px rgba(183,122,232,.16);
 }
+
+.character-state-card {
+  position: absolute;
+  top: 22px;
+  left: 22px;
+  width: min(290px, calc(100% - 44px));
+  padding: 15px 16px 14px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 16px;
+  background: rgba(8,9,15,.70);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 40px rgba(0,0,0,.22);
+  pointer-events: none;
+}
+.character-state-title {
+  color: #8c93aa;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  margin-bottom: 9px;
+}
+.character-state-name {
+  font-size: 20px;
+  font-weight: 760;
+  margin-bottom: 9px;
+}
+.character-state-card dl { margin: 0; display: grid; gap: 5px; }
+.character-state-card dl > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.character-state-card dt { color: #777f96; font-size: 11px; }
+.character-state-card dd {
+  margin: 0;
+  color: #d9ddec;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.character-state-card .state-task-row { margin-top: 3px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.06); }

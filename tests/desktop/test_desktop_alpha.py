@@ -153,3 +153,19 @@ def test_desktop_push_to_talk_uses_native_qt_microphone_and_groq_stt() -> None:
     assert "client.audio.transcriptions.create" in stt
     assert "transcriptionReady" in bridge
     assert "bridge.sendMessage(transcript)" in frontend
+
+
+def test_desktop_exposes_display_safe_live_character_state() -> None:
+    root = _root()
+    bridge = (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    frontend = (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+    html = (root / "desktop" / "index.html").read_text(encoding="utf-8")
+
+    assert "characterStateChanged = Signal(str)" in bridge
+    assert "def getCharacterState" in bridge
+    assert "self.application.mary.live_state" in bridge
+    assert "applyCharacterState" in frontend
+    assert "bridge.getCharacterState" in frontend
+    assert 'id="character-state-card"' in html
+    assert 'id="state-mood"' in html
+    assert 'id="state-memories"' in html

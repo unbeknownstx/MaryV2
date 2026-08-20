@@ -45,3 +45,16 @@ dist/
 # Secrets
 *.pem
 *.key
+
+# Persistent personal Mary state (never commit)
+data/
+
+# Local environment/editor secret artifacts
+.env.bak
+.env.before_cleanup.bak
+*.swp
+*.swo
+*.tmp
+
+# Standalone/package output
+MaryV2.spec.bak

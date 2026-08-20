@@ -54,7 +54,7 @@ def test_expert_route_is_openai_only_and_does_not_enter_free_first():
 
 def test_consultation_records_advisory_result_and_explicit_provenance():
     consultant, workspace, expert, router = _consultant()
-    task = workspace.create_task("Review Mary's orchestration boundary")
+    task = workspace.create_task("Review Mary's orchestration boundary", metadata={"allow_paid": True})
     workspace.add_evidence(
         task.task_id,
         "The deterministic suite is green.",
@@ -82,7 +82,7 @@ def test_consultation_records_advisory_result_and_explicit_provenance():
 
 def test_consultation_prompt_is_bounded_to_task_context_not_mary_memory():
     consultant, workspace, expert, router = _consultant()
-    task = workspace.create_task("Check one isolated claim")
+    task = workspace.create_task("Check one isolated claim", metadata={"allow_paid": True})
 
     consultant.consult(
         task.task_id,

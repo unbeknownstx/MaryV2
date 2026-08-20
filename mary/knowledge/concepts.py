@@ -30,6 +30,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text
+
 
 # ================================================================
 # KNOWLEDGE TYPES
@@ -197,6 +199,13 @@ class Concept:
     observation, hypothesis, relationship, or lesson.
     """
 
+    MAX_SOURCES = 64
+    MAX_EVIDENCE = 128
+    MAX_RELATIONS = 128
+    MAX_TAGS = 64
+    MAX_ALIASES = 64
+    MAX_TEXT = 4_000
+
     id: str
 
     name: str
@@ -263,6 +272,15 @@ class Concept:
 
         if not self.last_updated:
             self.last_updated = now
+
+        self.name = clip_text(self.name, self.MAX_TEXT)
+        self.statement = clip_text(self.statement, self.MAX_TEXT)
+        self.source_ids = list(dict.fromkeys(str(item).strip() for item in self.source_ids if str(item).strip()))[-self.MAX_SOURCES:]
+        self.evidence = list(self.evidence)[-self.MAX_EVIDENCE:]
+        self.relations = list(self.relations)[-self.MAX_RELATIONS:]
+        self.tags = list(dict.fromkeys(str(item).strip().lower() for item in self.tags if str(item).strip()))[-self.MAX_TAGS:]
+        self.aliases = list(dict.fromkeys(str(item).strip() for item in self.aliases if str(item).strip()))[-self.MAX_ALIASES:]
+        self.metadata = bounded_payload(self.metadata, text_limit=self.MAX_TEXT)
 
     # ============================================================
     # CONFIDENCE
@@ -385,6 +403,7 @@ class Concept:
             self.source_ids.append(
                 source_id
             )
+            del self.source_ids[:-self.MAX_SOURCES]
 
         self.last_updated = _timestamp()
 
@@ -421,18 +440,19 @@ class Concept:
         """
 
         evidence = Evidence(
-            statement=str(
+            statement=clip_text(str(
                 statement
-            ).strip(),
+            ).strip(), self.MAX_TEXT),
             supports=supports,
             confidence=confidence,
             source_id=source_id,
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.MAX_TEXT),
         )
 
         self.evidence.append(
             evidence
         )
+        del self.evidence[:-self.MAX_EVIDENCE]
 
         if source_id:
             self.add_source(
@@ -493,12 +513,13 @@ class Concept:
                 target_id
             ).strip(),
             confidence=confidence,
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.MAX_TEXT),
         )
 
         self.relations.append(
             concept_relation
         )
+        del self.relations[:-self.MAX_RELATIONS]
 
         self.last_updated = _timestamp()
 
@@ -564,6 +585,7 @@ class Concept:
             self.tags.append(
                 tag
             )
+            del self.tags[:-self.MAX_TAGS]
 
         self.last_updated = _timestamp()
 
@@ -612,6 +634,7 @@ class Concept:
             self.aliases.append(
                 alias
             )
+            del self.aliases[:-self.MAX_ALIASES]
 
         self.last_updated = _timestamp()
 
@@ -740,12 +763,10 @@ class Concept:
                         _timestamp(),
                     )
                 ),
-                metadata=dict(
-                    item.get(
-                        "metadata",
-                        {},
-                    )
-                ),
+                metadata=bounded_payload(item.get(
+                    "metadata",
+                    {},
+                ), text_limit=cls.MAX_TEXT),
             )
             for item in evidence_data
             if isinstance(
@@ -774,12 +795,10 @@ class Concept:
                         0.5,
                     )
                 ),
-                metadata=dict(
-                    item.get(
-                        "metadata",
-                        {},
-                    )
-                ),
+                metadata=bounded_payload(item.get(
+                    "metadata",
+                    {},
+                ), text_limit=cls.MAX_TEXT),
                 created_at=str(
                     item.get(
                         "created_at",
@@ -872,12 +891,10 @@ class Concept:
                     [],
                 )
             ),
-            metadata=dict(
-                data.get(
-                    "metadata",
-                    {},
-                )
-            ),
+            metadata=bounded_payload(data.get(
+                "metadata",
+                {},
+            ), text_limit=cls.MAX_TEXT),
         )
 
 

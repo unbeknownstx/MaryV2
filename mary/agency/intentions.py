@@ -15,10 +15,12 @@ That belongs to the cognition and decision systems.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from mary.governance.bounds import clip_text, enforce_capacity
+from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, load_json_recovering
 
 
 class IntentionSystem:
@@ -34,8 +36,15 @@ class IntentionSystem:
     def __init__(
         self,
         path: str | Path = "data/goals/intentions.json",
+        capacity: int = 512,
+        content_limit: int = 2000,
+        backup_generations: int = 3,
     ) -> None:
         self.path = Path(path)
+        self.capacity = max(1, int(capacity))
+        self.content_limit = max(128, int(content_limit))
+        self.backup_generations = max(1, int(backup_generations))
+        self.recovered_from_backup = False
         self.intentions: list[dict[str, Any]] = []
 
     # ============================================================
@@ -43,69 +52,54 @@ class IntentionSystem:
     # ============================================================
 
     def load(self) -> None:
-        """Load intentions from persistent storage."""
-
-        if not self.path.exists():
+        """Load state with finite-backup recovery."""
+        cleanup_stale_temps(self.path)
+        if not self.path.exists() and not any(
+            self.path.with_name(f"{self.path.name}.bak{i}").exists()
+            for i in range(1, self.backup_generations + 1)
+        ):
             self._ensure_directory()
             self.save()
             return
-
-        try:
-            with self.path.open(
-                "r",
-                encoding="utf-8",
-            ) as file:
-                data = json.load(file)
-
-            if isinstance(data, dict):
-                intentions = data.get(
-                    "intentions",
-                    [],
-                )
-            elif isinstance(data, list):
-                intentions = data
-            else:
-                intentions = []
-
-            if isinstance(intentions, list):
-                self.intentions = [
-                    intention
-                    for intention in intentions
-                    if isinstance(
-                        intention,
-                        dict,
-                    )
-                ]
-            else:
-                self.intentions = []
-
-        except (
-            OSError,
-            json.JSONDecodeError,
-            TypeError,
-            ValueError,
-        ):
-            self.intentions = []
+        payload, source = load_json_recovering(
+            self.path, backup_generations=self.backup_generations
+        )
+        if isinstance(payload, dict):
+            raw = payload.get("intentions", [])
+        elif isinstance(payload, list):
+            raw = payload
+        else:
+            raw = []
+        self.intentions = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+        self._compact()
+        self.recovered_from_backup = bool(source is not None and source != self.path)
 
     def save(self) -> None:
-        """Persist intentions to disk."""
-
+        """Persist bounded state atomically."""
         self._ensure_directory()
+        self._compact()
+        atomic_write_json(
+            self.path,
+            {"intentions": self.intentions},
+            backup_generations=self.backup_generations,
+            indent=2,
+        )
 
-        data = {
-            "intentions": self.intentions,
-        }
-
-        with self.path.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                data,
-                file,
-                indent=4,
-                ensure_ascii=False,
-            )
+    def _compact(self) -> int:
+        before = len(self.intentions)
+        for item in self.intentions:
+            if isinstance(item, dict) and isinstance(item.get("description"), str):
+                item["description"] = clip_text(item["description"], self.content_limit)
+        enforce_capacity(
+            self.intentions,
+            self.capacity,
+            keep_score=lambda item: (
+                1.0 if str(item.get("status", "")) in {'active', 'pending'} else 0.0,
+                float(item.get("importance", item.get("priority", 0.0)) or 0.0),
+                str(item.get("updated_at", item.get("created_at", ""))),
+            ),
+        )
+        return max(0, before - len(self.intentions))
 
     def _ensure_directory(self) -> None:
         """Create the storage directory if necessary."""
@@ -131,9 +125,9 @@ class IntentionSystem:
         An intention may optionally be associated with a goal.
         """
 
-        description = str(
+        description = clip_text(str(
             description
-        ).strip()
+        ).strip(), self.content_limit)
 
         if not description:
             return None

@@ -1,26 +1,25 @@
-# MaryV2 Desktop Alpha
+# MaryV2 Desktop
 
-This is a presentation layer over the existing MaryV2 Python runtime.
+The desktop is the presentation layer for the canonical persistent `MaryApplication`.
+It does not create a second identity, memory store, relationship model, or provider router.
 
-## First-time setup
-
-From the MaryV2 repository root:
+## Setup / rebuild on Windows
 
 ```powershell
-pip install -r requirements-desktop.txt
+python -m pip install -r requirements-desktop.txt
 cd desktop
-npm install
+npm ci
 npm run build
 cd ..
 ```
 
-Put Mary's VRM at:
+Mary's VRM remains at:
 
 ```text
 desktop/public/models/MaryCosma.vrm
 ```
 
-If you add or replace the VRM after building, run `npm run build` again.
+Rebuild after changing the frontend or VRM.
 
 ## Launch
 
@@ -28,17 +27,21 @@ If you add or replace the VRM after building, run `npm run build` again.
 python -m scripts.run_desktop
 ```
 
-## Architecture
+## Live character state
 
-```text
-Qt window
-  -> QWebEngineView
-     -> Three.js + three-vrm
-     -> QWebChannel
-        -> MaryDesktopBridge
-           -> canonical MaryApplication
-              -> existing MaryV2 pipeline
-```
+The Qt bridge publishes a display-safe runtime snapshot to the frontend. The UI can show:
 
-The desktop layer does not own Mary's memory, identity, relationship model,
-agency, tools, or LLM routing.
+- continuity/persistence capability
+- relationship familiarity label
+- represented mood/intensity and energy
+- bounded memory count
+- idle/listening/transcribing/thinking/speaking/interrupted status
+- current task
+- provider/resource status
+- privacy/paid-expert policy
+
+This surface intentionally does not expose raw memories, prompts, API keys, or private internal payloads.
+
+## Failure isolation
+
+Text conversation remains authoritative. Voice, avatar presentation, microphone input, or an individual provider may fail without being allowed to swallow Mary's text response or corrupt persistent state.

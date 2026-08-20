@@ -36,6 +36,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.governance.bounds import bounded_payload, clip_text
+
 
 # ================================================================
 # EVALUATION
@@ -127,12 +129,18 @@ class Evaluator:
     def __init__(
         self,
         llm: Any | None = None,
+        *,
+        capacity: int = 512,
+        text_limit: int = 4000,
     ) -> None:
         self.llm = llm
+        self.capacity = max(1, int(capacity))
+        self.text_limit = max(256, int(text_limit))
 
-        self.evaluations: list[
-            Evaluation
-        ] = []
+        self.evaluations: list[Evaluation] = []
+
+    def _trim(self) -> None:
+        del self.evaluations[:-self.capacity]
 
     # ============================================================
     # EVALUATE
@@ -197,12 +205,8 @@ class Evaluator:
 
         evaluation = Evaluation(
             id=self._next_id(),
-            subject=str(
-                subject
-            ).strip(),
-            statement=str(
-                statement
-            ).strip(),
+            subject=clip_text(subject, self.text_limit),
+            statement=clip_text(statement, self.text_limit),
             reliability=reliability,
             relevance=relevance,
             usefulness=usefulness,
@@ -210,12 +214,11 @@ class Evaluator:
             confidence=confidence,
             recommendation=recommendation,
             reasoning=reasoning,
-            metadata=metadata or {},
+            metadata=bounded_payload(metadata or {}, text_limit=self.text_limit),
         )
 
-        self.evaluations.append(
-            evaluation
-        )
+        self.evaluations.append(evaluation)
+        self._trim()
 
         return evaluation
 
@@ -787,9 +790,9 @@ class Evaluator:
                 ),
             )
 
-            self.evaluations.append(
-                evaluation
-            )
+            self.evaluations.append(evaluation)
+
+        self._trim()
 
     # ============================================================
     # ID GENERATION

@@ -13,6 +13,14 @@ from mary.orchestration.consultation import (
     ExpertConsultant,
     ExpertConsultationResult,
 )
+from mary.orchestration.orchestrator import (
+    CapabilityRole,
+    CostClass,
+    OrchestrationPlan,
+    OrchestrationRoute,
+    PrivacyMode,
+    TaskOrchestrator,
+)
 
 __all__ = [
     "ProvenanceSource",
@@ -25,4 +33,12 @@ __all__ = [
     "TaskWorkspaceManager",
     "ExpertConsultant",
     "ExpertConsultationResult",
+    "CapabilityRole",
+    "CostClass",
+    "OrchestrationPlan",
+    "OrchestrationRoute",
+    "PrivacyMode",
+    "TaskOrchestrator",
 ]
+
+from .execution import ExecutionResult, ExecutionStatus, OrchestrationExecutor

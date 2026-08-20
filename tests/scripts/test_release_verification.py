@@ -15,10 +15,12 @@ def test_release_registry_covers_every_current_verifier_script():
 
 def test_offline_environment_forcibly_disables_live_llm(monkeypatch):
     monkeypatch.setenv("MARY_RUN_LIVE_TESTS", "1")
+    monkeypatch.setenv("MARY_RUN_OPENAI_TESTS", "1")
 
     environment = release._offline_environment()
 
     assert "MARY_RUN_LIVE_TESTS" not in environment
+    assert "MARY_RUN_OPENAI_TESTS" not in environment
 
 
 def test_normal_pytest_run_uses_offline_environment(monkeypatch):
@@ -30,11 +32,13 @@ def test_normal_pytest_run_uses_offline_environment(monkeypatch):
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setenv("MARY_RUN_LIVE_TESTS", "1")
+    monkeypatch.setenv("MARY_RUN_OPENAI_TESTS", "1")
     monkeypatch.setattr(release.subprocess, "run", fake_run)
 
     assert release.run_pytest() is True
     assert captured["command"][-2:] == ["tests", "-q"]
     assert "MARY_RUN_LIVE_TESTS" not in captured["env"]
+    assert "MARY_RUN_OPENAI_TESTS" not in captured["env"]
 
 
 def test_live_llm_is_explicit_and_scoped_to_dedicated_test(monkeypatch):

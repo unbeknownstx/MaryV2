@@ -22,6 +22,7 @@ import time
 from typing import Any
 
 from mary.core.config import Config
+from mary.governance.resource import ResourceGovernor
 
 from .interface import (
     LLMInterface,
@@ -59,6 +60,7 @@ class LLMRouter:
         self.config = config
         self.providers: dict[str, LLMInterface] = {}
         self.last_generation_attempts: list[dict[str, str]] = []
+        self.resource_governor = ResourceGovernor(config.governance)
 
         # Provider name -> monotonic time when the local cooldown expires.
         self._rate_limit_until: dict[str, float] = {}
@@ -457,11 +459,15 @@ class LLMRouter:
 
         self.last_generation_attempts = []
         last_error: LLMProviderError | None = None
+        order = self.resource_governor.provider_order(
+            self._provider_order(provider, route=route)
+        )
+        self.resource_governor.record_generation_start(
+            route=str(route or self.routing_strategy()),
+            order=order,
+        )
 
-        for provider_name in self._provider_order(
-            provider,
-            route=route,
-        ):
+        for provider_name in order:
             cooldown = self._cooldown_remaining(
                 provider_name
             )
@@ -474,6 +480,7 @@ class LLMRouter:
                         f"({cooldown:.0f}s remaining)"
                     ),
                 })
+                self.resource_governor.record_attempt(provider_name, "cooldown")
                 continue
 
             try:
@@ -489,6 +496,7 @@ class LLMRouter:
                     "error": str(error),
                 })
                 last_error = error
+                self.resource_governor.record_attempt(provider_name, "unavailable")
                 continue
 
             try:
@@ -504,6 +512,7 @@ class LLMRouter:
                     "error": str(error),
                 })
                 last_error = error
+                self.resource_governor.record_attempt(provider_name, "unavailable")
                 continue
 
             if not available:
@@ -514,6 +523,7 @@ class LLMRouter:
                         "provider is not configured/available"
                     ),
                 })
+                self.resource_governor.record_attempt(provider_name, "not_configured")
                 continue
 
             try:
@@ -551,6 +561,7 @@ class LLMRouter:
                     "error": str(error),
                 })
                 last_error = error
+                self.resource_governor.record_attempt(provider_name, "failed")
                 continue
 
             finish_reason = str(
@@ -575,6 +586,7 @@ class LLMRouter:
                     "error": str(error),
                 })
                 last_error = error
+                self.resource_governor.record_attempt(provider_name, "incomplete")
                 continue
 
             self.clear_provider_cooldown(
@@ -585,6 +597,8 @@ class LLMRouter:
                 "status": "success",
                 "error": "",
             })
+            self.resource_governor.record_attempt(provider_name, "success")
+            self.resource_governor.record_usage(response.usage)
             return response
 
         if last_error is not None:

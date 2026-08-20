@@ -43,6 +43,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from mary.governance.bounds import bounded_payload, clip_text, enforce_capacity
+from mary.governance.limits import RuntimeLimits
+
 
 # ================================================================
 # EXPERIMENT
@@ -127,10 +130,48 @@ class ExperimentManager:
         "inconclusive",
     }
 
-    def __init__(self) -> None:
+    def __init__(self, *, limits: RuntimeLimits | None = None) -> None:
+        self.limits = limits or RuntimeLimits()
         self.experiments: list[
             Experiment
         ] = []
+
+    def _compact_experiment(self, experiment: Experiment) -> None:
+        text_limit = self.limits.process_text_characters
+        experiment.title = clip_text(experiment.title, text_limit)
+        experiment.hypothesis = clip_text(experiment.hypothesis, text_limit)
+        experiment.expected_outcome = clip_text(experiment.expected_outcome, text_limit)
+        if experiment.actual_outcome is not None:
+            experiment.actual_outcome = clip_text(experiment.actual_outcome, text_limit)
+        experiment.observations = [
+            clip_text(item, text_limit)
+            for item in experiment.observations[-self.limits.experiment_observation_capacity:]
+            if str(item).strip()
+        ]
+        experiment.lessons = [
+            clip_text(item, text_limit)
+            for item in experiment.lessons[-self.limits.experiment_observation_capacity:]
+            if str(item).strip()
+        ]
+        experiment.metadata = bounded_payload(
+            experiment.metadata,
+            text_limit=text_limit,
+            item_limit=self.limits.metadata_item_capacity,
+            depth_limit=self.limits.metadata_depth,
+        )
+
+    def _compact(self) -> None:
+        for experiment in self.experiments:
+            self._compact_experiment(experiment)
+        enforce_capacity(
+            self.experiments,
+            self.limits.experiment_capacity,
+            keep_score=lambda item: (
+                1 if item.status in {"planned", "running"} else 0,
+                str(item.completed_at or item.started_at or item.created_at),
+            ),
+            protected=lambda item: item.status in {"planned", "running"},
+        )
 
     # ============================================================
     # CREATE
@@ -150,21 +191,21 @@ class ExperimentManager:
 
         experiment = Experiment(
             id=self._next_id(),
-            title=str(
-                title
-            ).strip(),
-            hypothesis=str(
-                hypothesis
-            ).strip(),
-            expected_outcome=str(
-                expected_outcome
-            ).strip(),
-            metadata=metadata or {},
+            title=clip_text(str(title).strip(), self.limits.process_text_characters),
+            hypothesis=clip_text(str(hypothesis).strip(), self.limits.process_text_characters),
+            expected_outcome=clip_text(str(expected_outcome).strip(), self.limits.process_text_characters),
+            metadata=bounded_payload(
+                metadata or {},
+                text_limit=self.limits.process_text_characters,
+                item_limit=self.limits.metadata_item_capacity,
+                depth_limit=self.limits.metadata_depth,
+            ),
         )
 
         self.experiments.append(
             experiment
         )
+        self._compact()
 
         return experiment
 
@@ -275,10 +316,9 @@ class ExperimentManager:
             return False
 
         experiment.observations.append(
-            str(
-                observation
-            ).strip()
+            clip_text(str(observation).strip(), self.limits.process_text_characters)
         )
+        self._compact_experiment(experiment)
 
         return True
 
@@ -316,10 +356,9 @@ class ExperimentManager:
             "completed"
         )
 
-        experiment.actual_outcome = (
-            str(
-                actual_outcome
-            ).strip()
+        experiment.actual_outcome = clip_text(
+            str(actual_outcome).strip(),
+            self.limits.process_text_characters,
         )
 
         experiment.result = result
@@ -334,10 +373,9 @@ class ExperimentManager:
 
         if lesson:
             experiment.lessons.append(
-                str(
-                    lesson
-                ).strip()
+                clip_text(str(lesson).strip(), self.limits.process_text_characters)
             )
+        self._compact_experiment(experiment)
 
         return experiment
 
@@ -366,10 +404,9 @@ class ExperimentManager:
 
         experiment.status = "failed"
 
-        experiment.actual_outcome = (
-            str(
-                reason
-            ).strip()
+        experiment.actual_outcome = clip_text(
+            str(reason).strip(),
+            self.limits.process_text_characters,
         )
 
         experiment.completed_at = (
@@ -377,11 +414,9 @@ class ExperimentManager:
         )
 
         experiment.lessons.append(
-            "Experiment failed: "
-            + str(
-                reason
-            ).strip()
+            clip_text("Experiment failed: " + str(reason).strip(), self.limits.process_text_characters)
         )
+        self._compact_experiment(experiment)
 
         return experiment
 
@@ -415,11 +450,9 @@ class ExperimentManager:
 
         if reason:
             experiment.lessons.append(
-                "Experiment cancelled: "
-                + str(
-                    reason
-                ).strip()
+                clip_text("Experiment cancelled: " + str(reason).strip(), self.limits.process_text_characters)
             )
+        self._compact_experiment(experiment)
 
         return experiment
 
@@ -462,8 +495,9 @@ class ExperimentManager:
                 outcome
             )
 
-            experiment.actual_outcome = (
-                actual_outcome
+            experiment.actual_outcome = clip_text(
+                actual_outcome,
+                self.limits.process_text_characters,
             )
 
             experiment.status = (
@@ -610,9 +644,7 @@ class ExperimentManager:
         if experiment is None:
             return False
 
-        lesson = str(
-            lesson
-        ).strip()
+        lesson = clip_text(str(lesson).strip(), self.limits.process_text_characters)
 
         if not lesson:
             return False
@@ -620,6 +652,7 @@ class ExperimentManager:
         experiment.lessons.append(
             lesson
         )
+        self._compact_experiment(experiment)
 
         return True
 
@@ -802,6 +835,9 @@ class ExperimentManager:
             self.experiments.append(
                 experiment
             )
+            self._compact_experiment(experiment)
+
+        self._compact()
 
     # ============================================================
     # ID GENERATION

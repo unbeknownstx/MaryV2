@@ -70,6 +70,13 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("provider_routing_guarantees", "scripts.verify_provider_routing_guarantees"),
     ("task_workspace", "scripts.verify_task_workspace"),
     ("openai_expert", "scripts.verify_openai_expert_install"),
+    ("task_orchestrator", "scripts.verify_task_orchestrator"),
+    ("orchestration_execution", "scripts.verify_orchestration_execution"),
+    ("resource_governance", "scripts.verify_resource_governance"),
+    ("persistence_recovery", "scripts.verify_persistence_recovery"),
+    ("live_character_state", "scripts.verify_live_character_state"),
+    ("release_hygiene", "scripts.verify_release_hygiene"),
+    ("standalone_readiness", "scripts.verify_standalone_readiness"),
 )
 
 
@@ -85,6 +92,7 @@ def _offline_environment() -> dict[str, str]:
 
     environment = os.environ.copy()
     environment.pop("MARY_RUN_LIVE_TESTS", None)
+    environment.pop("MARY_RUN_OPENAI_TESTS", None)
     return environment
 
 

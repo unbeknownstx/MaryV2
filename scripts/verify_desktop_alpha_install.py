@@ -92,6 +92,10 @@ def main() -> int:
         ("voicePlaybackStopRequested = Signal()" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop can stop Mary playback for barge-in"),
         ("bridge?.voicePlaybackStarted?.();" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "real audio playback marks Mary speaking"),
         ("bridge.voicePlaybackStopRequested.connect" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "browser obeys authoritative interruption requests"),
+        ("characterStateChanged = Signal(str)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop publishes live character state"),
+        ("def getCharacterState" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop exposes display-safe character snapshot"),
+        ("applyCharacterState" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "frontend renders Mary state in real time"),
+        ('id="character-state-card"' in (root / "desktop" / "index.html").read_text(encoding="utf-8"), "desktop includes Mary live-state card"),
     ]
 
     failed = False

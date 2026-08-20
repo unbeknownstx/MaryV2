@@ -65,7 +65,8 @@ def _default_frontend_path(root: Path) -> Path:
 
 
 def run_desktop(application: MaryApplication | None = None) -> int:
-    project_root = Path(__file__).resolve().parents[2]
+    mary_app = application or create_application(name="mary-desktop")
+    project_root = mary_app.mary.config.paths.root
     frontend_path = _default_frontend_path(project_root)
 
     if not frontend_path.exists():
@@ -78,7 +79,6 @@ def run_desktop(application: MaryApplication | None = None) -> int:
     qt_app.setApplicationName("MaryV2")
     qt_app.setOrganizationName("Unbe")
 
-    mary_app = application or create_application(name="mary-desktop")
     window = MaryDesktopWindow(mary_app, frontend_path=frontend_path)
     window.show()
 
