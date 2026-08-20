@@ -1,0 +1,43 @@
+MaryV2 V2 Breakthrough 11 - File Manifest
+=========================================
+
+Upgrade base: Breakthrough 10 full rebuild
+Changed/new files: 22
+Removed files: 0
+
+CHANGED / NEW
+-------------
+BREAKTHROUGH_11_FILE_MANIFEST.txt
+INSTALL.txt
+README.md
+V2_FINAL_CONSOLIDATION_REPORT.md
+docs/architecture/V2_BREAKTHROUGH_11.md
+docs/architecture/V2_FINAL_RUNTIME.md
+mary/cognition/continuity.py
+mary/cognition/mind_state.py
+mary/cognition/natural_input.py
+mary/cognition/orchestrator.py
+mary/cognition/reasoning.py
+mary/cognition/reflection.py
+mary/core/mary.py
+mary/relationship/conversation_learning.py
+mary/runtime/system_contract.py
+mary/runtime/turn_policy.py
+scripts/run_release_verification.py
+scripts/verify_acceptance_hotfix_06.py
+scripts/verify_breakthrough_10.py
+scripts/verify_breakthrough_11.py
+tests/integration/test_breakthrough_10.py
+tests/integration/test_breakthrough_11.py
+
+EXCLUDED FROM RELEASE OVERLAYS
+------------------------------
+.env
+data/
+.venv/
+.git/
+node_modules/
+desktop/dist/
+desktop/public/models/ (personal VRM/Vroid source assets)
+__pycache__/
+*.pyc / *.pyo

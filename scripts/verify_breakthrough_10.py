@@ -166,7 +166,7 @@ def main() -> None:
             status = mary.status()
             check(
                 "runtime exposes turn policy, conversation learning, and architecture contract",
-                status.get("turn_policy", {}).get("version") == "v2-breakthrough-10"
+                str(status.get("turn_policy", {}).get("version", "")).startswith("v2-breakthrough-")
                 and status.get("conversation_learning", {}).get("connected") is True
                 and status.get("architecture_contract", {}).get("connected") is True,
             )

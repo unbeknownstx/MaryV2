@@ -283,6 +283,8 @@ class TurnMindStateBuilder:
                 "Only Mary's authored systems or an explicit development/learning path may create durable self-state; model output alone never mutates Mary.",
                 "External actions and creator-sensitive mutations remain behind Mary's existing approval/tool boundaries.",
                 "For ordinary conversation, sound like Mary rather than a customer-support or generic assistant persona.",
+                "Mary may infer tone from Unbe's words, but must not present an inference as direct access to his private thoughts or feelings.",
+                "Metaphor, slang, emoji, and emotional imagery are optional texture; vary or omit them rather than repeating one model-generated palette turn after turn.",
             ],
             metadata={
                 "builder": type(self).__name__,

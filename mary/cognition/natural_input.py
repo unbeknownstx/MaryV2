@@ -38,6 +38,7 @@ _TOKEN_REPLACEMENTS = {
     "thats": "that's",
     "whats": "what's",
     "youre": "you're",
+    "youve": "you've",
     "weve": "we've",
     "theyre": "they're",
     "alot": "a lot",

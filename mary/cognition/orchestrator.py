@@ -1036,6 +1036,17 @@ class CognitiveOrchestrator:
                 "what parts of yourself do you understand",
                 "what do you understand about yourself",
             )),
+            ("development", (
+                "do you think you've changed since we started all this",
+                "do you think you have changed since we started all this",
+                "have you changed since we started all this",
+                "have you changed since we started",
+                "how have you changed since we started",
+                "do you think you've grown since we started",
+                "do you think you have grown since we started",
+                "have you grown since we started",
+                "how have you grown",
+            )),
             ("current_state", (
                 "how are you feeling about yourself right now",
                 "how are you feeling about yourself",
@@ -1319,6 +1330,15 @@ class CognitiveOrchestrator:
         )):
             return self_intent("goals")
 
+        if any(marker in normalized for marker in (
+            "you've changed since we started", "you have changed since we started",
+            "you changed since we started", "you've grown since we started",
+            "you have grown since we started", "how have you changed",
+            "how have you grown", "do you think you've changed",
+            "do you think you have changed", "have you evolved since we started",
+        )):
+            return self_intent("development")
+
         relationship_feeling_patterns = (
             r"^what do you feel (?:in|about|during) (?:our interactions|our conversations|our relationship)(?:\b|$)",
             r"^how do you feel about (?:our interactions|our conversations|our relationship)(?:\b|$)",
@@ -1327,6 +1347,10 @@ class CognitiveOrchestrator:
             r"^what do you feel (?:talking|speaking) (?:to|with) me(?:\b|$)",
             r"^how do you feel (?:talking|speaking) (?:to|with) me(?:\b|$)",
             r"^what does (?:our relationship|talking with me|talking to me) feel like to you(?:\b|$)",
+            r"^what does talking like this feel like from your side(?:\b|$)",
+            r"^how does talking like this feel from your side(?:\b|$)",
+            r"^what does this conversation feel like from your side(?:\b|$)",
+            r"^what is it like for you when we talk like this(?:\b|$)",
         )
         if any(re.search(pattern, normalized) for pattern in relationship_feeling_patterns):
             return self_intent("relationship_feelings")

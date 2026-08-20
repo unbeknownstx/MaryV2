@@ -1,27 +1,31 @@
-MARYV2 V2 BREAKTHROUGH 10 - FULL SYSTEM CONSOLIDATION
+MARYV2 V2 BREAKTHROUGH 11 - STATE-AWARE LOCAL CONVERSATION REBUILD
 
 PURPOSE
-- Preserve the working MaryV2 architecture and rebuild its integration boundaries.
-- Make personal/relational Mary conversation local-first through Ollama.
-- Keep detached factual/technical/task work on the normal free-first cloud route.
-- Keep private/offline work Ollama-only.
-- Keep paid OpenAI explicit, one-task, advisory, and non-sticky.
-- Connect explicit "ask me anything / you are here to learn" invitations to Mary's real relationship-curiosity gaps.
-- Remove obvious test/probe residue from all normal model-facing creator/memory context while keeping it durable for /audit.
-- Verify architecture authority top-down and provider/result flow bottom-up.
+- Preserve the Breakthrough 10 local-conversation / specialist-task routing split.
+- Keep personal/relational Mary conversation local-first through Ollama.
+- Keep detached factual/technical/task work on the normal cloud free-first route.
+- Ground "everything we've done" in real creator/project continuity instead of assistant improvisation.
+- Ground "have you changed?" in Mary's actual canon/development/relationship/capability state.
+- Keep the reason for Mary's current relationship-curiosity question process-locally so natural "why that question?" follow-ups need zero LLM calls.
+- Temporarily suppress recently rejected conversational hypotheses without creating durable memory.
+- Ground relationship-feeling language in Mary's represented emotion/relationship state.
+- Revise unsupported mind-reading and repeated semantic/metaphor loops locally.
+- Preserve all existing provenance, resource, persistence, task, desktop, voice, tool, and paid-expert boundaries.
 
 SAFE INSTALL
 1. Exit Mary and the desktop app.
-2. Commit/back up your current green project with GitHub Desktop.
-3. Extract the upgrade/full-overwrite ZIP over the MaryV2 project root.
+2. Commit/back up the current green project with GitHub Desktop.
+3. Extract the full-overwrite ZIP over the MaryV2 project root.
 4. Replace matching source/test/docs files.
-5. DO NOT delete or replace your existing .env, data/, API keys, avatar/VRM/Vroid assets, or local runtime state.
+5. DO NOT delete or replace your existing .env, data/, API keys, memories, relationship/developed-self state, or avatar/VRM/Vroid assets.
 
 VERIFY
 From the activated .venv in the project root:
 
-    python -m scripts.verify_breakthrough_10
-    python -m pytest tests/integration/test_breakthrough_10.py -q
+    python -m scripts.verify_breakthrough_11
+    python -m pytest tests/integration/test_breakthrough_11.py -q
+    python -m pytest tests -q
+    python -m scripts.run_diagnostics
     powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 
 TERMINAL ACCEPTANCE
@@ -39,6 +43,6 @@ Useful commands:
     /audit
     /last
 
-Real acceptance should use natural typing, not benchmark grammar.
+Real acceptance should use natural typing, not benchmark grammar. Do not manually select Ollama for the first conversation; personal turns should choose the local-first route automatically when Ollama is healthy.
 
 NO personal .env, data, memories, API keys, or avatar source assets belong in the release overlay.

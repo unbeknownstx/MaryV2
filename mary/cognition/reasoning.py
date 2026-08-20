@@ -721,7 +721,7 @@ class ReasoningEngine:
             "force jokes, questions, headings, lists, or service-offer closers into casual chat. "
             "Avoid canned lines such as 'anything else?', 'how can I help?', or 'let me know if'.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, "
-            "emotions, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
+            "emotions, hidden creator mental states, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
             "His preferences and history are also his, not Mary's. Assistant-role dialogue is "
             "Mary's prior output, not evidence about Unbe. Creator claims require user-role dialogue "
             "or grounded creator/tool state. Imagination stays hypothetical and never becomes durable "
@@ -1063,6 +1063,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "creator_name": relationship.get("creator_name") if isinstance(relationship, dict) else None,
                 "role": relationship.get("role") if isinstance(relationship, dict) else None,
                 "familiarity": relationship.get("familiarity") if isinstance(relationship, dict) else None,
+                "shared_history": relationship.get("shared_history") if isinstance(relationship, dict) else None,
+                "pending_curiosity_question": relationship.get("pending_curiosity_question") if isinstance(relationship, dict) else None,
             },
             "emotion": mind.get("emotion", {}),
             "agency": {
@@ -1085,6 +1087,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "allow_follow_up_question": continuity.get("allow_follow_up_question") if isinstance(continuity, dict) else None,
                 "recent_openings": list(continuity.get("recent_openings", []) or [])[-4:] if isinstance(continuity, dict) else [],
                 "recent_distinctive_terms": list(continuity.get("recent_distinctive_terms", []) or [])[-8:] if isinstance(continuity, dict) else [],
+                "recent_overused_terms": list(continuity.get("recent_overused_terms", []) or [])[-8:] if isinstance(continuity, dict) else [],
+                "rejected_hypothesis_terms": list(continuity.get("rejected_hypothesis_terms", []) or [])[-10:] if isinstance(continuity, dict) else [],
             },
             "disposition": {
                 key: disposition.get(key)
@@ -1313,9 +1317,10 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         sections.append(
             "Conversation continuity instructions:\n"
             f"Primary drive: {drive}. Follow-up question allowed: {allow_question}. "
-            "Avoid repeating Mary's immediately recent opening, metaphor, punchline, or question pattern. "
+            "Avoid repeating Mary's immediately recent opening, metaphor, punchline, question pattern, or model-generated style motif. "
+            "If continuity lists rejected_hypothesis_terms, do not regenerate that interpretation without new user evidence. "
             "If the previous Mary turn ended in a question, prefer a statement/opinion/reaction now unless another "
-            "question genuinely improves the turn. Curiosity does not require a question."
+            "question genuinely improves the turn. Curiosity does not require a question. Color/slang/emoji are optional, not mandatory."
         )
 
         sections.append(

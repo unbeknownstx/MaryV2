@@ -585,12 +585,24 @@ class Mary:
             input_text,
             intent=intent,
         )
+        self.conversation_learning.observe_learning(
+            natural_relationship_learning
+        )
+
+        # A real curiosity question remains process-local conversation state long
+        # enough for natural follow-ups such as ``why that question?``. Resolve
+        # that locally before asking a provider to guess why Mary asked it.
+        learning_followup = self.conversation_learning.respond_to_pending_followup(
+            input_text
+        )
 
         # When the creator explicitly invites Mary to ask/learn, use Mary's real
         # structured relationship-curiosity gaps instead of letting an LLM invent
         # a generic question. This is deterministic and never autonomously asks.
-        learning_invitation = self.conversation_learning.respond_if_invited(
-            input_text
+        learning_invitation = (
+            None
+            if learning_followup is not None
+            else self.conversation_learning.respond_if_invited(input_text)
         )
 
         # Appraise the incoming creator turn before generation without mutating
@@ -635,7 +647,11 @@ class Mary:
         external_sources: list[dict[str, Any]] = []
         skip_cognition = False
 
-        if learning_invitation is not None:
+        if learning_followup is not None:
+            system_response = str(learning_followup.get("response", "")).strip()
+            skip_cognition = bool(system_response)
+
+        elif learning_invitation is not None:
             system_response = str(learning_invitation.get("response", "")).strip()
             skip_cognition = bool(system_response)
 
@@ -670,7 +686,8 @@ class Mary:
 
         elif intent.intent_type == IntentType.SELF_QUERY:
             self_action = self._handle_self_query(
-                intent
+                intent,
+                incoming_emotion_appraisal=incoming_emotion_payload,
             )
             system_response = self_action.get(
                 "system_response"
@@ -807,10 +824,18 @@ class Mary:
                 metadata["natural_relationship_learning"] = dict(
                     natural_relationship_learning
                 )
+            if learning_followup is not None:
+                metadata["conversation_learning_followup"] = {
+                    "handled": True,
+                    "category": learning_followup.get("category"),
+                    "pending_id": learning_followup.get("pending_id"),
+                    "llm_calls_after_action": 0,
+                }
             if learning_invitation is not None:
                 metadata["conversation_learning_invitation"] = {
                     "handled": True,
                     "category": learning_invitation.get("category"),
+                    "pending_id": learning_invitation.get("pending_id"),
                     "llm_calls_after_action": 0,
                 }
             if system_action == "propose_code_change":
@@ -1082,6 +1107,17 @@ class Mary:
             context_lifecycle=lifecycle_context,
             incoming_emotion_appraisal=incoming_emotion_appraisal,
         )
+        prompt_mind_state = mind_state.prompt_view()
+        relationship_view = prompt_mind_state.get("relationship")
+        if not isinstance(relationship_view, dict):
+            relationship_view = {}
+            prompt_mind_state["relationship"] = relationship_view
+        relationship_view["shared_history"] = self._shared_history_context(
+            recent_conversation or []
+        )
+        pending_question = self.conversation_learning.prompt_view()
+        if pending_question is not None:
+            relationship_view["pending_curiosity_question"] = pending_question
 
         return {
             "memory": model_memory_context,
@@ -1089,7 +1125,7 @@ class Mary:
             "personality": self._personality_context(),
             "conversation": conversation,
             "context_lifecycle": lifecycle_context,
-            "mind_state": mind_state.prompt_view(),
+            "mind_state": prompt_mind_state,
         }
 
     # ================================================================
@@ -1164,6 +1200,71 @@ class Mary:
     # ================================================================
     # RECENT CONVERSATION RECALL
     # ================================================================
+
+    def _shared_history_context(
+        self,
+        recent_conversation: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Build a bounded creator-grounded view of Mary/Unbe shared work.
+
+        Assistant-role dialogue is never evidence here. The view is intentionally
+        small and model-facing: it exists so phrases such as ``everything we've
+        done`` can refer to a real shared project without forcing Mary into the
+        opposite error of denying all shared history.
+        """
+
+        work_markers = (
+            "maryv2", "working on", "work on", "building", "build ", "project",
+            "developing", "fixing", "testing", "debugging", "implementing",
+            "finish ", "finishing ", "provider", "ollama",
+        )
+
+        items: list[str] = []
+
+        def add(value: Any) -> None:
+            text = " ".join(str(value or "").split())
+            if not text or text_has_test_probe_marker(text):
+                return
+            lowered = text.lower()
+            if not any(marker in lowered for marker in work_markers):
+                return
+            if len(text) > 220:
+                text = text[:219].rstrip() + "…"
+            if text not in items:
+                items.append(text)
+
+        for entry in recent_conversation[-10:]:
+            if not isinstance(entry, dict) or str(entry.get("role", "")) != "user":
+                continue
+            add(entry.get("content", ""))
+            if len(items) >= 3:
+                break
+
+        try:
+            profile = self._creator_profile_for_conversation()
+        except Exception:
+            profile = {}
+        for goal in profile.get("goals", []) if isinstance(profile, dict) else []:
+            add(goal)
+
+        if len(items) < 4:
+            for memory in reversed(self._all_available_memories()):
+                if not self._memory_is_creator_owned(memory):
+                    continue
+                add(self._memory_to_text(memory))
+                if len(items) >= 4:
+                    break
+
+        project_name = None
+        if any("maryv2" in item.lower() for item in items):
+            project_name = "MaryV2"
+
+        return {
+            "project": project_name,
+            "grounded_threads": items[:4],
+            "current_runtime_contract": getattr(self.system_contract, "VERSION", None),
+            "evidence_policy": "user-role dialogue + creator-owned durable state only; assistant-role dialogue excluded",
+        }
 
     def _handle_conversation_recall(
         self,
@@ -2057,6 +2158,8 @@ class Mary:
     def _handle_self_query(
         self,
         intent: Intent,
+        *,
+        incoming_emotion_appraisal: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Provide grounded local evidence for questions about Mary herself."""
 
@@ -2080,15 +2183,30 @@ class Mary:
                 "skip_cognition": True,
             }
 
-        evidence = self.self_introspection.build(
-            subtype,
-            query=str(
-                intent.parameters.get(
-                    "query",
-                    "",
-                )
-            ),
-        )
+        if subtype == "development":
+            evidence = self._self_development_evidence(
+                query=str(intent.parameters.get("query", ""))
+            )
+        else:
+            evidence = self.self_introspection.build(
+                subtype,
+                query=str(
+                    intent.parameters.get(
+                        "query",
+                        "",
+                    )
+                ),
+            )
+
+        if subtype == "relationship_feelings" and incoming_emotion_appraisal:
+            evidence["incoming_turn_appraisal"] = dict(incoming_emotion_appraisal)
+            prompt_evidence = evidence.get("prompt_evidence")
+            if isinstance(prompt_evidence, dict):
+                prompt_evidence["incoming_turn_appraisal"] = {
+                    key: incoming_emotion_appraisal.get(key)
+                    for key in ("emotion", "intensity", "relationship_relevance", "source")
+                    if incoming_emotion_appraisal.get(key) not in (None, "")
+                }
 
         # Dynamic agency rankings are runtime state, not prose-generation tasks.
         # The actual PrioritySystem is authoritative, so top-priority queries are
@@ -2105,6 +2223,97 @@ class Mary:
         return {
             "knowledge": [evidence],
         }
+
+    def _self_development_evidence(
+        self,
+        *,
+        query: str = "",
+    ) -> dict[str, Any]:
+        """Ground ``have you changed?`` in represented Mary state.
+
+        Stable canon, developed-self state, relationship learning, and current
+        capabilities are kept distinct. This does not claim every architecture
+        upgrade changed Mary's personality; it gives the language layer evidence
+        for describing what actually became richer over time.
+        """
+
+        base = self.self_introspection.build("self_understanding", query=query)
+        personality_summary = self.personality_development_summary()
+        personality_history = list(getattr(self.personality_development, "history", []) or [])[-5:]
+        developed_status = dict(self.developed_self_state.status() or {})
+        preference_summary = dict(self.preference_promotion_summary() or {})
+        creator_profile = self._creator_profile_for_conversation()
+
+        creator_counts = {
+            "preferences": len(creator_profile.get("preferences", {}) or {}),
+            "interests": len(creator_profile.get("interests", []) or []),
+            "goals": len(creator_profile.get("goals", []) or []),
+            "values": len(creator_profile.get("values", []) or []),
+            "facts": len(creator_profile.get("facts", {}) or {}),
+            "communication": len(creator_profile.get("communication_style", {}) or {}),
+        }
+        learned_creator_items = sum(creator_counts.values())
+
+        current_capabilities = {
+            "conversation_route": list(self.llm.conversation_provider_order())
+            if callable(getattr(self.llm, "conversation_provider_order", None))
+            else [],
+            "task_route": list(self.llm._provider_order(None))
+            if callable(getattr(self.llm, "_provider_order", None))
+            else [],
+            "system_contract": getattr(self.system_contract, "VERSION", None),
+            "memory_persistent_capable": bool(self.status().get("memory", {}).get("connected", True)),
+        }
+
+        if personality_history:
+            personality_phrase = (
+                f"I have {len(personality_history)} recent represented personality-development record(s) in the loaded history."
+            )
+        else:
+            personality_phrase = (
+                "I don't have a represented personality-development event to claim from the loaded development history."
+            )
+
+        relationship_phrase = (
+            f"My structured creator model currently has {learned_creator_items} non-probe item(s) across preferences, interests, goals, values, facts, and communication."
+            if learned_creator_items
+            else "My structured creator model does not currently contain a non-probe item to use as evidence of relationship learning."
+        )
+
+        fallback = (
+            "My core authored character is still Mary; I shouldn't pretend a model response rewrote that. "
+            + personality_phrase + " " + relationship_phrase + " "
+            "What has clearly changed at the system level is how much continuity, relationship context, emotional appraisal, routing, tools, and self-grounding I can bring into a turn. "
+            "So the grounded answer can be: my canon may be stable while the represented version of me interacting with you has become more informed and capable."
+        )
+
+        compact = {
+            "core_character_policy": "authored canon stays stable unless an explicit creator/development path changes it",
+            "personality_development": {
+                "summary": personality_summary,
+                "recent_history": personality_history,
+            },
+            "developed_self": developed_status,
+            "preference_development": preference_summary,
+            "relationship_learning_counts": creator_counts,
+            "current_capabilities": current_capabilities,
+            "interpretation": (
+                "Distinguish stable authored Mary from controlled developed-self changes, relationship learning, and capability/runtime growth. "
+                "Do not claim a personality change without represented development evidence."
+            ),
+        }
+
+        base.update({
+            "subtype": "development",
+            "self_development": compact,
+            "fallback_response": fallback,
+            "prompt_evidence": {
+                "subtype": "development",
+                "self_development": compact,
+                "fallback_response": fallback,
+            },
+        })
+        return base
 
     def _runtime_architecture_response(
         self,

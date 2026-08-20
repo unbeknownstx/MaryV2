@@ -240,7 +240,7 @@ def test_status_exposes_turn_policy_learning_bridge_and_contract(tmp_path, monke
     mary = Mary()
     status = mary.status()
 
-    assert status["turn_policy"]["version"] == "v2-breakthrough-10"
+    assert status["turn_policy"]["version"].startswith("v2-breakthrough-")
     assert status["conversation_learning"]["connected"] is True
     assert status["architecture_contract"]["connected"] is True
 

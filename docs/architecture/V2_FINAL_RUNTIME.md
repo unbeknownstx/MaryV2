@@ -74,9 +74,15 @@ MaryV2 does not attempt to preserve or re-inject every detail forever.
 - Custom: set `MARY_DATA_DIR`, `MARY_WORKSPACE_ROOT`, or `MARY_ENV_FILE`.
 
 
-## Breakthrough 10 integration boundary
+## Breakthrough 11 conversation-supervision boundary
 
-The current V2 authority map and top-down/bottom-up flow are documented in
-`docs/architecture/V2_BREAKTHROUGH_10.md`. Test/probe creator or memory residue
-may remain durably auditable, but normal model-facing context uses a provenance-
-safe projection that excludes obvious development probes.
+Breakthrough 10 established the local-conversation / specialist-task routing
+boundary. Breakthrough 11 adds a bounded process-local supervision layer above
+it: pending relationship-question reasons, rejected-hypothesis suppression,
+grounded shared-history/self-development views, emotion-to-language grounding,
+and semantic style-loop auditing. None of this creates a second durable memory
+authority. See `docs/architecture/V2_BREAKTHROUGH_11.md`.
+
+Test/probe creator or memory residue may remain durably auditable, but normal
+model-facing context uses a provenance-safe projection that excludes obvious
+development probes.

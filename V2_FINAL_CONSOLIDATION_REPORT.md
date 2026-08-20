@@ -1,99 +1,98 @@
-# MaryV2 V2 Breakthrough 10 — Full-System Consolidation
+# MaryV2 V2 Breakthrough 11 — State-Aware Local Conversation Rebuild
 
 ## Purpose
 
-This checkpoint rebuilds the integration boundaries around the already-working
-MaryV2 core from both directions without replacing Mary's established character,
-memory, relationship, learning, agency, tool, desktop, or persistence systems.
+This checkpoint rebuilds the conversational supervision layer above the green
+Breakthrough 10 architecture without replacing Mary's established character,
+memory, relationship, learning, agency, tool, desktop, provider, or persistence
+systems.
 
-The central breakthrough is a clean division of labor:
+Breakthrough 10 established the correct division of labor:
 
 ```text
-Mary personal/relational conversation
+personal/relational Mary conversation
     Ollama -> Groq -> Gemini -> OpenRouter
 
-Detached factual/technical/task generation
+detached factual/technical/task generation
     Groq -> Gemini -> OpenRouter -> Ollama
 
-Private/offline
+private/offline
     Ollama only
 
-Paid expert
+paid expert
     OpenAI, explicit one-task authorization only
 ```
 
-Mary remains the persistent character/runtime. Providers remain replaceable
-engines.
+Breakthrough 11 teaches Mary's runtime to supervise that local conversation with
+more of Mary's own state.
 
-## New architecture
+## New/strengthened boundaries
 
-### Authoritative TurnPolicyEngine
-- Centralizes personal-conversation vs task/general model purpose.
-- Uses conservative chat normalization for matching only.
-- Preserves the creator's exact input text for dialogue/evidence.
-- Prevents broad `QUESTION`/`CONVERSATION` intent labels from deciding provider
-  privacy/cost by themselves.
-- Records the policy category in `/last` metadata.
+### Process-local relationship-question continuity
+- Explicit learning invitations still select one real unresolved relationship gap.
+- The selected question now keeps a bounded process-local reason/category/gap record.
+- Natural follow-ups such as `hmm why that question though` resolve deterministically.
+- The explanation uses zero LLM calls.
+- Accepted existing relationship-learning paths can resolve the matching pending question.
+- No second durable relationship/memory store was introduced.
 
-### ConversationLearningBridge
-- Detects explicit invitations such as `ask me anything` or `you are here to learn`.
-- Selects one real unresolved relationship-curiosity gap.
-- Uses zero LLM calls to choose the question.
-- Never autonomously interrogates the creator.
-- Never writes creator facts; the existing relationship-learning boundary still owns learning.
+### Shared-history grounding
+- `everything we've done`, `how far we've come`, and similar natural wording can use creator-authored dialogue, current creator goals, and creator-owned memories.
+- Assistant-role improvisation remains excluded as evidence.
+- Real MaryV2 continuity can be acknowledged without inventing off-screen activity.
 
-### Probe-safe model context
-- Obvious development/test creator records remain durable and auditable.
-- They are removed before creator-profile projection reaches generation or reflection.
-- Probe-shaped retrieved memories are also removed from normal model-facing context.
-- `/audit` remains the explicit debugging surface.
+### Grounded self-development
+- Natural `have you changed?` questions route to self-grounded development state.
+- Mary's authored canon remains distinct from controlled developed-self, relationship learning, preference development, and connected capability growth.
 
-### Read-only MarySystemContract
-- Verifies single-router ownership across reasoning/reflection/orchestration/expert paths.
-- Verifies shared authoritative emotion state.
-- Verifies conversation local-first vs task/general cloud-first routing.
-- Documents the authority map without creating another source of truth.
-- Terminal `/contract` exposes the display-safe contract.
+### Grounded relationship feelings
+- `what does talking like this feel like from ur side` is a self-grounded query.
+- Represented emotion, relationship state, and current-turn appraisal provide substance before Ollama expresses it.
 
-### Local supervision of local conversation
-- Ollama can provide Mary's everyday conversational performance.
-- Its output still passes output quality, provenance, capability truth, continuity,
-  emotion, and reflection.
-- A bad local conversational answer can be revised locally with the same conversation
-  purpose instead of silently escalating private dialogue to cloud.
+### Rejected-hypothesis continuity
+- A recently rejected Mary interpretation is temporarily represented in process-local continuity state.
+- Reflection can block immediate resurrection of the same unsupported hypothesis without new creator evidence.
 
-### Terminal entry-point cleanup
-- `python run_mary.py` now works as a thin compatibility shim.
-- `python -m scripts.run_mary` remains canonical.
-- Both enter the same `MaryApplication` runtime.
+### Semantic style-loop control
+- Recent Mary-only metaphor/style motifs are tracked in bounded continuity state.
+- Repeated semantic palettes can trigger local revision even when the wording is not a near-duplicate paragraph.
+- Slang, metaphor, emoji, warmth, and artistic phrasing remain optional character texture.
+
+### Mind-reading restraint
+- Direct claims such as `I can feel what you're holding` or `I know what you're feeling` are revised unless grounded by actual creator evidence.
+- Mary may describe tentative impressions from the creator's words/tone without claiming direct access to private mental state.
+
+### Local correction stays local
+- Provenance, semantic repetition, rejected-hypothesis, and mind-reading revisions preserve the conversation purpose.
+- Ollama can therefore revise its own local conversational output without silently escalating private dialogue to cloud.
 
 ## Verification in the consolidation environment
 
-- Previous Consolidation 09 baseline: **522 passed, 1 skipped**
-- Breakthrough 10 integration regressions added: **18**
-- Current Python suite: **540 passed, 1 skipped**
+- Breakthrough 10 canonical baseline: **540 passed, 1 skipped**
+- Breakthrough 11 regressions added: **13**
+- Current deterministic Python suite: **553 passed, 1 skipped**
+- Focused historical/new acceptance slice: **64 passed**
 - Diagnostics: **53 / 53 PASS**, warnings 0, failures 0, Healthy True
-- `verify_breakthrough_10`: **PASS**
+- `verify_breakthrough_11`: **PASS**
 - Complete deterministic/offline release gate: **PASS**
 - No live LLM/OpenAI call is required for deterministic verification.
 
 ## Existing V2 guarantees retained
 
 - Mary identity/character canon independent from provider engines
-- bounded active context and all persistent collections
-- atomic JSON persistence and finite recovery backups
+- personal conversation local-first and task/general cloud-first
+- private/offline Ollama-only
+- paid OpenAI explicit one-task advisory only
+- bounded context/persistence/resources/provider attempts
+- atomic recoverable persistence and finite backups
 - natural imperfect-input tolerance without rewriting creator evidence
-- creator/Mary ownership and provenance boundaries
-- mixed-script/corrupt model output rejection/failover
+- creator/Mary provenance and ownership boundaries
+- test/probe residue excluded from normal model-facing context
+- corrupt/mixed-script output rejection
 - capability-use truthfulness
-- disagreement/correction repair without unsupported mind-reading
-- grounded emotional/relationship state
-- selective creator learning and explicit developed-self promotion
 - task workspace/orchestrator/executor authority boundaries
-- private/offline Ollama-only route
-- paid OpenAI excluded from normal routes and task-authorized only
-- desktop/avatar/voice/STT/TTS/barge-in lifecycle
-- display-safe live state and resource counters
+- desktop/avatar/voice/STT/TTS/lip-sync/barge-in lifecycle
+- display-safe live state and architecture contract
 - Windows standalone source/build readiness
 
 ## Release-overlay exclusions
@@ -113,18 +112,14 @@ Never overwrite or package personal runtime state:
 ## Canonical Windows verification
 
 ```powershell
-python -m scripts.verify_breakthrough_10
-python -m pytest tests/integration/test_breakthrough_10.py -q
+python -m scripts.verify_breakthrough_11
+python -m pytest tests/integration/test_breakthrough_11.py -q
+python -m pytest tests -q
+python -m scripts.run_diagnostics
 powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 python -m scripts.run_mary
 ```
 
-Developer convenience also works:
-
-```powershell
-python run_mary.py
-```
-
-During real acceptance, talk naturally. `/last` should show both the actual
-provider and `turn_policy`; `/route` shows the separate conversation/task routes;
-`/contract` shows the authority map.
+During real acceptance, talk naturally. `/last` should show the actual provider,
+turn policy, and self-grounding metadata; `/route` shows conversation/task routes;
+`/contract` exposes the authority map.

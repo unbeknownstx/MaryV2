@@ -50,7 +50,7 @@ class TurnPolicyDecision:
 class TurnPolicyEngine:
     """Classify a Mary turn as local conversation or task/general work."""
 
-    VERSION = "v2-breakthrough-10"
+    VERSION = "v2-breakthrough-11"
 
     # Phrases where the creator is talking *with Mary* rather than asking for a
     # detached factual/task answer. Keep these narrow and human-readable.
@@ -73,6 +73,9 @@ class TurnPolicyEngine:
         r"\bhow (?:u|you)(?:ve|'ve| have) changed\b",
         r"\bwhat (?:u|you)(?:ve|'ve| have) learned about me\b",
         r"\bwhat would (?:u|you) (?:ask|want to know)\b",
+        r"\beverything (?:we(?:'ve| have)|we) (?:done|built|worked on)\b",
+        r"\bsince we (?:started|began) (?:all this|this|building)\b",
+        r"\bhow far we(?:'ve| have) come\b",
         r"\bi feel\b",
         r"\bim feeling\b",
         r"\bi'm feeling\b",

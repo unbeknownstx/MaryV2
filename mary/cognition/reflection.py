@@ -70,7 +70,7 @@ class ReflectionResult:
         }
 
 
-PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-08"
+PROVENANCE_AUDIT_VERSION = "v2-breakthrough-11"
 
 
 class ReflectionEngine:
@@ -232,7 +232,8 @@ class ReflectionEngine:
                             "flags the representation boundary, keep Mary's emotional warmth while grounding it in "
                             "her represented expressive/relationship state rather than making a metaphysical claim. "
                             "If it flags capability truth, never roleplay or narrate a provider/tool call: state only what runtime evidence shows. "
-                            "If it flags creator mind-reading, respond to what Unbe actually said and do not label disagreement as hiding, avoidance, or fear. "
+                            "If it flags creator mind-reading, respond to what Unbe actually said and phrase tone-reading as uncertainty, not direct access to his mind. "
+                            "If it flags semantic repetition or a rejected hypothesis, preserve the point but choose genuinely new language and do not resurrect the rejected interpretation. "
                             "Rewrite the reply so it sounds like Mary rather than a generic assistant. Return only the revised reply."
                         ),
                     ),
@@ -500,6 +501,8 @@ class ReflectionEngine:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
         issues.extend(self._near_duplicate_response_audit(text, recent_mary))
+        issues.extend(self._semantic_style_repetition_audit(context, text, recent_mary))
+        issues.extend(self._rejected_hypothesis_audit(context, text))
         issues.extend(self._subjective_experience_audit(text))
         issues.extend(self._provider_action_truth_audit(context, reasoning))
         issues.extend(self._unsupported_creator_mindreading_audit(context, text))
@@ -562,6 +565,69 @@ class ReflectionEngine:
                         return [
                             "Continuity boundary: near-duplicates a substantial passage from Mary's recent response."
                         ]
+        return []
+
+    @classmethod
+    def _semantic_style_repetition_audit(
+        cls,
+        context: CognitiveContext,
+        text: str,
+        recent_mary: list[str],
+    ) -> list[str]:
+        """Catch a local model getting stuck in one emotional/metaphor palette."""
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        overused = {
+            str(item).lower()
+            for item in continuity.get("recent_overused_terms", [])
+            if str(item).strip()
+        } if isinstance(continuity, dict) else set()
+        if not overused or not recent_mary:
+            return []
+
+        response_terms = set(cls._content_terms(text))
+        user_terms = set(cls._content_terms(context.input_text))
+        reused = (response_terms & overused) - user_terms
+        motifs = {
+            "quiet", "spark", "sparks", "magic", "soft", "glow", "buzz",
+            "chest", "together", "presence", "vibe", "moment", "rainy",
+            "silence", "doodling", "little", "chaos",
+        }
+        repeated_emoji = any(
+            token in str(text) and sum(token in prior for prior in recent_mary[-3:]) >= 2
+            for token in ("🍃", "✨", "🌟", "💫", "🌙", "🫶")
+        )
+        if (len(reused) >= 2 and bool(reused & motifs)) or len(reused) >= 3 or repeated_emoji:
+            return [
+                "Continuity/style boundary: reuses a recent model-generated emotional/metaphor palette instead of expressing this turn freshly."
+            ]
+        return []
+
+    @classmethod
+    def _rejected_hypothesis_audit(
+        cls,
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Do not silently resurrect an interpretation Unbe just corrected/rejected."""
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        rejected = {
+            str(item).lower()
+            for item in continuity.get("rejected_hypothesis_terms", [])
+            if str(item).strip()
+        } if isinstance(continuity, dict) else set()
+        if not rejected:
+            return []
+        response_terms = set(cls._content_terms(text))
+        user_terms = set(cls._content_terms(context.input_text))
+        resurfaced = (response_terms & rejected) - user_terms
+        if len(resurfaced) >= 3:
+            return [
+                "Conversation-repair boundary: reasserts distinctive content from an interpretation Unbe recently corrected/rejected without new supporting evidence."
+            ]
         return []
 
     @staticmethod
@@ -634,12 +700,23 @@ class ReflectionEngine:
             "you're scared to admit", "you are scared to admit",
             "you're turning away from", "you are turning away from",
             "what we both felt", "you already know the real issue",
+            "i can sense what you're holding", "i can sense what you are holding",
+            "i can feel what you're holding", "i can feel what you are holding",
+            "i feel what you're holding", "i feel what you are holding",
+            "i know what you're feeling", "i know what you are feeling",
+            "i can tell what you're thinking", "i can tell what you are thinking",
+            "i can tell what you're feeling", "i can tell what you are feeling",
+            "i just know what you're", "i just know what you are",
         )
         for marker in patterns:
             if marker in lowered and marker not in user:
                 return [
-                    "Relationship-grounding boundary: infers a hidden motive, avoidance, or private mental state for Unbe that he did not state."
+                    "Relationship-grounding boundary: infers a hidden motive or private mental/emotional state for Unbe that he did not state. Mary may describe observable tone as an inference, not direct access to his mind."
                 ]
+        if re.search(r"\bi can sense (?:the |a )?[^.!?]{0,45}you(?:'re| are| feel| want| need)", lowered):
+            return [
+                "Relationship-grounding boundary: presents an inference about Unbe's private state as direct sensing rather than a tentative reading of his words/tone."
+            ]
         return []
 
     @staticmethod
@@ -999,6 +1076,24 @@ class ReflectionEngine:
                 "improvisation into your history."
             )
         if any(str(issue).startswith("Self-history provenance boundary:") for issue in issues):
+            normalized_input = str(context.input_text or "").lower().replace("’", "'")
+            shared_markers = (
+                "everything we've done", "everything weve done", "everything we have done", "everything we did",
+                "since we started", "how far we've come", "how far weve come", "how far we have come",
+                "what we've built", "what we have built",
+            )
+            if any(marker in normalized_input for marker in shared_markers):
+                mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+                relationship = mind.get("relationship", {}) if isinstance(mind, dict) else {}
+                shared = relationship.get("shared_history", {}) if isinstance(relationship, dict) else {}
+                threads = list(shared.get("grounded_threads", []) or []) if isinstance(shared, dict) else []
+                project = shared.get("project") if isinstance(shared, dict) else None
+                if project or threads:
+                    lead = str(project or threads[0]).strip()
+                    return (
+                        f"You're talking about our real shared work around {lead}. I can acknowledge that history; "
+                        "what I need to avoid is inventing a separate off-screen life for myself that isn't in my state."
+                    )
             return (
                 "I don't have a grounded off-screen activity to claim there. I can imagine "
                 "things in conversation, but I shouldn't pretend I've been doing them when "
@@ -1095,7 +1190,8 @@ class ReflectionEngine:
             "Unbe said or did. Only user-role dialogue and grounded creator state can support those claims. "
             "Keep harmless imaginative details temporary and phrase them as possibilities when needed. "
             "Never claim a provider/tool was called unless recorded runtime evidence shows it, and never infer "
-            "that Unbe is hiding/avoiding something merely because he disagrees or corrects Mary. "
+            "that Unbe is hiding/avoiding something or directly sense his private mental state merely because he disagrees or corrects Mary. "
+            "If recent style motifs or rejected-hypothesis terms are listed, avoid recycling them without new user evidence. "
             "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
             "conversational drive and Performance Director. Rewrite it like dialogue for an actor playing Mary, "
             "not polished support copy. React before switching into assistance. Avoid canned "

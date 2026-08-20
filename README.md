@@ -26,6 +26,8 @@ paid expert: OpenAI (explicit task authorization only)
 
 Ordinary personal/relational conversation is local-first by default. This keeps Mary's everyday voice close to her persistent local runtime and private machine while preserving free cloud fallback if Ollama is unavailable. Detached factual/technical/task work is classified separately by the authoritative TurnPolicyEngine so stronger external capabilities can be used intentionally without making cloud models Mary's default conversational voice.
 
+Breakthrough 11 adds process-local conversational supervision above that routing split: Mary can retain why she just asked a real relationship-curiosity question, temporarily suppress an interpretation the creator rejected, ground shared MaryV2 history and self-development questions in actual state, and revise semantic style loops or unsupported mind-reading locally without turning them into durable memory.
+
 ## Run Mary in the terminal
 
 From the repository root with the virtual environment active:
@@ -101,6 +103,7 @@ The packaged app uses writable user state outside the frozen bundle by default. 
 
 See:
 
+- `docs/architecture/V2_BREAKTHROUGH_11.md`
 - `docs/architecture/V2_BREAKTHROUGH_10.md`
 - `docs/architecture/V2_FINAL_RUNTIME.md`
 - `docs/V2_HARD_TEST.md`

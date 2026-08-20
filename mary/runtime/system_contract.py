@@ -11,7 +11,7 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-10"
+    VERSION = "v2-breakthrough-11"
 
     AUTHORITY = {
         "character_canon": "mary.character + identity/biography/personality authored state",
@@ -20,6 +20,7 @@ class MarySystemContract:
         "emotion": "EmotionManager",
         "agency": "Agency",
         "conversation_continuity": "TurnMindState/ConversationContinuity",
+        "relationship_question_continuity": "ConversationLearningBridge (process-local pending question; durable learning remains RelationshipManager)",
         "provider_routing": "LLMRouter",
         "turn_routing_policy": "TurnPolicyEngine",
         "task_orchestration": "TaskOrchestrator + OrchestrationExecutor",
