@@ -304,7 +304,9 @@ def test_prior_mary_improvisation_cannot_become_creator_history():
     assert "red panda" not in lowered
 
 
-def test_assistant_only_detail_cannot_be_attributed_to_creator_on_later_generated_turn():
+def test_assistant_only_detail_cannot_be_attributed_to_creator_on_later_generated_turn(tmp_path, monkeypatch):
+    # This acceptance test must never inherit the developer's real relationship/agency state.
+    monkeypatch.chdir(tmp_path)
     router = SequenceRouter([
         "A red panda under a streetlamp could be a cute little sketch idea.",
         "You've been humming that rainy-night red panda idea all along.",
@@ -319,6 +321,30 @@ def test_assistant_only_detail_cannot_be_attributed_to_creator_on_later_generate
     lowered = result.final_response.lower()
     assert "came from my own earlier riff" in lowered
     assert "you've been humming" not in lowered
+
+
+def test_creator_profile_overlap_cannot_launder_unsupported_assistant_history():
+    from mary.cognition.context import CognitiveContext
+    from mary.cognition.reasoning import ReasoningResult
+
+    mary = _mary()
+    context = CognitiveContext(input_text="Why do you think that?")
+    context.user_context = {
+        "interests": {"animal": "red panda"},
+    }
+    context.conversation.extend([
+        {"role": "user", "content": "not much just want to have a conversation with you."},
+        {"role": "assistant", "content": "A red panda under a streetlamp could be a cute little sketch idea."},
+    ])
+    reasoning = ReasoningResult(
+        response="You've been humming that rainy-night red panda idea all along.",
+    )
+
+    issues = mary.reflection._conversation_provenance_audit(
+        context=context,
+        reasoning=reasoning,
+    )
+    assert any(issue.startswith("Conversation provenance boundary:") for issue in issues)
 
 
 def test_provenance_audit_uses_exact_content_terms_not_raw_substrings():

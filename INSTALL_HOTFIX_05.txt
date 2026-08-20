@@ -1,0 +1,13 @@
+MARYV2 V2 ACCEPTANCE HOTFIX 05
+
+1. Exit any running Mary process.
+2. Extract this ZIP over the MaryV2 repo root and replace matching files.
+3. Activate .venv.
+4. Run:
+   python -m scripts.verify_acceptance_hotfix_05
+5. Then run:
+   python -m pytest tests/integration/test_long_session_hardening.py tests/cognition/test_conversation_continuity_v2.py -q
+
+Expected focused result: 28 passed.
+
+This hotfix does not include .env, data/, avatar assets, or API keys.

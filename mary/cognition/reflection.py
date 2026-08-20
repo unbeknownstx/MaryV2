@@ -70,7 +70,7 @@ class ReflectionResult:
         }
 
 
-PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-04"
+PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-05"
 
 
 class ReflectionEngine:
@@ -615,14 +615,33 @@ class ReflectionEngine:
             if not terms:
                 continue
             grounded_terms = user_terms | profile_terms
-            user_supported = terms & grounded_terms
+            supported = terms & grounded_terms
+            unsupported = terms - grounded_terms
             assistant_only = (terms & assistant_terms) - grounded_terms
-            if assistant_only and not user_supported:
+
+            # Any assistant-origin content that is being attributed to Unbe is a
+            # provenance violation even when some other word in the sentence is
+            # legitimately grounded.  A single generic supported term must not be
+            # able to launder a generated detail into creator history.
+            if assistant_only:
                 return [
                     "Conversation provenance boundary: Mary's response treats a detail "
                     "from prior assistant-generated dialogue as something Unbe said, did, "
                     "believed, or worked on. Only user-role dialogue or grounded creator "
                     "state may establish a creator fact."
+                ]
+
+            # Creator-history wording also needs positive grounding on its own.
+            # This catches unsupported attributions that were invented in the current
+            # model turn rather than copied from a prior Mary turn.  Allow modest
+            # paraphrase, but reject claims where unsupported content outweighs the
+            # grounded substance.
+            if not supported or len(unsupported) > len(supported):
+                return [
+                    "Conversation provenance boundary: Mary's response makes a creator "
+                    "history attribution without enough support from user-role dialogue "
+                    "or grounded creator state. Keep it as an inference/possibility or "
+                    "remove the unsupported history claim."
                 ]
 
         return []
