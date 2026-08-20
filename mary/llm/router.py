@@ -2,9 +2,13 @@
 
 Routes language-model requests through Mary's configured provider strategy.
 
-The default strategy is ``free_first``:
+The default task/general strategy is ``free_first``:
 
     Groq -> Gemini -> OpenRouter free -> Ollama
+
+Ordinary personal/character conversation uses a separate local-first purpose:
+
+    Ollama -> Groq -> Gemini -> OpenRouter free
 
 Configured cloud providers are skipped when their API key is absent. A
 provider that returns a rate-limit response is placed on a short local
@@ -52,6 +56,13 @@ _EXPERT_ROUTES = {
     "expert",
     "paid",
     "openai",
+}
+
+_CONVERSATION_PURPOSES = {
+    "conversation",
+    "character",
+    "relational",
+    "self",
 }
 
 
@@ -301,11 +312,47 @@ class LLMRouter:
 
         return order
 
+
+    def _conversation_provider_order(self) -> list[str]:
+        """Return Mary's local-first order for ordinary character conversation.
+
+        Conversation is the place where continuity, privacy, and Mary's local
+        runtime matter most. Ollama therefore gets first chance, while the free
+        cloud route remains available as fallback if the local provider is down.
+        This policy is separate from the default task/research free-first route.
+        """
+
+        configured = list(
+            getattr(
+                self.config.llm,
+                "conversation_provider_order",
+                ["ollama", "groq", "gemini", "openrouter"],
+            )
+        )
+
+        order: list[str] = []
+        for item in configured:
+            name = str(item).lower().strip()
+            if name in _FREE_PROVIDER_NAMES and name not in order:
+                order.append(name)
+
+        if "ollama" not in order:
+            order.insert(0, "ollama")
+
+        # Conversation may fall back to Mary's normal free pool, but paid OpenAI
+        # is never introduced by this purpose route.
+        for name in self._free_provider_order():
+            if name not in order:
+                order.append(name)
+
+        return order
+
     def _provider_order(
         self,
         requested: str | None,
         *,
         route: str | None = None,
+        purpose: str | None = None,
     ) -> list[str]:
         route_name = str(route or "").lower().strip()
 
@@ -330,10 +377,17 @@ class LLMRouter:
         strategy = self.routing_strategy()
 
         # Custom/test providers should retain legacy behavior rather than being
-        # silently removed by the built-in free-provider allowlist.
+        # silently removed by the built-in free-provider allowlist or by Mary's
+        # local-first conversation policy.
         primary = str(
             self.config.llm.provider
         ).lower().strip()
+        purpose_name = str(purpose or "").lower().strip()
+        if (
+            purpose_name in _CONVERSATION_PURPOSES
+            and primary in {"groq", "gemini", "openrouter", "ollama", "openai"}
+        ):
+            return self._conversation_provider_order()
         if (
             strategy == "free_first"
             and primary in {
@@ -347,6 +401,11 @@ class LLMRouter:
             return self._free_provider_order()
 
         return self._configured_provider_order(None)
+
+    def conversation_provider_order(self) -> list[str]:
+        """Return the configured local-first order for Mary character conversation."""
+
+        return self._provider_order(None, purpose="conversation")
 
     # ============================================================
     # RATE-LIMIT COOLDOWN
@@ -509,6 +568,7 @@ class LLMRouter:
         temperature: float | None = None,
         max_tokens: int | None = None,
         route: str | None = None,
+        purpose: str | None = None,
     ) -> LLMResponse:
         """Generate through the first healthy provider in Mary's route."""
 
@@ -517,17 +577,25 @@ class LLMRouter:
 
         effective_provider = provider
         effective_route = route
+        effective_purpose = purpose
         if effective_provider is None and effective_route is None:
-            effective_provider = self._session_provider_override
-            effective_route = self._session_route_override
+            if self._session_provider_override is not None or self._session_route_override is not None:
+                effective_provider = self._session_provider_override
+                effective_route = self._session_route_override
+                effective_purpose = None
 
         order = self.resource_governor.provider_order(
-            self._provider_order(effective_provider, route=effective_route)
+            self._provider_order(
+                effective_provider,
+                route=effective_route,
+                purpose=effective_purpose,
+            )
         )
         self.resource_governor.record_generation_start(
             route=str(
                 effective_route
                 or effective_provider
+                or effective_purpose
                 or self.routing_strategy()
             ),
             order=order,
@@ -689,7 +757,11 @@ class LLMRouter:
         if last_error is not None:
             raise last_error
 
-        primary = self.provider_name(effective_provider)
+        primary = (
+            order[0]
+            if order
+            else self.provider_name(effective_provider)
+        )
         raise LLMProviderError(
             "No configured language-model provider is currently available.",
             provider=primary,
@@ -705,6 +777,7 @@ class LLMRouter:
         provider: str | None = None,
         *,
         route: str | None = None,
+        purpose: str | None = None,
     ) -> bool:
         if provider is not None:
             try:
@@ -717,6 +790,7 @@ class LLMRouter:
             for name in self._provider_order(
                 None,
                 route=route,
+                purpose=purpose,
             )
             if self._cooldown_remaining(name) <= 0.0
         )

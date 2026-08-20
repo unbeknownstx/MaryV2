@@ -76,6 +76,14 @@ class LLMConfig:
             "ollama",
         ]
     )
+    conversation_provider_order: list[str] = field(
+        default_factory=lambda: [
+            "ollama",
+            "groq",
+            "gemini",
+            "openrouter",
+        ]
+    )
     rate_limit_cooldown_seconds: float = 300.0
     expert_provider: str = "openai"
     openai_model: str = "gpt-5.6-luna"
@@ -212,6 +220,17 @@ class Config:
             config.llm.free_provider_order = [
                 item.strip().lower()
                 for item in free_order_value.split(",")
+                if item.strip()
+            ]
+
+        conversation_order_value = os.getenv(
+            "MARY_LLM_CONVERSATION_ORDER",
+            "",
+        )
+        if conversation_order_value.strip():
+            config.llm.conversation_provider_order = [
+                item.strip().lower()
+                for item in conversation_order_value.split(",")
                 if item.strip()
             ]
 

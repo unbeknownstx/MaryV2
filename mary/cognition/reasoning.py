@@ -25,9 +25,10 @@ import re
 from typing import Any
 
 from mary.cognition.context import CognitiveContext
-from mary.cognition.intent import Intent
+from mary.cognition.intent import Intent, IntentType
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
+from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.llm.interface import (
     LLMMessage,
     LLMProviderError,
@@ -75,6 +76,7 @@ class ReasoningEngine:
         self,
         llm: LLMRouter,
         evidence_validator: EvidenceValidator | None = None,
+        turn_policy: TurnPolicyEngine | None = None,
     ) -> None:
         self.llm = llm
         self.evidence_validator = (
@@ -82,6 +84,7 @@ class ReasoningEngine:
             if evidence_validator is not None
             else EvidenceValidator()
         )
+        self.turn_policy = turn_policy if turn_policy is not None else TurnPolicyEngine()
 
     def reason(
         self,
@@ -149,6 +152,19 @@ class ReasoningEngine:
                 context
             )
 
+        turn_policy = self.turn_policy.decide(
+            input_text=context.input_text,
+            intent=intent,
+            local_tool_grounded=local_tool_grounded,
+            self_grounded=self_grounded,
+        )
+        generation_purpose = turn_policy.generation_purpose
+        if (
+            generation_purpose is not None
+            and callable(getattr(self.llm, "conversation_provider_order", None))
+        ):
+            generation_kwargs["purpose"] = generation_purpose
+
         try:
             response = self.llm.generate(
                 messages=[
@@ -188,6 +204,8 @@ class ReasoningEngine:
                 "llm_rate_limited": rate_limited,
                 "llm_error": str(exc),
                 "provider_attempts": list(getattr(self.llm, "last_generation_attempts", [])),
+                "generation_purpose": generation_purpose,
+                "turn_policy": turn_policy.to_dict(),
             }
         else:
             final_response = response.content
@@ -225,6 +243,8 @@ class ReasoningEngine:
                 "self_provenance_issue": provenance_issue,
                 "llm_unavailable": False,
                 "provider_attempts": list(getattr(self.llm, "last_generation_attempts", [])),
+                "generation_purpose": generation_purpose,
+                "turn_policy": turn_policy.to_dict(),
             }
 
         return ReasoningResult(
@@ -237,6 +257,23 @@ class ReasoningEngine:
             ),
             metadata=metadata,
         )
+
+    def _generation_purpose(
+        self,
+        *,
+        intent: Intent | None,
+        local_tool_grounded: bool,
+        self_grounded: bool,
+        input_text: str = "",
+    ) -> str | None:
+        """Compatibility helper; authoritative classification lives in TurnPolicyEngine."""
+
+        return self.turn_policy.decide(
+            input_text=input_text,
+            intent=intent,
+            local_tool_grounded=local_tool_grounded,
+            self_grounded=self_grounded,
+        ).generation_purpose
 
     @staticmethod
     def _character_provider_fallback(

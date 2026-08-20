@@ -718,6 +718,9 @@ class CognitiveOrchestrator:
             phrase in normalized
             for phrase in (
                 "can you use", "can u use", "could you use",
+                "how can i let you use", "how can i let u use",
+                "how do i let you use", "how do i let u use",
+                "how can i make you use", "how can i make u use",
                 "are you using", "are u using", "you are using",
                 "r u using", "do you use", "do u use",
                 "which model", "what model", "which provider", "what provider",
@@ -752,7 +755,7 @@ class CognitiveOrchestrator:
             )
 
         command_markers = (
-            "use " , "switch to ", "go ahead and use", "go ahead an use",
+            "use " , "switch to ", "go into ", "go ahead and use", "go ahead an use",
             "fire up ", "route through ", "run through ", "call ",
             "ask ", "consult ",
         )

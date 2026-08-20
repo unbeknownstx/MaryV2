@@ -163,6 +163,7 @@ def format_last_turn(result: Any) -> str:
     ) or "none"
 
     expert = dict(reasoning_meta.get("expert_consultation", {}) or {})
+    turn_policy = dict(reasoning_meta.get("turn_policy", {}) or {})
     lines = [
         "Last Mary turn:",
         f"- intent: {intent_name}",
@@ -175,6 +176,8 @@ def format_last_turn(result: Any) -> str:
         f"- attempts: {attempt_text}",
         f"- self_grounded: {reasoning_meta.get('self_grounded', False)}",
         f"- self_provenance_issue: {reasoning_meta.get('self_provenance_issue')}",
+        f"- generation_purpose: {reasoning_meta.get('generation_purpose', 'default/task')}",
+        f"- turn_policy: {turn_policy.get('category', 'legacy/default')}",
         f"- reflection_mode: {reflection_meta.get('mode', 'n/a')}",
     ]
     if expert:
@@ -232,20 +235,49 @@ def format_route_state(application: "MaryApplication") -> str:
         if callable(getattr(mary.llm, "_provider_order", None))
         else [mary.llm.provider_name()]
     )
+    conversation = (
+        mary.llm.conversation_provider_order()
+        if callable(getattr(mary.llm, "conversation_provider_order", None))
+        else configured
+    )
     active = (
         "private/ollama" if override.get("route") == "private"
         else str(override.get("provider")) if override.get("provider")
-        else "configured free-first"
+        else "normal policy (conversation local-first; task/general free-first)"
     )
     return "\n".join([
         "MARYV2 MODEL ROUTE",
         "────────────────────────────────",
-        "Configured: " + " -> ".join(str(item) for item in configured),
+        "Task/general: " + " -> ".join(str(item) for item in configured),
+        "Conversation: " + " -> ".join(str(item) for item in conversation),
         f"Temporary override: {active}",
         f"Last actual provider: {last.get('provider', 'none yet')}",
         f"Last actual model: {last.get('model', 'n/a')}",
         "Paid OpenAI: explicit one-task expert authorization only",
     ])
+
+
+def format_system_contract(application: "MaryApplication") -> str:
+    """Show the display-safe ownership/routing contract for this Mary process."""
+
+    contract = application.mary.system_contract.snapshot(application.mary)
+    authority = dict(contract.get("authority", {}) or {})
+    lines = [
+        "MARYV2 SYSTEM CONTRACT",
+        "────────────────────────────────",
+        f"Version: {contract.get('version', 'unknown')}",
+        f"Single LLM router: {contract.get('single_llm_router', False)}",
+        f"Shared emotion state: {contract.get('shared_emotion_state', False)}",
+        "Conversation route: " + " -> ".join(str(x) for x in contract.get("conversation_route", [])),
+        "Task/general route: " + " -> ".join(str(x) for x in contract.get("task_route", [])),
+        "Paid OpenAI sticky route: disabled",
+        "Background browsing: disabled",
+        "",
+        "Authority owners:",
+    ]
+    for key, owner in authority.items():
+        lines.append(f"- {key}: {owner}")
+    return "\n".join(lines)
 
 
 def interactive_help(application: "MaryApplication") -> str:
@@ -270,7 +302,7 @@ def interactive_help(application: "MaryApplication") -> str:
         "Inside Mary, `/pending` shows pending approvals. If exactly one request "
         "is pending, simply type `approve` or `reject`. `/last` shows compact "
         "debug metadata for Mary's most recent completed turn. `/state` shows "
-        "Mary's live character state, `/resources` shows bounded usage, and `/audit` "
+        "Mary's live character state, `/resources` shows bounded usage, `/contract` shows the architecture authority map, and `/audit` "
         "runs a read-only check for test/probe residue in creator state.\n\n"
         f"Mary's bounded workspace is: {workspace}"
     )
@@ -494,15 +526,18 @@ def run_interactive(
 
         strategy = str(cognition.get("routing_strategy", "configured"))
         provider_order = cognition.get("provider_order", [])
+        conversation_order = cognition.get("conversation_provider_order", [])
 
         if strategy == "free_first" and isinstance(provider_order, list):
             print(f"LLM Strategy: {strategy}")
-            print("LLM Route: " + " -> ".join(str(item) for item in provider_order))
+            print("Task/General Route: " + " -> ".join(str(item) for item in provider_order))
+            if isinstance(conversation_order, list) and conversation_order:
+                print("Conversation Route: " + " -> ".join(str(item) for item in conversation_order))
             try:
                 local_model = mary.llm.get_provider("ollama").model_name()
             except Exception:
                 local_model = "unavailable"
-            print(f"Local fallback: ollama / {local_model}")
+            print(f"Local conversation engine: ollama / {local_model}")
         else:
             print(
                 "LLM Provider: "
@@ -528,7 +563,7 @@ def run_interactive(
         print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help', '/state', '/resources', '/route', '/audit', '/pending', '/last', or 'exit'.")
+    print("Type '/help', '/state', '/resources', '/route', '/contract', '/audit', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -582,6 +617,10 @@ def run_interactive(
 
             if command in {"/route", "/model", "route", "model route"}:
                 print(format_route_state(app))
+                continue
+
+            if command in {"/contract", "contract", "system contract", "architecture contract"}:
+                print(format_system_contract(app))
                 continue
 
             if command in {"/audit", "audit", "state audit"}:

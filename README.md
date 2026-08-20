@@ -18,10 +18,13 @@ MaryV2 is a private persistent character runtime for **Mary**. Mary existed as a
 ## Normal provider policy
 
 ```text
-free_first: Groq -> Gemini -> OpenRouter -> Ollama
+character conversation: Ollama -> Groq -> Gemini -> OpenRouter
+task/general free_first: Groq -> Gemini -> OpenRouter -> Ollama
 private/offline: Ollama only
 paid expert: OpenAI (explicit task authorization only)
 ```
+
+Ordinary personal/relational conversation is local-first by default. This keeps Mary's everyday voice close to her persistent local runtime and private machine while preserving free cloud fallback if Ollama is unavailable. Detached factual/technical/task work is classified separately by the authoritative TurnPolicyEngine so stronger external capabilities can be used intentionally without making cloud models Mary's default conversational voice.
 
 ## Run Mary in the terminal
 
@@ -31,13 +34,21 @@ From the repository root with the virtual environment active:
 python -m scripts.run_mary
 ```
 
+A developer convenience shim reaches the exact same runtime:
+
+```powershell
+python run_mary.py
+```
+
 Useful commands while Mary is running:
 
 ```text
 /help       command help
 /state      display-safe live character/runtime state
 /resources  provider/token/paid-resource counters
-/last       last-turn provider and reasoning metadata
+/route      conversation/task route policy + last actual provider
+/contract   display-safe architecture/authority contract
+/last       last-turn provider, turn-policy, and reasoning metadata
 /pending    approval-gated tool requests
 /audit      read-only audit for obvious development/test creator-state residue
 ```
@@ -90,6 +101,7 @@ The packaged app uses writable user state outside the frozen bundle by default. 
 
 See:
 
+- `docs/architecture/V2_BREAKTHROUGH_10.md`
 - `docs/architecture/V2_FINAL_RUNTIME.md`
 - `docs/V2_HARD_TEST.md`
 - `desktop/README.md`

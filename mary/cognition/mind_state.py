@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mary.cognition.intent import Intent, IntentType
+from mary.relationship.provenance import conversation_profile
 from mary.cognition.continuity import ConversationContinuity
 from mary.cognition.performance import PerformanceDirector
 
@@ -402,10 +403,19 @@ class TurnMindStateBuilder:
     def _relationship_snapshot(self) -> dict[str, Any]:
         user_model = getattr(self.relationship, "user_model", None)
         current_profile = {}
+        raw_profile = {}
         if user_model is not None:
-            current_profile = _safe_dict(
+            raw_profile = _safe_dict(
                 getattr(user_model, "current_profile", lambda: {})()
             )
+            # Model-facing relationship context must use the same provenance-safe
+            # projection as normal creator conversation. Durable test/probe records
+            # stay on disk and remain auditable, but cannot leak into generation or
+            # revision prompts where a model could creatively resurrect them.
+            try:
+                current_profile = _safe_dict(conversation_profile(user_model))
+            except Exception:
+                current_profile = raw_profile
         history = getattr(self.relationship, "history", None)
         history_summary = _safe_dict(
             getattr(history, "summary", lambda: {})()
@@ -423,7 +433,11 @@ class TurnMindStateBuilder:
             else ""
         ).strip() or str(getattr(user_model, "name", "Unbe") or "Unbe")
 
-        profile_count = int(current_profile.get("profile_record_count", 0) or 0)
+        profile_count = max(
+            0,
+            int(raw_profile.get("profile_record_count", 0) or 0)
+            - int(current_profile.get("excluded_probe_records", 0) or 0),
+        )
         event_count = int(history_summary.get("total_events", 0) or 0)
         familiarity_score = min(1.0, (profile_count + event_count) / 12.0)
         familiarity = (

@@ -1,29 +1,44 @@
-MARYV2 V2 ACCEPTANCE CONSOLIDATION 06
+MARYV2 V2 BREAKTHROUGH 10 - FULL SYSTEM CONSOLIDATION
 
-Purpose:
-- Understand ordinary imperfect creator typing without requiring benchmark grammar.
-- Preserve exact creator wording while using conservative normalized text only for matching/parsing.
-- Ground relational/emotional questions in Mary's represented emotion + relationship state.
-- Let compliments/recognition affect the same response through warmth/appreciation.
-- Reject unrequested mixed-script/corrupted provider output and fail over before delivery.
-- Catch near-duplicate recent prose and unsupported certainty about subjective experience.
-- Use durable creator goals for shared-work continuity without treating Mary's own dialogue as evidence.
-- Keep obvious test/probe profile records durable and auditable while excluding them from normal creator prose.
-- Add read-only /audit and `python -m scripts.audit_creator_state --all`.
+PURPOSE
+- Preserve the working MaryV2 architecture and rebuild its integration boundaries.
+- Make personal/relational Mary conversation local-first through Ollama.
+- Keep detached factual/technical/task work on the normal free-first cloud route.
+- Keep private/offline work Ollama-only.
+- Keep paid OpenAI explicit, one-task, advisory, and non-sticky.
+- Connect explicit "ask me anything / you are here to learn" invitations to Mary's real relationship-curiosity gaps.
+- Remove obvious test/probe residue from all normal model-facing creator/memory context while keeping it durable for /audit.
+- Verify architecture authority top-down and provider/result flow bottom-up.
 
-Install:
-1. Exit Mary.
-2. Commit/back up the current green state in GitHub Desktop.
-3. Extract this ZIP over the MaryV2 project root and replace matching source files.
-4. Do NOT delete .env, data/, or avatar assets.
-5. Run:
-   python -m scripts.verify_acceptance_hotfix_06
-   python -m scripts.verify_acceptance_hotfix_07
-6. Run:
-   python -m pytest tests/integration/test_acceptance_hotfix_06.py tests/llm/test_output_quality.py tests/cognition/test_acceptance_response_quality.py -q
-7. Run the full Windows hard gate:
-   powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
-8. Before conversational acceptance, inspect real creator state:
-   python -m scripts.audit_creator_state --all
+SAFE INSTALL
+1. Exit Mary and the desktop app.
+2. Commit/back up your current green project with GitHub Desktop.
+3. Extract the upgrade/full-overwrite ZIP over the MaryV2 project root.
+4. Replace matching source/test/docs files.
+5. DO NOT delete or replace your existing .env, data/, API keys, avatar/VRM/Vroid assets, or local runtime state.
 
-No .env, data, memories, avatar assets, or API keys are included in the release overlay.
+VERIFY
+From the activated .venv in the project root:
+
+    python -m scripts.verify_breakthrough_10
+    python -m pytest tests/integration/test_breakthrough_10.py -q
+    powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
+
+TERMINAL ACCEPTANCE
+Either command enters the same canonical runtime:
+
+    python -m scripts.run_mary
+    python run_mary.py
+
+Useful commands:
+
+    /state
+    /route
+    /contract
+    /resources
+    /audit
+    /last
+
+Real acceptance should use natural typing, not benchmark grammar.
+
+NO personal .env, data, memories, API keys, or avatar source assets belong in the release overlay.

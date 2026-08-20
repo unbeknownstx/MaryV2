@@ -18,8 +18,10 @@ the avatar are replaceable capabilities.
    path promotes something valuable.
 5. **Capability is not permission.** Tools, paid experts, consequential changes,
    and creator-authority decisions remain gated.
-6. **Paid OpenAI is advisory and opt-in.** Normal/free-first routing remains
-   Groq -> Gemini -> OpenRouter -> Ollama; private/offline remains Ollama-only.
+6. **Paid OpenAI is advisory and opt-in.** Ordinary character conversation is
+   local-first (Ollama -> Groq -> Gemini -> OpenRouter). Task/general free-first
+   remains Groq -> Gemini -> OpenRouter -> Ollama and excludes paid OpenAI;
+   private/offline remains Ollama-only.
 7. **Failure degrades capability, not identity.** Avatar, voice, cloud models,
    web access, and individual tools may fail without taking the Mary core down.
 8. **Persistent writes are recoverable.** Critical JSON state is written
@@ -36,13 +38,17 @@ the avatar are replaceable capabilities.
 
 ```
 creator input
+  -> conservative natural-input matching
   -> Mary cognition / deterministic local state
+  -> TurnPolicyEngine
+       personal/relational conversation -> local-first Ollama
+       detached task/general work -> free-first cloud pool
   -> bounded task workspace when needed
   -> orchestration plan (privacy + cost + capability + authority)
   -> controlled executor
        local / free-first / private Ollama / research / tool / verify / expert
-  -> evidence + provenance
-  -> Mary synthesis / response
+  -> output quality + evidence + provenance + capability-truth reflection
+  -> Mary continuity / emotion / expression
   -> explicit selective persistence paths only
 ```
 
@@ -66,3 +72,11 @@ MaryV2 does not attempt to preserve or re-inject every detail forever.
 - Installed/frozen: bundled read-only resources + writable LocalAppData state.
 - Portable: set `MARY_PORTABLE=1`; writable `data/` lives beside `MaryV2.exe`.
 - Custom: set `MARY_DATA_DIR`, `MARY_WORKSPACE_ROOT`, or `MARY_ENV_FILE`.
+
+
+## Breakthrough 10 integration boundary
+
+The current V2 authority map and top-down/bottom-up flow are documented in
+`docs/architecture/V2_BREAKTHROUGH_10.md`. Test/probe creator or memory residue
+may remain durably auditable, but normal model-facing context uses a provenance-
+safe projection that excludes obvious development probes.

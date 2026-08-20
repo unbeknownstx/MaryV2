@@ -68,6 +68,8 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("acceptance_conversation_06", "scripts.verify_acceptance_hotfix_06"),
     ("acceptance_efficiency_07", "scripts.verify_acceptance_hotfix_07"),
     ("acceptance_capability_truth_08", "scripts.verify_acceptance_hotfix_08"),
+    ("acceptance_local_conversation_09", "scripts.verify_acceptance_hotfix_09"),
+    ("breakthrough_local_core_10", "scripts.verify_breakthrough_10"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),

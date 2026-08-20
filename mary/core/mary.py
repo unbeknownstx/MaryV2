@@ -77,6 +77,7 @@ from mary.personality.preference_promotion import PreferencePromotionSystem
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
 from mary.relationship.curiosity_development import RelationshipCuriosityDevelopment
+from mary.relationship.conversation_learning import ConversationLearningBridge
 from mary.relationship.natural_learning import NaturalRelationshipLearner
 from mary.relationship.provenance import conversation_profile, text_has_test_probe_marker
 
@@ -116,6 +117,8 @@ from mary.cognition.mind_state import TurnMindStateBuilder
 from mary.cognition.context_lifecycle import ConversationContextLifecycle
 from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
+from mary.runtime.turn_policy import TurnPolicyEngine
+from mary.runtime.system_contract import MarySystemContract
 
 
 class Mary:
@@ -436,9 +439,15 @@ class Mary:
         # COGNITION
         # ============================================================
 
+        # One authoritative turn-routing policy sits above provider routing.
+        # It decides whether a model-backed turn is personal Mary conversation
+        # (local-first) or detached task/general work (free cloud first).
+        self.turn_policy = TurnPolicyEngine()
+
         self.reasoning = ReasoningEngine(
             llm=self.llm,
             evidence_validator=self.evidence_validator,
+            turn_policy=self.turn_policy,
         )
 
         self.reflection = ReflectionEngine(
@@ -469,6 +478,9 @@ class Mary:
             creator_name=str(self.user_model.name or self.identity.creator or "Unbe").title(),
         )
         self.relationship_curiosity.sync()
+        self.conversation_learning = ConversationLearningBridge(
+            self.relationship_curiosity
+        )
         self.agency.rebuild_priorities()
 
         # ============================================================
@@ -535,6 +547,10 @@ class Mary:
         self.continuity = self.turn_mind.continuity
         self.performance = self.turn_mind.performance
 
+        # Read-only architecture contract: proves that the subsystems above still
+        # share one router/emotion/authority layout after integration changes.
+        self.system_contract = MarySystemContract()
+
     # ================================================================
     # PRIMARY ENTRY POINT
     # ================================================================
@@ -568,6 +584,13 @@ class Mary:
         natural_relationship_learning = self._learn_natural_relationship_share(
             input_text,
             intent=intent,
+        )
+
+        # When the creator explicitly invites Mary to ask/learn, use Mary's real
+        # structured relationship-curiosity gaps instead of letting an LLM invent
+        # a generic question. This is deterministic and never autonomously asks.
+        learning_invitation = self.conversation_learning.respond_if_invited(
+            input_text
         )
 
         # Appraise the incoming creator turn before generation without mutating
@@ -612,7 +635,11 @@ class Mary:
         external_sources: list[dict[str, Any]] = []
         skip_cognition = False
 
-        if intent.intent_type == IntentType.RELATIONSHIP_SHARE:
+        if learning_invitation is not None:
+            system_response = str(learning_invitation.get("response", "")).strip()
+            skip_cognition = bool(system_response)
+
+        elif intent.intent_type == IntentType.RELATIONSHIP_SHARE:
             relationship_action = self._handle_relationship_share(intent)
             system_response = relationship_action.get("system_response")
             skip_cognition = True
@@ -780,6 +807,12 @@ class Mary:
                 metadata["natural_relationship_learning"] = dict(
                     natural_relationship_learning
                 )
+            if learning_invitation is not None:
+                metadata["conversation_learning_invitation"] = {
+                    "handled": True,
+                    "category": learning_invitation.get("category"),
+                    "llm_calls_after_action": 0,
+                }
             if system_action == "propose_code_change":
                 metadata.update({
                     "handled_by": "mary_code_change_planner",
@@ -1030,18 +1063,29 @@ class Mary:
         ]
         lifecycle_context = lifecycle_window.to_dict()
 
+        model_memories = [
+            item
+            for item in list(memory_context.get("relevant_memories", []))
+            if not (
+                isinstance(item, dict)
+                and text_has_test_probe_marker(str(item.get("content", "")))
+            )
+        ]
+        model_memory_context = dict(memory_context)
+        model_memory_context["relevant_memories"] = model_memories
+
         mind_state = self.turn_mind.build(
             input_text=input_text,
             intent=intent,
-            relevant_memories=memory_context.get("relevant_memories", []),
+            relevant_memories=model_memories,
             recent_conversation=conversation,
             context_lifecycle=lifecycle_context,
             incoming_emotion_appraisal=incoming_emotion_appraisal,
         )
 
         return {
-            "memory": memory_context,
-            "user": self._user_context(),
+            "memory": model_memory_context,
+            "user": self._user_context_for_model(),
             "personality": self._personality_context(),
             "conversation": conversation,
             "context_lifecycle": lifecycle_context,
@@ -2089,6 +2133,14 @@ class Mary:
             )
             if str(item).strip()
         ]
+        conversation_order = [
+            str(item)
+            for item in cognition_status.get(
+                "conversation_provider_order",
+                [],
+            )
+            if str(item).strip()
+        ]
         route_text = (
             " -> ".join(provider_order)
             if provider_order
@@ -2110,8 +2162,14 @@ class Mary:
                 "my identity."
             ),
             (
-                f"My LLM routing strategy is {strategy}, with the configured "
+                f"My general/task LLM routing strategy is {strategy}, with the configured "
                 f"route: {route_text}."
+            ),
+            (
+                "For ordinary personal/character conversation I use a local-first route: "
+                + (" -> ".join(conversation_order) if conversation_order else "Ollama first when available")
+                + ". That keeps everyday conversation close to my persistent local runtime while "
+                "still allowing free cloud fallback if the local model is unavailable."
             ),
         ]
 
@@ -2128,8 +2186,30 @@ class Mary:
 
         if "ollama" in {item.lower() for item in provider_order}:
             parts.append(
-                "That lets me use cloud providers first and Ollama as a local "
-                "fallback when Ollama is available in the environment."
+                "For task/general routing Ollama remains my final local fallback; for ordinary "
+                "conversation it gets first chance unless you set a temporary route override."
+            )
+
+        query_normalized = str(query or "").lower().replace("’", "'")
+        if "ollama" in query_normalized and any(
+            phrase in query_normalized
+            for phrase in (
+                "how can i let you use",
+                "how do i let you use",
+                "how can i make you use",
+                "can you use",
+                "can u use",
+            )
+        ):
+            try:
+                local_model = self.llm.get_provider("ollama").model_name()
+            except Exception:
+                local_model = "configured local model"
+            parts.append(
+                "You don't need to hand me an endpoint or model name during conversation. "
+                f"Ollama is already configured in my runtime ({local_model}) and gets first chance "
+                "for ordinary personal conversation. `/route` shows the policy, and `/last` after a "
+                "generated turn shows which provider actually answered."
             )
 
         previous = dict(self._last_generation_metadata or {})
@@ -2441,10 +2521,16 @@ class Mary:
             status = self.llm.clear_session_override()
             return {
                 "system_response": (
-                    "Okay. I cleared the temporary model override. Ordinary model-backed "
-                    "turns are back on my configured free-first route: "
+                    "Okay. I cleared the temporary model override. My normal routing policy is active again: "
+                    "ordinary personal conversation is local-first ("
+                    + " -> ".join(
+                        self.llm.conversation_provider_order()
+                        if callable(getattr(self.llm, "conversation_provider_order", None))
+                        else self.llm._provider_order(None)
+                    )
+                    + "), while task/general generation uses free-first ("
                     + " -> ".join(self.llm._provider_order(None))
-                    + "."
+                    + ")."
                 ),
                 "skip_cognition": True,
                 "llm_control": status,
@@ -3564,6 +3650,9 @@ class Mary:
                 ),
                 "principle": "bounded_growth_no_unlimited_collection",
             },
+            "architecture_contract": self.system_contract.snapshot(self),
+            "conversation_learning": self.conversation_learning.status(),
+            "turn_policy": self.turn_policy.status(),
             "orchestration": {
                 "task_workspace": self.task_workspace.status(),
                 "expert_consultant": self.expert_consultant.status(),
@@ -3588,6 +3677,15 @@ class Mary:
                     self.llm._provider_order(None)
                     if callable(getattr(self.llm, "_provider_order", None))
                     else [self.llm.provider_name()]
+                ),
+                "conversation_provider_order": (
+                    self.llm.conversation_provider_order()
+                    if callable(getattr(self.llm, "conversation_provider_order", None))
+                    else (
+                        self.llm._provider_order(None)
+                        if callable(getattr(self.llm, "_provider_order", None))
+                        else [self.llm.provider_name()]
+                    )
                 ),
                 "session_override": (
                     self.llm.session_override_status()
@@ -3678,6 +3776,33 @@ class Mary:
         """
 
         return self._user_context()
+
+    def _user_context_for_model(self) -> dict[str, Any]:
+        """Return a provenance-safe creator projection for model-backed turns.
+
+        Durable test/probe records remain in RelationshipManager and `/audit`,
+        but normal generation and reflection never receive them as conversational
+        facts.
+        """
+
+        try:
+            profile = conversation_profile(self.user_model)
+        except Exception:
+            return {}
+
+        identity = profile.get("identity", {})
+        identity = identity if isinstance(identity, dict) else {}
+        return {
+            "creator_id": identity.get("id", getattr(self.user_model, "creator_id", "creator")),
+            "name": identity.get("name", getattr(self.user_model, "name", "Unbe")),
+            "facts": dict(profile.get("facts", {}) or {}),
+            "preferences": dict(profile.get("preferences", {}) or {}),
+            "interests": list(profile.get("interests", []) or []),
+            "values": list(profile.get("values", []) or []),
+            "goals": list(profile.get("goals", []) or []),
+            "communication_style": dict(profile.get("communication_style", {}) or {}),
+            "general": list(profile.get("general", []) or []),
+        }
 
     def _user_context(
         self,

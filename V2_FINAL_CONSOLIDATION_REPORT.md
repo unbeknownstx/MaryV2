@@ -1,97 +1,130 @@
-# MaryV2 V2 Acceptance Consolidation 08
+# MaryV2 V2 Breakthrough 10 — Full-System Consolidation
 
 ## Purpose
 
-This source candidate folds the full V2 consolidation plus acceptance Hotfixes 01–07 into one overwrite-safe build. It preserves Mary’s existing character architecture while incorporating failures found only through real conversation on the canonical Windows machine.
+This checkpoint rebuilds the integration boundaries around the already-working
+MaryV2 core from both directions without replacing Mary's established character,
+memory, relationship, learning, agency, tool, desktop, or persistence systems.
 
-The central rule added in this pass is: **the creator should be able to talk naturally.** Mary must not require perfect punctuation, capitalization, spelling, or benchmark-style phrasing to reach the correct local/self/relationship/task path. Matching may normalize a conservative set of chat shorthand, but the original creator text remains the authoritative dialogue/evidence.
+The central breakthrough is a clean division of labor:
 
-## Verified in the consolidation environment
+```text
+Mary personal/relational conversation
+    Ollama -> Groq -> Gemini -> OpenRouter
 
-- Python suite: **512 passed, 1 skipped**
-- Diagnostics: **50 / 50 PASS**, warnings 0, failures 0, Healthy True
+Detached factual/technical/task generation
+    Groq -> Gemini -> OpenRouter -> Ollama
+
+Private/offline
+    Ollama only
+
+Paid expert
+    OpenAI, explicit one-task authorization only
+```
+
+Mary remains the persistent character/runtime. Providers remain replaceable
+engines.
+
+## New architecture
+
+### Authoritative TurnPolicyEngine
+- Centralizes personal-conversation vs task/general model purpose.
+- Uses conservative chat normalization for matching only.
+- Preserves the creator's exact input text for dialogue/evidence.
+- Prevents broad `QUESTION`/`CONVERSATION` intent labels from deciding provider
+  privacy/cost by themselves.
+- Records the policy category in `/last` metadata.
+
+### ConversationLearningBridge
+- Detects explicit invitations such as `ask me anything` or `you are here to learn`.
+- Selects one real unresolved relationship-curiosity gap.
+- Uses zero LLM calls to choose the question.
+- Never autonomously interrogates the creator.
+- Never writes creator facts; the existing relationship-learning boundary still owns learning.
+
+### Probe-safe model context
+- Obvious development/test creator records remain durable and auditable.
+- They are removed before creator-profile projection reaches generation or reflection.
+- Probe-shaped retrieved memories are also removed from normal model-facing context.
+- `/audit` remains the explicit debugging surface.
+
+### Read-only MarySystemContract
+- Verifies single-router ownership across reasoning/reflection/orchestration/expert paths.
+- Verifies shared authoritative emotion state.
+- Verifies conversation local-first vs task/general cloud-first routing.
+- Documents the authority map without creating another source of truth.
+- Terminal `/contract` exposes the display-safe contract.
+
+### Local supervision of local conversation
+- Ollama can provide Mary's everyday conversational performance.
+- Its output still passes output quality, provenance, capability truth, continuity,
+  emotion, and reflection.
+- A bad local conversational answer can be revised locally with the same conversation
+  purpose instead of silently escalating private dialogue to cloud.
+
+### Terminal entry-point cleanup
+- `python run_mary.py` now works as a thin compatibility shim.
+- `python -m scripts.run_mary` remains canonical.
+- Both enter the same `MaryApplication` runtime.
+
+## Verification in the consolidation environment
+
+- Previous Consolidation 09 baseline: **522 passed, 1 skipped**
+- Breakthrough 10 integration regressions added: **18**
+- Current Python suite: **540 passed, 1 skipped**
+- Diagnostics: **53 / 53 PASS**, warnings 0, failures 0, Healthy True
+- `verify_breakthrough_10`: **PASS**
 - Complete deterministic/offline release gate: **PASS**
-- Hotfix 06 acceptance verifier: **PASS**
-- Hotfix 08 prompt-efficiency verifier: **PASS**
-- No live LLM/OpenAI call was used for this verification.
-
-## Acceptance upgrades
-
-### Natural imperfect input
-- Questions can route correctly without `?`.
-- Conservative chat forms such as `u`, `ur`, `dont`, `im`, `thats`, `alot`, etc. are normalized for intent matching only.
-- Original user text is not rewritten in dialogue/memory.
-- Natural relationship learning can fall back to normalized parsing while retaining the original sentence as creator-owned evidence.
-
-### Emotional / relational behavior
-- Added represented `warmth` and `appreciation` states to the existing bounded emotion system.
-- Relational recognition/trust can appraise before generation so the current response—not only the next turn—can reflect the interaction.
-- `what do u feel in our interactions` routes to grounded self/relationship evidence and reports `self_grounded=True`.
-- Emotional first-person character language remains allowed; unsupported claims that software proves biological/metaphysical subjective experience are revised.
-
-### Conversation quality
-- Compliments/recognition are feedback turns rather than accidental speech/slang queries.
-- Challenges such as `i dont know if i agree why do u think that` steer toward explaining/defending/revising rather than reflexively erasing disagreement.
-- Substantial near-duplicate recent Mary prose is detected and revised.
-- Assistant-generated details cannot become creator/shared history.
-- Shared-work continuity may use durable creator goals/project memories even in a fresh session, while never using Mary’s own dialogue as evidence.
-
-### Provider-output quality
-- Empty/replacement/null corruption remains invalid.
-- Multiple unrequested characters from unexpected scripts in an English/Latin interaction are rejected before reaching Mary.
-- Invalid output records a provider attempt as `invalid_output` and continues failover.
-- Legitimate translation/multilingual requests remain allowed.
-
-### Creator-state hygiene
-- Obvious development/test probes remain durable/auditable rather than being silently deleted.
-- Normal creator summaries filter those flagged probe records, preventing values such as `test animal = red panda` from being presented as meaningful knowledge about the creator.
-- `/audit` is read-only and surfaces conservative flags.
-- `python -m scripts.audit_creator_state --all` shows all creator profile records/provenance for manual review.
-- Production `/help` no longer teaches a red-panda test fact as a memory example.
-
-
-### Prompt/resource efficiency
-- Normal conversational system + user prompt projection now has substantial headroom below the historical 14,000-character guard instead of sitting near the edge.
-- The LLM-facing TurnMindState is a smaller projection; full authoritative runtime state remains local.
-- Ordinary conversation receives a bounded creator-profile projection (small capped slices per category), while dedicated relationship/self queries still use local grounded state.
-- Duplicate agency items and redundant policy text are not serialized into every ordinary model turn.
-- A stress test simulates a years-large creator profile and verifies the ordinary prompt remains bounded.
-- TurnMind prompt tests run from isolated temporary state so the creator's real profile cannot change deterministic test outcomes.
+- No live LLM/OpenAI call is required for deterministic verification.
 
 ## Existing V2 guarantees retained
 
-- Character canon / identity / creator ownership boundaries
-- Bounded memory, context, metadata, task state, backups, logs/resource ledgers
-- Atomic persistent writes and finite recovery chain
-- Free-first routing: Groq -> Gemini -> OpenRouter -> Ollama
-- Private/offline Ollama-only route
-- Paid OpenAI excluded from free-first and task-authorized only
-- Task Workspace -> Task Orchestrator -> controlled Task Executor
-- Consequential tool/human-authority actions cannot silently execute
-- Display-safe live character state for terminal/desktop
-- Desktop voice/STT/TTS/avatar/barge-in lifecycle
+- Mary identity/character canon independent from provider engines
+- bounded active context and all persistent collections
+- atomic JSON persistence and finite recovery backups
+- natural imperfect-input tolerance without rewriting creator evidence
+- creator/Mary ownership and provenance boundaries
+- mixed-script/corrupt model output rejection/failover
+- capability-use truthfulness
+- disagreement/correction repair without unsupported mind-reading
+- grounded emotional/relationship state
+- selective creator learning and explicit developed-self promotion
+- task workspace/orchestrator/executor authority boundaries
+- private/offline Ollama-only route
+- paid OpenAI excluded from normal routes and task-authorized only
+- desktop/avatar/voice/STT/TTS/barge-in lifecycle
+- display-safe live state and resource counters
 - Windows standalone source/build readiness
 
-## Deliberately excluded from release overlays
+## Release-overlay exclusions
+
+Never overwrite or package personal runtime state:
 
 - `.env`
-- `data/` and personal Mary state
+- `data/`
 - API keys/secrets
-- `.venv/` and `.git/`
-- `node_modules/` and `desktop/dist/`
-- Mary’s existing VRM/Vroid assets under `desktop/public/models/`
-- caches/bytecode/generated archives
+- `.venv/`
+- `.git/`
+- `node_modules/`
+- generated `desktop/dist/`
+- VRM/Vroid source assets under `desktop/public/models/`
+- caches/bytecode
 
-## Canonical Windows acceptance
-
-After overlay:
+## Canonical Windows verification
 
 ```powershell
-python -m scripts.verify_acceptance_hotfix_06
-python -m scripts.verify_acceptance_hotfix_07
-python -m scripts.audit_creator_state --all
+python -m scripts.verify_breakthrough_10
+python -m pytest tests/integration/test_breakthrough_10.py -q
 powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 python -m scripts.run_mary
 ```
 
-Only after terminal/desktop conversational acceptance remains green should the Windows executable be rebuilt and frozen.
+Developer convenience also works:
+
+```powershell
+python run_mary.py
+```
+
+During real acceptance, talk naturally. `/last` should show both the actual
+provider and `turn_policy`; `/route` shows the separate conversation/task routes;
+`/contract` shows the authority map.

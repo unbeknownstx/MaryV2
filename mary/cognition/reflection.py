@@ -242,6 +242,12 @@ class ReflectionEngine:
                     ),
                 ],
                 max_tokens=700,
+                **(
+                    {"purpose": str(reasoning.metadata.get("generation_purpose"))}
+                    if reasoning.metadata.get("generation_purpose")
+                    and callable(getattr(self.llm, "conversation_provider_order", None))
+                    else {}
+                ),
             )
         except LLMProviderError as exc:
             if self._has_identity_or_provenance_issue(issues):

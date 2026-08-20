@@ -1,0 +1,48 @@
+MARYV2 V2 BREAKTHROUGH 10 - UPGRADE MANIFEST
+
+Base: Acceptance Consolidation 09
+Purpose: local character core + specialist task routing + real relationship-curiosity bridge + model-facing probe isolation + architecture contract.
+
+NEW FILES
+- run_mary.py
+- mary/runtime/turn_policy.py
+- mary/runtime/system_contract.py
+- mary/relationship/conversation_learning.py
+- scripts/verify_breakthrough_10.py
+- tests/integration/test_breakthrough_10.py
+- docs/architecture/V2_BREAKTHROUGH_10.md
+
+UPDATED FILES
+- mary/core/mary.py
+- mary/core/diagnostics.py
+- mary/cognition/reasoning.py
+- mary/cognition/mind_state.py
+- mary/runtime/application.py
+- scripts/run_release_verification.py
+- README.md
+- INSTALL.txt
+- V2_FINAL_CONSOLIDATION_REPORT.md
+- docs/architecture/V2_FINAL_RUNTIME.md
+
+UNCHANGED AUTHORITIES
+- character/canon
+- memory ownership
+- relationship storage ownership
+- personality/developed-self ownership
+- agency/autonomy ownership
+- tool permission model
+- task workspace/orchestrator/executor authority
+- provider adapters and OpenAI expert boundary
+- desktop/avatar/audio implementation
+- bounded persistence/recovery
+
+NEVER INCLUDED/OVERWRITTEN BY RELEASE BUNDLES
+- .env
+- data/
+- API keys/secrets
+- .venv/
+- .git/
+- node_modules/
+- desktop/dist/
+- desktop/public/models/ VRM/Vroid source assets
+- __pycache__/ .pytest_cache/ *.pyc

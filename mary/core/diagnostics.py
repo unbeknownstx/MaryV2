@@ -381,6 +381,7 @@ class MaryDiagnostics:
                 "continuity",
                 "context_lifecycle",
                 "performance",
+                "turn_policy",
             ),
         )
 
@@ -474,6 +475,10 @@ class MaryDiagnostics:
             self._check_attribute(
                 "Relationship Curiosity Development",
                 "relationship_curiosity",
+            ),
+            self._check_attribute(
+                "Conversation Learning Bridge",
+                "conversation_learning",
             ),
         ]
 
@@ -680,7 +685,11 @@ class MaryDiagnostics:
             self._check_attribute(
                 "Conversation",
                 "conversation",
-            )
+            ),
+            self._check_attribute(
+                "System Contract",
+                "system_contract",
+            ),
         ]
 
     # ============================================================
