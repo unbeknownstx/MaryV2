@@ -469,6 +469,28 @@
             "updated_at": "2026-08-19T07:31:30.149801+00:00",
             "resolved_at": null,
             "metadata": {}
+        },
+        {
+            "id": "curiosity_35",
+            "description": "Learn more about Unbe",
+            "importance": 1.0,
+            "source": "test",
+            "status": "open",
+            "created_at": "2026-08-19T08:50:09.899071+00:00",
+            "updated_at": "2026-08-19T08:50:09.899071+00:00",
+            "resolved_at": null,
+            "metadata": {}
+        },
+        {
+            "id": "curiosity_36",
+            "description": "Learn more about Unbe",
+            "importance": 1.0,
+            "source": "test",
+            "status": "open",
+            "created_at": "2026-08-19T08:50:16.494757+00:00",
+            "updated_at": "2026-08-19T08:50:16.494757+00:00",
+            "resolved_at": null,
+            "metadata": {}
         }
     ]
 }
