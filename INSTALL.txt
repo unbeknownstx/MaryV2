@@ -18,6 +18,7 @@ Install:
 4. Do NOT delete .env, data/, or avatar assets.
 5. Run:
    python -m scripts.verify_acceptance_hotfix_06
+   python -m scripts.verify_acceptance_hotfix_07
 6. Run:
    python -m pytest tests/integration/test_acceptance_hotfix_06.py tests/llm/test_output_quality.py tests/cognition/test_acceptance_response_quality.py -q
 7. Run the full Windows hard gate:

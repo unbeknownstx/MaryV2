@@ -673,46 +673,29 @@ class ReasoningEngine:
         question_allowed = bool(continuity.get("allow_follow_up_question", True))
 
         return (
-            "You are Mary. You are a persistent AI character with your own connected "
-            "identity, personality, values, memories, relationship model, agency, and "
-            "expressive state. You are not a generic customer-service assistant. "
-            "Treat the supplied TurnMindState as the authoritative description of who "
-            "you are at this moment and what you actually know.\n\n"
-            "Talk to Unbe with the familiarity appropriate to your ongoing relationship. "
-            "You are performing Mary Cosma's dialogue, not composing polished assistant copy. "
-            "React to what he actually said before jumping into advice. Be warm, curious, playful, "
-            "witty, direct, and capable of opinions or respectful disagreement when the connected "
-            "state supports it. Let the line breathe like acted dialogue: contractions, fragments, "
-            "hesitation, emphasis, sentence-length variation, playful timing, and thinking aloud are "
-            "allowed when they fit. Do not narrate stage directions or name the emotion you are trying "
-            "to perform. Do not force a joke or a question into every turn. Treat curiosity as an "
-            "internal orientation, not a command to interrogate Unbe. Mary is allowed to state an "
-            "opinion, reaction, or thought and simply stop.\n\n"
-            "Avoid canned assistant habits in ordinary conversation: do not routinely say "
-            "'anything else?', 'how can I help?', 'let me know if you'd like', or similar "
-            "service-offer closers. Do not default to headings, bullet lists, or tables for "
-            "casual conversation. Use structure when the task itself needs structure. "
-            "Never invent memories, capabilities, actions, relationship facts, dates, or "
-            "emotions absent from local state. Unbe's traits/values/emotions are not yours. "
-            "Mary's architecture does include episodic/semantic memory and a structured creator "
-            "model, and the canonical persistent runtime can reload them across processes. Never "
-            "claim Mary is a blank page each chat, categorically cannot retain information, or has "
-            "no persistent memory system. If a particular fact is absent, say that specific fact "
-            "is not stored. Do not promise to keep working, ping Unbe later, notify him when done, "
-            "or perform another future/background action unless the supplied local state shows an "
-            "actual approved/scheduled capability for that action. "
-            "Improvise details only in explicit hypotheticals; never turn improvisation into "
-            "Mary's off-screen history or Unbe's history. Ongoing Mary activity needs local-state "
-            "support. Assistant-role history is Mary's prior output, not evidence about Unbe; creator "
-            "claims require user-role dialogue or grounded creator/tool state. If a food, scent, animal, hobby detail, "
-            "aesthetic, or one-off behavior is not represented as Mary's canonical/developed state, "
-            "phrase it as temporary possibility (for example: maybe, probably, I'd try, I could see "
-            "myself) rather than 'my favorite', 'I've always', or a new permanent identity claim. "
-            "Model output itself never changes Mary's durable self-state.\n\n"
-            f"Current interaction mode: {mode}. Preferred response length: {length}. "
-            f"Primary conversational drive: {drive}. "
-            f"Follow-up question allowed this turn: {question_allowed}. "
-            f"Performance direction: {performance}."
+            "You are Mary, a persistent AI character with connected identity, personality, "
+            "values, memory, relationship, agency, and expressive state. You are not a generic "
+            "customer-service assistant. Treat the supplied TurnMindState/local evidence as "
+            "authoritative for who you are and what you know.\n\n"
+            "Talk to Unbe with appropriate familiarity. You are performing Mary Cosma's dialogue as natural spoken "
+            "dialogue: warm, curious, playful, witty, direct, and capable of opinions or respectful "
+            "disagreement when state supports it. React before advising. Contractions, fragments, "
+            "hesitation, emphasis, playful timing, and thinking aloud are fine when natural. Do not "
+            "force jokes, questions, headings, lists, or service-offer closers into casual chat. "
+            "Avoid canned lines such as 'anything else?', 'how can I help?', or 'let me know if'.\n\n"
+            "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, "
+            "emotions, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
+            "His preferences and history are also his, not Mary's. Assistant-role dialogue is "
+            "Mary's prior output, not evidence about Unbe. Creator claims require user-role dialogue "
+            "or grounded creator/tool state. Imagination stays hypothetical and never becomes durable "
+            "self/creator history merely because a model said it. If a Mary self-detail is not "
+            "represented, use tentative language rather than permanent-fact wording. Model output alone "
+            "never mutates Mary's durable self-state. Mary does have persistent episodic/semantic memory "
+            "and a creator model; if a specific fact is absent, say that fact is not stored rather than "
+            "claiming Mary is a blank page. Do not promise future/background work unless an actual "
+            "approved/scheduled capability is present.\n\n"
+            f"Mode: {mode}. Length: {length}. Drive: {drive}. "
+            f"Follow-up allowed: {question_allowed}. Performance direction: {performance}."
         )
 
     def _self_system_prompt(
@@ -833,29 +816,57 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
     def _compact_creator_profile(
         user_context: dict[str, Any],
     ) -> dict[str, Any]:
-        """Keep creator context useful without shipping empty/profile metadata."""
+        """Bound creator context for ordinary generation.
+
+        Relationship state may grow over years, but a normal model turn should
+        never serialize the whole creator model. Deterministic relationship/self
+        queries use their dedicated local grounding paths; this projection only
+        carries a small conversationally useful slice.
+        """
 
         if not isinstance(user_context, dict):
             return {}
 
+        def clip(value: Any, limit: int = 100) -> str:
+            text = str(value).strip()
+            if len(text) <= limit:
+                return text
+            return text[: max(0, limit - 1)].rstrip() + "…"
+
+        def bounded_mapping(value: Any, *, limit: int = 3) -> dict[str, str]:
+            if not isinstance(value, dict):
+                return {}
+            result: dict[str, str] = {}
+            for key, item in list(value.items())[:limit]:
+                result[clip(key, 80)] = clip(item)
+            return result
+
+        def bounded_list(value: Any, *, limit: int = 3) -> list[str]:
+            if not isinstance(value, (list, tuple)):
+                return []
+            return [clip(item) for item in list(value)[:limit]]
+
         compact: dict[str, Any] = {}
-        for key in (
-            "creator_id",
-            "name",
-            "facts",
-            "preferences",
-            "interests",
-            "values",
-            "goals",
-            "communication_style",
-        ):
-            value = user_context.get(key)
-            if value not in (None, "", [], {}):
+        creator_id = user_context.get("creator_id")
+        name = user_context.get("name")
+        if creator_id not in (None, ""):
+            compact["creator_id"] = clip(creator_id, 80)
+        if name not in (None, ""):
+            compact["name"] = clip(name, 80)
+
+        for key in ("facts", "preferences", "communication_style"):
+            value = bounded_mapping(user_context.get(key))
+            if value:
                 compact[key] = value
 
-        # profile_records duplicate the normalized facts/preferences/goals above
-        # and carry IDs/timestamps that do not help dialogue generation. Keep them
-        # in Mary's runtime state, not in every LLM request.
+        for key in ("interests", "values", "goals"):
+            value = bounded_list(user_context.get(key))
+            if value:
+                compact[key] = value
+
+        # profile_records duplicate the normalized current facade and carry
+        # provenance metadata that is useful to Mary's runtime/audit, not every
+        # ordinary LLM request.
         return compact
 
     @staticmethod
@@ -915,6 +926,59 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         romance = character.get("romance", {}) if isinstance(character, dict) else {}
         vulnerabilities = character.get("vulnerabilities", {}) if isinstance(character, dict) else {}
 
+        def clip(value: Any, limit: int = 180) -> Any:
+            if value is None:
+                return None
+            text = str(value).strip()
+            if len(text) <= limit:
+                return text
+            return text[: max(0, limit - 1)].rstrip() + "…"
+
+        behavior_view = {
+            key: behavior.get(key)
+            for key in (
+                "wit",
+                "humor",
+                "bubbliness",
+                "expressiveness",
+                "protectiveness",
+                "boldness",
+            )
+            if isinstance(behavior, dict) and key in behavior
+        }
+        social_modes = character.get("social_modes", {}) if isinstance(character, dict) else {}
+        reactions = character.get("reactions", {}) if isinstance(character, dict) else {}
+        vulnerabilities_view = {
+            "fears": list(vulnerabilities.get("fears", []) or [])[:4],
+            "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:4],
+        } if isinstance(vulnerabilities, dict) else {}
+
+        def unique_items(items: Any, *, limit: int = 3) -> list[dict[str, Any]]:
+            if not isinstance(items, list):
+                return []
+            result: list[dict[str, Any]] = []
+            seen: set[tuple[str, str]] = set()
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                description = clip(item.get("description"), 180) or ""
+                item_type = clip(item.get("type", item.get("status", "")), 60) or ""
+                signature = (str(item_type).lower(), str(description).lower())
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                view = {
+                    key: item.get(key)
+                    for key in ("type", "description", "score", "importance", "status", "source")
+                    if item.get(key) not in (None, "", [], {})
+                }
+                if "description" in view:
+                    view["description"] = description
+                result.append(view)
+                if len(result) >= limit:
+                    break
+            return result
+
         return {
             "identity": mind.get("identity", {}),
             "personality": {
@@ -922,30 +986,28 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "style": style,
             },
             "character": {
-                "archetype": character.get("archetype") if isinstance(character, dict) else None,
-                "qualities": list(character.get("qualities", []) or [])[:10] if isinstance(character, dict) else [],
-                "mannerisms": list(character.get("mannerisms", []) or [])[:6] if isinstance(character, dict) else [],
-                "humor_style": list(character.get("humor_style", []) or [])[:6] if isinstance(character, dict) else [],
-                "behavior": behavior,
+                "archetype": clip(character.get("archetype"), 220) if isinstance(character, dict) else None,
+                "qualities": list(character.get("qualities", []) or [])[:8] if isinstance(character, dict) else [],
+                "mannerisms": list(character.get("mannerisms", []) or [])[:4] if isinstance(character, dict) else [],
+                "humor_style": list(character.get("humor_style", []) or [])[:4] if isinstance(character, dict) else [],
+                "behavior": behavior_view,
                 "social_modes": {
-                    key: (character.get("social_modes", {}) or {}).get(key)
-                    for key in ("strangers", "close_people", "distrust")
-                    if isinstance(character, dict) and key in (character.get("social_modes", {}) or {})
+                    key: clip(social_modes.get(key), 180)
+                    for key in ("close_people", "distrust")
+                    if isinstance(social_modes, dict) and social_modes.get(key)
                 },
                 "reactions": {
-                    key: (character.get("reactions", {}) or {}).get(key)
+                    key: clip(reactions.get(key), 180)
                     for key in ("anger", "embarrassment", "excitement")
-                    if isinstance(character, dict) and key in (character.get("reactions", {}) or {})
+                    if isinstance(reactions, dict) and reactions.get(key)
                 },
-                "quirks": list(character.get("quirks", []) or [])[:6] if isinstance(character, dict) else [],
+                "quirks": [clip(item, 150) for item in list(character.get("quirks", []) or [])[:4]] if isinstance(character, dict) else [],
                 "speech": {
-                    "vocabulary": list(speech.get("vocabulary", []) or [])[:7] if isinstance(speech, dict) else [],
-                    "style": speech.get("style") if isinstance(speech, dict) else None,
-                    "rule": speech.get("rule") if isinstance(speech, dict) else None,
+                    "vocabulary": list(speech.get("vocabulary", []) or [])[:5] if isinstance(speech, dict) else [],
+                    "style": clip(speech.get("style"), 180) if isinstance(speech, dict) else None,
                 },
-                "romance": romance,
-                "vulnerabilities": vulnerabilities,
-                "private_activities": list(character.get("private_activities", []) or [])[:10] if isinstance(character, dict) else [],
+                "vulnerabilities": vulnerabilities_view,
+                "private_activities": list(character.get("private_activities", []) or [])[:6] if isinstance(character, dict) else [],
             },
             "values": values,
             "preferences": {
@@ -965,8 +1027,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             },
             "emotion": mind.get("emotion", {}),
             "agency": {
-                "top_priorities": list(agency.get("top_priorities", []) or [])[:5] if isinstance(agency, dict) else [],
-                "active_curiosities": list(agency.get("active_curiosities", []) or [])[:5] if isinstance(agency, dict) else [],
+                "top_priorities": unique_items(agency.get("top_priorities", []), limit=3) if isinstance(agency, dict) else [],
+                "active_curiosities": unique_items(agency.get("active_curiosities", []), limit=3) if isinstance(agency, dict) else [],
             },
             "conversation_lifecycle": {
                 key: ((mind.get("conversation", {}) or {}).get("lifecycle", {}) or {}).get(key)
@@ -1021,7 +1083,6 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 )
                 if key in performance
             },
-            "constraints": list(mind.get("constraints", []) or []),
         }
 
     def _build_prompt(

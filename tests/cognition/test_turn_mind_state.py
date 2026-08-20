@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.core.mary import Mary
 from mary.llm.interface import LLMResponse
+
+
+@pytest.fixture(autouse=True)
+def _isolate_turn_mind_state_tests(tmp_path, monkeypatch):
+    """Keep prompt-budget tests independent from Mary's real persistent profile."""
+    monkeypatch.chdir(tmp_path)
+
 
 
 class CharacterAwareFakeRouter:
@@ -145,6 +154,30 @@ def test_normal_conversation_uses_compact_llm_projection_and_bounded_completion(
     assert "TurnMindState (authoritative integrated Mary state for this turn)" not in combined
     assert len(combined) < 14_000
     assert kwargs["max_tokens"] == 800
+
+
+def test_large_creator_profile_still_keeps_normal_prompt_well_below_ceiling():
+    router = CharacterAwareFakeRouter()
+    mary = _mary(router)
+
+    # Simulate years of legitimate structured creator growth. The durable
+    # relationship model may be large; ordinary generation receives only a
+    # bounded projection.
+    mary.user_model.facts = {f"fact_{i}": "x" * 220 for i in range(40)}
+    mary.user_model.preferences = {f"pref_{i}": "y" * 220 for i in range(40)}
+    mary.user_model.interests = [f"interest {i} " + "z" * 220 for i in range(40)]
+    mary.user_model.values = [f"value {i} " + "v" * 220 for i in range(40)]
+    mary.user_model.goals = [f"goal {i} " + "g" * 220 for i in range(40)]
+    mary.user_model.communication_style = {f"style_{i}": "s" * 220 for i in range(40)}
+
+    mary.process("Hey Mary, what would your perfect lazy day look like?")
+
+    messages, _kwargs = router.calls[0]
+    combined = "\n".join(str(message.content) for message in messages)
+
+    assert len(combined) < 12_500
+    assert "fact_39" not in combined
+    assert "goal 39" not in combined
 
 
 def test_self_grounded_turn_uses_small_completion_budget():

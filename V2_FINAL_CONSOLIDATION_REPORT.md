@@ -1,17 +1,18 @@
-# MaryV2 V2 Acceptance Consolidation 06
+# MaryV2 V2 Acceptance Consolidation 07
 
 ## Purpose
 
-This source candidate folds the full V2 consolidation plus acceptance Hotfixes 01–06 into one overwrite-safe build. It preserves Mary’s existing character architecture while incorporating failures found only through real conversation on the canonical Windows machine.
+This source candidate folds the full V2 consolidation plus acceptance Hotfixes 01–07 into one overwrite-safe build. It preserves Mary’s existing character architecture while incorporating failures found only through real conversation on the canonical Windows machine.
 
 The central rule added in this pass is: **the creator should be able to talk naturally.** Mary must not require perfect punctuation, capitalization, spelling, or benchmark-style phrasing to reach the correct local/self/relationship/task path. Matching may normalize a conservative set of chat shorthand, but the original creator text remains the authoritative dialogue/evidence.
 
 ## Verified in the consolidation environment
 
-- Python suite: **495 passed, 1 skipped**
+- Python suite: **496 passed, 1 skipped**
 - Diagnostics: **50 / 50 PASS**, warnings 0, failures 0, Healthy True
 - Complete deterministic/offline release gate: **PASS**
 - Hotfix 06 acceptance verifier: **PASS**
+- Hotfix 07 prompt-efficiency verifier: **PASS**
 - No live LLM/OpenAI call was used for this verification.
 
 ## Acceptance upgrades
@@ -48,6 +49,15 @@ The central rule added in this pass is: **the creator should be able to talk nat
 - `python -m scripts.audit_creator_state --all` shows all creator profile records/provenance for manual review.
 - Production `/help` no longer teaches a red-panda test fact as a memory example.
 
+
+### Prompt/resource efficiency
+- Normal conversational system + user prompt projection now has substantial headroom below the historical 14,000-character guard instead of sitting near the edge.
+- The LLM-facing TurnMindState is a smaller projection; full authoritative runtime state remains local.
+- Ordinary conversation receives a bounded creator-profile projection (small capped slices per category), while dedicated relationship/self queries still use local grounded state.
+- Duplicate agency items and redundant policy text are not serialized into every ordinary model turn.
+- A stress test simulates a years-large creator profile and verifies the ordinary prompt remains bounded.
+- TurnMind prompt tests run from isolated temporary state so the creator's real profile cannot change deterministic test outcomes.
+
 ## Existing V2 guarantees retained
 
 - Character canon / identity / creator ownership boundaries
@@ -78,6 +88,7 @@ After overlay:
 
 ```powershell
 python -m scripts.verify_acceptance_hotfix_06
+python -m scripts.verify_acceptance_hotfix_07
 python -m scripts.audit_creator_state --all
 powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 python -m scripts.run_mary
