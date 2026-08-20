@@ -197,6 +197,7 @@ class TurnMindStateBuilder:
         relevant_memories: list[Any] | None = None,
         recent_conversation: list[dict[str, str]] | None = None,
         context_lifecycle: dict[str, Any] | None = None,
+        incoming_emotion_appraisal: dict[str, Any] | None = None,
     ) -> TurnMindState:
         intent_type = (
             intent.intent_type
@@ -210,6 +211,20 @@ class TurnMindStateBuilder:
         relationship = self._relationship_snapshot()
         agency = self._agency_snapshot()
         emotion = self._emotion_snapshot()
+        incoming_appraisal = _safe_dict(incoming_emotion_appraisal)
+        if incoming_appraisal:
+            emotion["incoming_appraisal"] = incoming_appraisal
+            try:
+                incoming_intensity = _clamp(incoming_appraisal.get("intensity", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                incoming_intensity = 0.0
+            incoming_name = str(incoming_appraisal.get("emotion", "neutral") or "neutral")
+            if incoming_name != "neutral" and incoming_intensity >= 0.25:
+                emotion["turn_primary"] = incoming_name
+                emotion["turn_intensity"] = incoming_intensity
+            else:
+                emotion["turn_primary"] = emotion.get("primary", "neutral")
+                emotion["turn_intensity"] = emotion.get("intensity", 0.0)
         conversation = self._conversation_snapshot(
             recent_conversation or [],
             context_lifecycle=context_lifecycle,
@@ -657,7 +672,7 @@ class TurnMindStateBuilder:
             verbosity = max(verbosity, 0.72)
 
         drive = str(continuity.get("drive", "react"))
-        emotion_intensity = _clamp(emotion.get("intensity", 0.0) or 0.0)
+        emotion_intensity = _clamp(emotion.get("turn_intensity", emotion.get("intensity", 0.0)) or 0.0)
         if mode == "relational_conversation":
             if drive in {"opine", "disagree", "reflect"}:
                 verbosity = max(verbosity, 0.48)
@@ -676,10 +691,11 @@ class TurnMindStateBuilder:
             float(traits.get("curiosity", 0.8)) * (0.32 if active_curiosity else 0.12)
         ) if question_allowed else 0.0
 
-        emotion_name = str(emotion.get("primary", "neutral"))
+        emotion_name = str(emotion.get("turn_primary", emotion.get("primary", "neutral")))
         emotional_instruction = (
-            f"Current expressive state is {emotion_name} at intensity "
-            f"{float(emotion.get('intensity', 0.0) or 0.0):.2f}; let it color delivery subtly, not dominate content."
+            f"Current turn emotional color is {emotion_name} at intensity "
+            f"{float(emotion.get('turn_intensity', emotion.get('intensity', 0.0)) or 0.0):.2f}; "
+            "let it color delivery subtly, not dominate content. The incoming appraisal is temporary turn evidence until the completed turn is applied to Mary's bounded emotion state."
         )
 
         slang = list(speech.get("vocabulary", []))[:7]

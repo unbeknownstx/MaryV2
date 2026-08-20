@@ -53,6 +53,8 @@ class Emotion(str, Enum):
 
     LOVE = "love"
     AFFECTION = "affection"
+    WARMTH = "warmth"
+    APPRECIATION = "appreciation"
     GRATITUDE = "gratitude"
 
     CURIOSITY = "curiosity"
@@ -688,6 +690,8 @@ class EmotionManager:
             Emotion.FEAR: -0.7,
             Emotion.LOVE: 0.9,
             Emotion.AFFECTION: 0.8,
+            Emotion.WARMTH: 0.75,
+            Emotion.APPRECIATION: 0.78,
             Emotion.GRATITUDE: 0.8,
             Emotion.CURIOSITY: 0.3,
             Emotion.EXCITEMENT: 0.8,
@@ -710,6 +714,8 @@ class EmotionManager:
             Emotion.FEAR: 0.9,
             Emotion.LOVE: 0.6,
             Emotion.AFFECTION: 0.4,
+            Emotion.WARMTH: 0.28,
+            Emotion.APPRECIATION: 0.34,
             Emotion.GRATITUDE: 0.4,
             Emotion.CURIOSITY: 0.6,
             Emotion.EXCITEMENT: 0.9,

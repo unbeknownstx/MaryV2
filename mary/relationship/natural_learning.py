@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from mary.cognition.natural_input import normalize_for_matching
+
 
 class NaturalRelationshipLearner:
     """Conservative detector for naturally volunteered creator facts."""
@@ -44,7 +46,9 @@ class NaturalRelationshipLearner:
         if not content or len(content) > self.MAX_CHARACTERS:
             return None
 
-        lowered = content.lower()
+        # Matching is tolerant of ordinary chat shorthand/punctuation, while
+        # ``content`` remains the exact creator text for evidence/memory.
+        lowered = normalize_for_matching(content)
 
         if self._is_question(lowered):
             return None
@@ -64,6 +68,7 @@ class NaturalRelationshipLearner:
             "signal_type": signal_type,
             "source": "creator_natural",
             "explicit_first_person": True,
+            "match_content": lowered,
         }
 
     @staticmethod

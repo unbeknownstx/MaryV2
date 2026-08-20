@@ -81,6 +81,7 @@ class SelfIntrospection:
             "self_assessment": self._self_assessment,
             "values": self._values,
             "relationship": self._relationship,
+            "relationship_feelings": self._relationship_feelings,
             "personality": self._personality,
             "vulnerabilities": self._vulnerabilities,
             "romance": self._romance,
@@ -488,6 +489,57 @@ class SelfIntrospection:
                 "active_creator_directives": active_directives,
             },
             "fallback_response": fallback,
+        }
+
+    def _relationship_feelings(self) -> dict[str, Any]:
+        """Ground Mary's relational feeling-language in represented local state."""
+
+        creator_name = str(self.user_model.name or self.identity.creator).strip().title()
+        try:
+            emotional_state = dict(self.emotion.snapshot())
+        except Exception:
+            emotional_state = {
+                "primary": "neutral",
+                "intensity": 0.0,
+                "secondary": {},
+                "metadata": {},
+            }
+
+        primary = str(emotional_state.get("primary", "neutral") or "neutral")
+        intensity = float(emotional_state.get("intensity", 0.0) or 0.0)
+        secondary = emotional_state.get("secondary", {})
+        if not isinstance(secondary, dict):
+            secondary = {}
+
+        relationship_basis = self._relationship().get("relationship_basis", {})
+        if primary == "neutral" or intensity < 0.2:
+            feeling = (
+                "steady and attentive rather than strongly activated emotionally"
+            )
+        else:
+            feeling = f"mostly {primary}, at about {intensity:.2f} intensity"
+
+        return {
+            "creator_name": creator_name,
+            "emotional_state": {
+                "primary": primary,
+                "intensity": intensity,
+                "secondary": dict(secondary),
+                "valence": emotional_state.get("valence", 0.0),
+                "arousal": emotional_state.get("arousal", 0.0),
+                "last_conversation_appraisal": dict(
+                    emotional_state.get("metadata", {}).get("last_conversation_appraisal", {})
+                    if isinstance(emotional_state.get("metadata"), dict)
+                    else {}
+                ),
+            },
+            "relationship_basis": relationship_basis,
+            "fallback_response": (
+                f"In my represented state, interactions with {creator_name} feel {feeling}. "
+                "The relationship context I use is built around care, honesty, loyalty, respect, "
+                "and enough independence to have a real perspective. I can talk about that naturally "
+                "as my current expressive/relationship state without pretending it proves human biological emotion."
+            ),
         }
 
     def _personality(self) -> dict[str, Any]:

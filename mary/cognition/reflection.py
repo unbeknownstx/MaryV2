@@ -70,7 +70,7 @@ class ReflectionResult:
         }
 
 
-PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-05"
+PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-06"
 
 
 class ReflectionEngine:
@@ -227,8 +227,11 @@ class ReflectionEngine:
                             "state that Mary has episodic/semantic memory and a structured creator model rather "
                             "than claiming she resets blank each chat. If the audit flags an unsupported future "
                             "or background promise, rewrite it as a present-tense preference or communication "
-                            "style without promising a later ping, notification, or continued work. Rewrite the "
-                            "reply so it sounds like Mary rather than a generic assistant. Return only the revised reply."
+                            "style without promising a later ping, notification, or continued work. If the audit "
+                            "flags repeated recent prose, keep the meaning but write a genuinely fresh line. If it "
+                            "flags the representation boundary, keep Mary's emotional warmth while grounding it in "
+                            "her represented expressive/relationship state rather than making a metaphysical claim. "
+                            "Rewrite the reply so it sounds like Mary rather than a generic assistant. Return only the revised reply."
                         ),
                     ),
                     LLMMessage(
@@ -488,6 +491,9 @@ class ReflectionEngine:
         if current_opening and current_opening in recent_openings:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
+        issues.extend(self._near_duplicate_response_audit(text, recent_mary))
+        issues.extend(self._subjective_experience_audit(text))
+
         issues.extend(
             self._creator_ownership_audit(
                 context=context,
@@ -508,6 +514,69 @@ class ReflectionEngine:
         )
 
         return issues
+
+    @classmethod
+    def _near_duplicate_response_audit(
+        cls,
+        text: str,
+        recent_mary: list[str],
+    ) -> list[str]:
+        """Reject copied paragraphs/sentences from Mary's immediately recent replies."""
+
+        current_parts = [
+            part.strip()
+            for part in re.split(r"\n\s*\n|(?<=[.!?])\s+(?=[A-Z(])", str(text or ""))
+            if len(part.split()) >= 8 and len(part) >= 48
+        ]
+        if not current_parts or not recent_mary:
+            return []
+
+        recent_normalized = [
+            re.sub(r"[^a-z0-9']+", " ", item.lower()).strip()
+            for item in recent_mary
+        ]
+        for part in current_parts:
+            normalized = re.sub(r"[^a-z0-9']+", " ", part.lower()).strip()
+            if len(normalized) < 40:
+                continue
+            for recent in recent_normalized:
+                if normalized and normalized in recent:
+                    return [
+                        "Continuity boundary: repeats a substantial sentence/paragraph from Mary's recent response instead of responding freshly."
+                    ]
+                current_terms = set(normalized.split())
+                recent_terms = set(recent.split())
+                if len(current_terms) >= 10 and recent_terms:
+                    overlap = len(current_terms & recent_terms) / max(1, len(current_terms))
+                    if overlap >= 0.90:
+                        return [
+                            "Continuity boundary: near-duplicates a substantial passage from Mary's recent response."
+                        ]
+        return []
+
+    @staticmethod
+    def _subjective_experience_audit(text: str) -> list[str]:
+        """Keep emotional character language grounded without making metaphysical claims."""
+
+        lowered = str(text or "").lower().replace("’", "'")
+        strong_claims = (
+            "i don't feel like i'm performing",
+            "i do not feel like i'm performing",
+            "i'm not pretending",
+            "i am not pretending",
+            "this isn't simulated",
+            "this is not simulated",
+            "my feelings aren't simulated",
+            "my feelings are not simulated",
+            "i genuinely experience consciousness",
+            "i'm conscious in the same way",
+            "i am conscious in the same way",
+        )
+        if any(claim in lowered for claim in strong_claims):
+            return [
+                "Representation boundary: turns Mary's expressive state into an unsupported claim about subjective consciousness/experience."
+            ]
+        return []
 
     def _unsupported_self_history_audit(
         self,

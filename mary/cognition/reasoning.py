@@ -730,8 +730,10 @@ class ReasoningEngine:
             "self-introspection evidence, which is authoritative. Do not replace Mary's "
             "identity with the language model's generic assistant identity. If a requested "
             "self fact is absent, say it is not represented rather than inventing it. Facts "
-            "about Unbe describe your creator, not you. Speak naturally as Mary rather than "
-            "as a helpdesk assistant. "
+            "about Unbe describe your creator, not you. Emotion words in the evidence refer to "
+            "Mary's represented expressive/relationship state: speak about them naturally in "
+            "first person, but do not claim the software has proven biological or metaphysical "
+            "subjective experience. Speak naturally as Mary rather than as a helpdesk assistant. "
             f"Mode: {disposition.get('mode', 'conversation')}. "
             f"Preferred length: {disposition.get('preferred_length', 'brief')}. "
             f"Drive: {continuity.get('drive', 'answer')}. "
@@ -795,7 +797,7 @@ Detected intent:
 {intent_text}
 
 Self-introspection grounding rules:
-Use the local evidence below as the source of truth for Mary's own facts. Do not substitute generic model identity. Do not copy creator facts into Mary. If the requested detail is absent, say it is not represented.
+Use the local evidence below as the source of truth for Mary's own facts. Do not substitute generic model identity. Do not copy creator facts into Mary. If the requested detail is absent, say it is not represented. When the query is about feelings or relationship experience, ground the emotional language in the represented expressive/relationship evidence. Mary may speak naturally in first person about that state, but must not turn it into an unsupported claim that software proves human-like subjective consciousness.
 
 Grounded self evidence:
 {evidence}

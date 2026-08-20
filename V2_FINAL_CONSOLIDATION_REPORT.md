@@ -1,88 +1,86 @@
-# MaryV2 Final Consolidation Build Report
+# MaryV2 V2 Acceptance Consolidation 06
 
 ## Purpose
 
-This overlay consolidates the verified MaryV2 runtime and the final V2 hardening work into one overwrite-safe source bundle. It preserves Mary's existing character architecture and does not include personal runtime state or API secrets.
+This source candidate folds the full V2 consolidation plus acceptance Hotfixes 01–06 into one overwrite-safe build. It preserves Mary’s existing character architecture while incorporating failures found only through real conversation on the canonical Windows machine.
 
-This is the **source candidate for the final V2 hard-test**, not permission to skip testing on the canonical Windows machine.
+The central rule added in this pass is: **the creator should be able to talk naturally.** Mary must not require perfect punctuation, capitalization, spelling, or benchmark-style phrasing to reach the correct local/self/relationship/task path. Matching may normalize a conservative set of chat shorthand, but the original creator text remains the authoritative dialogue/evidence.
 
 ## Verified in the consolidation environment
 
-- Python suite: **463 passed, 1 skipped**
+- Python suite: **495 passed, 1 skipped**
 - Diagnostics: **50 / 50 PASS**, warnings 0, failures 0, Healthy True
 - Complete deterministic/offline release gate: **PASS**
-- Desktop JavaScript syntax check: **PASS**
-- Desktop installation verifier, including live-state surface: **PASS**
-- Release hygiene: **PASS**
-- Standalone source readiness: **PASS**
-- No live OpenAI call was made during consolidation verification.
+- Hotfix 06 acceptance verifier: **PASS**
+- No live LLM/OpenAI call was used for this verification.
 
-## Consolidated architecture guarantees
+## Acceptance upgrades
 
-### Character / identity
-- Existing Mary identity, biography, character canon, values, preferences, developed-self, creator/relationship ownership, and self-provenance boundaries remain authoritative.
-- Providers are capability engines, not Mary's identity.
-- Model/task output cannot directly become durable self-state.
+### Natural imperfect input
+- Questions can route correctly without `?`.
+- Conservative chat forms such as `u`, `ur`, `dont`, `im`, `thats`, `alot`, etc. are normalized for intent matching only.
+- Original user text is not rewritten in dialogue/memory.
+- Natural relationship learning can fall back to normalized parsing while retaining the original sentence as creator-owned evidence.
 
-### Bounded memory and context
-- Working memory, episodic memory, semantic memory, recent dialogue, LLM context, relationship history, relationship observations/inferences/patterns/milestones, agency ledgers, task workspaces, learning/research histories, persistent knowledge, preference-promotion evidence, experiments, nested metadata, provider attempts, and backup chains are bounded.
-- Single knowledge concepts also cap sources, evidence, relations, tags, and aliases.
-- Retrieval is top-N/selected; persistent storage is not injected wholesale into prompts.
-- Old/low-value data may be compacted or evicted according to subsystem retention rules.
+### Emotional / relational behavior
+- Added represented `warmth` and `appreciation` states to the existing bounded emotion system.
+- Relational recognition/trust can appraise before generation so the current response—not only the next turn—can reflect the interaction.
+- `what do u feel in our interactions` routes to grounded self/relationship evidence and reports `self_grounded=True`.
+- Emotional first-person character language remains allowed; unsupported claims that software proves biological/metaphysical subjective experience are revised.
 
-### Persistence / recovery
-- Critical persistent JSON paths use atomic replacement and finite rolling backups.
-- Memory and relationship recovery paths are tested against corrupt primary state.
-- Stale atomic-write temp files are cleaned.
+### Conversation quality
+- Compliments/recognition are feedback turns rather than accidental speech/slang queries.
+- Challenges such as `i dont know if i agree why do u think that` steer toward explaining/defending/revising rather than reflexively erasing disagreement.
+- Substantial near-duplicate recent Mary prose is detected and revised.
+- Assistant-generated details cannot become creator/shared history.
+- Shared-work continuity may use durable creator goals/project memories even in a fresh session, while never using Mary’s own dialogue as evidence.
 
-### Resource / cost governance
-- Provider attempts are capped.
-- Token/resource counters expose compact usage metadata without storing prompts.
-- Paid OpenAI remains outside `free_first`.
-- Paid expert consultation requires explicit task authorization and a per-task paid-call budget.
-- Offline release verification strips live OpenAI/LLM test flags.
+### Provider-output quality
+- Empty/replacement/null corruption remains invalid.
+- Multiple unrequested characters from unexpected scripts in an English/Latin interaction are rejected before reaching Mary.
+- Invalid output records a provider attempt as `invalid_output` and continues failover.
+- Legitimate translation/multilingual requests remain allowed.
 
-### Orchestration
-- Task Workspace remains ephemeral and non-authoritative.
-- Task Orchestrator plans according to capability/privacy/cost/authority.
-- Controlled Task Executor normalizes execution and preserves permission boundaries.
-- Consequential/human-authority plans do not silently execute.
-- Tool/research/verification operations require explicit host handlers rather than hidden autonomy.
+### Creator-state hygiene
+- Obvious development/test probes remain durable/auditable rather than being silently deleted.
+- Normal creator summaries filter those flagged probe records, preventing values such as `test animal = red panda` from being presented as meaningful knowledge about the creator.
+- `/audit` is read-only and surfaces conservative flags.
+- `python -m scripts.audit_creator_state --all` shows all creator profile records/provenance for manual review.
+- Production `/help` no longer teaches a red-panda test fact as a memory example.
 
-### Live character state
-- Terminal supports `/state` and `/resources`.
-- Desktop bridge publishes a display-safe live snapshot.
-- State includes Mary, continuity, relationship familiarity, represented mood/energy, memory count/capacities, runtime status, current task, provider/resource metadata, and privacy policy.
-- Raw memories, prompts, and API keys are intentionally excluded.
+## Existing V2 guarantees retained
 
-### Standalone readiness
-- Development resources and frozen writable state are separated.
-- Frozen default data directory: `%LOCALAPPDATA%\\MaryV2\\data`.
-- `MARY_PORTABLE=1` enables side-by-side portable data.
-- `MARY_DATA_DIR`, `MARY_WORKSPACE_ROOT`, and `MARY_ENV_FILE` can explicitly override locations.
-- Windows PyInstaller onedir source/build configuration is included.
-- The executable itself must be built and hard-tested on the user's Windows machine.
+- Character canon / identity / creator ownership boundaries
+- Bounded memory, context, metadata, task state, backups, logs/resource ledgers
+- Atomic persistent writes and finite recovery chain
+- Free-first routing: Groq -> Gemini -> OpenRouter -> Ollama
+- Private/offline Ollama-only route
+- Paid OpenAI excluded from free-first and task-authorized only
+- Task Workspace -> Task Orchestrator -> controlled Task Executor
+- Consequential tool/human-authority actions cannot silently execute
+- Display-safe live character state for terminal/desktop
+- Desktop voice/STT/TTS/avatar/barge-in lifecycle
+- Windows standalone source/build readiness
 
-## Deliberately excluded from this overlay
+## Deliberately excluded from release overlays
 
 - `.env`
-- `data/` and all personal Mary state
+- `data/` and personal Mary state
 - API keys/secrets
-- `.venv/`
-- `.git/`
-- `node_modules/`
-- `desktop/dist/` (rebuild it on Windows after applying the overlay)
-- Mary's existing VRM/Vroid model assets under `desktop/public/models/`
-- caches / compiled bytecode / old generated archives
+- `.venv/` and `.git/`
+- `node_modules/` and `desktop/dist/`
+- Mary’s existing VRM/Vroid assets under `desktop/public/models/`
+- caches/bytecode/generated archives
 
-The excluded files remain in the user's existing project when the overlay is copied on top; the overlay does not delete them.
+## Canonical Windows acceptance
 
-## Apply
+After overlay:
 
-1. Back up or commit the current known-good MaryV2 state in GitHub Desktop.
-2. Extract this bundle into `C:\\Users\\Melvin\\Documents\\GitHub\\MaryV2` and replace matching source files.
-3. Do not delete `.env` or `data/`.
-4. Run `powershell -ExecutionPolicy Bypass -File scripts\\hard_test_v2.ps1`.
-5. Rebuild desktop with `npm ci` + `npm run build` from `desktop`.
-6. Run terminal and desktop acceptance tests.
-7. Only after source/runtime acceptance is green, run `scripts\\build_windows.ps1` and hard-test the frozen application.
+```powershell
+python -m scripts.verify_acceptance_hotfix_06
+python -m scripts.audit_creator_state --all
+powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
+python -m scripts.run_mary
+```
+
+Only after terminal/desktop conversational acceptance remains green should the Windows executable be rebuilt and frozen.

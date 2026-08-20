@@ -152,7 +152,7 @@ def test_relationship_model_survives_restart(tmp_path, monkeypatch):
 
     assert result.success is True
     assert "creating stories" in result.output.lower()
-    assert "favorite color = green" in result.output.lower()
+    assert "favorite color: green" in result.output.lower()
     assert restarted_provider.calls == 0
 
 
@@ -208,8 +208,11 @@ def test_existing_explicit_memories_bootstrap_structured_relationship_model(tmp_
     result = app.run("What do you know about me?")
 
     assert mary.user_model.preferences["favorite_color"] == "green"
+    # Legacy probe data can remain durable/auditable without becoming part of
+    # Mary's ordinary conversational description of her creator.
     assert mary.user_model.facts["test_animal"] == "a red panda"
-    assert "favorite color = green" in result.output.lower()
-    assert "test animal = a red panda" in result.output.lower()
+    assert "favorite color: green" in result.output.lower()
+    assert "test animal" not in result.output.lower()
+    assert "red panda" not in result.output.lower()
     assert "existence is always precious" not in result.output.lower()
     assert provider.calls == 0

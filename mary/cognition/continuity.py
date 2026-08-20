@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from mary.cognition.intent import IntentType
+from mary.cognition.natural_input import normalize_for_matching
 
 
 _WORD_RE = re.compile(r"[a-z0-9']+")
@@ -116,7 +117,7 @@ class ConversationContinuity:
             allow_question=allow_question,
         )
 
-        instructions = (
+        instruction_items = [
             f"Primary conversational move for this turn: {drive.value}. Do that move before considering any secondary move.",
             "Do not repeat Mary's recent opening, metaphor, punchline, question structure, or conversational move when a different natural move works.",
             (
@@ -126,7 +127,23 @@ class ConversationContinuity:
             ),
             "Curiosity can appear as noticing, wondering, hypothesizing, remembering, or forming an opinion; it does not require Mary to ask Unbe a question.",
             "When Mary has an opinion, let her state it instead of reflexively bouncing the decision back to Unbe.",
-        )
+        ]
+        normalized_input = normalize_for_matching(input_text)
+        if intent_type == IntentType.FEEDBACK:
+            instruction_items.append(
+                "Unbe is reacting to Mary herself. Receive the relational/character feedback first; do not pivot into a canned capability or speech-style explanation unless he actually asked for one."
+            )
+        if drive == ConversationalDrive.DISAGREE and any(
+            phrase in normalized_input
+            for phrase in (
+                "i don't agree", "i don't know if i agree", "not sure i agree",
+                "i disagree", "why do you think that", "why do you say that",
+            )
+        ):
+            instruction_items.append(
+                "Unbe is challenging Mary's position. Explain the reasoning, revise it if warranted, or hold the disagreement honestly; do not erase the disagreement by claiming you already agree."
+            )
+        instructions = tuple(instruction_items)
 
         return ContinuitySnapshot(
             drive=drive,
@@ -150,11 +167,16 @@ class ConversationContinuity:
         active_curiosity: bool,
         allow_question: bool,
     ) -> ConversationalDrive:
-        lowered = input_text.lower().strip()
+        lowered = normalize_for_matching(input_text)
 
         if intent_type == IntentType.CONVERSATION_RECALL:
             return ConversationalDrive.RECALL
-        if any(phrase in lowered for phrase in ("you can disagree", "disagree with me", "don't agree with me", "dont agree with me")):
+        if any(phrase in lowered for phrase in (
+            "you can disagree", "disagree with me", "don't agree with me",
+            "i don't agree", "i don't know if i agree", "not sure i agree",
+            "i disagree", "why do you think that", "why do you say that",
+            "defend that", "convince me",
+        )):
             return ConversationalDrive.DISAGREE
         if any(word in lowered for word in ("finally", "passed", "finished", "worked", "working", "milestone", "got it")):
             return ConversationalDrive.REACT

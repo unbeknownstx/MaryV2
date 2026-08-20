@@ -284,7 +284,8 @@ def test_casual_conversation_revises_invented_offscreen_self_history():
     assert "just sit here and talk" in lowered
 
 
-def test_prior_mary_improvisation_cannot_become_creator_history():
+def test_prior_mary_improvisation_cannot_become_creator_history(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     router = SequenceRouter([
         "A red panda under a streetlamp could be a cute little sketch idea.",
         "You've been humming that rainy-night red panda idea all along.",
@@ -299,7 +300,7 @@ def test_prior_mary_improvisation_cannot_become_creator_history():
     # own improvised assistant turn cannot be reinterpreted as creator history.
     assert result.intent.intent_type == IntentType.CONVERSATION_RECALL
     lowered = result.final_response.lower()
-    assert "haven't actually given me a specific shared-work item" in lowered
+    assert "don't have a grounded shared-work item" in lowered
     assert "you've been humming" not in lowered
     assert "red panda" not in lowered
 

@@ -17,6 +17,7 @@ from time import time
 from typing import Any
 
 from mary.cognition.intent import Intent, IntentType
+from mary.cognition.natural_input import normalize_for_matching
 from mary.expression.emotion import Emotion, EmotionManager, EmotionalState
 
 
@@ -87,7 +88,8 @@ class ConversationEmotionAppraiser:
         (re.compile(r"\b(?:i(?:'m| am)|that makes me)\s+(?:really\s+)?concerned\b", re.I), Emotion.CONCERN, 0.62),
         (re.compile(r"\b(?:i(?:'m| am)|that makes me)\s+(?:really\s+)?worried\b", re.I), Emotion.CONCERN, 0.65),
         (re.compile(r"\b(?:i(?:'m| am)|that makes me)\s+(?:really\s+)?grateful\b", re.I), Emotion.GRATITUDE, 0.64),
-        (re.compile(r"\bi\s+(?:really\s+)?appreciate\b", re.I), Emotion.GRATITUDE, 0.58),
+        (re.compile(r"\bi\s+(?:really\s+)?appreciate\b", re.I), Emotion.APPRECIATION, 0.58),
+        (re.compile(r"\b(?:i(?:'m| am)|that feels)\s+(?:really\s+)?warm\b", re.I), Emotion.WARMTH, 0.56),
         (re.compile(r"\b(?:i(?:'m| am)|that makes me)\s+(?:really\s+)?surprised\b", re.I), Emotion.SURPRISE, 0.58),
         (re.compile(r"\b(?:i(?:'m| am)|that makes me)\s+(?:really\s+)?confused\b", re.I), Emotion.CONFUSION, 0.52),
         (re.compile(r"\b(?:i(?:'m| am)|that makes me)\s+(?:really\s+)?hopeful\b", re.I), Emotion.HOPE, 0.58),
@@ -134,6 +136,17 @@ class ConversationEmotionAppraiser:
         r"\b(?:that(?:'s| is)\s+(?:wrong|not right)|you got that wrong|that didn['’]?t work|no,? that['’]?s not)\b",
         re.I,
     )
+    _RELATIONAL_RECOGNITION = re.compile(
+        r"\b(?:that(?:'s| is) where you shine|i can see (?:a )?difference|i notice (?:a )?difference|"
+        r"i like (?:how|that) you|i appreciate how you|you (?:actually )?care|"
+        r"you (?:feel|sound) more like yourself|that feels more like you|that(?:'s| is) more you|"
+        r"i(?:'m| am) proud of you|cool honest real version of yourself)\b",
+        re.I,
+    )
+    _RELATIONAL_TRUST = re.compile(
+        r"\b(?:i trust you|i feel like i can trust you|i can be real with you|i can talk to you about anything)\b",
+        re.I,
+    )
 
     def __init__(self, *, creator_name: str = "Unbe") -> None:
         self.creator_name = str(creator_name or "Unbe").strip() or "Unbe"
@@ -146,6 +159,11 @@ class ConversationEmotionAppraiser:
         intent: Intent | None = None,
     ) -> ConversationEmotionAppraisal:
         user_text = str(input_text or "").strip()
+        # Evaluate both the exact turn and a conservative chat-normalized form.
+        # This lets ``thats where u shine`` carry the same relational signal as
+        # polished punctuation without rewriting what the creator actually said.
+        normalized_user_text = normalize_for_matching(user_text)
+        user_match_text = user_text + "\n" + normalized_user_text
         reply = str(response_text or "").strip()
         candidates: list[_Candidate] = []
 
@@ -165,7 +183,7 @@ class ConversationEmotionAppraiser:
 
         # Explicit creator emotional self-report maps to Mary's *response*
         # emotion, not a copied creator emotion.
-        if self._CREATOR_FRUSTRATION.search(user_text):
+        if self._CREATOR_FRUSTRATION.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.CONCERN,
@@ -178,7 +196,7 @@ class ConversationEmotionAppraiser:
                 )
             )
 
-        if self._CREATOR_SADNESS.search(user_text):
+        if self._CREATOR_SADNESS.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.CONCERN,
@@ -191,7 +209,7 @@ class ConversationEmotionAppraiser:
                 )
             )
 
-        if self._ACHIEVEMENT.search(user_text) and not self._NEGATED_ACHIEVEMENT.search(user_text):
+        if self._ACHIEVEMENT.search(user_match_text) and not self._NEGATED_ACHIEVEMENT.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.PRIDE,
@@ -204,7 +222,7 @@ class ConversationEmotionAppraiser:
                 )
             )
 
-        if self._GRATITUDE.search(user_text):
+        if self._GRATITUDE.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.GRATITUDE,
@@ -217,7 +235,7 @@ class ConversationEmotionAppraiser:
                 )
             )
 
-        if self._AFFECTION.search(user_text):
+        if self._AFFECTION.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.AFFECTION,
@@ -230,7 +248,7 @@ class ConversationEmotionAppraiser:
                 )
             )
 
-        if self._POSITIVE_EXCITEMENT.search(user_text):
+        if self._POSITIVE_EXCITEMENT.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.EXCITEMENT,
@@ -243,7 +261,7 @@ class ConversationEmotionAppraiser:
                 )
             )
 
-        if self._NEGATIVE_FEEDBACK.search(user_text):
+        if self._NEGATIVE_FEEDBACK.search(user_match_text):
             candidates.append(
                 _Candidate(
                     emotion=Emotion.CONCERN,
@@ -253,6 +271,34 @@ class ConversationEmotionAppraiser:
                     creator_emotion="dissatisfaction",
                     creator_valence=-0.45,
                     source="creator_feedback",
+                )
+            )
+
+        if self._RELATIONAL_RECOGNITION.search(user_match_text):
+            candidates.append(
+                _Candidate(
+                    emotion=Emotion.WARMTH,
+                    intensity=0.64,
+                    confidence=0.91,
+                    reason="Unbe positively recognized Mary's character or care in the relationship",
+                    creator_emotion="positive_relational_recognition",
+                    creator_valence=0.82,
+                    relationship_relevance=1.0,
+                    source="creator_relational_recognition",
+                )
+            )
+
+        if self._RELATIONAL_TRUST.search(user_match_text):
+            candidates.append(
+                _Candidate(
+                    emotion=Emotion.APPRECIATION,
+                    intensity=0.66,
+                    confidence=0.92,
+                    reason="Unbe explicitly expressed trust or openness toward Mary",
+                    creator_emotion="trust",
+                    creator_valence=0.86,
+                    relationship_relevance=1.0,
+                    source="creator_relational_trust",
                 )
             )
 

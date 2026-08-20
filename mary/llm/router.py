@@ -24,6 +24,8 @@ from typing import Any
 from mary.core.config import Config
 from mary.governance.resource import ResourceGovernor
 
+from .output_quality import inspect_output_quality
+
 from .interface import (
     LLMInterface,
     LLMMessage,
@@ -562,6 +564,25 @@ class LLMRouter:
                 })
                 last_error = error
                 self.resource_governor.record_attempt(provider_name, "failed")
+                continue
+
+            quality_issue = inspect_output_quality(
+                response.content,
+                messages,
+            )
+            if quality_issue is not None:
+                error = LLMProviderError(
+                    quality_issue.description,
+                    provider=provider_name,
+                    retryable=True,
+                )
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "invalid_output",
+                    "error": f"{quality_issue.code}: {quality_issue.description}",
+                })
+                last_error = error
+                self.resource_governor.record_attempt(provider_name, "invalid_output")
                 continue
 
             finish_reason = str(

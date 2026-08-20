@@ -66,8 +66,8 @@ class PerformanceDirector:
         continuity: dict[str, Any],
     ) -> PerformancePlan:
         drive = str(continuity.get("drive", "react")).lower()
-        emotion_name = str(emotion.get("primary", "neutral")).lower()
-        intensity = _clamp(emotion.get("intensity", 0.0) or 0.0)
+        emotion_name = str(emotion.get("turn_primary", emotion.get("primary", "neutral"))).lower()
+        intensity = _clamp(emotion.get("turn_intensity", emotion.get("intensity", 0.0)) or 0.0)
 
         expressiveness = _clamp(disposition.get("expressiveness", 0.8))
         playfulness = _clamp(disposition.get("playfulness", 0.7))
@@ -100,6 +100,10 @@ class PerformanceDirector:
         if emotion_name in {"joy", "excitement", "surprise", "pride"}:
             energy += 0.12
             spontaneity += 0.06
+        elif emotion_name in {"warmth", "appreciation", "affection", "gratitude", "love"}:
+            energy -= 0.03
+            intimacy += 0.15
+            spontaneity += 0.03
         elif emotion_name in {"concern", "sadness", "loneliness", "disappointment"}:
             energy -= 0.10
             intimacy += 0.10

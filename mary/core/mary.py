@@ -78,6 +78,7 @@ from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
 from mary.relationship.curiosity_development import RelationshipCuriosityDevelopment
 from mary.relationship.natural_learning import NaturalRelationshipLearner
+from mary.relationship.provenance import conversation_profile, text_has_test_probe_marker
 
 from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
@@ -568,10 +569,29 @@ class Mary:
             intent=intent,
         )
 
+        # Appraise the incoming creator turn before generation without mutating
+        # Mary's durable/current emotion state yet. This lets relational warmth,
+        # concern, pride, etc. color the *current* response instead of arriving a
+        # full turn late. The completed-turn appraisal below remains authoritative
+        # for actually updating the bounded emotion manager.
+        incoming_emotion_appraisal = self.emotion_appraiser.appraise(
+            input_text=input_text,
+            response_text="",
+            intent=intent,
+        )
+
+        incoming_emotion_payload: dict[str, Any] | None = None
+        if (
+            incoming_emotion_appraisal.relationship_relevance >= 0.85
+            or incoming_emotion_appraisal.source != "intent"
+        ):
+            incoming_emotion_payload = incoming_emotion_appraisal.to_dict()
+
         context = self._build_context(
             input_text,
             intent=intent,
             recent_conversation=session_history,
+            incoming_emotion_appraisal=incoming_emotion_payload,
         )
         # From this point forward, "recent_conversation" means the bounded
         # LLM-facing window selected by the context lifecycle, not the entire
@@ -968,6 +988,7 @@ class Mary:
         *,
         intent: Intent | None = None,
         recent_conversation: list[dict[str, str]] | None = None,
+        incoming_emotion_appraisal: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build one integrated cognitive context from Mary's real subsystems."""
 
@@ -990,6 +1011,7 @@ class Mary:
             relevant_memories=memory_context.get("relevant_memories", []),
             recent_conversation=conversation,
             context_lifecycle=lifecycle_context,
+            incoming_emotion_appraisal=incoming_emotion_appraisal,
         )
 
         return {
@@ -1062,7 +1084,9 @@ class Mary:
             for item in recent_conversation[-8:]
             if isinstance(item, dict) and str(item.get("content", "")).strip()
         ]
-        if not messages:
+        # Shared-work continuity may be grounded by durable creator/project
+        # state even when this fresh process has no session turns yet.
+        if not messages and str(recall_scope).strip().lower() != "shared_work":
             return "We haven't built up any recent conversation in this session yet."
 
         user_messages = [item["content"] for item in messages if item["role"] == "user"]
@@ -1076,6 +1100,7 @@ class Mary:
             work_markers = (
                 "working on", "work on", "building", "build ", "project",
                 "developing", "fixing", "testing", "debugging", "implementing",
+                "finish ", "finishing ",
             )
             grounded_work = [
                 text
@@ -1087,13 +1112,50 @@ class Mary:
                 if len(latest) > 220:
                     latest = latest[:219].rstrip() + "…"
                 return (
-                    "From what you've actually said in this session, the grounded "
-                    f"shared-work thread is: ‘{latest}’"
+                    "From what you've actually said in this session, the clearest "
+                    f"shared-work thread is ‘{latest}’."
                 )
+
+            # Session dialogue is not the only legitimate continuity source.
+            # Durable creator goals and creator-owned episodic/semantic memories may
+            # identify an ongoing project, but Mary's own assistant-role dialogue is
+            # never used as evidence here.
+            durable_work: list[str] = []
+            try:
+                profile = self._creator_profile_for_conversation()
+            except Exception:
+                profile = {}
+            for goal in profile.get("goals", []) if isinstance(profile, dict) else []:
+                value = " ".join(str(goal).split())
+                if value and value not in durable_work:
+                    durable_work.append(value)
+
+            for memory in reversed(self._all_available_memories()):
+                if not self._memory_is_creator_owned(memory):
+                    continue
+                text = self._memory_to_text(memory)
+                if text_has_test_probe_marker(text):
+                    continue
+                lowered_text = text.lower()
+                if text and any(marker in lowered_text for marker in work_markers):
+                    compact_text = text if len(text) <= 220 else text[:219].rstrip() + "…"
+                    if compact_text not in durable_work:
+                        durable_work.append(compact_text)
+                if len(durable_work) >= 3:
+                    break
+
+            if durable_work:
+                lead = durable_work[0]
+                return (
+                    "The clearest ongoing thing I have grounded in your durable creator "
+                    f"state is {lead}. I can use that as our project continuity without "
+                    "pretending one of my own improvised replies was something you told me."
+                )
+
             return (
-                "In this session, you haven't actually given me a specific shared-work "
-                "item yet. I shouldn't turn something from one of my own earlier replies "
-                "into a project we supposedly worked on together."
+                "I don't have a grounded shared-work item in this session or your durable "
+                "creator/project state yet. I shouldn't turn something from one of my own "
+                "earlier replies into a project we supposedly worked on together."
             )
 
         def compact(text: str | None, limit: int = 180) -> str:
@@ -1176,6 +1238,9 @@ class Mary:
         ).strip()
         if not content:
             return None
+        match_content = str(
+            candidate.get("match_content", "")
+        ).strip()
 
         # ------------------------------------------------------------
         # PARSE / DEDUP PREVIEW
@@ -1184,11 +1249,21 @@ class Mary:
         # RelationshipManager.preview_explicit() is deliberately pure: it
         # classifies the creator share and checks semantic duplication without
         # writing profile/history/observation state.
+        parse_content = content
         try:
             preview = self.relationship.preview_explicit(
-                content,
+                parse_content,
                 force_general=False,
             )
+            # Natural chat shorthand such as ``u``/``dont`` is normalized only
+            # for deterministic parsing. The original creator text above is
+            # still what becomes evidence and dialogue history.
+            if preview is None and match_content and match_content != content.casefold():
+                parse_content = match_content
+                preview = self.relationship.preview_explicit(
+                    parse_content,
+                    force_general=False,
+                )
         except Exception as exc:
             # Relationship learning should enrich an ordinary conversation,
             # never prevent the conversation from continuing.
@@ -1268,7 +1343,7 @@ class Mary:
         # ------------------------------------------------------------
         try:
             learned = self.relationship.learn_explicit(
-                content,
+                parse_content,
                 source="creator_natural",
                 evidence_id=memory_id,
                 force_general=False,
@@ -1399,7 +1474,7 @@ class Mary:
                 recent_conversation=recent_conversation or [],
             )
         elif query_type == "relationship_overview":
-            creator_view = self.relationship.answer_query("overview")
+            creator_view = self._natural_creator_profile_overview()
             relationship_evidence = self.self_introspection.build("relationship")
             relationship_view = str(
                 relationship_evidence.get("fallback_response", "")
@@ -1407,12 +1482,106 @@ class Mary:
             response = creator_view
             if relationship_view:
                 response += " " + relationship_view
+        elif query_type in {"overview", "interests", "goals", "values", "preferences"}:
+            response = self._natural_creator_profile_overview(query_type=query_type)
         else:
             response = self.relationship.answer_query(query_type)
 
         return {
             "system_response": response
         }
+
+    def _creator_profile_for_conversation(self) -> dict[str, Any]:
+        """Return creator state suitable for normal conversation, not debugging.
+
+        Obvious development/test probes remain in durable state for audit and
+        recovery, but they do not become ordinary claims about Unbe.
+        """
+
+        evidence_by_id: dict[str, str] = {}
+        for memory in self._all_available_memories():
+            memory_id = str(getattr(memory, "id", "") or "")
+            if memory_id:
+                evidence_by_id[memory_id] = self._memory_to_text(memory)
+        return conversation_profile(
+            self.user_model,
+            evidence_by_id=evidence_by_id,
+        )
+
+    def _natural_creator_profile_overview(
+        self,
+        *,
+        query_type: str = "overview",
+    ) -> str:
+        """Render structured creator state as natural Mary-facing prose."""
+
+        creator_name = str(
+            self.user_model.name or self.identity.creator or "Unbe"
+        ).title()
+        profile = self._creator_profile_for_conversation()
+        preferences = profile.get("preferences", {}) if isinstance(profile, dict) else {}
+        interests = profile.get("interests", []) if isinstance(profile, dict) else []
+        goals = profile.get("goals", []) if isinstance(profile, dict) else []
+        values = profile.get("values", []) if isinstance(profile, dict) else []
+        facts = profile.get("facts", {}) if isinstance(profile, dict) else {}
+        communication = profile.get("communication_style", {}) if isinstance(profile, dict) else {}
+        general = profile.get("general", []) if isinstance(profile, dict) else []
+
+        query_type = str(query_type or "overview").strip().lower()
+        if query_type == "interests":
+            return (
+                f"The interests you've explicitly shared with me are {', '.join(map(str, interests[:6]))}."
+                if interests
+                else "I don't have any explicit interests from you stored yet."
+            )
+        if query_type == "goals":
+            return (
+                f"The goals you've explicitly shared with me are {', '.join(map(str, goals[:6]))}."
+                if goals
+                else "I don't have any explicit goals from you stored yet."
+            )
+        if query_type == "values":
+            return (
+                f"The values you've explicitly shared with me are {', '.join(map(str, values[:6]))}."
+                if values
+                else "I don't have any explicit values from you stored yet."
+            )
+        if query_type == "preferences":
+            if not preferences:
+                return "I don't have any explicit preferences from you stored yet."
+            readable = [
+                f"your {str(key).replace('_', ' ')} is {value}"
+                for key, value in list(preferences.items())[:6]
+            ]
+            return "What I currently have is that " + "; ".join(readable) + "."
+
+        pieces = [f"I know {creator_name} is my creator."]
+        if goals:
+            pieces.append("Your current goals include " + ", ".join(map(str, goals[:4])) + ".")
+        if interests:
+            pieces.append("You’ve told me you’re interested in " + ", ".join(map(str, interests[:4])) + ".")
+        if preferences:
+            readable = [
+                f"{str(key).replace('_', ' ')}: {value}"
+                for key, value in list(preferences.items())[:4]
+            ]
+            pieces.append("I also have a few explicit preferences from you—" + "; ".join(readable) + ".")
+        if values:
+            pieces.append("Values you’ve explicitly shared include " + ", ".join(map(str, values[:4])) + ".")
+        if facts:
+            readable = [
+                f"{str(key).replace('_', ' ')}: {value}"
+                for key, value in list(facts.items())[:4]
+            ]
+            pieces.append("A few other stored facts are " + "; ".join(readable) + ".")
+        if communication:
+            readable = [str(value) for value in list(communication.values())[:3]]
+            pieces.append("For how we talk, I have " + ", ".join(readable) + " as your explicit preference.")
+        if general:
+            pieces.append("You’ve also explicitly shared " + "; ".join(map(str, general[:3])) + ".")
+        if len(pieces) == 1:
+            pieces.append("I don't have much additional structured creator information stored yet.")
+        return " ".join(pieces)
 
     def _creator_memory_overview(
         self,
@@ -1425,7 +1594,7 @@ class Mary:
             self.user_model.name or self.identity.creator or "Unbe"
         ).title()
 
-        profile = self.user_model.current_profile()
+        profile = self._creator_profile_for_conversation()
         durable_parts: list[str] = []
 
         preferences = profile.get("preferences", {}) if isinstance(profile, dict) else {}
@@ -1461,6 +1630,8 @@ class Mary:
             if not self._memory_is_creator_owned(memory):
                 continue
             text = self._memory_to_text(memory)
+            if text_has_test_probe_marker(text):
+                continue
             if text and text not in creator_memories:
                 creator_memories.append(text)
             if len(creator_memories) >= 4:
@@ -1487,21 +1658,23 @@ class Mary:
         session_shares.reverse()
 
         pieces = [f"Yeah. I remember that {creator_name} is my creator."]
-        if durable_parts:
-            pieces.append("In my structured long-term creator model I have " + " | ".join(durable_parts) + ".")
+        natural_profile = self._natural_creator_profile_overview()
+        # Avoid repeating the creator sentence when composing the memory answer.
+        prefix = f"I know {creator_name} is my creator. "
+        if natural_profile.startswith(prefix):
+            natural_profile = natural_profile[len(prefix):]
+        if natural_profile:
+            pieces.append(natural_profile)
         elif creator_memories:
-            pieces.append("I also have durable creator-owned memories, including: " + "; ".join(creator_memories) + ".")
+            pieces.append("I also have durable creator-owned memories, including " + "; ".join(creator_memories) + ".")
         else:
             pieces.append("I don't currently have many additional durable creator facts stored yet.")
 
-        if creator_memories and durable_parts:
-            pieces.append("Some durable memories I can retrieve are: " + "; ".join(creator_memories) + ".")
+        if creator_memories:
+            pieces.append("A few durable memories I can actually retrieve are " + "; ".join(creator_memories) + ".")
         if session_shares:
-            pieces.append("And in this current session I remember you saying: " + "; ".join(session_shares) + ".")
+            pieces.append("And from this current session I remember you saying " + "; ".join(session_shares) + ".")
 
-        pieces.append(
-            "I can retain creator information through episodic/semantic memory and the structured creator model when the persistent Mary runtime is used."
-        )
         return " ".join(pieces)
 
     def _advance_creator_curiosity(

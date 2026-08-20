@@ -38,6 +38,8 @@ class AvatarEmotionMapper:
         Emotion.FEAR: "afraid",
         Emotion.LOVE: "loving",
         Emotion.AFFECTION: "affectionate",
+        Emotion.WARMTH: "warm",
+        Emotion.APPRECIATION: "appreciative",
         Emotion.GRATITUDE: "grateful",
         Emotion.CURIOSITY: "curious",
         Emotion.EXCITEMENT: "excited",

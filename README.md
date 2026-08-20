@@ -39,6 +39,7 @@ Useful commands while Mary is running:
 /resources  provider/token/paid-resource counters
 /last       last-turn provider and reasoning metadata
 /pending    approval-gated tool requests
+/audit      read-only audit for obvious development/test creator-state residue
 ```
 
 ## Run the desktop

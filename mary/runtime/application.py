@@ -218,7 +218,7 @@ def interactive_help(application: "MaryApplication") -> str:
         "MaryV2 terminal help\n\n"
         "At `You:` type requests for Mary, for example:\n"
         "  who are you?\n"
-        "  remember that my test animal is a red panda\n"
+        "  remember that <something you genuinely want Mary to retain>\n"
         "  show me what's in mary/memory\n"
         "  analyze mary/memory/manager.py\n"
         "  create file test.txt with hello\n\n"
@@ -232,7 +232,8 @@ def interactive_help(application: "MaryApplication") -> str:
         "Inside Mary, `/pending` shows pending approvals. If exactly one request "
         "is pending, simply type `approve` or `reject`. `/last` shows compact "
         "debug metadata for Mary's most recent completed turn. `/state` shows "
-        "Mary's live character state and `/resources` shows bounded usage.\n\n"
+        "Mary's live character state, `/resources` shows bounded usage, and `/audit` "
+        "runs a read-only check for test/probe residue in creator state.\n\n"
         f"Mary's bounded workspace is: {workspace}"
     )
 
@@ -489,7 +490,7 @@ def run_interactive(
         print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help', '/state', '/resources', '/pending', '/last', or 'exit'.")
+    print("Type '/help', '/state', '/resources', '/audit', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -539,6 +540,11 @@ def run_interactive(
 
             if command in {"/resources", "/resource", "resources"}:
                 print(format_resource_state(app))
+                continue
+
+            if command in {"/audit", "audit", "state audit"}:
+                from mary.runtime.state_audit import format_creator_state_audit
+                print(format_creator_state_audit(app.mary, show_all=False))
                 continue
 
             if looks_like_terminal_command(user_input):

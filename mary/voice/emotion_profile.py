@@ -38,6 +38,8 @@ _ADJUSTMENTS: dict[Emotion, EmotionVoiceAdjustment] = {
     Emotion.SURPRISE: EmotionVoiceAdjustment("surprised", -0.035, 0.025, 0.02),
     Emotion.LOVE: EmotionVoiceAdjustment("warm", 0.005, 0.01, -0.01),
     Emotion.AFFECTION: EmotionVoiceAdjustment("affectionate", 0.005, 0.01, -0.01),
+    Emotion.WARMTH: EmotionVoiceAdjustment("warm", 0.008, 0.012, -0.012),
+    Emotion.APPRECIATION: EmotionVoiceAdjustment("appreciative", 0.002, 0.012, -0.006),
     Emotion.GRATITUDE: EmotionVoiceAdjustment("grateful", 0.0, 0.01, -0.005),
     Emotion.HOPE: EmotionVoiceAdjustment("hopeful", -0.015, 0.015, 0.005),
     Emotion.PRIDE: EmotionVoiceAdjustment("proud", -0.03, 0.025, 0.015),

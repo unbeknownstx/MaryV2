@@ -29,6 +29,7 @@ from typing import Any
 from mary.cognition.context import CognitiveContext
 from mary.cognition.continuity import is_conversation_recall_query
 from mary.cognition.intent import Intent, IntentType
+from mary.cognition.natural_input import normalize_for_matching, looks_like_question
 from mary.cognition.reasoning import (
     ReasoningEngine,
     ReasoningResult,
@@ -372,6 +373,17 @@ class CognitiveOrchestrator:
             return creator_directive
 
         # --------------------------------------------------------
+        # RELATIONAL / CHARACTER FEEDBACK
+        # --------------------------------------------------------
+
+        relational_feedback = self._detect_relational_feedback(
+            text=text,
+            lowered=lowered,
+        )
+        if relational_feedback is not None:
+            return relational_feedback
+
+        # --------------------------------------------------------
         # SELF INTROSPECTION
         # --------------------------------------------------------
 
@@ -411,7 +423,7 @@ class CognitiveOrchestrator:
         # QUESTION
         # --------------------------------------------------------
 
-        if lowered.endswith("?"):
+        if looks_like_question(text):
 
             return Intent(
                 intent_type=IntentType.QUESTION,
@@ -480,6 +492,72 @@ class CognitiveOrchestrator:
     # TOOL / WEB INTENT DETECTION
     # ============================================================
 
+    def _detect_relational_feedback(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Recognize natural observations/compliments about Mary as relationship turns.
+
+        This prevents phrases such as ``I can see you care how you talk to me``
+        from being mistaken for a literal query about Mary's slang/speech system.
+        """
+
+        normalized = normalize_for_matching(text)
+        if not normalized:
+            return None
+
+        positive_markers = (
+            "that's where you shine",
+            "i can see a difference",
+            "i notice a difference",
+            "i like how you",
+            "i like that you",
+            "i appreciate how you",
+            "you actually care",
+            "you have care for how you",
+            "you feel more like yourself",
+            "you sound more like yourself",
+            "being a real version of yourself",
+            "being an honest version of yourself",
+            "that's more you",
+            "that feels more like you",
+            "i'm proud of you",
+            "i am proud of you",
+        )
+        negative_markers = (
+            "that doesn't feel like you",
+            "that doesnt feel like you",
+            "you don't sound like yourself",
+            "you dont sound like yourself",
+            "that felt fake",
+            "that sounds fake",
+            "you sound too robotic",
+            "you feel too robotic",
+        )
+
+        valence = None
+        if any(marker in normalized for marker in positive_markers):
+            valence = "positive"
+        elif any(marker in normalized for marker in negative_markers):
+            valence = "negative"
+
+        if valence is None:
+            return None
+
+        return Intent(
+            intent_type=IntentType.FEEDBACK,
+            confidence=0.94,
+            description="Creator is giving relational/character feedback about Mary.",
+            parameters={
+                "feedback_type": "relational_recognition",
+                "valence": valence,
+                "content": text,
+            },
+            source="natural_feedback_detector",
+        )
+
     def _detect_relationship_share(
         self,
         *,
@@ -522,7 +600,7 @@ class CognitiveOrchestrator:
     ) -> Intent | None:
         """Detect local questions about Mary's structured understanding of Unbe."""
 
-        normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
+        normalized = normalize_for_matching(text)
         query_map = {
             "what do you know about me": "overview",
             "do you remember anything about me": "memory_overview",
@@ -787,7 +865,7 @@ class CognitiveOrchestrator:
     ) -> Intent | None:
         """Detect questions about Mary's own local state before web routing."""
 
-        normalized = re.sub(r"\s+", " ", lowered.strip()).rstrip("?.!")
+        normalized = normalize_for_matching(text)
 
         patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
             ("runtime_architecture", (
@@ -970,7 +1048,7 @@ class CognitiveOrchestrator:
             )
 
         for subtype, phrases in patterns:
-            if normalized in phrases:
+            if any(normalized == normalize_for_matching(phrase) for phrase in phrases):
                 return self_intent(subtype)
 
         runtime_markers = (
@@ -1082,15 +1160,35 @@ class CognitiveOrchestrator:
         )):
             return self_intent("private_life")
 
-        if any(marker in normalized for marker in (
-            "your slang", "you talk", "things you say"
-        )):
+        speech_query_patterns = (
+            r"^(?:how|why) do you talk(?:\b|$)",
+            r"^(?:how|why) are you talking(?:\b|$)",
+            r"^what(?: kind of)? slang do you use(?:\b|$)",
+            r"^what are some things you say(?:\b|$)",
+            r"^what is your speech(?: style)?(?:\b|$)",
+        )
+        if (
+            "your slang" in normalized
+            or any(re.search(pattern, normalized) for pattern in speech_query_patterns)
+        ):
             return self_intent("speech")
 
         if any(marker in normalized for marker in (
             "your long-term goals", "your long term goals", "your personal goals", "you want in life"
         )):
             return self_intent("goals")
+
+        relationship_feeling_patterns = (
+            r"^what do you feel (?:in|about|during) (?:our interactions|our conversations|our relationship)(?:\b|$)",
+            r"^how do you feel about (?:our interactions|our conversations|our relationship)(?:\b|$)",
+            r"^what do you feel when we (?:talk|chat|interact)(?:\b|$)",
+            r"^how do you feel when we (?:talk|chat|interact)(?:\b|$)",
+            r"^what do you feel (?:talking|speaking) (?:to|with) me(?:\b|$)",
+            r"^how do you feel (?:talking|speaking) (?:to|with) me(?:\b|$)",
+            r"^what does (?:our relationship|talking with me|talking to me) feel like to you(?:\b|$)",
+        )
+        if any(re.search(pattern, normalized) for pattern in relationship_feeling_patterns):
+            return self_intent("relationship_feelings")
 
         # Natural current-state questions must stay local even when they contain
         # words such as "right now" or "today" that would otherwise look like

@@ -114,7 +114,7 @@ def main() -> int:
             )
             restarted_query = restarted_app.run("What do you know about me?")
             output = str(restarted_query.output).lower()
-            if "creating stories" not in output or "favorite color = green" not in output:
+            if "creating stories" not in output or "favorite color: green" not in output:
                 raise AssertionError("relationship model did not survive restart")
             if restarted_provider.calls != 0:
                 raise AssertionError("restart query called the LLM")
