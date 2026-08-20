@@ -1,16 +1,16 @@
 {
-  "candidates": {},
-  "history": [],
+  "schema_version": 1,
   "policy": {
     "auto_promote": false,
-    "explicit_promotion_required": true,
-    "model_output_counts_as_evidence": false
+    "model_output_counts_as_evidence": false,
+    "explicit_promotion_required": true
   },
-  "schema_version": 1,
   "thresholds": {
-    "min_consistency": 0.75,
+    "min_observations": 3,
     "min_mean_confidence": 0.7,
-    "min_mean_magnitude": 0.5,
-    "min_observations": 3
-  }
+    "min_consistency": 0.75,
+    "min_mean_magnitude": 0.5
+  },
+  "candidates": {},
+  "history": []
 }
