@@ -1,24 +1,19 @@
-MaryV2 V2 Acceptance Hotfix 03
+MARYV2 V2 ACCEPTANCE HOTFIX 04
 
 Purpose:
-- Keep natural strengths/weaknesses questions on grounded Mary self-state.
-- Keep natural creator/relationship overview questions local.
-- Route "what are some things you remember about me?" to creator memory/model.
-- Prevent Mary from inventing ongoing/off-screen activities as personal history.
-- Prevent prior Mary-generated dialogue from becoming evidence about Unbe.
-- Make shared-work recall use user-authored evidence only.
-- Make direct requests for critique/opinion select an opinionated drive.
-- Preserve normal prompt-size/context budget.
+- Replaces the conversation provenance audit with exact normalized content-term matching.
+- Prevents Mary-generated details from becoming creator history.
+- Adds a versioned self-verifier so Python proves it imported the corrected reflection module.
+- Registers the verifier in the permanent offline release gate.
 
 Install:
-1. Exit any running Mary process.
-2. Extract this ZIP over the MaryV2 repository root and replace matching files.
-3. Do not delete .env or data/.
+1. Exit Mary.
+2. Extract this ZIP over the MaryV2 project root and replace matching files.
+3. Run:
+   python -m scripts.verify_acceptance_hotfix_04
 4. Run:
    python -m pytest tests/integration/test_long_session_hardening.py tests/cognition/test_conversation_continuity_v2.py -q
-   python -m scripts.verify_long_session_hardening
-5. Then run the full hard gate when convenient:
+5. Optional full gate:
    powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 
-Expected targeted tests: 25 passed
-Consolidated source verification here: 478 passed, 1 skipped; 50/50 diagnostics; full offline release gate PASS.
+No .env, data, memories, avatar assets, or API keys are included.

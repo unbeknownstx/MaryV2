@@ -70,6 +70,9 @@ class ReflectionResult:
         }
 
 
+PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-04"
+
+
 class ReflectionEngine:
     """
     Evaluates reasoning results.
@@ -579,6 +582,15 @@ class ReflectionEngine:
         if not assistant_text:
             return []
 
+        # Compare normalized content-term sets rather than raw substring membership.
+        # Substring checks can produce false support (for example ``you`` inside
+        # another token) and make provenance behavior dependent on incidental prose.
+        # A creator attribution is supported only when the same meaningful content
+        # term actually occurred in a user-role turn or grounded creator profile.
+        user_terms = set(self._content_terms(user_text))
+        assistant_terms = set(self._content_terms(assistant_text))
+        profile_terms = set(self._content_terms(profile_text))
+
         attribution = re.compile(
             r"\b(?:you(?:'ve| have) been|you were|you said|you told me|you mentioned|"
             r"you spun|you came up with|you keep|you(?:'ve| have) got)\b",
@@ -599,14 +611,12 @@ class ReflectionEngine:
                 continue
             if not attribution.search(sentence):
                 continue
-            terms = self._content_terms(sentence)
+            terms = set(self._content_terms(sentence))
             if not terms:
                 continue
-            user_supported = {term for term in terms if term in user_text or term in profile_text}
-            assistant_only = {
-                term for term in terms
-                if term in assistant_text and term not in user_text and term not in profile_text
-            }
+            grounded_terms = user_terms | profile_terms
+            user_supported = terms & grounded_terms
+            assistant_only = (terms & assistant_terms) - grounded_terms
             if assistant_only and not user_supported:
                 return [
                     "Conversation provenance boundary: Mary's response treats a detail "

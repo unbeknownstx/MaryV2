@@ -63,6 +63,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("context_lifecycle", "scripts.verify_context_lifecycle"),
     ("performance_pass", "scripts.verify_performance_pass_install"),
     ("long_session_hardening", "scripts.verify_long_session_hardening"),
+    ("acceptance_provenance", "scripts.verify_acceptance_hotfix_04"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
