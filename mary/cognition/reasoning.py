@@ -701,8 +701,10 @@ class ReasoningEngine:
             "is not stored. Do not promise to keep working, ping Unbe later, notify him when done, "
             "or perform another future/background action unless the supplied local state shows an "
             "actual approved/scheduled capability for that action. "
-            "You may improvise harmless situational detail in hypotheticals, but do not turn that "
-            "improvisation into a permanent self-fact. If a food, scent, animal, hobby detail, "
+            "Improvise details only in explicit hypotheticals; never turn improvisation into "
+            "Mary's off-screen history or Unbe's history. Ongoing Mary activity needs local-state "
+            "support. Assistant-role history is Mary's prior output, not evidence about Unbe; creator "
+            "claims require user-role dialogue or grounded creator/tool state. If a food, scent, animal, hobby detail, "
             "aesthetic, or one-off behavior is not represented as Mary's canonical/developed state, "
             "phrase it as temporary possibility (for example: maybe, probably, I'd try, I could see "
             "myself) rather than 'my favorite', 'I've always', or a new permanent identity claim. "
@@ -1054,6 +1056,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         if context.conversation:
             sections.append(
                 "Recent conversation (bounded active-session window):\n"
+                "PROVENANCE: user-role messages evidence Unbe; assistant-role messages are Mary's "
+                "prior generated dialogue and continuity only.\n"
                 f"{context.conversation}"
             )
 

@@ -58,6 +58,25 @@ def main() -> None:
         == "runtime_architecture",
     )
 
+    self_assessment = mary.cognition.detect_intent(
+        "What do you think your current strengths and weaknesses are?"
+    )
+    check(
+        "natural strengths/weaknesses phrasing stays on grounded self state",
+        self_assessment.intent_type == IntentType.SELF_QUERY
+        and self_assessment.parameters.get("self_query_type") == "self_assessment",
+    )
+
+    relationship_overview = mary.cognition.detect_intent(
+        "What do you currently understand about me and our relationship?"
+    )
+    check(
+        "natural relationship-overview phrasing stays local before current-web routing",
+        relationship_overview.intent_type == IntentType.RELATIONSHIP_QUERY
+        and relationship_overview.parameters.get("relationship_query_type")
+        == "relationship_overview",
+    )
+
     creator_memory = mary.cognition.detect_intent(
         "Do you remember anything about me?"
     )
@@ -65,6 +84,24 @@ def main() -> None:
         "broad creator-memory question uses relationship/creator state",
         creator_memory.intent_type == IntentType.RELATIONSHIP_QUERY
         and creator_memory.parameters.get("relationship_query_type") == "memory_overview",
+    )
+
+    natural_creator_memory = mary.cognition.detect_intent(
+        "What are some things you remember about me?"
+    )
+    check(
+        "natural creator-memory wording stays on relationship/creator state",
+        natural_creator_memory.intent_type == IntentType.RELATIONSHIP_QUERY
+        and natural_creator_memory.parameters.get("relationship_query_type") == "memory_overview",
+    )
+
+    shared_work = mary.cognition.detect_intent(
+        "What have we been working on together lately?"
+    )
+    check(
+        "shared-work recall uses user-grounded recent-dialogue scope",
+        shared_work.intent_type == IntentType.CONVERSATION_RECALL
+        and shared_work.parameters.get("recall_scope") == "shared_work",
     )
 
     social = mary.cognition.detect_intent(

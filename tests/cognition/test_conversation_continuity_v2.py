@@ -133,3 +133,13 @@ def test_curiosity_does_not_force_ask_drive():
     result = mary.process("I finally got everything working.")
     continuity = result.context.mind_state["continuity"]
     assert continuity["drive"] != "ask"
+
+
+def test_creator_critique_question_selects_opine_drive():
+    mary = _mary(SequenceRouter([
+        "I think one risk is expanding faster than we finish and validate each layer."
+    ]))
+    result = mary.process("Do you think I make any mistakes in the way I approach building you?")
+
+    continuity = result.context.mind_state["continuity"]
+    assert continuity["drive"] == "opine"

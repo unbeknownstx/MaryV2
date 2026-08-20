@@ -158,7 +158,13 @@ class ConversationContinuity:
             return ConversationalDrive.DISAGREE
         if any(word in lowered for word in ("finally", "passed", "finished", "worked", "working", "milestone", "got it")):
             return ConversationalDrive.REACT
-        if any(phrase in lowered for phrase in ("i think", "i feel like", "maybe we", "seems like", "overengineer", "over-engineer")):
+        if any(phrase in lowered for phrase in (
+            "i think", "i feel like", "maybe we", "seems like", "overengineer", "over-engineer",
+            "do you think i make any mistakes", "do you think i'm making any mistakes",
+            "do you think i am making any mistakes", "what am i doing wrong",
+            "what do you think i'm doing wrong", "what do you think i am doing wrong",
+            "critique my", "give me your critique", "be critical of",
+        )):
             return ConversationalDrive.OPINE
         if intent_type == IntentType.FEEDBACK:
             return ConversationalDrive.REFLECT
@@ -221,6 +227,10 @@ CONVERSATION_RECALL_PATTERNS = (
     "remember what we were just talking about",
     "remind me what we were talking about",
     "what was our last conversation about",
+    "what have we been working on together",
+    "what have we been working on",
+    "what have we worked on together",
+    "what are we working on together",
 )
 
 

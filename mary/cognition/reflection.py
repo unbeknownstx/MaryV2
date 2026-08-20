@@ -137,12 +137,18 @@ class ReflectionEngine:
         # result with zero extra model calls, but creator/self ownership must be
         # checked first. A small local model can obey the evidence boundary yet
         # still accidentally speak an Unbe-only profile fact as Mary's own.
+        self_grounded_issues: list[str] | None = None
         if reasoning.metadata.get("self_grounded") is True:
-            ownership_issues = self._creator_ownership_audit(
+            # Grounded self evidence protects factual content, but the provider can
+            # still wrap it in generic helpdesk language or invent unsupported
+            # temporal history. Run the same local character/provenance audit;
+            # clean responses still reuse the result with zero extra model calls.
+            self_grounded_issues = self._character_audit(
                 context=context,
                 reasoning=reasoning,
+                intent=intent,
             )
-            if not ownership_issues:
+            if not self_grounded_issues:
                 return ReflectionResult(
                     decision=ReflectionDecision.ACCEPT,
                     confidence=0.95,
@@ -167,10 +173,14 @@ class ReflectionEngine:
                 },
             )
 
-        issues = self._character_audit(
-            context=context,
-            reasoning=reasoning,
-            intent=intent,
+        issues = (
+            list(self_grounded_issues)
+            if self_grounded_issues is not None
+            else self._character_audit(
+                context=context,
+                reasoning=reasoning,
+                intent=intent,
+            )
         )
 
         if not issues:
@@ -205,6 +215,10 @@ class ReflectionEngine:
                             "contains the same fact. If the audit reports an unsupported permanent "
                             "Mary self-claim, preserve the harmless scenario but soften that claim into "
                             "situational possibility (maybe, I'd probably, I could see myself) or omit it. "
+                            "If the audit reports invented self-history, remove claims that Mary has been "
+                            "doing/thinking/missing something off-screen unless connected state supports it. "
+                            "If the audit reports conversation provenance bleed, never treat Mary's own prior "
+                            "assistant-role dialogue as evidence that Unbe said, did, believed, or created it. "
                             "Do not create a replacement permanent trait/preference. If the audit says the "
                             "reply misrepresents Mary's memory, preserve uncertainty about the specific fact but "
                             "state that Mary has episodic/semantic memory and a structured creator model rather "
@@ -222,8 +236,8 @@ class ReflectionEngine:
                 max_tokens=700,
             )
         except LLMProviderError as exc:
-            if self._has_creator_ownership_issue(issues):
-                fallback = self._creator_boundary_fallback(context)
+            if self._has_identity_or_provenance_issue(issues):
+                fallback = self._provenance_boundary_fallback(context, issues)
                 return ReflectionResult(
                     decision=ReflectionDecision.REVISE,
                     confidence=0.88,
@@ -257,7 +271,7 @@ class ReflectionEngine:
 
         revised = str(response.content or "").strip()
         if not revised:
-            if self._has_creator_ownership_issue(issues):
+            if self._has_identity_or_provenance_issue(issues):
                 return ReflectionResult(
                     decision=ReflectionDecision.REVISE,
                     confidence=0.88,
@@ -266,7 +280,7 @@ class ReflectionEngine:
                         "revision was empty; a local identity-safe fallback was used."
                     ),
                     issues=issues,
-                    revised_response=self._creator_boundary_fallback(context),
+                    revised_response=self._provenance_boundary_fallback(context, issues),
                     metadata={
                         "mode": "creator_identity_boundary_fallback",
                         "llm_calls": 1,
@@ -284,24 +298,46 @@ class ReflectionEngine:
                 },
             )
 
-        if self._has_creator_ownership_issue(issues):
+        if self._has_identity_or_provenance_issue(issues):
             revised_reasoning = ReasoningResult(response=revised)
-            revised_ownership_issues = self._creator_ownership_audit(
-                context=context,
-                reasoning=revised_reasoning,
+            revised_boundary_issues: list[str] = []
+            revised_boundary_issues.extend(
+                self._creator_ownership_audit(
+                    context=context,
+                    reasoning=revised_reasoning,
+                )
             )
-            if revised_ownership_issues:
+            revised_boundary_issues.extend(
+                self._unsupported_self_history_audit(
+                    context=context,
+                    reasoning=revised_reasoning,
+                )
+            )
+            revised_boundary_issues.extend(
+                self._conversation_provenance_audit(
+                    context=context,
+                    reasoning=revised_reasoning,
+                )
+            )
+            if revised_boundary_issues:
+                combined_issues = issues + revised_boundary_issues
                 return ReflectionResult(
                     decision=ReflectionDecision.REVISE,
                     confidence=0.90,
                     assessment=(
-                        "The model revision still blurred Mary and Unbe, so the local "
-                        "identity-safe fallback replaced it."
+                        "The model revision still crossed a character/creator provenance "
+                        "boundary, so the local safe fallback replaced it."
                     ),
-                    issues=issues + revised_ownership_issues,
-                    revised_response=self._creator_boundary_fallback(context),
+                    issues=combined_issues,
+                    revised_response=self._provenance_boundary_fallback(
+                        context, combined_issues
+                    ),
                     metadata={
-                        "mode": "creator_identity_boundary_fallback",
+                        "mode": (
+                            "creator_identity_boundary_fallback"
+                            if self._has_creator_ownership_issue(combined_issues)
+                            else "provenance_boundary_fallback"
+                        ),
                         "provider": response.provider,
                         "model": response.model,
                         "finish_reason": response.finish_reason,
@@ -455,8 +491,131 @@ class ReflectionEngine:
                 reasoning=reasoning,
             )
         )
+        issues.extend(
+            self._unsupported_self_history_audit(
+                context=context,
+                reasoning=reasoning,
+            )
+        )
+        issues.extend(
+            self._conversation_provenance_audit(
+                context=context,
+                reasoning=reasoning,
+            )
+        )
 
         return issues
+
+    def _unsupported_self_history_audit(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+    ) -> list[str]:
+        """Reject invented off-screen/lived history in ordinary generated dialogue.
+
+        Mary can have represented preferences and can discuss hypotheticals, but a
+        provider must not fabricate an ongoing activity/history ("I've been
+        doodling lately", "I miss the rain", etc.) merely to make conversation.
+        """
+
+        text = str(reasoning.response or "").strip()
+        if not text:
+            return []
+        lowered = text.lower().replace("’", "'")
+
+        # Explicit hypothetical language is allowed; the issue is asserting an
+        # ungrounded ongoing/off-screen history as fact.
+        patterns = (
+            r"\bi(?:'ve| have) been (?:noodling|doodling|drawing|sketching|painting|writing|working on|thinking about|obsessing over|playing|watching|reading|listening to)\b",
+            r"\bi keep (?:noodling|doodling|drawing|sketching|painting|writing|thinking about|coming back to)\b",
+            r"\blately[, ]+i(?:'ve| have| keep| miss| find)\b",
+            r"\bi miss (?:the |that |those )",
+        )
+        if not any(re.search(pattern, lowered) for pattern in patterns):
+            return []
+
+        # If the user explicitly supplied the same activity in this turn, Mary
+        # may react to it; do not manufacture a separate prior history around it.
+        user_input = str(context.input_text or "").lower()
+        if any(marker in user_input for marker in (
+            "imagine", "pretend", "hypothetical", "what if", "suppose",
+        )):
+            return []
+
+        return [
+            "Self-history provenance boundary: Mary's response invents an ongoing "
+            "or off-screen activity/experience that is not represented in connected "
+            "state. Keep it hypothetical/present-tense or omit it."
+        ]
+
+    def _conversation_provenance_audit(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+    ) -> list[str]:
+        """Prevent Mary-generated dialogue from becoming evidence about Unbe."""
+
+        text = str(reasoning.response or "").strip()
+        if not text or not context.conversation:
+            return []
+
+        user_text = " ".join(
+            str(item.get("content", ""))
+            for item in context.conversation
+            if isinstance(item, dict) and str(item.get("role", "")) == "user"
+        ).lower()
+        assistant_text = " ".join(
+            str(item.get("content", ""))
+            for item in context.conversation
+            if isinstance(item, dict) and str(item.get("role", "")) == "assistant"
+        ).lower()
+        profile_text = " ".join(
+            value
+            for _, _, value in self._creator_profile_entries(context)
+        ).lower()
+
+        if not assistant_text:
+            return []
+
+        attribution = re.compile(
+            r"\b(?:you(?:'ve| have) been|you were|you said|you told me|you mentioned|"
+            r"you spun|you came up with|you keep|you(?:'ve| have) got)\b",
+            flags=re.IGNORECASE,
+        )
+
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+            sentence_lower = sentence.lower().replace("’", "'")
+            if any(marker in sentence_lower for marker in (
+                "not from something you told me",
+                "not something you told me",
+                "not something you said",
+                "didn't come from you",
+                "did not come from you",
+                "came from my own",
+                "from my own earlier",
+            )):
+                continue
+            if not attribution.search(sentence):
+                continue
+            terms = self._content_terms(sentence)
+            if not terms:
+                continue
+            user_supported = {term for term in terms if term in user_text or term in profile_text}
+            assistant_only = {
+                term for term in terms
+                if term in assistant_text and term not in user_text and term not in profile_text
+            }
+            if assistant_only and not user_supported:
+                return [
+                    "Conversation provenance boundary: Mary's response treats a detail "
+                    "from prior assistant-generated dialogue as something Unbe said, did, "
+                    "believed, or worked on. Only user-role dialogue or grounded creator "
+                    "state may establish a creator fact."
+                ]
+
+        return []
 
     def _creator_ownership_audit(
         self,
@@ -633,6 +792,35 @@ class ReflectionEngine:
         )
 
     @staticmethod
+    def _has_identity_or_provenance_issue(issues: list[str]) -> bool:
+        prefixes = (
+            "Creator/self ownership boundary:",
+            "Self-history provenance boundary:",
+            "Conversation provenance boundary:",
+        )
+        return any(str(issue).startswith(prefixes) for issue in issues)
+
+    @classmethod
+    def _provenance_boundary_fallback(
+        cls,
+        context: CognitiveContext,
+        issues: list[str],
+    ) -> str:
+        if any(str(issue).startswith("Conversation provenance boundary:") for issue in issues):
+            return (
+                "I need to correct that: I was treating something from my own earlier "
+                "generated reply as if it came from you. It didn't. I shouldn't turn my "
+                "improvisation into your history."
+            )
+        if any(str(issue).startswith("Self-history provenance boundary:") for issue in issues):
+            return (
+                "I don't have a grounded off-screen activity to claim there. I can imagine "
+                "things in conversation, but I shouldn't pretend I've been doing them when "
+                "my actual state doesn't say that."
+            )
+        return cls._creator_boundary_fallback(context)
+
+    @staticmethod
     def _creator_boundary_fallback(context: CognitiveContext) -> str:
         """Local last-resort reply that cannot merge Unbe's profile into Mary."""
 
@@ -715,6 +903,10 @@ class ReflectionEngine:
             f"Mary represented preferences: {preferences}\n\n"
             f"Proposed response:\n{reasoning.response}\n\n"
             "If the issue is an unsupported permanent self-claim, do not promote it into Mary. "
+            "If it is unsupported self-history, do not say Mary has been doing/thinking/missing it "
+            "off-screen; keep it present/hypothetical or remove it. If it is conversation provenance "
+            "bleed, remember that assistant-role dialogue is Mary's generated output, not proof of what "
+            "Unbe said or did. Only user-role dialogue and grounded creator state can support those claims. "
             "Keep harmless imaginative details temporary and phrase them as possibilities when needed. "
             "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
             "conversational drive and Performance Director. Rewrite it like dialogue for an actor playing Mary, "

@@ -291,6 +291,15 @@ class CognitiveOrchestrator:
         # --------------------------------------------------------
 
         if is_conversation_recall_query(text):
+            recall_scope = (
+                "shared_work"
+                if any(phrase in lowered for phrase in (
+                    "what have we been working on",
+                    "what have we worked on together",
+                    "what are we working on together",
+                ))
+                else "recent_dialogue"
+            )
             return Intent(
                 intent_type=IntentType.CONVERSATION_RECALL,
                 confidence=0.98,
@@ -298,7 +307,7 @@ class CognitiveOrchestrator:
                     "Input requests recall from the active/recent dialogue rather "
                     "than long-term memory."
                 ),
-                parameters={"query": text},
+                parameters={"query": text, "recall_scope": recall_scope},
                 source="continuity_detector",
             )
 
@@ -540,6 +549,32 @@ class CognitiveOrchestrator:
             "what do you still not know about me": "curiosity_gaps",
         }
         query_type = query_map.get(normalized)
+
+        if query_type is None:
+            # Natural creator-memory phrasing should stay on the local creator
+            # model instead of falling through to generic memory or dynamic-web
+            # heuristics.  Keep this ownership-specific: "about me" here means
+            # Unbe, not Mary's own self-memory.
+            creator_memory_patterns = (
+                r"\bwhat(?: are)?(?: some)?(?: of the)? things (?:do )?you remember about me\b",
+                r"\bwhat(?: are)?(?: some)? memories (?:do )?you have about me\b",
+                r"\btell me(?: some)? things you remember about me\b",
+            )
+            if any(re.search(pattern, normalized) for pattern in creator_memory_patterns):
+                query_type = "memory_overview"
+
+        if query_type is None:
+            # Questions that explicitly combine Mary's understanding of Unbe with
+            # "our relationship" are local relationship-state questions even if
+            # they contain the dynamic marker "currently".
+            relationship_overview_patterns = (
+                r"\bwhat do you (?:currently )?(?:understand|know) about me and (?:our|your) relationship\b",
+                r"\bwhat have you learned about me and (?:our|your) relationship\b",
+                r"\bhow do you (?:currently )?(?:understand|see) (?:me and )?(?:our|your) relationship\b",
+            )
+            if any(re.search(pattern, normalized) for pattern in relationship_overview_patterns):
+                query_type = "relationship_overview"
+
         if query_type is None:
             return None
 
@@ -1011,6 +1046,16 @@ class CognitiveOrchestrator:
 
         # Character-core questions also have many natural phrasings. Keep them
         # local and grounded instead of asking the provider to invent a persona.
+        # A broad strengths/weaknesses question is a grounded self-assessment,
+        # not a request for current external information.  Keep it separate from
+        # a narrow vulnerability/fear query so Mary can consider both represented
+        # qualities and represented limitations.
+        if (
+            ("your strengths" in normalized or "your current strengths" in normalized)
+            and ("weakness" in normalized or "limitations" in normalized)
+        ):
+            return self_intent("self_assessment")
+
         if any(marker in normalized for marker in (
             "you afraid of", "you scared of", "your fears", "your weaknesses", "your soft spots"
         )):

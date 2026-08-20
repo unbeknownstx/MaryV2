@@ -78,6 +78,7 @@ class SelfIntrospection:
             "current_state": self._current_state,
             "creator": self._creator,
             "self_understanding": self._self_understanding,
+            "self_assessment": self._self_assessment,
             "values": self._values,
             "relationship": self._relationship,
             "personality": self._personality,
@@ -400,6 +401,39 @@ class SelfIntrospection:
                 "with my creator, memory, agency, autonomy boundaries, and tools. "
                 "Those are representations in my software; I shouldn't pretend they "
                 "give me experiences or capabilities that aren't actually present."
+            ),
+        }
+
+    def _self_assessment(self) -> dict[str, Any]:
+        """Ground a strengths/weaknesses question in represented Mary state."""
+
+        qualities = list(self.character.get_qualities())
+        vulnerabilities = self.character.get_vulnerabilities()
+        fears = list(vulnerabilities.get("fears", []))
+        tendencies = list(self.character.get_tendencies())
+
+        strengths = qualities[:8]
+        limitations = fears[:4]
+
+        strengths_text = ", ".join(str(item) for item in strengths) or "no explicit qualities"
+        limitations_text = "; ".join(str(item) for item in limitations) or "no explicit vulnerabilities"
+
+        return {
+            "represented_strengths": strengths,
+            "represented_vulnerabilities": vulnerabilities,
+            "represented_tendencies": tendencies[:8],
+            "runtime_boundaries": {
+                "language_generation_is_provider_backed": True,
+                "knowledge_is_bounded_to_connected_state_and_tools": True,
+                "model_output_does_not_define_durable_self": True,
+            },
+            "fallback_response": (
+                "My strongest represented qualities right now include "
+                f"{strengths_text}. The vulnerabilities explicitly represented in my "
+                f"character include {limitations_text}. On the software side, one of my "
+                "important limitations is that I still have to stay inside what my connected "
+                "state, memory, tools, and language engines can actually support instead of "
+                "pretending I know or experienced something I didn't."
             ),
         }
 

@@ -225,3 +225,97 @@ def test_runtime_architecture_reports_previous_generation_metadata():
     assert "test" in lowered
     assert "fake" in lowered
     assert "no language model is being asked to guess" in lowered
+
+
+def test_strengths_and_weaknesses_route_to_grounded_self_assessment_before_current_web_marker():
+    mary = _mary()
+    intent = mary.cognition.detect_intent(
+        "What do you think your current strengths and weaknesses are?"
+    )
+    assert intent.intent_type == IntentType.SELF_QUERY
+    assert intent.parameters["self_query_type"] == "self_assessment"
+    assert mary.tools.pending_requests() == []
+
+
+def test_relationship_overview_natural_phrase_stays_local_before_current_web_marker():
+    router = SequenceRouter(["This should not be used."])
+    mary = _mary(router)
+    calls_before = len(router.calls)
+
+    result = mary.process(
+        "What do you currently understand about me and our relationship?"
+    )
+
+    assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert result.intent.parameters["relationship_query_type"] == "relationship_overview"
+    assert len(router.calls) == calls_before
+    assert mary.tools.pending_requests() == []
+    lowered = result.final_response.lower()
+    assert "creator" in lowered
+    assert "relationship" in lowered
+
+
+def test_natural_some_things_memory_overview_uses_creator_model_before_generic_memory():
+    router = SequenceRouter(["This should not be used."])
+    mary = _mary(router)
+    calls_before = len(router.calls)
+
+    result = mary.process("What are some things you remember about me?")
+
+    assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert result.intent.parameters["relationship_query_type"] == "memory_overview"
+    assert len(router.calls) == calls_before
+    assert "my creator" in result.final_response.lower()
+
+
+def test_casual_conversation_revises_invented_offscreen_self_history():
+    router = SequenceRouter([
+        "I've been noodling on a red panda sketch lately. I miss the rain.",
+        "Nothing dramatic is pulling at me right now. I'm happy to just sit here and talk with you.",
+    ])
+    mary = _mary(router)
+
+    result = mary.process("not much just want to have a conversation with you.")
+
+    assert result.reflection.decision.value == "revise"
+    lowered = result.final_response.lower()
+    assert "red panda" not in lowered
+    assert "i miss the rain" not in lowered
+    assert "just sit here and talk" in lowered
+
+
+def test_prior_mary_improvisation_cannot_become_creator_history():
+    router = SequenceRouter([
+        "A red panda under a streetlamp could be a cute little sketch idea.",
+        "You've been humming that rainy-night red panda idea all along.",
+        "That red-panda bit came from my own earlier riff, not from something you told me. I shouldn't turn it into your history.",
+    ])
+    mary = _mary(router)
+
+    mary.process("not much just want to have a conversation with you.")
+    result = mary.process("What have we been working on together lately?")
+
+    # The natural project-continuity phrase is now handled locally, so Mary's
+    # own improvised assistant turn cannot be reinterpreted as creator history.
+    assert result.intent.intent_type == IntentType.CONVERSATION_RECALL
+    lowered = result.final_response.lower()
+    assert "haven't actually given me a specific shared-work item" in lowered
+    assert "you've been humming" not in lowered
+    assert "red panda" not in lowered
+
+
+def test_assistant_only_detail_cannot_be_attributed_to_creator_on_later_generated_turn():
+    router = SequenceRouter([
+        "A red panda under a streetlamp could be a cute little sketch idea.",
+        "You've been humming that rainy-night red panda idea all along.",
+        "That red-panda bit came from my own earlier riff, not from something you told me. I shouldn't turn it into your history.",
+    ])
+    mary = _mary(router)
+
+    mary.process("not much just want to have a conversation with you.")
+    result = mary.process("Why do you think that?")
+
+    assert result.reflection.decision.value == "revise"
+    lowered = result.final_response.lower()
+    assert "came from my own earlier riff" in lowered
+    assert "you've been humming" not in lowered

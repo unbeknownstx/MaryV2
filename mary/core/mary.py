@@ -606,7 +606,8 @@ class Mary:
 
         elif intent.intent_type == IntentType.CONVERSATION_RECALL:
             system_response = self._handle_conversation_recall(
-                recent_conversation
+                recent_conversation,
+                recall_scope=str(intent.parameters.get("recall_scope", "recent_dialogue")),
             )
             skip_cognition = True
 
@@ -1048,6 +1049,8 @@ class Mary:
     def _handle_conversation_recall(
         self,
         recent_conversation: list[dict[str, str]],
+        *,
+        recall_scope: str = "recent_dialogue",
     ) -> str:
         """Recall recent dialogue concisely without dumping whole prior replies."""
 
@@ -1068,6 +1071,30 @@ class Mary:
         latest_user = user_messages[-1] if user_messages else None
         earlier_user = user_messages[-2] if len(user_messages) >= 2 else None
         latest_mary = mary_messages[-1] if mary_messages else None
+
+        if str(recall_scope).strip().lower() == "shared_work":
+            work_markers = (
+                "working on", "work on", "building", "build ", "project",
+                "developing", "fixing", "testing", "debugging", "implementing",
+            )
+            grounded_work = [
+                text
+                for text in user_messages
+                if any(marker in text.lower() for marker in work_markers)
+            ]
+            if grounded_work:
+                latest = grounded_work[-1]
+                if len(latest) > 220:
+                    latest = latest[:219].rstrip() + "…"
+                return (
+                    "From what you've actually said in this session, the grounded "
+                    f"shared-work thread is: ‘{latest}’"
+                )
+            return (
+                "In this session, you haven't actually given me a specific shared-work "
+                "item yet. I shouldn't turn something from one of my own earlier replies "
+                "into a project we supposedly worked on together."
+            )
 
         def compact(text: str | None, limit: int = 180) -> str:
             value = " ".join(str(text or "").split())
@@ -1371,6 +1398,15 @@ class Mary:
             response = self._creator_memory_overview(
                 recent_conversation=recent_conversation or [],
             )
+        elif query_type == "relationship_overview":
+            creator_view = self.relationship.answer_query("overview")
+            relationship_evidence = self.self_introspection.build("relationship")
+            relationship_view = str(
+                relationship_evidence.get("fallback_response", "")
+            ).strip()
+            response = creator_view
+            if relationship_view:
+                response += " " + relationship_view
         else:
             response = self.relationship.answer_query(query_type)
 

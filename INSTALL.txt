@@ -1,34 +1,24 @@
-MARYV2 V2 ACCEPTANCE HOTFIX 02
-==============================
+MaryV2 V2 Acceptance Hotfix 03
 
-Fixes natural self-state routing for phrases such as:
-    Hey Mary, how are you feeling right now?
-
-Problem:
-    "right now" was interpreted by the dynamic-web heuristic because the
-    self-query detector only recognized more specific forms such as
-    "how are you feeling about yourself right now?".
-
-Fix:
-    - direct current-feeling/mood questions route to SELF_QUERY/current_state
-      before web routing;
-    - exact acceptance phrasing is regression-tested;
-    - no pending web tool request is created;
-    - topical current-information questions remain eligible for web routing.
+Purpose:
+- Keep natural strengths/weaknesses questions on grounded Mary self-state.
+- Keep natural creator/relationship overview questions local.
+- Route "what are some things you remember about me?" to creator memory/model.
+- Prevent Mary from inventing ongoing/off-screen activities as personal history.
+- Prevent prior Mary-generated dialogue from becoming evidence about Unbe.
+- Make shared-work recall use user-authored evidence only.
+- Make direct requests for critique/opinion select an opinionated drive.
+- Preserve normal prompt-size/context budget.
 
 Install:
-    Extract this ZIP over the MaryV2 project root and replace matching files.
+1. Exit any running Mary process.
+2. Extract this ZIP over the MaryV2 repository root and replace matching files.
+3. Do not delete .env or data/.
+4. Run:
+   python -m pytest tests/integration/test_long_session_hardening.py tests/cognition/test_conversation_continuity_v2.py -q
+   python -m scripts.verify_long_session_hardening
+5. Then run the full hard gate when convenient:
+   powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 
-Focused verification:
-    python -m pytest tests/integration/test_long_session_hardening.py -q
-    python -m scripts.verify_long_session_hardening
-
-Full verification:
-    powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
-
-Expected full deterministic suite after this hotfix:
-    471 passed, 1 skipped
-    50/50 diagnostics healthy
-    release verification PASS
-
-This patch does not contain .env, data/, API keys, avatar assets, or persistent state.
+Expected targeted tests: 25 passed
+Consolidated source verification here: 478 passed, 1 skipped; 50/50 diagnostics; full offline release gate PASS.
