@@ -63,6 +63,37 @@ def test_current_self_feeling_routes_local_before_dynamic_web_marker():
     assert intent.parameters["self_query_type"] == "current_state"
 
 
+def test_natural_current_feeling_phrase_routes_local_before_right_now_web_marker():
+    mary = _mary()
+    intent = mary.cognition.detect_intent(
+        "Hey Mary, how are you feeling right now?"
+    )
+    assert intent.intent_type == IntentType.SELF_QUERY
+    assert intent.parameters["self_query_type"] == "current_state"
+    assert mary.tools.pending_requests() == []
+
+
+def test_natural_current_feeling_process_does_not_create_web_request():
+    mary = _mary()
+    result = mary.process("Hey Mary, how are you feeling right now?")
+
+    assert result.intent.intent_type == IntentType.SELF_QUERY
+    assert result.intent.parameters["self_query_type"] == "current_state"
+    assert mary.tools.pending_requests() == []
+    assert "Current external information would help answer that" not in result.final_response
+
+
+def test_topical_latest_feeling_question_is_not_misclassified_as_current_state():
+    mary = _mary()
+    intent = mary.cognition.detect_intent(
+        "Mary, how do you feel about the latest game news right now?"
+    )
+    assert not (
+        intent.intent_type == IntentType.SELF_QUERY
+        and intent.parameters.get("self_query_type") == "current_state"
+    )
+
+
 def test_creator_memory_overview_routes_to_relationship_model_before_generic_memory():
     mary = _mary()
     intent = mary.cognition.detect_intent("Do you remember anything about me?")

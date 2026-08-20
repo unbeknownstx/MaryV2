@@ -29,6 +29,16 @@ def main() -> None:
         and feeling.parameters.get("self_query_type") == "current_state",
     )
 
+    natural_feeling = mary.cognition.detect_intent(
+        "Hey Mary, how are you feeling right now?"
+    )
+    check(
+        "natural current-feeling phrasing stays local before right-now web routing",
+        natural_feeling.intent_type == IntentType.SELF_QUERY
+        and natural_feeling.parameters.get("self_query_type") == "current_state"
+        and mary.tools.pending_requests() == [],
+    )
+
     runtime_architecture = mary.cognition.detect_intent(
         "What's your underlying architecture running on?"
     )

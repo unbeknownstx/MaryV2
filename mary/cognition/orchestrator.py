@@ -1047,11 +1047,24 @@ class CognitiveOrchestrator:
         )):
             return self_intent("goals")
 
+        # Natural current-state questions must stay local even when they contain
+        # words such as "right now" or "today" that would otherwise look like
+        # dynamic-web markers.  Keep this scoped to direct questions about Mary's
+        # own represented state so topical questions such as "how do you feel
+        # about the latest news right now?" can still reach research routing.
+        current_state_patterns = (
+            r"\bhow are you feeling(?: right now| today| currently| at the moment)?$",
+            r"\bhow do you feel(?: right now| today| currently| at the moment)?$",
+            r"\bwhat(?:'s| is) your mood(?: right now| today| currently| at the moment)?$",
+            r"\bwhat mood are you in(?: right now| today| currently| at the moment)?$",
+            r"\bhow(?:'s| is) your mood(?: right now| today| currently| at the moment)?$",
+        )
         if (
             "feel about yourself" in normalized
             or "feeling about yourself" in normalized
             or "feel about who you are" in normalized
             or "feeling about who you are" in normalized
+            or any(re.search(pattern, normalized) for pattern in current_state_patterns)
         ):
             return self_intent("current_state")
 

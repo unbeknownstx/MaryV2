@@ -1,35 +1,34 @@
-MARYV2 FINAL CONSOLIDATION OVERLAY
+MARYV2 V2 ACCEPTANCE HOTFIX 02
+==============================
 
-This source overlay is designed to be copied onto the existing MaryV2 project.
-It intentionally does NOT contain or replace the user's .env, data/, persistent
-character state, API keys, desktop VRM assets, node_modules, or built dist assets.
+Fixes natural self-state routing for phrases such as:
+    Hey Mary, how are you feeling right now?
 
-1. Make a backup / GitHub Desktop commit of the current working MaryV2 folder.
-2. Extract/copy the consolidation overlay into the MaryV2 root and replace files.
-3. Do NOT delete .env or data/.
-4. With .venv active, run:
+Problem:
+    "right now" was interpreted by the dynamic-web heuristic because the
+    self-query detector only recognized more specific forms such as
+    "how are you feeling about yourself right now?".
 
-   python -m pip install -r requirements.txt
-   python -m pytest tests -q
-   python -m scripts.run_diagnostics
-   python -m scripts.run_release_verification --offline
+Fix:
+    - direct current-feeling/mood questions route to SELF_QUERY/current_state
+      before web routing;
+    - exact acceptance phrasing is regression-tested;
+    - no pending web tool request is created;
+    - topical current-information questions remain eligible for web routing.
 
-5. Rebuild the desktop on Windows:
+Install:
+    Extract this ZIP over the MaryV2 project root and replace matching files.
 
-   cd desktop
-   npm ci
-   npm run build
-   cd ..
-   python -m scripts.run_desktop
+Focused verification:
+    python -m pytest tests/integration/test_long_session_hardening.py -q
+    python -m scripts.verify_long_session_hardening
 
-6. Terminal runtime:
+Full verification:
+    powershell -ExecutionPolicy Bypass -File scripts\hard_test_v2.ps1
 
-   python -m scripts.run_mary
+Expected full deterministic suite after this hotfix:
+    471 passed, 1 skipped
+    50/50 diagnostics healthy
+    release verification PASS
 
-   Use /state and /resources to inspect display-safe runtime state.
-
-7. Only after the source/runtime hard tests are green, build the standalone app:
-
-   powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
-
-No live OpenAI call is required by this installation or hard-test sequence.
+This patch does not contain .env, data/, API keys, avatar assets, or persistent state.
