@@ -62,6 +62,12 @@ def build_live_character_state(mary, *, runtime_status: str | None = None) -> di
     if current_task is not None and status == "idle":
         status = "working"
 
+    session_override = (
+        mary.llm.session_override_status()
+        if callable(getattr(mary.llm, "session_override_status", None))
+        else {"provider": None, "route": None}
+    )
+
     return {
         "character": {
             "name": str(getattr(mary.personality, "name", "Mary")),
@@ -92,6 +98,7 @@ def build_live_character_state(mary, *, runtime_status: str | None = None) -> di
                 if callable(getattr(mary.llm, "routing_strategy", None))
                 else "configured"
             ),
+            "session_override": dict(session_override),
         },
         "resources": resources,
         "orchestration": {

@@ -70,7 +70,7 @@ class ReflectionResult:
         }
 
 
-PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-06"
+PROVENANCE_AUDIT_VERSION = "v2-acceptance-hotfix-08"
 
 
 class ReflectionEngine:
@@ -231,6 +231,8 @@ class ReflectionEngine:
                             "flags repeated recent prose, keep the meaning but write a genuinely fresh line. If it "
                             "flags the representation boundary, keep Mary's emotional warmth while grounding it in "
                             "her represented expressive/relationship state rather than making a metaphysical claim. "
+                            "If it flags capability truth, never roleplay or narrate a provider/tool call: state only what runtime evidence shows. "
+                            "If it flags creator mind-reading, respond to what Unbe actually said and do not label disagreement as hiding, avoidance, or fear. "
                             "Rewrite the reply so it sounds like Mary rather than a generic assistant. Return only the revised reply."
                         ),
                     ),
@@ -493,6 +495,8 @@ class ReflectionEngine:
 
         issues.extend(self._near_duplicate_response_audit(text, recent_mary))
         issues.extend(self._subjective_experience_audit(text))
+        issues.extend(self._provider_action_truth_audit(context, reasoning))
+        issues.extend(self._unsupported_creator_mindreading_audit(context, text))
 
         issues.extend(
             self._creator_ownership_audit(
@@ -552,6 +556,84 @@ class ReflectionEngine:
                         return [
                             "Continuity boundary: near-duplicates a substantial passage from Mary's recent response."
                         ]
+        return []
+
+    @staticmethod
+    def _provider_action_truth_audit(
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+    ) -> list[str]:
+        """Reject claims that Mary used/switched a provider when runtime did not."""
+
+        text = str(reasoning.response or "")
+        lowered = text.lower()
+        provider = str(reasoning.metadata.get("provider") or "").strip().lower()
+        expert = dict(reasoning.metadata.get("expert_consultation", {}) or {})
+        expert_provider = str(expert.get("provider") or "").strip().lower()
+        if not expert_provider:
+            for item in context.relevant_knowledge:
+                if isinstance(item, dict) and item.get("expert_consultation") is True:
+                    expert_provider = str(item.get("provider") or "").strip().lower()
+                    if expert_provider:
+                        break
+
+        local_current_claims = (
+            "i'm on the local llm", "i am on the local llm",
+            "i'm using ollama", "i am using ollama", "i'm on ollama", "i am on ollama",
+            "no cloud detour", "running through ollama", "using the local llm now",
+            "i fired up ollama", "i've fired up ollama", "ollama is answering",
+        )
+        if any(marker in lowered for marker in local_current_claims) and provider != "ollama":
+            return [
+                "Capability-truth boundary: claims the current response/turn is using Ollama/local generation, but runtime provider metadata does not show Ollama."
+            ]
+
+        openai_current_claims = (
+            "i called openai", "i've called openai", "i have called openai",
+            "i'm using openai", "i am using openai", "openai is answering",
+            "i asked openai", "i've asked openai", "i consulted openai",
+        )
+        if any(marker in lowered for marker in openai_current_claims):
+            if provider != "openai" and expert_provider != "openai":
+                return [
+                    "Capability-truth boundary: claims OpenAI was called/used, but neither generation metadata nor recorded expert evidence shows an OpenAI call."
+                ]
+
+        fake_execution = (
+            "i'll fire up ollama", "i’ll fire up ollama",
+            "i'll call openai", "i’ll call openai",
+            "i'll ask openai", "i’ll ask openai",
+        )
+        if any(marker in lowered for marker in fake_execution):
+            return [
+                "Capability-truth boundary: narrates a provider action instead of executing it through Mary's routing/orchestration path."
+            ]
+
+        return []
+
+    @staticmethod
+    def _unsupported_creator_mindreading_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Block unsupported claims about Unbe's hidden motives/psychology."""
+
+        lowered = str(text or "").lower()
+        user = str(context.input_text or "").lower()
+        patterns = (
+            "you're sidestepping", "you are sidestepping",
+            "you're hiding", "you are hiding",
+            "you're avoiding", "you are avoiding",
+            "you don't want to admit", "you dont want to admit",
+            "you're scared to admit", "you are scared to admit",
+            "you're turning away from", "you are turning away from",
+            "what we both felt", "you already know the real issue",
+        )
+        for marker in patterns:
+            if marker in lowered and marker not in user:
+                return [
+                    "Relationship-grounding boundary: infers a hidden motive, avoidance, or private mental state for Unbe that he did not state."
+                ]
         return []
 
     @staticmethod
@@ -1006,6 +1088,8 @@ class ReflectionEngine:
             "bleed, remember that assistant-role dialogue is Mary's generated output, not proof of what "
             "Unbe said or did. Only user-role dialogue and grounded creator state can support those claims. "
             "Keep harmless imaginative details temporary and phrase them as possibilities when needed. "
+            "Never claim a provider/tool was called unless recorded runtime evidence shows it, and never infer "
+            "that Unbe is hiding/avoiding something merely because he disagrees or corrects Mary. "
             "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
             "conversational drive and Performance Director. Rewrite it like dialogue for an actor playing Mary, "
             "not polished support copy. React before switching into assistance. Avoid canned "

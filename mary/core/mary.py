@@ -115,6 +115,7 @@ from mary.cognition.self_introspection import SelfIntrospection
 from mary.cognition.mind_state import TurnMindStateBuilder
 from mary.cognition.context_lifecycle import ConversationContextLifecycle
 from mary.cognition.intent import Intent, IntentType
+from mary.cognition.natural_input import normalize_for_matching
 
 
 class Mary:
@@ -698,6 +699,11 @@ class Mary:
                     intent,
                     original_input=input_text,
                 )
+            elif action == "llm_control":
+                tool_action = self._handle_llm_control(
+                    intent,
+                    original_input=input_text,
+                )
             else:
                 tool_action = self._handle_local_tool_intent(
                     intent,
@@ -813,6 +819,25 @@ class Mary:
             result.metadata["natural_relationship_learning"] = dict(
                 natural_relationship_learning
             )
+
+        expert_items = [
+            item for item in external_knowledge
+            if isinstance(item, dict) and item.get("expert_consultation") is True
+        ]
+        if expert_items:
+            expert_item = dict(expert_items[-1])
+            expert_meta = {
+                "provider": expert_item.get("provider"),
+                "model": expert_item.get("model"),
+                "paid": True,
+                "advisory_only": True,
+                "usage": dict(expert_item.get("usage", {}) or {}),
+            }
+            result.metadata["expert_consultation"] = expert_meta
+            try:
+                result.reasoning.metadata["expert_consultation"] = dict(expert_meta)
+            except Exception:
+                pass
 
         if system_response is not None:
             result.final_response = system_response
@@ -1035,9 +1060,37 @@ class Mary:
         Ask cognition to classify the user's intent.
         """
 
-        return self.cognition.detect_intent(
+        intent = self.cognition.detect_intent(
             input_text
         )
+
+        # Pronoun follow-up after an explicit route change: "you are using it
+        # aren't you?" should report runtime truth rather than let a model guess.
+        override = (
+            self.llm.session_override_status()
+            if callable(getattr(self.llm, "session_override_status", None))
+            else {"provider": None, "route": None}
+        )
+        normalized = normalize_for_matching(input_text)
+        if (override.get("provider") or override.get("route")) and any(
+            phrase in normalized
+            for phrase in (
+                "are you using it", "are u using it", "you are using it arent you",
+                "you are using it aren't you", "ur using it arent you", "using it now",
+            )
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description="Creator asks whether the active model-route override is actually in use.",
+                parameters={
+                    "query": input_text,
+                    "self_query_type": "runtime_architecture",
+                },
+                source="runtime_route_followup",
+            )
+
+        return intent
 
     def _handle_intent(
         self,
@@ -2042,6 +2095,12 @@ class Mary:
             else str(cognition_status.get("llm", "unknown"))
         )
 
+        override = (
+            self.llm.session_override_status()
+            if callable(getattr(self.llm, "session_override_status", None))
+            else {"provider": None, "route": None}
+        )
+
         parts = [
             (
                 "I'm MaryV2. My identity, memory, personality, relationship "
@@ -2055,6 +2114,17 @@ class Mary:
                 f"route: {route_text}."
             ),
         ]
+
+        if override.get("route") == "private":
+            parts.append(
+                "A process-local override is active: ordinary model-backed turns are currently "
+                "forced through the private Ollama route."
+            )
+        elif override.get("provider"):
+            parts.append(
+                f"A process-local override is active: ordinary model-backed turns are currently "
+                f"forced through {override.get('provider')}."
+            )
 
         if "ollama" in {item.lower() for item in provider_order}:
             parts.append(
@@ -2351,6 +2421,138 @@ class Mary:
             final_response=response,
             metadata=dict(metadata or {}),
         )
+
+    def _handle_llm_control(
+        self,
+        intent: Intent,
+        *,
+        original_input: str,
+    ) -> dict[str, Any]:
+        """Apply explicit process-local model routing or one-task expert use.
+
+        This path never roleplays a provider action. A route-change response is
+        returned only after the router state changes. Paid OpenAI remains bounded
+        to an explicitly authorized ephemeral task.
+        """
+
+        operation = str(intent.parameters.get("operation", "")).strip().lower()
+
+        if operation == "clear_session":
+            status = self.llm.clear_session_override()
+            return {
+                "system_response": (
+                    "Okay. I cleared the temporary model override. Ordinary model-backed "
+                    "turns are back on my configured free-first route: "
+                    + " -> ".join(self.llm._provider_order(None))
+                    + "."
+                ),
+                "skip_cognition": True,
+                "llm_control": status,
+            }
+
+        if operation == "set_session":
+            provider = intent.parameters.get("provider")
+            route = intent.parameters.get("route")
+            requested = str(intent.parameters.get("requested_provider") or provider or route or "").strip()
+            try:
+                status = self.llm.set_session_override(
+                    provider=(str(provider).strip() if provider else None),
+                    route=(str(route).strip() if route else None),
+                )
+            except Exception as exc:
+                return {
+                    "system_response": f"I couldn't change the model route: {type(exc).__name__}: {exc}",
+                    "skip_cognition": True,
+                }
+
+            if status.get("route") == "private":
+                response = (
+                    "Okay. Local-only generation is active for this process now. "
+                    "My ordinary model-backed turns will route through Ollama until you tell me "
+                    "to return to the normal/free-first route. Use /last after a generated turn "
+                    "to verify the provider that actually answered."
+                )
+            else:
+                response = (
+                    f"Okay. I'm temporarily routing ordinary model-backed turns through {requested}. "
+                    "Use /last after a generated turn to verify what actually answered. "
+                    "Tell me to use the normal/free-first route when you want to clear it."
+                )
+            return {
+                "system_response": response,
+                "skip_cognition": True,
+                "llm_control": status,
+            }
+
+        if operation == "paid_expert_once":
+            if not bool(intent.parameters.get("paid_authorized", False)):
+                return {
+                    "system_response": (
+                        "OpenAI is my paid expert route, so I won't call it from an ambiguous request. "
+                        "If you want one paid consultation for this task, explicitly tell me to use/call OpenAI."
+                    ),
+                    "skip_cognition": True,
+                }
+
+            task = self.task_workspace.create_task(
+                original_input,
+                metadata={
+                    "allow_paid": True,
+                    "needs_expert": True,
+                    "source": "creator_explicit_provider_request",
+                },
+            )
+            try:
+                plan = self.task_orchestrator.plan(
+                    task.task_id,
+                    allow_paid=True,
+                    needs_expert=True,
+                )
+                execution = self.task_executor.execute(
+                    plan,
+                    prompt=str(intent.parameters.get("query") or original_input),
+                )
+            except Exception as exc:
+                self.task_workspace.fail(task.task_id, outcome=f"{type(exc).__name__}: {exc}")
+                return {
+                    "system_response": f"The OpenAI expert call failed: {type(exc).__name__}: {exc}",
+                    "skip_cognition": True,
+                }
+
+            if not execution.success:
+                self.task_workspace.fail(task.task_id, outcome=execution.content)
+                return {
+                    "system_response": (
+                        "I did not complete the OpenAI expert call. "
+                        f"Status: {execution.status}. {execution.content}"
+                    ),
+                    "skip_cognition": True,
+                }
+
+            self.task_workspace.complete(
+                task.task_id,
+                outcome=f"Expert consultation completed via {execution.source}/{execution.model}.",
+            )
+            return {
+                "knowledge": [
+                    {
+                        "expert_consultation": True,
+                        "task_local": True,
+                        "advisory_only": True,
+                        "provider": execution.source,
+                        "model": execution.model,
+                        "content": execution.content,
+                        "usage": dict(execution.usage),
+                    }
+                ],
+                "sources": [],
+                "skip_cognition": False,
+            }
+
+        return {
+            "system_response": "I couldn't determine the requested model-routing action.",
+            "skip_cognition": True,
+        }
 
     def _handle_local_tool_intent(
         self,
@@ -3386,6 +3588,11 @@ class Mary:
                     self.llm._provider_order(None)
                     if callable(getattr(self.llm, "_provider_order", None))
                     else [self.llm.provider_name()]
+                ),
+                "session_override": (
+                    self.llm.session_override_status()
+                    if callable(getattr(self.llm, "session_override_status", None))
+                    else {"provider": None, "route": None}
                 ),
             },
         }

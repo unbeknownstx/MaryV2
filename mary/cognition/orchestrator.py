@@ -361,6 +361,17 @@ class CognitiveOrchestrator:
             return tool_control
 
         # --------------------------------------------------------
+        # MODEL / PROVIDER CONTROL
+        # --------------------------------------------------------
+
+        llm_control = self._detect_llm_control(
+            text=text,
+            lowered=lowered,
+        )
+        if llm_control is not None:
+            return llm_control
+
+        # --------------------------------------------------------
         # CREATOR DIRECTIVES
         # --------------------------------------------------------
 
@@ -668,6 +679,133 @@ class CognitiveOrchestrator:
             },
             source="basic_detector",
         )
+
+    def _detect_llm_control(
+        self,
+        *,
+        text: str,
+        lowered: str,
+    ) -> Intent | None:
+        """Detect explicit creator requests about Mary's model routing.
+
+        Provider status questions remain deterministic self-queries. Route changes
+        are process-local controls. Paid OpenAI is never made sticky; an explicit
+        request to consult it authorizes only the current task.
+        """
+
+        normalized = normalize_for_matching(text)
+
+        provider_terms = {
+            "ollama": "ollama",
+            "local llm": "ollama",
+            "local model": "ollama",
+            "groq": "groq",
+            "gemini": "gemini",
+            "openrouter": "openrouter",
+            "open router": "openrouter",
+            "openai": "openai",
+            "open ai": "openai",
+        }
+
+        mentioned_provider = None
+        for phrase, provider in provider_terms.items():
+            if phrase in normalized:
+                mentioned_provider = provider
+                break
+
+        # Capability/status questions must not silently change routing.
+        if mentioned_provider is not None and any(
+            phrase in normalized
+            for phrase in (
+                "can you use", "can u use", "could you use",
+                "are you using", "are u using", "you are using",
+                "r u using", "do you use", "do u use",
+                "which model", "what model", "which provider", "what provider",
+            )
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description="Creator asks about Mary's actual model/provider capability or current routing.",
+                parameters={
+                    "query": text,
+                    "self_query_type": "runtime_architecture",
+                },
+                source="llm_control_detector",
+            )
+
+        if any(phrase in normalized for phrase in (
+            "use normal route", "use the normal route", "normal route",
+            "go back to free first", "switch back to free first",
+            "use free first", "free first", "clear model override",
+            "clear provider override", "stop forcing ollama",
+        )):
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description="Creator explicitly returns Mary to configured free-first routing.",
+                parameters={
+                    "action": "llm_control",
+                    "operation": "clear_session",
+                },
+                source="llm_control_detector",
+            )
+
+        command_markers = (
+            "use " , "switch to ", "go ahead and use", "go ahead an use",
+            "fire up ", "route through ", "run through ", "call ",
+            "ask ", "consult ",
+        )
+        explicit_command = mentioned_provider is not None and any(
+            marker in normalized for marker in command_markers
+        )
+
+        if explicit_command and mentioned_provider == "openai":
+            paid_authorized = any(
+                phrase in normalized
+                for phrase in (
+                    "go ahead", "i give you permission", "i give u permission",
+                    "you have permission", "u have permission",
+                    "use openai", "use open ai", "call openai", "call open ai",
+                    "ask openai", "ask open ai", "consult openai", "consult open ai",
+                )
+            )
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description="Creator explicitly requests a one-task paid OpenAI expert consultation.",
+                parameters={
+                    "action": "llm_control",
+                    "operation": "paid_expert_once",
+                    "provider": "openai",
+                    "paid_authorized": paid_authorized,
+                    "query": text,
+                },
+                source="llm_control_detector",
+            )
+
+        if explicit_command and mentioned_provider is not None:
+            if mentioned_provider == "ollama":
+                route = "private"
+                provider = None
+            else:
+                route = None
+                provider = mentioned_provider
+            return Intent(
+                intent_type=IntentType.TOOL_USE,
+                confidence=0.99,
+                description="Creator explicitly changes Mary's process-local generation route.",
+                parameters={
+                    "action": "llm_control",
+                    "operation": "set_session",
+                    "provider": provider,
+                    "route": route,
+                    "requested_provider": mentioned_provider,
+                },
+                source="llm_control_detector",
+            )
+
+        return None
 
     def _detect_tool_control(
         self,

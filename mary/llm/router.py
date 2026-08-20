@@ -64,6 +64,13 @@ class LLMRouter:
         self.last_generation_attempts: list[dict[str, str]] = []
         self.resource_governor = ResourceGovernor(config.governance)
 
+        # Process-local conversational routing override. This is intentionally
+        # ephemeral: the creator may temporarily force local/private or one of
+        # Mary's free providers without changing durable configuration. Explicit
+        # per-call provider/route arguments always take precedence.
+        self._session_provider_override: str | None = None
+        self._session_route_override: str | None = None
+
         # Provider name -> monotonic time when the local cooldown expires.
         self._rate_limit_until: dict[str, float] = {}
 
@@ -166,6 +173,52 @@ class LLMRouter:
     # ============================================================
     # ROUTING
     # ============================================================
+
+    def set_session_override(
+        self,
+        *,
+        provider: str | None = None,
+        route: str | None = None,
+    ) -> dict[str, str | None]:
+        """Set a process-local routing override for ordinary generation.
+
+        Paid OpenAI is deliberately excluded from sticky overrides. It remains
+        task-authorized through the expert route.
+        """
+
+        normalized_provider = str(provider or "").strip().lower() or None
+        normalized_route = str(route or "").strip().lower() or None
+
+        if normalized_route is not None and normalized_route not in {
+            "private", "local", "offline",
+        }:
+            raise ValueError(f"Unsupported session route override: {normalized_route}")
+
+        if normalized_provider is not None:
+            if normalized_provider == "openai":
+                raise ValueError(
+                    "Paid OpenAI cannot be enabled as a sticky session override; "
+                    "use explicit expert authorization for an individual task."
+                )
+            if normalized_provider not in {"groq", "gemini", "openrouter", "ollama"}:
+                raise ValueError(f"Unsupported session provider override: {normalized_provider}")
+
+        self._session_provider_override = normalized_provider
+        self._session_route_override = normalized_route
+        return self.session_override_status()
+
+    def clear_session_override(self) -> dict[str, str | None]:
+        """Return ordinary generation to Mary's configured strategy."""
+
+        self._session_provider_override = None
+        self._session_route_override = None
+        return self.session_override_status()
+
+    def session_override_status(self) -> dict[str, str | None]:
+        return {
+            "provider": self._session_provider_override,
+            "route": self._session_route_override,
+        }
 
     def routing_strategy(self) -> str:
         """Return Mary's active LLM routing strategy."""
@@ -461,11 +514,22 @@ class LLMRouter:
 
         self.last_generation_attempts = []
         last_error: LLMProviderError | None = None
+
+        effective_provider = provider
+        effective_route = route
+        if effective_provider is None and effective_route is None:
+            effective_provider = self._session_provider_override
+            effective_route = self._session_route_override
+
         order = self.resource_governor.provider_order(
-            self._provider_order(provider, route=route)
+            self._provider_order(effective_provider, route=effective_route)
         )
         self.resource_governor.record_generation_start(
-            route=str(route or self.routing_strategy()),
+            route=str(
+                effective_route
+                or effective_provider
+                or self.routing_strategy()
+            ),
             order=order,
         )
 
@@ -625,7 +689,7 @@ class LLMRouter:
         if last_error is not None:
             raise last_error
 
-        primary = self.provider_name(provider)
+        primary = self.provider_name(effective_provider)
         raise LLMProviderError(
             "No configured language-model provider is currently available.",
             provider=primary,

@@ -162,6 +162,7 @@ def format_last_turn(result: Any) -> str:
         if isinstance(item, dict)
     ) or "none"
 
+    expert = dict(reasoning_meta.get("expert_consultation", {}) or {})
     lines = [
         "Last Mary turn:",
         f"- intent: {intent_name}",
@@ -176,6 +177,12 @@ def format_last_turn(result: Any) -> str:
         f"- self_provenance_issue: {reasoning_meta.get('self_provenance_issue')}",
         f"- reflection_mode: {reflection_meta.get('mode', 'n/a')}",
     ]
+    if expert:
+        lines.extend([
+            f"- expert_provider: {expert.get('provider', 'n/a')}",
+            f"- expert_model: {expert.get('model', 'n/a')}",
+            f"- expert_paid: {bool(expert.get('paid', True))}",
+        ])
     return "\n".join(lines)
 
 
@@ -208,6 +215,37 @@ def format_resource_state(application: "MaryApplication") -> str:
         "Paid expert policy: explicit task authorization",
     ]
     return "\n".join(lines)
+
+
+def format_route_state(application: "MaryApplication") -> str:
+    """Show configured, temporary, and last-actual model routing truthfully."""
+
+    mary = application.mary
+    override = (
+        mary.llm.session_override_status()
+        if callable(getattr(mary.llm, "session_override_status", None))
+        else {"provider": None, "route": None}
+    )
+    last = dict(getattr(mary, "_last_generation_metadata", None) or {})
+    configured = (
+        mary.llm._provider_order(None)
+        if callable(getattr(mary.llm, "_provider_order", None))
+        else [mary.llm.provider_name()]
+    )
+    active = (
+        "private/ollama" if override.get("route") == "private"
+        else str(override.get("provider")) if override.get("provider")
+        else "configured free-first"
+    )
+    return "\n".join([
+        "MARYV2 MODEL ROUTE",
+        "────────────────────────────────",
+        "Configured: " + " -> ".join(str(item) for item in configured),
+        f"Temporary override: {active}",
+        f"Last actual provider: {last.get('provider', 'none yet')}",
+        f"Last actual model: {last.get('model', 'n/a')}",
+        "Paid OpenAI: explicit one-task expert authorization only",
+    ])
 
 
 def interactive_help(application: "MaryApplication") -> str:
@@ -490,7 +528,7 @@ def run_interactive(
         print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help', '/state', '/resources', '/audit', '/pending', '/last', or 'exit'.")
+    print("Type '/help', '/state', '/resources', '/route', '/audit', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -540,6 +578,10 @@ def run_interactive(
 
             if command in {"/resources", "/resource", "resources"}:
                 print(format_resource_state(app))
+                continue
+
+            if command in {"/route", "/model", "route", "model route"}:
+                print(format_route_state(app))
                 continue
 
             if command in {"/audit", "audit", "state audit"}:

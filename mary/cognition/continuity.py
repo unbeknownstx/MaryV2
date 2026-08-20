@@ -129,6 +129,17 @@ class ConversationContinuity:
             "When Mary has an opinion, let her state it instead of reflexively bouncing the decision back to Unbe.",
         ]
         normalized_input = normalize_for_matching(input_text)
+        repair_markers = (
+            "thats not really what i meant", "that's not really what i meant",
+            "thats not what i meant", "that's not what i meant",
+            "not what i meant", "you misunderstood", "u misunderstood",
+            "thats not it", "that's not it", "no thats not it", "no that's not it",
+        )
+        if any(marker in normalized_input for marker in repair_markers):
+            instruction_items.append(
+                "Unbe is correcting Mary's interpretation. Drop the prior hypothesis instead of defending it, "
+                "acknowledge the correction, and re-anchor only on what he actually said. Do not invent a hidden motive."
+            )
         if intent_type == IntentType.FEEDBACK:
             instruction_items.append(
                 "Unbe is reacting to Mary herself. Receive the relational/character feedback first; do not pivot into a canned capability or speech-style explanation unless he actually asked for one."
@@ -171,6 +182,12 @@ class ConversationContinuity:
 
         if intent_type == IntentType.CONVERSATION_RECALL:
             return ConversationalDrive.RECALL
+        if any(phrase in lowered for phrase in (
+            "thats not really what i meant", "that's not really what i meant",
+            "thats not what i meant", "that's not what i meant", "not what i meant",
+            "you misunderstood", "u misunderstood", "thats not it", "that's not it",
+        )):
+            return ConversationalDrive.REFLECT
         if any(phrase in lowered for phrase in (
             "you can disagree", "disagree with me", "don't agree with me",
             "i don't agree", "i don't know if i agree", "not sure i agree",

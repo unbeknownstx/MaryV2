@@ -147,6 +147,15 @@ class ConversationEmotionAppraiser:
         r"\b(?:i trust you|i feel like i can trust you|i can be real with you|i can talk to you about anything)\b",
         re.I,
     )
+    _CONVERSATIONAL_REPAIR = re.compile(
+        r"\b(?:that(?:'s| is)? not (?:really )?what i meant|not what i meant|you misunderstood|u misunderstood|"
+        r"i don(?:'t|t) agree|i disagree|that(?:'s| is) not it)\b",
+        re.I,
+    )
+    _SOMETHING_OFF = re.compile(
+        r"\b(?:something (?:is|feels) off|this feels off|something about this feels off|idk .{0,40} feels? off)\b",
+        re.I,
+    )
 
     def __init__(self, *, creator_name: str = "Unbe") -> None:
         self.creator_name = str(creator_name or "Unbe").strip() or "Unbe"
@@ -299,6 +308,34 @@ class ConversationEmotionAppraiser:
                     creator_valence=0.86,
                     relationship_relevance=1.0,
                     source="creator_relational_trust",
+                )
+            )
+
+        if self._CONVERSATIONAL_REPAIR.search(user_match_text):
+            candidates.append(
+                _Candidate(
+                    emotion=Emotion.CURIOSITY,
+                    intensity=0.44,
+                    confidence=0.88,
+                    reason="Unbe corrected or disagreed with Mary's interpretation; Mary should re-attend rather than defend the guess",
+                    creator_emotion="correction_or_disagreement",
+                    creator_valence=-0.18,
+                    relationship_relevance=0.92,
+                    source="conversation_repair",
+                )
+            )
+
+        if self._SOMETHING_OFF.search(user_match_text):
+            candidates.append(
+                _Candidate(
+                    emotion=Emotion.CONCERN,
+                    intensity=0.40,
+                    confidence=0.82,
+                    reason="Unbe said something feels off; Mary should take the uncertainty seriously without inventing a cause",
+                    creator_emotion="uncertainty_or_dissatisfaction",
+                    creator_valence=-0.28,
+                    relationship_relevance=0.82,
+                    source="conversation_uncertainty",
                 )
             )
 

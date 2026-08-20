@@ -53,8 +53,8 @@ def main() -> None:
     print("MARY V2 ACCEPTANCE HOTFIX 06")
     print("=" * 72)
     check(
-        "Hotfix 06 provenance/response audit is installed",
-        PROVENANCE_AUDIT_VERSION == "v2-acceptance-hotfix-06",
+        "current provenance/response audit preserves the Hotfix 06 guarantees",
+        PROVENANCE_AUDIT_VERSION == "v2-acceptance-hotfix-08",
     )
 
     original_cwd = Path.cwd()

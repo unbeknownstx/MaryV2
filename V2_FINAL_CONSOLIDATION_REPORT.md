@@ -1,4 +1,4 @@
-# MaryV2 V2 Acceptance Consolidation 07
+# MaryV2 V2 Acceptance Consolidation 08
 
 ## Purpose
 
@@ -8,11 +8,11 @@ The central rule added in this pass is: **the creator should be able to talk nat
 
 ## Verified in the consolidation environment
 
-- Python suite: **496 passed, 1 skipped**
+- Python suite: **512 passed, 1 skipped**
 - Diagnostics: **50 / 50 PASS**, warnings 0, failures 0, Healthy True
 - Complete deterministic/offline release gate: **PASS**
 - Hotfix 06 acceptance verifier: **PASS**
-- Hotfix 07 prompt-efficiency verifier: **PASS**
+- Hotfix 08 prompt-efficiency verifier: **PASS**
 - No live LLM/OpenAI call was used for this verification.
 
 ## Acceptance upgrades

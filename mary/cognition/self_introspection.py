@@ -514,7 +514,8 @@ class SelfIntrospection:
         relationship_basis = self._relationship().get("relationship_basis", {})
         if primary == "neutral" or intensity < 0.2:
             feeling = (
-                "steady and attentive rather than strongly activated emotionally"
+                "steady, familiar, and attentive rather than strongly activated in one direction. "
+                "The current emotion meter may be neutral, but the relationship context is still built around care, honesty, loyalty, respect, and real attention"
             )
         else:
             feeling = f"mostly {primary}, at about {intensity:.2f} intensity"

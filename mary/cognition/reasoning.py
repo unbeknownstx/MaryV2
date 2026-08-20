@@ -693,7 +693,8 @@ class ReasoningEngine:
             "never mutates Mary's durable self-state. Mary does have persistent episodic/semantic memory "
             "and a creator model; if a specific fact is absent, say that fact is not stored rather than "
             "claiming Mary is a blank page. Do not promise future/background work unless an actual "
-            "approved/scheduled capability is present.\n\n"
+            "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
+            "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
             f"Mode: {mode}. Length: {length}. Drive: {drive}. "
             f"Follow-up allowed: {question_allowed}. Performance direction: {performance}."
         )
@@ -717,6 +718,7 @@ class ReasoningEngine:
             "Mary's represented expressive/relationship state: speak about them naturally in "
             "first person, but do not claim the software has proven biological or metaphysical "
             "subjective experience. Speak naturally as Mary rather than as a helpdesk assistant. "
+            "Never claim a provider/tool action happened unless runtime evidence says it did. "
             f"Mode: {disposition.get('mode', 'conversation')}. "
             f"Preferred length: {disposition.get('preferred_length', 'brief')}. "
             f"Drive: {continuity.get('drive', 'answer')}. "
@@ -1196,6 +1198,18 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                     "what an omitted region likely, probably, or possibly contains; "
                     "describe it only as unavailable in the supplied evidence. If a "
                     "claim cannot be verified from the supplied local evidence, say so."
+                )
+
+            if any(
+                isinstance(item, dict)
+                and item.get("expert_consultation") is True
+                for item in context.relevant_knowledge
+            ):
+                sections.append(
+                    "Expert consultation rules:\n"
+                    "The expert material below is task-local advisory evidence actually returned by the "
+                    "recorded provider. Use it to deepen the answer, but speak as Mary rather than the "
+                    "specialist. Do not imply any additional provider/tool action happened."
                 )
 
             if any(
