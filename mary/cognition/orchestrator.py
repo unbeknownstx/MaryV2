@@ -1025,6 +1025,21 @@ class CognitiveOrchestrator:
                 "are you local or cloud",
                 "what generated your last answer",
                 "what generated your last response",
+                "what models can you use right now",
+                "what models can u use right now",
+                "what providers can you use right now",
+                "what providers can u use right now",
+                "what models are available right now",
+                "what providers are available right now",
+                "does anything about how you work change because were not at my pc",
+                "does anything about how u work change because were not at my pc",
+                "does anything change because were not on my pc",
+                "what changes when youre not on my pc",
+                "what changes when you are not on my pc",
+                "what host are you running on",
+                "what environment are you running in",
+                "are you running on replit",
+                "are you running in replit",
             )),
             ("creator", (
                 "who is unbe to you",
@@ -1512,24 +1527,17 @@ class CognitiveOrchestrator:
 
         # Dynamic-information questions can trigger a proposed search, but not
         # creator approval. Mary must ask before network execution.
-        dynamic_markers = (
-            "latest",
-            "current",
-            "today",
-            "recent",
-            "news",
-            "weather",
-            "price",
-            "prices",
-            "near me",
-            "right now",
-            "this week",
-            "documentation",
+        dynamic_external_patterns = (
+            r"\b(?:latest|current|recent|today|right now|this week)\b.*\b(?:news|weather|price|prices|score|scores|law|laws|version|release|documentation|docs|availability|open|hours)\b",
+            r"\b(?:news|weather|price|prices|score|scores|law|laws|version|release|documentation|docs|availability|open|hours)\b.*\b(?:latest|current|recent|today|right now|this week)\b",
+            r"\bnear me\b",
+            r"\bwhat is the latest\b",
+            r"\bwhat(?:'s| is) happening (?:today|right now|this week)\b",
         )
 
         if (
             lowered.endswith("?")
-            and any(marker in lowered for marker in dynamic_markers)
+            and any(re.search(pattern, lowered) for pattern in dynamic_external_patterns)
         ):
             return Intent(
                 intent_type=IntentType.WEB_SEARCH,

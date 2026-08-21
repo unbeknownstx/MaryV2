@@ -119,6 +119,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.system_contract import MarySystemContract
+from mary.runtime.environment import RuntimeEnvironment
 
 
 class Mary:
@@ -275,6 +276,7 @@ class Mary:
         # ============================================================
 
         self.llm = self._create_llm_router()
+        self.runtime_environment = RuntimeEnvironment(config=self.config, router=self.llm)
 
         # Ephemeral runtime metadata only. This is intentionally not persisted:
         # it records which provider/model generated the most recent successful
@@ -2355,6 +2357,11 @@ class Mary:
             if provider_order
             else str(cognition_status.get("llm", "unknown"))
         )
+        environment = self.runtime_environment.snapshot()
+        effective_task = list(environment.get("effective_task_route", []) or [])
+        effective_conversation = list(environment.get("effective_conversation_route", []) or [])
+        host_type = str(environment.get("host_type", "unknown"))
+        platform_name = str(environment.get("platform", "unknown"))
 
         override = (
             self.llm.session_override_status()
@@ -2375,10 +2382,20 @@ class Mary:
                 f"route: {route_text}."
             ),
             (
-                "For ordinary personal/character conversation I use a local-first route: "
-                + (" -> ".join(conversation_order) if conversation_order else "Ollama first when available")
-                + ". That keeps everyday conversation close to my persistent local runtime while "
-                "still allowing free cloud fallback if the local model is unavailable."
+                f"This process is running on {host_type} / {platform_name}. "
+                "My provider policy is portable: unavailable providers are capabilities I simply skip on this host."
+            ),
+            (
+                "My preferred personal/character conversation route is "
+                + (" -> ".join(conversation_order) if conversation_order else "not configured")
+                + ", while my effective route on this host is "
+                + (" -> ".join(effective_conversation) if effective_conversation else "no currently available provider")
+                + "."
+            ),
+            (
+                "My effective task/general route on this host is "
+                + (" -> ".join(effective_task) if effective_task else "no currently available provider")
+                + "."
             ),
         ]
 
@@ -2393,10 +2410,16 @@ class Mary:
                 f"forced through {override.get('provider')}."
             )
 
-        if "ollama" in {item.lower() for item in provider_order}:
+        providers = dict(environment.get("providers", {}) or {})
+        ollama_state = dict(providers.get("ollama", {}) or {})
+        if ollama_state.get("available"):
             parts.append(
-                "For task/general routing Ollama remains my final local fallback; for ordinary "
-                "conversation it gets first chance unless you set a temporary route override."
+                "Ollama is reachable on this host, so it can take its preferred local conversation role."
+            )
+        else:
+            parts.append(
+                "Ollama is not reachable on this host right now. That does not affect my identity; "
+                "I continue through the available configured providers."
             )
 
         query_normalized = str(query or "").lower().replace("’", "'")
@@ -2414,12 +2437,17 @@ class Mary:
                 local_model = self.llm.get_provider("ollama").model_name()
             except Exception:
                 local_model = "configured local model"
-            parts.append(
-                "You don't need to hand me an endpoint or model name during conversation. "
-                f"Ollama is already configured in my runtime ({local_model}) and gets first chance "
-                "for ordinary personal conversation. `/route` shows the policy, and `/last` after a "
-                "generated turn shows which provider actually answered."
-            )
+            if ollama_state.get("available"):
+                parts.append(
+                    "You don't need to hand me an endpoint or model name during conversation. "
+                    f"Ollama is reachable here ({local_model}) and can take its local conversation role. "
+                    "`/route` shows the effective route and `/last` shows which provider actually answered."
+                )
+            else:
+                parts.append(
+                    "Ollama is part of my provider architecture but is not reachable from this host. "
+                    "You do not need to configure it just to keep me running; I use the available cloud providers instead."
+                )
 
         previous = dict(self._last_generation_metadata or {})
         if previous:
@@ -3860,6 +3888,7 @@ class Mary:
                 "principle": "bounded_growth_no_unlimited_collection",
             },
             "architecture_contract": self.system_contract.snapshot(self),
+            "runtime_environment": self.runtime_environment.snapshot(),
             "conversation_learning": self.conversation_learning.status(),
             "turn_policy": self.turn_policy.status(),
             "orchestration": {

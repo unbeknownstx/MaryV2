@@ -690,6 +690,10 @@ class MaryDiagnostics:
                 "System Contract",
                 "system_contract",
             ),
+            self._check_attribute(
+                "Runtime Environment",
+                "runtime_environment",
+            ),
         ]
 
     # ============================================================

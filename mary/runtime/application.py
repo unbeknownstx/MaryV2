@@ -221,7 +221,7 @@ def format_resource_state(application: "MaryApplication") -> str:
 
 
 def format_route_state(application: "MaryApplication") -> str:
-    """Show configured, temporary, and last-actual model routing truthfully."""
+    """Show preferred policy, host availability, and effective routes truthfully."""
 
     mary = application.mary
     override = (
@@ -230,31 +230,48 @@ def format_route_state(application: "MaryApplication") -> str:
         else {"provider": None, "route": None}
     )
     last = dict(getattr(mary, "_last_generation_metadata", None) or {})
-    configured = (
-        mary.llm._provider_order(None)
-        if callable(getattr(mary.llm, "_provider_order", None))
-        else [mary.llm.provider_name()]
-    )
-    conversation = (
-        mary.llm.conversation_provider_order()
-        if callable(getattr(mary.llm, "conversation_provider_order", None))
-        else configured
-    )
+    environment = mary.runtime_environment.snapshot()
+    providers = dict(environment.get("providers", {}) or {})
     active = (
         "private/ollama" if override.get("route") == "private"
         else str(override.get("provider")) if override.get("provider")
-        else "normal policy (conversation local-first; task/general free-first)"
+        else "normal policy"
     )
-    return "\n".join([
+    lines = [
         "MARYV2 MODEL ROUTE",
         "────────────────────────────────",
-        "Task/general: " + " -> ".join(str(item) for item in configured),
-        "Conversation: " + " -> ".join(str(item) for item in conversation),
+        f"Host: {environment.get('host_type', 'unknown')} / {environment.get('platform', 'unknown')}",
+        "Conversation policy: " + " -> ".join(str(x) for x in environment.get("conversation_policy", [])),
+        "Effective conversation: " + (" -> ".join(str(x) for x in environment.get("effective_conversation_route", [])) or "none"),
+        "Task/general policy: " + " -> ".join(str(x) for x in environment.get("task_policy", [])),
+        "Effective task/general: " + (" -> ".join(str(x) for x in environment.get("effective_task_route", [])) or "none"),
         f"Temporary override: {active}",
         f"Last actual provider: {last.get('provider', 'none yet')}",
         f"Last actual model: {last.get('model', 'n/a')}",
-        "Paid OpenAI: explicit one-task expert authorization only",
-    ])
+        "Providers:",
+    ]
+    for name, info in providers.items():
+        state = "READY" if info.get("available") else "UNAVAILABLE"
+        lines.append(f"- {name}: {state} / {info.get('model', 'unknown')}")
+    lines.append("Paid OpenAI: explicit one-task expert authorization only")
+    return "\n".join(lines)
+
+
+def format_environment_state(application: "MaryApplication") -> str:
+    """Display the process-local host/capability snapshot."""
+
+    state = application.mary.runtime_environment.snapshot()
+    lines = [
+        "MARYV2 HOST / CAPABILITIES",
+        "────────────────────────────────",
+        f"Host: {state.get('host_type', 'unknown')}",
+        f"Platform: {state.get('platform', 'unknown')}",
+        f"Runtime mode: {state.get('runtime_mode', 'unknown')}",
+        "Capabilities:",
+    ]
+    for name, enabled in dict(state.get("capabilities", {}) or {}).items():
+        lines.append(f"- {name}: {'YES' if enabled else 'NO'}")
+    return "\n".join(lines)
 
 
 def format_system_contract(application: "MaryApplication") -> str:
@@ -563,7 +580,7 @@ def run_interactive(
         print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help', '/state', '/resources', '/route', '/contract', '/audit', '/pending', '/last', or 'exit'.")
+    print("Type '/help', '/state', '/resources', '/route', '/environment', '/contract', '/audit', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -617,6 +634,10 @@ def run_interactive(
 
             if command in {"/route", "/model", "route", "model route"}:
                 print(format_route_state(app))
+                continue
+
+            if command in {"/environment", "/env", "/capabilities", "environment", "capabilities"}:
+                print(format_environment_state(app))
                 continue
 
             if command in {"/contract", "contract", "system contract", "architecture contract"}:

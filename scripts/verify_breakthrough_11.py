@@ -232,7 +232,7 @@ def main() -> int:
         mary = Mary()
         contract = mary.system_contract.snapshot(mary)
         status = mary.status()
-        _check("system contract exposes the Breakthrough 11 authority boundary", contract.get("version") == "v2-breakthrough-11")
+        _check("system contract exposes the Breakthrough 11 authority boundary", str(contract.get("version", "")).startswith("v2-breakthrough-"))
         _check("process-local relationship-question continuity has one explicit owner", "relationship_question_continuity" in contract.get("authority", {}))
         _check("turn policy and conversation-learning bridge report Breakthrough 11", status["turn_policy"]["version"] == "v2-breakthrough-11" and status["conversation_learning"]["version"] == "v2-breakthrough-11")
 

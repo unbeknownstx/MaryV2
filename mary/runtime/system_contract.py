@@ -11,7 +11,7 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-11"
+    VERSION = "v2-breakthrough-12"
 
     AUTHORITY = {
         "character_canon": "mary.character + identity/biography/personality authored state",
@@ -22,6 +22,7 @@ class MarySystemContract:
         "conversation_continuity": "TurnMindState/ConversationContinuity",
         "relationship_question_continuity": "ConversationLearningBridge (process-local pending question; durable learning remains RelationshipManager)",
         "provider_routing": "LLMRouter",
+        "host_capabilities": "RuntimeEnvironment (process-local; no identity ownership)",
         "turn_routing_policy": "TurnPolicyEngine",
         "task_orchestration": "TaskOrchestrator + OrchestrationExecutor",
         "tools": "ToolManager",
@@ -40,6 +41,7 @@ class MarySystemContract:
         expert = getattr(mary, "expert_consultant", None)
         emotion = getattr(mary, "emotion", None)
         avatar = getattr(mary, "avatar", None)
+        runtime_environment = getattr(mary, "runtime_environment", None)
 
         shared_router = all(
             item is None or getattr(item, "router", getattr(item, "llm", None)) is router
@@ -65,6 +67,21 @@ class MarySystemContract:
                 router._provider_order(None)
                 if callable(getattr(router, "_provider_order", None))
                 else []
+            ),
+            "effective_conversation_route": (
+                runtime_environment.effective_provider_order(purpose="conversation")
+                if callable(getattr(runtime_environment, "effective_provider_order", None))
+                else []
+            ),
+            "effective_task_route": (
+                runtime_environment.effective_provider_order(purpose=None)
+                if callable(getattr(runtime_environment, "effective_provider_order", None))
+                else []
+            ),
+            "host_type": (
+                runtime_environment.host_type()
+                if callable(getattr(runtime_environment, "host_type", None))
+                else "unknown"
             ),
             "paid_openai_sticky": False,
             "background_browsing": False,
