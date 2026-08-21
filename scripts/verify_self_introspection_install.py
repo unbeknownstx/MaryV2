@@ -60,6 +60,7 @@ def main() -> int:
             mary = Mary()
             mary.llm.register_provider("fake", _RateLimitedProvider())
             mary.config.llm.provider = "fake"
+            mary.config.llm.fallback_providers = []
             app = create_application(
                 mary=mary,
                 memory_path=Path(temp_dir) / "memory.json",

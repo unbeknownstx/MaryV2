@@ -58,6 +58,9 @@ def main() -> int:
     provider = RateLimitedProvider()
     mary.llm.register_provider("fake", provider)
     mary.config.llm.provider = "fake"
+    # This verifier is intentionally deterministic/offline. Do not let
+    # developer .env fallbacks escape the simulated 429 provider.
+    mary.config.llm.fallback_providers = []
 
     print("Mary core:", Path(__import__("mary.core.mary", fromlist=["x"]).__file__).resolve())
     print("LLM router:", Path(__import__("mary.llm.router", fromlist=["x"]).__file__).resolve())

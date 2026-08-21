@@ -52,6 +52,7 @@ def main() -> int:
             provider = _RateLimitedProvider()
             mary.llm.register_provider("fake", provider)
             mary.config.llm.provider = "fake"
+            mary.config.llm.fallback_providers = []
             app = create_application(
                 mary=mary,
                 memory_path=Path(temp_dir) / "memory.json",

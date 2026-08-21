@@ -65,7 +65,10 @@ def main() -> None:
     print("MARY V2 BREAKTHROUGH 12.2 - RUNTIME INTROSPECTION / PORTABILITY POLISH")
     print("=" * 72)
 
-    with patch.dict(os.environ, {"REPL_ID": "verification-repl"}, clear=False):
+    with patch.dict(os.environ, {"REPL_ID": "verification-repl"}, clear=False), patch(
+        "mary.runtime.environment.platform.system",
+        return_value="Linux",
+    ):
         os.environ.pop("CODESPACES", None)
         os.environ.pop("CODESPACE_NAME", None)
         config, router, providers = _router(ollama=False, openai=True)
