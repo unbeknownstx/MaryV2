@@ -16,16 +16,20 @@ Remove-Item Env:MARY_RUN_LIVE_TESTS -ErrorAction SilentlyContinue
 Remove-Item Env:MARY_RUN_OPENAI_TESTS -ErrorAction SilentlyContinue
 
 Write-Host "[1/5] Desktop frontend build"
+
 Push-Location desktop
 try {
-    if (-not (Test-Path "node_modules")) {
-        npm ci
-        if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
-    }
+    # Always reconstruct host-native frontend dependencies. A copied
+    # node_modules directory may contain binaries for another OS/CPU.
+    npm ci
+    if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
+
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "Desktop frontend build failed." }
 }
-finally { Pop-Location }
+finally {
+    Pop-Location
+}
 
 Write-Host "[2/5] Deterministic release verification"
 & $Python -m scripts.run_release_verification --offline
@@ -40,9 +44,15 @@ Write-Host "[4/5] PyInstaller onedir build"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed." }
 
 Write-Host "[5/5] Result"
+
 $Exe = Join-Path $Root "dist\MaryV2\MaryV2.exe"
-if (-not (Test-Path $Exe)) { throw "Expected executable was not produced: $Exe" }
+
+if (-not (Test-Path $Exe)) {
+    throw "Expected executable was not produced: $Exe"
+}
+
 Write-Host "PASS  $Exe"
 Write-Host "Mary's writable data defaults to %LOCALAPPDATA%\MaryV2\data when frozen."
 Write-Host "Set MARY_PORTABLE=1 to keep data in a data folder beside the executable."
-Write-Host "Keep .env beside MaryV2.exe, or set MARY_ENV_FILE to another local path."
+Write-Host "Fresh packaged installs read .env from %LOCALAPPDATA%\MaryV2\.env by default."
+Write-Host "A legacy .env beside MaryV2.exe is still honored; MARY_ENV_FILE overrides both."

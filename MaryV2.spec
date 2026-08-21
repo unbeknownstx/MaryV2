@@ -1,7 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import sys
 
 ROOT = Path(SPEC).resolve().parent
+ENV_EXAMPLE = ROOT / ".env.example"
+if not ENV_EXAMPLE.exists():
+    ENV_EXAMPLE = ROOT / "example.env.example"
 
 analysis = Analysis(
     [str(ROOT / "scripts" / "run_desktop.py")],
@@ -9,7 +13,7 @@ analysis = Analysis(
     binaries=[],
     datas=[
         (str(ROOT / "desktop" / "dist"), "desktop/dist"),
-        (str(ROOT / ".env.example"), "."),
+        (str(ENV_EXAMPLE), "."),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -19,7 +23,9 @@ analysis = Analysis(
     noarchive=False,
     optimize=1,
 )
+
 pyz = PYZ(analysis.pure)
+
 exe = EXE(
     pyz,
     analysis.scripts,
@@ -33,6 +39,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
 )
+
 collection = COLLECT(
     exe,
     analysis.binaries,
@@ -41,3 +48,13 @@ collection = COLLECT(
     upx=False,
     name="MaryV2",
 )
+
+# PyInstaller uses COLLECT for Windows/Linux. On macOS, wrap the same
+# verified runtime in a native .app bundle so Mary can launch like an app.
+if sys.platform == "darwin":
+    bundle = BUNDLE(
+        collection,
+        name="MaryV2.app",
+        icon=None,
+        bundle_identifier="com.unbe.maryv2",
+    )

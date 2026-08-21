@@ -35,6 +35,29 @@ def _truthy_env(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _platform_data_base() -> Path:
+    """Return the host-native writable application-data directory.
+
+    Frozen Mary builds must never write into PyInstaller's bundled resource
+    tree. Windows uses LOCALAPPDATA, macOS uses Application Support, and
+    Linux/Unix follows XDG_DATA_HOME when configured.
+    """
+
+    if sys.platform == "win32":
+        local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+        if local_app_data:
+            return Path(local_app_data).expanduser()
+        return Path.home() / "AppData" / "Local"
+
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+
+    xdg_data_home = os.getenv("XDG_DATA_HOME", "").strip()
+    if xdg_data_home:
+        return Path(xdg_data_home).expanduser()
+    return Path.home() / ".local" / "share"
+
+
 def _default_data_root(resource_root: Path) -> Path:
     explicit = os.getenv("MARY_DATA_DIR", "").strip()
     if explicit:
@@ -43,16 +66,45 @@ def _default_data_root(resource_root: Path) -> Path:
         return resource_root / "data"
     if _truthy_env("MARY_PORTABLE"):
         return _executable_root() / "data"
-    local_app_data = os.getenv("LOCALAPPDATA", "").strip()
-    base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
-    return base / "MaryV2" / "data"
+    return _platform_data_base() / "MaryV2" / "data"
+
+
+def _platform_config_base() -> Path:
+    """Return a host-native private configuration directory."""
+
+    if sys.platform == "win32":
+        local_app_data = os.getenv("LOCALAPPDATA", "").strip()
+        if local_app_data:
+            return Path(local_app_data).expanduser()
+        return Path.home() / "AppData" / "Local"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    xdg_config_home = os.getenv("XDG_CONFIG_HOME", "").strip()
+    if xdg_config_home:
+        return Path(xdg_config_home).expanduser()
+    return Path.home() / ".config"
 
 
 def _dotenv_path() -> Path:
     explicit = os.getenv("MARY_ENV_FILE", "").strip()
     if explicit:
         return Path(explicit).expanduser()
-    return _executable_root() / ".env"
+
+    # Source/development runs continue to use the repository-local .env.
+    if not getattr(sys, "frozen", False):
+        return _resource_root() / ".env"
+
+    # Portable builds intentionally keep all private state beside the app.
+    if _truthy_env("MARY_PORTABLE"):
+        return _executable_root() / ".env"
+
+    # Preserve the original Windows behavior when a side-by-side .env already
+    # exists, while giving fresh installs a user-writable configuration path.
+    legacy = _executable_root() / ".env"
+    if sys.platform == "win32" and legacy.exists():
+        return legacy
+
+    return _platform_config_base() / "MaryV2" / ".env"
 
 
 load_dotenv(dotenv_path=_dotenv_path(), override=False)
