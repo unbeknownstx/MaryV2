@@ -3,6 +3,11 @@
 A developer's real working tree is expected to contain a local ``.env``.
 Release hygiene therefore verifies that the file is ignored/excluded rather
 than requiring it to be deleted. The file itself is never opened or scanned.
+
+The scan is intentionally limited to MaryV2 release source. Host-managed
+dependency trees such as Replit's ``.pythonlibs`` are not project source.
+Example environment templates may contain obvious placeholder values such as
+``your_provider_key_here``; those are not treated as leaked credentials.
 """
 from __future__ import annotations
 
@@ -10,6 +15,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
 TEXT_SUFFIXES = {
     ".py",
     ".js",
@@ -22,35 +28,67 @@ TEXT_SUFFIXES = {
     ".yml",
     ".yaml",
     ".ps1",
+    ".sh",
     ".example",
 }
-SECRET_PATTERNS = [
+
+RAW_SECRET_PATTERNS = [
     re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"),
     re.compile(r"sk-[A-Za-z0-9_-]{32,}"),
-    re.compile(
-        r"(?i)(?:api[_-]?key|secret|token)\s*=\s*['\"]?[A-Za-z0-9_-]{32,}"
-    ),
 ]
+
+SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"""(?ix)
+    (?:api[_-]?key|secret|token)
+    \s*=\s*
+    ["']?
+    (?P<value>[A-Za-z0-9_./:+\-{}$<>]{20,})
+    """
+)
+
 SKIP_PARTS = {
     ".git",
     ".venv",
+    "venv",
+    ".pythonlibs",
+    "__pypackages__",
     "node_modules",
     "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".cache",
     "data",
     "dist",
     "build",
 }
+
 LOCAL_SECRET_NAMES = {
     ".env",
     ".env.bak",
     ".env.before_cleanup.bak",
 }
 
+PLACEHOLDER_PREFIXES = (
+    "your_",
+    "example_",
+    "sample_",
+    "replace_",
+    "changeme",
+    "change_me",
+    "placeholder",
+    "dummy_",
+    "test_",
+    "<",
+    "${",
+)
+
 
 def _gitignore_rules() -> set[str]:
     path = ROOT / ".gitignore"
     if not path.exists():
         return set()
+
     rules: set[str] = set()
     for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = raw.strip()
@@ -67,10 +105,44 @@ def _is_local_secret_file(path: Path) -> bool:
     )
 
 
+def _is_placeholder_value(value: str) -> bool:
+    normalized = str(value or "").strip().strip("\"'").lower()
+    if not normalized:
+        return True
+
+    if normalized in {
+        "none",
+        "null",
+        "unset",
+        "disabled",
+        "off",
+    }:
+        return True
+
+    return normalized.startswith(PLACEHOLDER_PREFIXES) or normalized.endswith(
+        ("_here", "-here")
+    )
+
+
+def _contains_possible_secret(text: str) -> bool:
+    # Provider-shaped raw keys are always suspicious, even inside examples.
+    if any(pattern.search(text) for pattern in RAW_SECRET_PATTERNS):
+        return True
+
+    # Generic API_KEY/TOKEN/SECRET assignments are suspicious only when the
+    # assigned value is not clearly an example/template placeholder.
+    for match in SECRET_ASSIGNMENT_PATTERN.finditer(text):
+        if not _is_placeholder_value(match.group("value")):
+            return True
+
+    return False
+
+
 def main() -> int:
     print("=" * 72)
     print("MARYV2 RELEASE HYGIENE")
     print("=" * 72)
+
     problems: list[str] = []
     ignore_rules = _gitignore_rules()
 
@@ -89,14 +161,14 @@ def main() -> int:
 
         if path.suffix.lower() not in TEXT_SUFFIXES and path.name != ".env.example":
             continue
+
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        for pattern in SECRET_PATTERNS:
-            if pattern.search(text):
-                problems.append(f"possible secret in {path.relative_to(ROOT)}")
-                break
+
+        if _contains_possible_secret(text):
+            problems.append(f"possible secret in {path.relative_to(ROOT)}")
 
     if problems:
         for problem in problems:
@@ -107,6 +179,7 @@ def main() -> int:
         print("PASS  local .env may exist in the working tree and is ignored")
     else:
         print("PASS  no local .env is present in this source snapshot")
+
     print("PASS  no obvious raw API-key pattern appears in releasable source")
     print("PASS  private env/runtime/build/cache paths are excluded from release scan scope")
     print("=" * 72)
