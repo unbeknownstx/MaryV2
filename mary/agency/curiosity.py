@@ -27,8 +27,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from mary.governance.bounds import bounded_payload, clip_text, enforce_capacity
-from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, load_json_recovering
+from mary.governance.bounds import (
+    bounded_payload,
+    clip_text,
+    enforce_capacity,
+)
+from mary.runtime.persistence import (
+    atomic_write_json,
+    cleanup_stale_temps,
+    load_json_recovering,
+)
 
 
 class CuriositySystem:
@@ -48,12 +56,29 @@ class CuriositySystem:
         content_limit: int = 2000,
         backup_generations: int = 3,
     ) -> None:
+
         self.path = Path(path)
-        self.capacity = max(1, int(capacity))
-        self.content_limit = max(128, int(content_limit))
-        self.backup_generations = max(1, int(backup_generations))
+
+        self.capacity = max(
+            1,
+            int(capacity),
+        )
+
+        self.content_limit = max(
+            128,
+            int(content_limit),
+        )
+
+        self.backup_generations = max(
+            1,
+            int(backup_generations),
+        )
+
         self.recovered_from_backup = False
-        self.curiosities: list[dict[str, Any]] = []
+
+        self.curiosities: list[
+            dict[str, Any]
+        ] = []
 
     # ============================================================
     # LIFECYCLE
@@ -61,57 +86,187 @@ class CuriositySystem:
 
     def load(self) -> None:
         """Load state with finite-backup recovery."""
-        cleanup_stale_temps(self.path)
-        if not self.path.exists() and not any(
-            self.path.with_name(f"{self.path.name}.bak{i}").exists()
-            for i in range(1, self.backup_generations + 1)
+
+        cleanup_stale_temps(
+            self.path
+        )
+
+        if (
+            not self.path.exists()
+            and not any(
+                self.path.with_name(
+                    f"{self.path.name}.bak{i}"
+                ).exists()
+                for i in range(
+                    1,
+                    self.backup_generations + 1,
+                )
+            )
         ):
             self._ensure_directory()
             self.save()
             return
-        payload, source = load_json_recovering(
-            self.path, backup_generations=self.backup_generations
+
+        payload, source = (
+            load_json_recovering(
+                self.path,
+                backup_generations=(
+                    self.backup_generations
+                ),
+            )
         )
-        if isinstance(payload, dict):
-            raw = payload.get("curiosities", [])
-        elif isinstance(payload, list):
+
+        if isinstance(
+            payload,
+            dict,
+        ):
+            raw = payload.get(
+                "curiosities",
+                [],
+            )
+
+        elif isinstance(
+            payload,
+            list,
+        ):
             raw = payload
+
         else:
             raw = []
-        self.curiosities = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+
+        self.curiosities = (
+            [
+                item
+                for item in raw
+                if isinstance(
+                    item,
+                    dict,
+                )
+            ]
+            if isinstance(
+                raw,
+                list,
+            )
+            else []
+        )
+
         self._compact()
-        self.recovered_from_backup = bool(source is not None and source != self.path)
+
+        self.recovered_from_backup = bool(
+            source is not None
+            and source != self.path
+        )
 
     def save(self) -> None:
         """Persist bounded state atomically."""
+
         self._ensure_directory()
         self._compact()
+
         atomic_write_json(
             self.path,
-            {"curiosities": self.curiosities},
-            backup_generations=self.backup_generations,
+            {
+                "curiosities":
+                    self.curiosities,
+            },
+            backup_generations=(
+                self.backup_generations
+            ),
             indent=2,
         )
 
     def _compact(self) -> int:
-        before = len(self.curiosities)
+
+        before = len(
+            self.curiosities
+        )
+
         for item in self.curiosities:
-            if isinstance(item, dict):
-                if isinstance(item.get("description"), str):
-                    item["description"] = clip_text(item["description"], self.content_limit)
-                item["metadata"] = bounded_payload(item.get("metadata", {}), text_limit=self.content_limit)
+
+            if not isinstance(
+                item,
+                dict,
+            ):
+                continue
+
+            if isinstance(
+                item.get(
+                    "description"
+                ),
+                str,
+            ):
+                item["description"] = (
+                    clip_text(
+                        item[
+                            "description"
+                        ],
+                        self.content_limit,
+                    )
+                )
+
+            item["metadata"] = (
+                bounded_payload(
+                    item.get(
+                        "metadata",
+                        {},
+                    ),
+                    text_limit=(
+                        self.content_limit
+                    ),
+                )
+            )
+
         enforce_capacity(
             self.curiosities,
             self.capacity,
             keep_score=lambda item: (
-                1.0 if str(item.get("status", "")) in {'exploring', 'open'} else 0.0,
-                float(item.get("importance", item.get("priority", 0.0)) or 0.0),
-                str(item.get("updated_at", item.get("created_at", ""))),
+                (
+                    1.0
+                    if str(
+                        item.get(
+                            "status",
+                            "",
+                        )
+                    )
+                    in {
+                        "exploring",
+                        "open",
+                    }
+                    else 0.0
+                ),
+                float(
+                    item.get(
+                        "importance",
+                        item.get(
+                            "priority",
+                            0.0,
+                        ),
+                    )
+                    or 0.0
+                ),
+                str(
+                    item.get(
+                        "updated_at",
+                        item.get(
+                            "created_at",
+                            "",
+                        ),
+                    )
+                ),
             ),
         )
-        return max(0, before - len(self.curiosities))
 
-    def _ensure_directory(self) -> None:
+        return max(
+            0,
+            before
+            - len(
+                self.curiosities
+            ),
+        )
+
+    def _ensure_directory(
+        self,
+    ) -> None:
         """Create the storage directory if necessary."""
 
         self.path.parent.mkdir(
@@ -128,7 +283,11 @@ class CuriositySystem:
         description: str,
         importance: float = 0.5,
         source: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[
+            str,
+            Any,
+        ]
+        | None = None,
     ) -> dict[str, Any] | None:
         """
         Create and persist a new curiosity.
@@ -143,29 +302,146 @@ class CuriositySystem:
             autonomous
         """
 
-        description = clip_text(str(
-            description
-        ).strip(), self.content_limit)
+        description = clip_text(
+            str(
+                description
+            ).strip(),
+            self.content_limit,
+        )
 
         if not description:
             return None
 
-        importance = self._clamp_score(
-            importance
+        importance = (
+            self._clamp_score(
+                importance
+            )
         )
 
         now = self._timestamp()
 
+        # Curiosities are active agency state, not an event log.
+        # Re-adding the same unresolved curiosity should strengthen
+        # the existing record instead of creating duplicates.
+        normalized_description = (
+            self._normalize_description(
+                description
+            )
+        )
+
+        for existing in self.curiosities:
+
+            if str(
+                existing.get(
+                    "status",
+                    "",
+                )
+            ) not in {
+                "open",
+                "exploring",
+            }:
+                continue
+
+            if (
+                self._normalize_description(
+                    existing.get(
+                        "description",
+                        "",
+                    )
+                )
+                != normalized_description
+            ):
+                continue
+
+            existing["importance"] = max(
+                self._clamp_score(
+                    existing.get(
+                        "importance",
+                        0.0,
+                    )
+                ),
+                importance,
+            )
+
+            # Never let a later test/source overwrite the provenance
+            # of an already-established curiosity.
+            if (
+                source is not None
+                and not existing.get(
+                    "source"
+                )
+            ):
+                existing[
+                    "source"
+                ] = source
+
+            if metadata:
+
+                current_metadata = (
+                    existing.get(
+                        "metadata"
+                    )
+                )
+
+                current_metadata = (
+                    current_metadata
+                    if isinstance(
+                        current_metadata,
+                        dict,
+                    )
+                    else {}
+                )
+
+                current_metadata.update(
+                    bounded_payload(
+                        metadata,
+                        text_limit=(
+                            self.content_limit
+                        ),
+                    )
+                )
+
+                existing[
+                    "metadata"
+                ] = bounded_payload(
+                    current_metadata,
+                    text_limit=(
+                        self.content_limit
+                    ),
+                )
+
+            existing[
+                "updated_at"
+            ] = now
+
+            self.save()
+
+            return existing
+
         curiosity = {
-            "id": self._next_id(),
-            "description": description,
-            "importance": importance,
-            "source": source,
-            "status": "open",
-            "created_at": now,
-            "updated_at": now,
-            "resolved_at": None,
-            "metadata": bounded_payload(metadata or {}, text_limit=self.content_limit),
+            "id":
+                self._next_id(),
+            "description":
+                description,
+            "importance":
+                importance,
+            "source":
+                source,
+            "status":
+                "open",
+            "created_at":
+                now,
+            "updated_at":
+                now,
+            "resolved_at":
+                None,
+            "metadata":
+                bounded_payload(
+                    metadata or {},
+                    text_limit=(
+                        self.content_limit
+                    ),
+                ),
         }
 
         self.curiosities.append(
@@ -181,7 +457,11 @@ class CuriositySystem:
         description: str,
         importance: float = 0.5,
         source: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[
+            str,
+            Any,
+        ]
+        | None = None,
     ) -> dict[str, Any] | None:
         """Compatibility alias for add_curiosity()."""
 
@@ -211,8 +491,16 @@ class CuriositySystem:
     ) -> dict[str, Any] | None:
         """Find a curiosity by ID."""
 
-        for curiosity in self.curiosities:
-            if curiosity.get("id") == curiosity_id:
+        for curiosity in (
+            self.curiosities
+        ):
+
+            if (
+                curiosity.get(
+                    "id"
+                )
+                == curiosity_id
+            ):
                 return curiosity
 
         return None
@@ -257,10 +545,15 @@ class CuriositySystem:
         self,
         status: str,
     ) -> list[dict[str, Any]]:
+
         return [
             curiosity
-            for curiosity in self.curiosities
-            if curiosity.get("status") == status
+            for curiosity
+            in self.curiosities
+            if curiosity.get(
+                "status"
+            )
+            == status
         ]
 
     # ============================================================
@@ -277,34 +570,42 @@ class CuriositySystem:
     ) -> bool:
         """Update an existing curiosity."""
 
-        curiosity = self.get_curiosity(
-            curiosity_id
+        curiosity = (
+            self.get_curiosity(
+                curiosity_id
+            )
         )
 
         if curiosity is None:
             return False
 
         if description is not None:
+
             description = str(
                 description
             ).strip()
 
             if description:
-                curiosity["description"] = description
+                curiosity[
+                    "description"
+                ] = description
 
         if importance is not None:
-            curiosity["importance"] = (
-                self._clamp_score(
-                    importance
-                )
+
+            curiosity[
+                "importance"
+            ] = self._clamp_score(
+                importance
             )
 
         if source is not None:
-            curiosity["source"] = source
+            curiosity[
+                "source"
+            ] = source
 
-        curiosity["updated_at"] = (
-            self._timestamp()
-        )
+        curiosity[
+            "updated_at"
+        ] = self._timestamp()
 
         self.save()
 
@@ -331,8 +632,10 @@ class CuriositySystem:
     ) -> bool:
         """Mark a curiosity as resolved."""
 
-        curiosity = self.get_curiosity(
-            curiosity_id
+        curiosity = (
+            self.get_curiosity(
+                curiosity_id
+            )
         )
 
         if curiosity is None:
@@ -340,9 +643,17 @@ class CuriositySystem:
 
         now = self._timestamp()
 
-        curiosity["status"] = "resolved"
-        curiosity["updated_at"] = now
-        curiosity["resolved_at"] = now
+        curiosity[
+            "status"
+        ] = "resolved"
+
+        curiosity[
+            "updated_at"
+        ] = now
+
+        curiosity[
+            "resolved_at"
+        ] = now
 
         self.save()
 
@@ -365,18 +676,26 @@ class CuriositySystem:
     ) -> bool:
         """Return a resolved or dismissed curiosity to open."""
 
-        curiosity = self.get_curiosity(
-            curiosity_id
+        curiosity = (
+            self.get_curiosity(
+                curiosity_id
+            )
         )
 
         if curiosity is None:
             return False
 
-        curiosity["status"] = "open"
-        curiosity["updated_at"] = (
-            self._timestamp()
-        )
-        curiosity["resolved_at"] = None
+        curiosity[
+            "status"
+        ] = "open"
+
+        curiosity[
+            "updated_at"
+        ] = self._timestamp()
+
+        curiosity[
+            "resolved_at"
+        ] = None
 
         self.save()
 
@@ -387,23 +706,33 @@ class CuriositySystem:
         curiosity_id: str,
         status: str,
     ) -> bool:
-        if status not in self.VALID_STATUSES:
+
+        if status not in (
+            self.VALID_STATUSES
+        ):
             return False
 
-        curiosity = self.get_curiosity(
-            curiosity_id
+        curiosity = (
+            self.get_curiosity(
+                curiosity_id
+            )
         )
 
         if curiosity is None:
             return False
 
-        curiosity["status"] = status
-        curiosity["updated_at"] = (
-            self._timestamp()
-        )
+        curiosity[
+            "status"
+        ] = status
+
+        curiosity[
+            "updated_at"
+        ] = self._timestamp()
 
         if status != "resolved":
-            curiosity["resolved_at"] = None
+            curiosity[
+                "resolved_at"
+            ] = None
 
         self.save()
 
@@ -426,8 +755,12 @@ class CuriositySystem:
 
         candidates = [
             curiosity
-            for curiosity in self.curiosities
-            if curiosity.get("status") in {
+            for curiosity
+            in self.curiosities
+            if curiosity.get(
+                "status"
+            )
+            in {
                 "open",
                 "exploring",
             }
@@ -472,8 +805,10 @@ class CuriositySystem:
 
         return [
             curiosity
-            for curiosity in self.curiosities
-            if query in str(
+            for curiosity
+            in self.curiosities
+            if query
+            in str(
                 curiosity.get(
                     "description",
                     "",
@@ -491,8 +826,10 @@ class CuriositySystem:
     ) -> bool:
         """Remove a curiosity from persistent storage."""
 
-        curiosity = self.get_curiosity(
-            curiosity_id
+        curiosity = (
+            self.get_curiosity(
+                curiosity_id
+            )
         )
 
         if curiosity is None:
@@ -510,42 +847,74 @@ class CuriositySystem:
     # UTILITIES
     # ============================================================
 
-    def count_open(self) -> int:
+    @staticmethod
+    def _normalize_description(
+        value: Any,
+    ) -> str:
+        """Normalize description text for active-curiosity deduplication."""
+
+        return " ".join(
+            str(
+                value or ""
+            )
+            .strip()
+            .casefold()
+            .split()
+        )
+
+    def count_open(
+        self,
+    ) -> int:
         """Return the number of unresolved open curiosities."""
 
         return len(
             self.get_open_curiosities()
         )
 
-    def count_exploring(self) -> int:
+    def count_exploring(
+        self,
+    ) -> int:
         """Return the number of curiosities being explored."""
 
         return len(
             self.get_exploring_curiosities()
         )
 
-    def count_unresolved(self) -> int:
+    def count_unresolved(
+        self,
+    ) -> int:
         """Return all curiosities that are not resolved."""
 
-        return len([
-            curiosity
-            for curiosity in self.curiosities
-            if curiosity.get("status") in {
-                "open",
-                "exploring",
-            }
-        ])
+        return len(
+            [
+                curiosity
+                for curiosity
+                in self.curiosities
+                if curiosity.get(
+                    "status"
+                )
+                in {
+                    "open",
+                    "exploring",
+                }
+            ]
+        )
 
     # ============================================================
     # INTERNAL HELPERS
     # ============================================================
 
-    def _next_id(self) -> str:
+    def _next_id(
+        self,
+    ) -> str:
         """Generate the next persistent curiosity ID."""
 
         highest = 0
 
-        for curiosity in self.curiosities:
+        for curiosity in (
+            self.curiosities
+        ):
+
             curiosity_id = str(
                 curiosity.get(
                     "id",
@@ -564,6 +933,7 @@ class CuriositySystem:
                         "_"
                     )[-1]
                 )
+
             except ValueError:
                 continue
 
@@ -572,10 +942,13 @@ class CuriositySystem:
                 number,
             )
 
-        return f"curiosity_{highest + 1}"
+        return (
+            f"curiosity_{highest + 1}"
+        )
 
     @staticmethod
-    def _timestamp() -> str:
+    def _timestamp(
+    ) -> str:
         """Return a timezone-aware UTC timestamp."""
 
         return datetime.now(
@@ -589,7 +962,10 @@ class CuriositySystem:
         """Keep a score within the 0.0-1.0 range."""
 
         try:
-            value = float(score)
+            value = float(
+                score
+            )
+
         except (
             TypeError,
             ValueError,
