@@ -76,6 +76,7 @@ def _rate_limited_app(tmp_path, monkeypatch):
     provider = RateLimitedProvider()
     mary.llm.register_provider("fake", provider)
     mary.config.llm.provider = "fake"
+    mary.config.llm.fallback_providers = []
     app = create_application(
         mary=mary,
         memory_path=tmp_path / "memory" / "memory.json",
