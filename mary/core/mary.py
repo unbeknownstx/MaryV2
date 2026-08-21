@@ -120,7 +120,7 @@ from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.environment import RuntimeEnvironment
-from mary.runtime.introspection import RuntimeIntrospection
+from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 
 
 class Mary:
@@ -1122,6 +1122,33 @@ class Mary:
         pending_question = self.conversation_learning.prompt_view()
         if pending_question is not None:
             relationship_view["pending_curiosity_question"] = pending_question
+
+        # Hybrid personal/runtime turns remain Mary conversation, but the model
+        # receives a tiny authoritative host snapshot so it can react naturally
+        # without inventing where it is running or which providers are usable.
+        if is_personal_runtime_reaction(input_text):
+            runtime = self.runtime_environment.snapshot()
+            prompt_mind_state["runtime_context"] = {
+                "host_type": runtime.get("host_type"),
+                "platform": runtime.get("platform"),
+                "effective_conversation_route": list(runtime.get("effective_conversation_route", []) or []),
+                "effective_task_route": list(runtime.get("effective_task_route", []) or []),
+                "available_providers": [
+                    name
+                    for name, data in dict(runtime.get("providers", {}) or {}).items()
+                    if bool(dict(data or {}).get("available"))
+                ],
+                "unavailable_providers": [
+                    name
+                    for name, data in dict(runtime.get("providers", {}) or {}).items()
+                    if bool(dict(data or {}).get("configured"))
+                    and not bool(dict(data or {}).get("available"))
+                ],
+                "guidance": (
+                    "Use these runtime facts only as grounded context. Answer as Mary in normal conversation; "
+                    "do not recite a diagnostic report unless the creator explicitly asks for one."
+                ),
+            }
 
         return {
             "memory": model_memory_context,

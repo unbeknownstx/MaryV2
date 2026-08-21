@@ -1,5 +1,8 @@
+"""Deterministic verification for Breakthrough 12.2 runtime introspection polish."""
+
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 from mary.core.config import Config
@@ -12,7 +15,7 @@ from mary.runtime.introspection import RuntimeIntrospection
 
 
 class FakeProvider(LLMInterface):
-    def __init__(self, name: str, *, available: bool = True, model: str | None = None):
+    def __init__(self, name: str, available: bool = True, model: str | None = None):
         self.name = name
         self.available = available
         self.model = model or f"{name}-test"
@@ -20,40 +23,35 @@ class FakeProvider(LLMInterface):
 
     def generate(self, messages, temperature=0.7, max_tokens=2048):
         self.calls += 1
-        return LLMResponse(
-            content=f"response from {self.name}",
-            provider=self.name,
-            model=self.model,
-            finish_reason="stop",
-        )
+        return LLMResponse(f"{self.name} answer", self.name, self.model, "stop")
 
-    def is_available(self) -> bool:
-        return self.available
-
-    def provider_name(self) -> str:
-        return self.name
-
-    def model_name(self) -> str:
-        return self.model
+    def is_available(self): return self.available
+    def provider_name(self): return self.name
+    def model_name(self): return self.model
 
 
-def _router(*, ollama: bool, openai: bool = False):
+def check(label: str, condition: bool) -> None:
+    if not condition:
+        raise AssertionError(label)
+    print(f"PASS {label}")
+
+
+def _router(ollama: bool = False, openai: bool = False):
     config = Config()
-    config.llm.routing_strategy = "free_first"
     router = LLMRouter(config)
     providers = {
-        "ollama": FakeProvider("ollama", available=ollama, model="qwen3:4b-instruct"),
-        "groq": FakeProvider("groq", model="openai/gpt-oss-20b"),
-        "gemini": FakeProvider("gemini", model="gemini-3.6-flash"),
-        "openrouter": FakeProvider("openrouter", model="openrouter/free"),
-        "openai": FakeProvider("openai", available=openai, model="gpt-5.6-luna"),
+        "ollama": FakeProvider("ollama", ollama, "qwen3:4b-instruct"),
+        "groq": FakeProvider("groq", True, "openai/gpt-oss-20b"),
+        "gemini": FakeProvider("gemini", True, "gemini-3.6-flash"),
+        "openrouter": FakeProvider("openrouter", True, "openrouter/free"),
+        "openai": FakeProvider("openai", openai, "gpt-5.6-luna"),
     }
     for name, provider in providers.items():
         router.register_provider(name, provider)
     return config, router, providers
 
 
-def _wire(mary: Mary, config: Config, router: LLMRouter) -> None:
+def _wire(mary: Mary, config, router) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
@@ -62,189 +60,59 @@ def _wire(mary: Mary, config: Config, router: LLMRouter) -> None:
     mary.runtime_introspection = RuntimeIntrospection()
 
 
-def _clear_host_env(monkeypatch) -> None:
-    for name in (
-        "REPL_ID", "REPL_SLUG", "REPL_OWNER", "REPLIT_DB_URL",
-        "CODESPACES", "CODESPACE_NAME",
-    ):
-        monkeypatch.delenv(name, raising=False)
+def main() -> None:
+    print("=" * 72)
+    print("MARY V2 BREAKTHROUGH 12.2 - RUNTIME INTROSPECTION / PORTABILITY POLISH")
+    print("=" * 72)
 
+    with patch.dict(os.environ, {"REPL_ID": "verification-repl"}, clear=False):
+        os.environ.pop("CODESPACES", None)
+        os.environ.pop("CODESPACE_NAME", None)
+        config, router, providers = _router(ollama=False, openai=True)
+        mary = Mary()
+        _wire(mary, config, router)
 
-def test_models_question_is_concise_runtime_answer_on_replit(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
-    config, router, providers = _router(ollama=False)
-    _wire(mary, config, router)
+        result = mary.process("what models can you use right now?")
+        text = result.final_response.lower()
+        check("provider question is concise and host-specific", "right now on replit / linux" in text and "my identity, memory, personality" not in text)
+        check("provider question uses zero generation calls", sum(provider.calls for provider in providers.values()) == 0)
+        check("runtime turn metadata is explicit", result.reasoning.metadata.get("generation_purpose") == "runtime_introspection" and result.reasoning.metadata.get("turn_policy", {}).get("category") == "local_runtime")
 
-    result = mary.process("what models can you use right now?")
-    text = result.final_response.lower()
+        result = mary.process("does anything about how you work change because were not on my pc?")
+        check("host-change question explains capabilities rather than dumping architecture", "this host changes which capabilities" in result.final_response.lower())
 
-    assert "right now on replit / linux" in text
-    assert "groq" in text and "gemini" in text and "openrouter" in text
-    assert "ollama" in text
-    assert "my identity, memory, personality" not in text
-    assert providers["groq"].calls == 0
-    assert result.reasoning.metadata["generation_purpose"] == "runtime_introspection"
-    assert result.reasoning.metadata["turn_policy"]["category"] == "local_runtime"
+        result = mary.process("where are you running right now?")
+        check("host question answers host/platform directly", result.final_response.lower().startswith("i'm running on replit / linux"))
 
+        result = mary.process("can u use ollama here?")
+        check("provider-specific question reports Ollama unavailable truthfully", "not reachable/available on this host" in result.final_response.lower())
 
-def test_host_change_question_gets_portability_answer_not_architecture_dump(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
+        intent = mary.cognition.detect_intent("what is the latest OpenAI model right now?")
+        check("external latest-model question still routes to web", intent.intent_type == IntentType.WEB_SEARCH)
+
+    # Portability matrix: identical provider policy, host-specific effective route.
+    for system_name, expected_platform in (("Windows", "windows"), ("Darwin", "macos")):
+        config, router, _ = _router(ollama=True)
+        with patch.dict(os.environ, {}, clear=True), patch("mary.runtime.environment.platform.system", return_value=system_name):
+            snap = RuntimeEnvironment(config=config, router=router).snapshot()
+            check(f"{expected_platform} host keeps Ollama first when available", snap["platform"] == expected_platform and snap["effective_conversation_route"][0] == "ollama")
+
+        config, router, _ = _router(ollama=False)
+        with patch.dict(os.environ, {}, clear=True), patch("mary.runtime.environment.platform.system", return_value=system_name):
+            snap = RuntimeEnvironment(config=config, router=router).snapshot()
+            check(f"{expected_platform} host safely skips Ollama when unavailable", snap["effective_conversation_route"] == ["groq", "gemini", "openrouter"])
+
     config, router, _ = _router(ollama=False)
-    _wire(mary, config, router)
-
-    result = mary.process("does anything about how you work change because were not on my pc?")
-    text = result.final_response.lower()
-
-    assert "my core maryv2 architecture does not change" in text
-    assert "this host changes which capabilities" in text
-    assert "effective conversation route" in text
-    assert "language models are routed generation engines" not in text
-
-
-def test_where_are_you_running_is_host_only_answer(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
-    config, router, _ = _router(ollama=False)
-    _wire(mary, config, router)
-
-    result = mary.process("where are you running right now?")
-    text = result.final_response.lower()
-
-    assert text.startswith("i'm running on replit / linux")
-    assert "desktop ui is not available" in text
-    assert "my identity, memory, personality" not in text
-
-
-def test_ollama_specific_question_reports_unavailable_without_llm(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
-    config, router, providers = _router(ollama=False)
-    _wire(mary, config, router)
-
-    result = mary.process("can u use ollama here?")
-    text = result.final_response.lower()
-
-    assert "ollama is configured" in text
-    assert "not reachable/available on this host" in text
-    assert providers["groq"].calls == 0
-
-
-def test_openai_specific_answer_preserves_explicit_expert_boundary(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
-    config, router, _ = _router(ollama=False, openai=True)
-    _wire(mary, config, router)
-
-    result = mary.process("can you use openai right now?")
-    text = result.final_response.lower()
-
-    assert "explicitly authorized one-task expert" in text
-
-
-def test_runtime_last_metadata_is_truthful_and_specific(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
-    config, router, _ = _router(ollama=False)
-    _wire(mary, config, router)
-
-    result = mary.process("what models can you use right now?")
-    meta = result.reasoning.metadata
-
-    assert meta["provider"] == "local/system"
-    assert meta["model"] == "n/a"
-    assert meta["generation_purpose"] == "runtime_introspection"
-    assert meta["turn_policy"]["category"] == "local_runtime"
-    assert meta["self_grounded"] is True
-
-
-def test_broad_architecture_question_still_gets_full_architecture_answer(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
-    config, router, _ = _router(ollama=False)
-    _wire(mary, config, router)
-
-    result = mary.process("what is your underlying architecture?")
-    text = result.final_response.lower()
-
-    assert "my identity, memory, personality" in text
-    assert "language models are routed generation engines" in text
-    assert "replit / linux" in text
-
-
-def test_external_latest_model_question_is_still_web_intent():
-    mary = Mary()
-    intent = mary.cognition.detect_intent("what is the latest OpenAI model right now?")
-    assert intent.intent_type == IntentType.WEB_SEARCH
-
-
-def test_portability_matrix_windows_with_ollama(monkeypatch):
-    _clear_host_env(monkeypatch)
-    config, router, _ = _router(ollama=True)
-    with patch("mary.runtime.environment.platform.system", return_value="Windows"):
+    with patch.dict(os.environ, {"REPL_ID": "ambient", "CODESPACES": "true"}, clear=True):
         snap = RuntimeEnvironment(config=config, router=router).snapshot()
-    assert snap["host_type"] == "local_development"
-    assert snap["platform"] == "windows"
-    assert snap["effective_conversation_route"][0] == "ollama"
+        check("explicit Codespaces marker beats inherited Replit marker", snap["host_type"] == "codespaces")
+
+    check("runtime environment version is Breakthrough 12.2", RuntimeEnvironment.VERSION == "v2-breakthrough-12.2")
+    check("runtime introspection remains Breakthrough 12.2 compatible", RuntimeIntrospection.VERSION in {"v2-breakthrough-12.2", "v2-breakthrough-12.3"})
+
+    print("=" * 72)
+    print("BREAKTHROUGH 12.2 VERIFIED")
 
 
-def test_portability_matrix_windows_without_ollama(monkeypatch):
-    _clear_host_env(monkeypatch)
-    config, router, _ = _router(ollama=False)
-    with patch("mary.runtime.environment.platform.system", return_value="Windows"):
-        snap = RuntimeEnvironment(config=config, router=router).snapshot()
-    assert snap["platform"] == "windows"
-    assert snap["effective_conversation_route"] == ["groq", "gemini", "openrouter"]
-
-
-def test_portability_matrix_macos_without_ollama(monkeypatch):
-    _clear_host_env(monkeypatch)
-    config, router, _ = _router(ollama=False)
-    with patch("mary.runtime.environment.platform.system", return_value="Darwin"):
-        snap = RuntimeEnvironment(config=config, router=router).snapshot()
-    assert snap["platform"] == "macos"
-    assert snap["capabilities"]["desktop_ui"] is True
-    assert snap["effective_conversation_route"] == ["groq", "gemini", "openrouter"]
-
-
-def test_portability_matrix_macos_with_ollama(monkeypatch):
-    _clear_host_env(monkeypatch)
-    config, router, _ = _router(ollama=True)
-    with patch("mary.runtime.environment.platform.system", return_value="Darwin"):
-        snap = RuntimeEnvironment(config=config, router=router).snapshot()
-    assert snap["platform"] == "macos"
-    assert snap["effective_conversation_route"][0] == "ollama"
-
-
-def test_portability_matrix_codespaces_beats_inherited_replit_markers(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "ambient-replit")
-    monkeypatch.setenv("CODESPACES", "true")
-    config, router, _ = _router(ollama=False)
-    snap = RuntimeEnvironment(config=config, router=router).snapshot()
-    assert snap["host_type"] == "codespaces"
-    assert snap["effective_conversation_route"] == ["groq", "gemini", "openrouter"]
-
-
-def test_portability_matrix_replit_has_no_desktop_hardware_capabilities(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
-    config, router, _ = _router(ollama=False)
-    snap = RuntimeEnvironment(config=config, router=router).snapshot()
-    assert snap["host_type"] == "replit"
-    assert snap["capabilities"]["desktop_ui"] is False
-    assert snap["capabilities"]["native_microphone"] is False
-    assert snap["capabilities"]["avatar"] is False
-
-
-def test_runtime_introspection_and_environment_versions_are_current():
-    assert RuntimeEnvironment.VERSION == "v2-breakthrough-12.2"
-    assert RuntimeIntrospection.VERSION == "v2-breakthrough-12.2"
+if __name__ == "__main__":
+    main()

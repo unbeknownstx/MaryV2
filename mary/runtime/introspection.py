@@ -15,6 +15,55 @@ from typing import Any
 from mary.cognition.natural_input import normalize_for_matching
 
 
+
+
+def is_personal_runtime_reaction(query: str) -> bool:
+    """Return True when runtime context is part of a personal Mary turn.
+
+    These turns mention the current host/device, but the user is primarily
+    asking for Mary's reaction or perspective rather than requesting a
+    diagnostic/runtime fact dump.  They should remain model-backed Mary
+    conversation while receiving a small grounded runtime context.
+    """
+
+    text = normalize_for_matching(str(query or ""))
+    tokens = set(text.split())
+
+    host_markers = (
+        "macbook", "mac", "macos", "replit", "codespaces", "pc",
+        "computer", "laptop", "phone", "iphone", "ipad", "windows",
+        "linux", "different machine", "different device", "running on",
+        "running from", "working on you from", "working on u from",
+    )
+    reaction_markers = (
+        "what do you think", "what do u think", "how do you feel",
+        "how do u feel", "what does that feel like", "isnt that cool",
+        "isn't that cool", "kinda cool", "kind of cool", "pretty cool",
+        "first time", "we are running", "were running", "we're running",
+        "working on you from", "working on u from",
+    )
+
+    has_host = any(marker in text for marker in host_markers) or bool(
+        tokens.intersection({"macbook", "replit", "codespaces", "pc", "laptop", "phone", "iphone", "ipad", "macos"})
+    )
+    has_reaction = any(marker in text for marker in reaction_markers)
+
+    # Pure runtime questions such as "where are you running?" or
+    # "what models can you use?" intentionally remain deterministic.
+    pure_runtime_markers = (
+        "where are you running", "where are u running",
+        "what models can", "which models can", "what providers can",
+        "which providers can", "what environment", "what host",
+        "can you use ollama", "can u use ollama",
+        "does anything about how you work change",
+        "does anything about how u work change",
+    )
+    if any(marker in text for marker in pure_runtime_markers):
+        return False
+
+    return bool(has_host and has_reaction)
+
+
 @dataclass(frozen=True)
 class RuntimeQuery:
     kind: str
@@ -24,7 +73,7 @@ class RuntimeQuery:
 class RuntimeIntrospection:
     """Classify and render deterministic runtime/environment answers."""
 
-    VERSION = "v2-breakthrough-12.2"
+    VERSION = "v2-breakthrough-12.3"
 
     _PROVIDERS = ("ollama", "groq", "gemini", "openrouter", "openai")
 

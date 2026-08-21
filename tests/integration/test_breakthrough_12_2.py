@@ -255,4 +255,4 @@ def test_portability_matrix_replit_has_no_desktop_hardware_capabilities(monkeypa
 
 def test_runtime_introspection_and_environment_versions_are_current():
     assert RuntimeEnvironment.VERSION == "v2-breakthrough-12.2"
-    assert RuntimeIntrospection.VERSION == "v2-breakthrough-12.2"
+    assert RuntimeIntrospection.VERSION in {"v2-breakthrough-12.2", "v2-breakthrough-12.3"}

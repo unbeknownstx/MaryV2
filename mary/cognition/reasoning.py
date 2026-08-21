@@ -1067,6 +1067,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "pending_curiosity_question": relationship.get("pending_curiosity_question") if isinstance(relationship, dict) else None,
             },
             "emotion": mind.get("emotion", {}),
+            "runtime_context": dict(mind.get("runtime_context", {}) or {})
+            if isinstance(mind.get("runtime_context", {}), dict) else {},
             "agency": {
                 "top_priorities": unique_items(agency.get("top_priorities", []), limit=3) if isinstance(agency, dict) else [],
                 "active_curiosities": unique_items(agency.get("active_curiosities", []), limit=3) if isinstance(agency, dict) else [],

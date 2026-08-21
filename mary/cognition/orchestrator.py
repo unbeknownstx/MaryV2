@@ -30,6 +30,7 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.continuity import is_conversation_recall_query
 from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching, looks_like_question
+from mary.runtime.introspection import is_personal_runtime_reaction
 from mary.cognition.reasoning import (
     ReasoningEngine,
     ReasoningResult,
@@ -1007,6 +1008,13 @@ class CognitiveOrchestrator:
         """Detect questions about Mary's own local state before web routing."""
 
         normalized = normalize_for_matching(text)
+
+        # A turn may mention the current host while still primarily asking for
+        # Mary's personal reaction. Keep those hybrid turns conversational and
+        # let the runtime layer provide grounded host facts to cognition instead
+        # of replacing Mary's voice with a deterministic diagnostic paragraph.
+        if is_personal_runtime_reaction(text):
+            return None
 
         patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
             ("runtime_architecture", (
