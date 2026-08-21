@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import compileall
+from contextlib import contextmanager
 import importlib
 import os
 import subprocess
@@ -42,6 +43,36 @@ from mary.tools.manager import ToolManager
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_LLM_TEST = "tests/conversation/test_live_pipeline.py"
+
+# The offline release gate must not inherit live provider credentials or
+# developer-specific routing from a local .env.  The real runtime still loads
+# and uses those values normally; these names are stripped only while
+# deterministic release checks are running.
+_OFFLINE_STRIP_ENV: tuple[str, ...] = (
+    "MARY_RUN_LIVE_TESTS",
+    "MARY_RUN_OPENAI_TESTS",
+    "GROQ_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "MARY_LLM_PROVIDER",
+    "MARY_LLM_MODEL",
+    "MARY_LLM_FALLBACKS",
+    "MARY_LLM_ROUTING_STRATEGY",
+    "MARY_LLM_FREE_ORDER",
+    "MARY_LLM_CONVERSATION_ORDER",
+    "MARY_LLM_EXPERT_PROVIDER",
+    "MARY_GROQ_MODEL",
+    "MARY_GEMINI_MODEL",
+    "MARY_OPENROUTER_MODEL",
+    "MARY_OPENAI_MODEL",
+    "MARY_OPENAI_REASONING_EFFORT",
+)
+
+# Point child processes at a deliberately nonexistent dotenv path so importing
+# mary.core.config cannot silently reload the developer's real project .env.
+_OFFLINE_ENV_FILE = ROOT / ".maryv2_release_offline_no_env"
 
 # Keep this list explicit. New verify_*.py scripts must be deliberately added
 # here rather than silently entering the release gate. A unit test guards that
@@ -100,12 +131,46 @@ def _heading(title: str) -> None:
 
 
 def _offline_environment() -> dict[str, str]:
-    """Return a child-process environment that cannot enable live LLM pytest."""
+    """Return a deterministic child-process environment for offline checks."""
 
     environment = os.environ.copy()
-    environment.pop("MARY_RUN_LIVE_TESTS", None)
-    environment.pop("MARY_RUN_OPENAI_TESTS", None)
+    for name in _OFFLINE_STRIP_ENV:
+        environment.pop(name, None)
+
+    environment["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
     return environment
+
+
+@contextmanager
+def _offline_process_environment():
+    """Temporarily isolate in-process deterministic checks from live providers.
+
+    ``mary.core.config`` may already have loaded the developer's ``.env`` by
+    the time this runner starts.  Removing the relevant values around each
+    in-process check keeps verifier behavior identical across Windows, macOS,
+    Linux, Replit, and CI while restoring the user's real environment after
+    the check completes.
+    """
+
+    saved = {name: os.environ.get(name) for name in _OFFLINE_STRIP_ENV}
+    saved_env_file = os.environ.get("MARY_ENV_FILE")
+
+    try:
+        for name in _OFFLINE_STRIP_ENV:
+            os.environ.pop(name, None)
+        os.environ["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+        if saved_env_file is None:
+            os.environ.pop("MARY_ENV_FILE", None)
+        else:
+            os.environ["MARY_ENV_FILE"] = saved_env_file
 
 
 def discover_verifier_modules() -> tuple[str, ...]:
@@ -158,10 +223,11 @@ def run_pytest() -> bool:
 
 def run_diagnostics() -> bool:
     _heading("SYSTEM DIAGNOSTICS")
-    mary = Mary()
-    diagnostics = MaryDiagnostics(mary)
-    print(diagnostics.report())
-    summary = diagnostics.summary()
+    with _offline_process_environment():
+        mary = Mary()
+        diagnostics = MaryDiagnostics(mary)
+        print(diagnostics.report())
+        summary = diagnostics.summary()
     return bool(
         summary.get("healthy")
         and summary.get("failed") == 0
@@ -177,8 +243,9 @@ def run_verifier(name: str, module: str) -> bool:
         # Some standalone verifiers define their own argparse options. They
         # must not inherit release-runner flags such as --offline.
         sys.argv = [module]
-        verifier = importlib.import_module(module)
-        result = verifier.main()
+        with _offline_process_environment():
+            verifier = importlib.import_module(module)
+            result = verifier.main()
     except SystemExit as exc:
         code = exc.code
         return code is None or code == 0
