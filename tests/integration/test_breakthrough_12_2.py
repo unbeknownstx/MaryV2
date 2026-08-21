@@ -70,9 +70,19 @@ def _clear_host_env(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
-def test_models_question_is_concise_runtime_answer_on_replit(monkeypatch):
+def _simulate_replit(monkeypatch) -> None:
+    """Simulate the real Replit host independently of the machine running pytest."""
+
     _clear_host_env(monkeypatch)
     monkeypatch.setenv("REPL_ID", "portable-test")
+    monkeypatch.setattr(
+        "mary.runtime.environment.platform.system",
+        lambda: "Linux",
+    )
+
+
+def test_models_question_is_concise_runtime_answer_on_replit(monkeypatch):
+    _simulate_replit(monkeypatch)
     mary = Mary()
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
@@ -106,8 +116,7 @@ def test_host_change_question_gets_portability_answer_not_architecture_dump(monk
 
 
 def test_where_are_you_running_is_host_only_answer(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
+    _simulate_replit(monkeypatch)
     mary = Mary()
     config, router, _ = _router(ollama=False)
     _wire(mary, config, router)
@@ -166,8 +175,7 @@ def test_runtime_last_metadata_is_truthful_and_specific(monkeypatch):
 
 
 def test_broad_architecture_question_still_gets_full_architecture_answer(monkeypatch):
-    _clear_host_env(monkeypatch)
-    monkeypatch.setenv("REPL_ID", "portable-test")
+    _simulate_replit(monkeypatch)
     mary = Mary()
     config, router, _ = _router(ollama=False)
     _wire(mary, config, router)
