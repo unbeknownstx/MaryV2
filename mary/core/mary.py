@@ -120,6 +120,7 @@ from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.environment import RuntimeEnvironment
+from mary.runtime.introspection import RuntimeIntrospection
 
 
 class Mary:
@@ -277,6 +278,7 @@ class Mary:
 
         self.llm = self._create_llm_router()
         self.runtime_environment = RuntimeEnvironment(config=self.config, router=self.llm)
+        self.runtime_introspection = RuntimeIntrospection()
 
         # Ephemeral runtime metadata only. This is intentionally not persisted:
         # it records which provider/model generated the most recent successful
@@ -2322,161 +2324,42 @@ class Mary:
         *,
         query: str = "",
     ) -> str:
-        """Describe Mary's actual runtime without provider self-invention."""
+        """Answer runtime/host/provider questions from authoritative state.
 
-        cognition_status = dict(
-            self.status().get(
-                "cognition",
-                {},
-            )
-        )
-        strategy = str(
-            cognition_status.get(
-                "routing_strategy",
-                "configured",
-            )
-        )
+        Breakthrough 12.2 intentionally keeps these answers question-shaped:
+        provider questions receive provider state, host questions receive host
+        state, and only broad architecture questions receive the full system
+        explanation. No language model or web lookup is used.
+        """
+
+        cognition_status = dict(self.status().get("cognition", {}) or {})
+        strategy = str(cognition_status.get("routing_strategy", "configured"))
         provider_order = [
             str(item)
-            for item in cognition_status.get(
-                "provider_order",
-                [],
-            )
+            for item in cognition_status.get("provider_order", [])
             if str(item).strip()
         ]
         conversation_order = [
             str(item)
-            for item in cognition_status.get(
-                "conversation_provider_order",
-                [],
-            )
+            for item in cognition_status.get("conversation_provider_order", [])
             if str(item).strip()
         ]
-        route_text = (
-            " -> ".join(provider_order)
-            if provider_order
-            else str(cognition_status.get("llm", "unknown"))
-        )
         environment = self.runtime_environment.snapshot()
-        effective_task = list(environment.get("effective_task_route", []) or [])
-        effective_conversation = list(environment.get("effective_conversation_route", []) or [])
-        host_type = str(environment.get("host_type", "unknown"))
-        platform_name = str(environment.get("platform", "unknown"))
-
         override = (
             self.llm.session_override_status()
             if callable(getattr(self.llm, "session_override_status", None))
             else {"provider": None, "route": None}
         )
 
-        parts = [
-            (
-                "I'm MaryV2. My identity, memory, personality, relationship "
-                "model, cognition, agency, tools, expression, and other "
-                "connected systems run in my Python architecture. The "
-                "language model is a generation engine I route to; it is not "
-                "my identity."
-            ),
-            (
-                f"My general/task LLM routing strategy is {strategy}, with the configured "
-                f"route: {route_text}."
-            ),
-            (
-                f"This process is running on {host_type} / {platform_name}. "
-                "My provider policy is portable: unavailable providers are capabilities I simply skip on this host."
-            ),
-            (
-                "My preferred personal/character conversation route is "
-                + (" -> ".join(conversation_order) if conversation_order else "not configured")
-                + ", while my effective route on this host is "
-                + (" -> ".join(effective_conversation) if effective_conversation else "no currently available provider")
-                + "."
-            ),
-            (
-                "My effective task/general route on this host is "
-                + (" -> ".join(effective_task) if effective_task else "no currently available provider")
-                + "."
-            ),
-        ]
-
-        if override.get("route") == "private":
-            parts.append(
-                "A process-local override is active: ordinary model-backed turns are currently "
-                "forced through the private Ollama route."
-            )
-        elif override.get("provider"):
-            parts.append(
-                f"A process-local override is active: ordinary model-backed turns are currently "
-                f"forced through {override.get('provider')}."
-            )
-
-        providers = dict(environment.get("providers", {}) or {})
-        ollama_state = dict(providers.get("ollama", {}) or {})
-        if ollama_state.get("available"):
-            parts.append(
-                "Ollama is reachable on this host, so it can take its preferred local conversation role."
-            )
-        else:
-            parts.append(
-                "Ollama is not reachable on this host right now. That does not affect my identity; "
-                "I continue through the available configured providers."
-            )
-
-        query_normalized = str(query or "").lower().replace("’", "'")
-        if "ollama" in query_normalized and any(
-            phrase in query_normalized
-            for phrase in (
-                "how can i let you use",
-                "how do i let you use",
-                "how can i make you use",
-                "can you use",
-                "can u use",
-            )
-        ):
-            try:
-                local_model = self.llm.get_provider("ollama").model_name()
-            except Exception:
-                local_model = "configured local model"
-            if ollama_state.get("available"):
-                parts.append(
-                    "You don't need to hand me an endpoint or model name during conversation. "
-                    f"Ollama is reachable here ({local_model}) and can take its local conversation role. "
-                    "`/route` shows the effective route and `/last` shows which provider actually answered."
-                )
-            else:
-                parts.append(
-                    "Ollama is part of my provider architecture but is not reachable from this host. "
-                    "You do not need to configure it just to keep me running; I use the available cloud providers instead."
-                )
-
-        previous = dict(self._last_generation_metadata or {})
-        if previous:
-            provider = str(previous.get("provider") or "unknown")
-            model = str(previous.get("model") or "unknown")
-            finish_reason = str(previous.get("finish_reason") or "unknown")
-            parts.append(
-                f"The most recent successful model-backed turn in this process "
-                f"used {provider} with {model} (finish reason: {finish_reason})."
-            )
-        elif any(
-            phrase in str(query).lower()
-            for phrase in (
-                "last answer",
-                "last response",
-                "generated that",
-            )
-        ):
-            parts.append(
-                "I don't have a previous successful model-backed turn recorded "
-                "in this process yet."
-            )
-
-        parts.append(
-            "This architecture answer itself is coming directly from my runtime "
-            "state, so no language model is being asked to guess the answer."
+        return self.runtime_introspection.render(
+            query=query,
+            environment=environment,
+            routing_strategy=strategy,
+            configured_task_route=provider_order,
+            configured_conversation_route=conversation_order,
+            session_override=override,
+            last_generation=dict(self._last_generation_metadata or {}),
         )
-
-        return " ".join(parts)
 
     # ================================================================
     # TOOLS / WEB RESEARCH
@@ -2706,18 +2589,37 @@ class Mary:
             ),
         )
 
+        reasoning_metadata: dict[str, Any] = {
+            "llm_skipped": True,
+            "self_grounded": bool(
+                intent is not None
+                and intent.intent_type == IntentType.SELF_QUERY
+            ),
+        }
+        if (
+            intent is not None
+            and intent.intent_type == IntentType.SELF_QUERY
+            and str(intent.parameters.get("self_query_type", "")).strip().lower()
+            == "runtime_architecture"
+        ):
+            reasoning_metadata.update({
+                "provider": "local/system",
+                "model": "n/a",
+                "generation_purpose": "runtime_introspection",
+                "turn_policy": {
+                    "category": "local_runtime",
+                    "generation_purpose": "runtime_introspection",
+                    "local_first": False,
+                    "rationale": "runtime facts come from Mary's process-local environment state",
+                },
+            })
+
         reasoning = ReasoningResult(
             response=response,
             confidence=1.0,
             reasoning_type="deterministic_system_action",
             intent=intent,
-            metadata={
-                "llm_skipped": True,
-                "self_grounded": bool(
-                    intent is not None
-                    and intent.intent_type == IntentType.SELF_QUERY
-                ),
-            },
+            metadata=reasoning_metadata,
         )
         reflection = ReflectionResult(
             decision=ReflectionDecision.ACCEPT,

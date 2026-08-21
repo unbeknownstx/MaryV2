@@ -72,6 +72,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("breakthrough_local_core_10", "scripts.verify_breakthrough_10"),
     ("breakthrough_conversation_state_11", "scripts.verify_breakthrough_11"),
     ("breakthrough_host_capabilities_12", "scripts.verify_breakthrough_12"),
+    ("breakthrough_runtime_introspection_12_2", "scripts.verify_breakthrough_12_2"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
