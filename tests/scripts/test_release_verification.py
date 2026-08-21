@@ -16,11 +16,22 @@ def test_release_registry_covers_every_current_verifier_script():
 def test_offline_environment_forcibly_disables_live_llm(monkeypatch):
     monkeypatch.setenv("MARY_RUN_LIVE_TESTS", "1")
     monkeypatch.setenv("MARY_RUN_OPENAI_TESTS", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "live-groq")
+    monkeypatch.setenv("GEMINI_API_KEY", "live-gemini")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "live-openrouter")
+    monkeypatch.setenv("OPENAI_API_KEY", "live-openai")
+    monkeypatch.setenv("MARY_LLM_FALLBACKS", "gemini,openrouter")
 
     environment = release._offline_environment()
 
     assert "MARY_RUN_LIVE_TESTS" not in environment
     assert "MARY_RUN_OPENAI_TESTS" not in environment
+    assert "GROQ_API_KEY" not in environment
+    assert "GEMINI_API_KEY" not in environment
+    assert "OPENROUTER_API_KEY" not in environment
+    assert "OPENAI_API_KEY" not in environment
+    assert "MARY_LLM_FALLBACKS" not in environment
+    assert environment["MARY_ENV_FILE"] == str(release._OFFLINE_ENV_FILE)
 
 
 def test_normal_pytest_run_uses_offline_environment(monkeypatch):
