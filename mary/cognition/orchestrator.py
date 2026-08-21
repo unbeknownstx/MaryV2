@@ -1243,6 +1243,63 @@ class CognitiveOrchestrator:
         if any(marker in normalized for marker in runtime_markers):
             return self_intent("runtime_architecture")
 
+        # Runtime/provider questions need to tolerate ordinary chat wording,
+        # missing punctuation, and small typos without falling through to a
+        # provider that can hallucinate its own identity. Keep this semantic
+        # guard deliberately narrow: it only fires when the user is clearly
+        # asking about Mary's own providers or the host she is running on.
+        runtime_tokens = set(normalized.split())
+        provider_subject = bool(
+            runtime_tokens.intersection({
+                "model", "models", "provider", "providers", "api", "apis",
+                "ollama", "groq", "gemini", "openrouter", "openai",
+            })
+        )
+        provider_availability_context = (
+            "right now" in normalized
+            or "currently" in runtime_tokens
+            or "available" in runtime_tokens
+            or "using" in runtime_tokens
+            or "running" in runtime_tokens
+            or "access" in runtime_tokens
+            or "use" in runtime_tokens
+            or "can" in runtime_tokens
+        )
+        if (
+            looks_like_question(text)
+            and provider_subject
+            and provider_availability_context
+            and bool(runtime_tokens.intersection({"you", "your"}))
+        ):
+            return self_intent("runtime_architecture")
+
+        host_subject = bool(
+            runtime_tokens.intersection({
+                "replit", "codespaces", "host", "environment", "device",
+                "pc", "computer", "laptop", "mac", "macbook", "phone",
+                "iphone", "ipad", "windows", "linux", "macos",
+            })
+        )
+        host_change_context = any(
+            marker in normalized
+            for marker in (
+                "how you work",
+                "anything about how you work",
+                "does anything change",
+                "what changes",
+                "work differently",
+                "different because",
+                "not on my pc",
+                "not at my pc",
+                "not on the pc",
+                "not at the pc",
+                "running on",
+                "running in",
+            )
+        )
+        if looks_like_question(text) and host_subject and host_change_context:
+            return self_intent("runtime_architecture")
+
         # Physical self-questions have too many natural phrasings to maintain
         # as a brittle exact-phrase list. Route them to Mary's canonical
         # appearance evidence instead of letting a provider answer from its own

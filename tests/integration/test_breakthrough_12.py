@@ -157,3 +157,25 @@ def test_environment_snapshot_is_display_safe(monkeypatch):
     assert "API_KEY" not in text
     assert "sk-" not in text
     assert "prompt" not in text.lower()
+
+
+def test_models_available_typo_still_routes_to_runtime_not_llm():
+    mary = Mary()
+    intent = mary.cognition.detect_intent("what models can you ise right now?")
+    assert intent.intent_type == IntentType.SELF_QUERY
+    assert intent.parameters["self_query_type"] == "runtime_architecture"
+
+
+def test_natural_not_on_pc_wording_routes_to_runtime_not_llm():
+    mary = Mary()
+    intent = mary.cognition.detect_intent(
+        "does anything about how you work change because were not on my pc?"
+    )
+    assert intent.intent_type == IntentType.SELF_QUERY
+    assert intent.parameters["self_query_type"] == "runtime_architecture"
+
+
+def test_provider_runtime_guard_does_not_steal_external_model_news():
+    mary = Mary()
+    intent = mary.cognition.detect_intent("what is the latest OpenAI model right now?")
+    assert intent.intent_type == IntentType.WEB_SEARCH
