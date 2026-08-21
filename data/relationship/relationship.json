@@ -2044,10 +2044,24 @@
           "source": "creator_natural_shared_work"
         },
         "created_at": "2026-08-21T01:46:58.281056"
+      },
+      {
+        "id": "relationship_c2edebd99382",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "we finished the 12.4.1 shared-work recall hotfix on my MacBook",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-21T04:02:09.518006"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-21T01:46:58.281058"
+    "updated_at": "2026-08-21T04:02:09.518078"
   },
   "understanding": {
     "observations": [
