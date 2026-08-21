@@ -1662,6 +1662,51 @@ class Mary:
         }
 
     @staticmethod
+    def _render_creator_owned_shared_work(text: Any) -> str:
+        """Render creator-authored shared-work evidence from Mary's viewpoint.
+
+        Shared-work history deliberately stores the creator's original wording
+        as evidence.  When Mary later speaks that evidence herself, a small
+        perspective adjustment prevents phrases such as ``my MacBook`` or
+        ``building you`` from being repeated as if Mary originally said them.
+        The conversion is intentionally narrow rather than a general rewrite.
+        """
+
+        value = " ".join(str(text or "").split()).strip()
+        if not value:
+            return value
+
+        # Possessives are unambiguous across the creator/Mary boundary.
+        placeholders = {
+            "__MARYV2_CREATOR_YOUR__": "your",
+            "__MARYV2_MARY_MY__": "my",
+            "__MARYV2_CREATOR_YOURS__": "yours",
+            "__MARYV2_MARY_MINE__": "mine",
+        }
+        value = re.sub(r"\bmine\b", "__MARYV2_CREATOR_YOURS__", value, flags=re.IGNORECASE)
+        value = re.sub(r"\bmy\b", "__MARYV2_CREATOR_YOUR__", value, flags=re.IGNORECASE)
+        value = re.sub(r"\byours\b", "__MARYV2_MARY_MINE__", value, flags=re.IGNORECASE)
+        value = re.sub(r"\byour\b", "__MARYV2_MARY_MY__", value, flags=re.IGNORECASE)
+        for marker, replacement in placeholders.items():
+            value = value.replace(marker, replacement)
+
+        # In creator-authored work notes, these positions are object references
+        # to Mary, so they can safely become first person when Mary recounts them.
+        value = re.sub(
+            r"\b(building|developing|fixing|testing|improving|polishing|updating)\s+you\b",
+            lambda match: f"{match.group(1)} me",
+            value,
+            flags=re.IGNORECASE,
+        )
+        value = re.sub(
+            r"\b(for|with|to)\s+you\b",
+            lambda match: f"{match.group(1)} me",
+            value,
+            flags=re.IGNORECASE,
+        )
+        return value
+
+    @staticmethod
     def _shared_work_evidence(text: str) -> str | None:
         """Return a conservative creator-authored shared-work statement.
 
@@ -1957,8 +2002,16 @@ class Mary:
         items: list[tuple[int, str, str]] = []
         seen: set[str] = set()
 
-        def add(text: Any, *, source: str, score: int) -> None:
+        def add(
+            text: Any,
+            *,
+            source: str,
+            score: int,
+            creator_owned: bool = False,
+        ) -> None:
             value = " ".join(str(text or "").split()).strip()
+            if creator_owned:
+                value = self._render_creator_owned_shared_work(value)
             if not value or text_has_test_probe_marker(value):
                 return
             key = normalize_for_matching(value)
@@ -1984,7 +2037,12 @@ class Mary:
             if event_type == "milestone":
                 add(event.get("description"), source="relationship_history", score=96)
             elif event_type == "shared_experience" and metadata.get("kind") == "shared_work":
-                add(event.get("description"), source="shared_work_history", score=94)
+                add(
+                    event.get("description"),
+                    source="shared_work_history",
+                    score=94,
+                    creator_owned=metadata.get("owner") == "creator",
+                )
 
         # Current-session evidence keeps a brand-new milestone available before
         # the user restarts Mary.  Only declarative shared-work statements pass.
@@ -1993,7 +2051,7 @@ class Mary:
                 continue
             evidence = self._shared_work_evidence(str(message.get("content", "")))
             if evidence:
-                add(evidence, source="current_session", score=90)
+                add(evidence, source="current_session", score=90, creator_owned=True)
 
         # Episodic/semantic layers contribute only when explicitly tagged as
         # shared work/project continuity.  This prevents unrelated preferences

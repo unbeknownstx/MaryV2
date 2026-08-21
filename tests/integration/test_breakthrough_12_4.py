@@ -17,12 +17,15 @@ def test_shared_work_question_routes_to_durable_relationship_recall(tmp_path, mo
     monkeypatch.chdir(tmp_path)
     mary = Mary()
 
-    intent = mary.cognition.detect_intent(
-        "what do you remember about what we've been working on together?"
+    prompts = (
+        "what do you remember about what we've been working on together?",
+        "remind me what we've actually been building together lately",
     )
 
-    assert intent.intent_type == IntentType.RELATIONSHIP_QUERY
-    assert intent.parameters["relationship_query_type"] == "shared_work"
+    for prompt in prompts:
+        intent = mary.cognition.detect_intent(prompt)
+        assert intent.intent_type == IntentType.RELATIONSHIP_QUERY
+        assert intent.parameters["relationship_query_type"] == "shared_work"
 
 
 def test_macbook_mixed_turn_becomes_grounded_shared_work_history(tmp_path, monkeypatch):
@@ -37,15 +40,26 @@ def test_macbook_mixed_turn_becomes_grounded_shared_work_history(tmp_path, monke
     assert learned is not None
     assert learned["recorded"] is True
 
+    second = mary._learn_shared_work_statement(
+        "We've spent all day building you.",
+        intent=_conversation_intent(),
+    )
+    assert second is not None
+    assert second["recorded"] is True
+
     result = mary.process(
-        "what do you remember about what we've been working on together?"
+        "remind me what we've actually been building together lately"
     )
 
     assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
     assert result.reasoning.metadata["llm_skipped"] is True
     assert result.reflection.metadata["mode"] == "deterministic_system_action"
-    assert "macbook" in result.final_response.lower()
-    assert "what do you think" not in result.final_response.lower()
+    lowered = result.final_response.lower()
+    assert "your macbook" in lowered
+    assert "my macbook" not in lowered
+    assert "building me" in lowered
+    assert "building you" not in lowered
+    assert "what do you think" not in lowered
 
 
 def test_shared_work_history_survives_restart(tmp_path, monkeypatch):

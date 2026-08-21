@@ -655,6 +655,11 @@ class CognitiveOrchestrator:
                 r"\bwhat have we built together\b",
                 r"\bwhat projects have we worked on together\b",
                 r"\bwhat do you remember about our work together\b",
+                # Natural recap wording should resolve to the same durable
+                # shared-work path instead of falling through to free-form LLM
+                # conversation. Keep this conservative by requiring both a
+                # shared/together cue and a concrete work/development verb.
+                r"\bremind me (?:about )?what we(?:'ve| have) (?:actually )?(?:(?:been )?(?:working on|building|developing|fixing|testing)|(?:worked on|built|developed|fixed|tested)) together(?: lately| recently)?\b",
             )
             if any(re.search(pattern, normalized) for pattern in shared_work_patterns):
                 query_type = "shared_work"
