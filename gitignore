@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 !example.env.example
+.venv*/
+venv*/
+.pythonlibs/
 
 # Runtime state and personal data
 data/

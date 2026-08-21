@@ -1,13 +1,15 @@
 """Static release-hygiene checks for a private MaryV2 working tree.
 
-A developer's real working tree is expected to contain a local ``.env``.
-Release hygiene therefore verifies that the file is ignored/excluded rather
-than requiring it to be deleted. The file itself is never opened or scanned.
+A developer's real working tree may contain a local ``.env``. Release hygiene
+therefore verifies that the file is ignored/excluded rather than requiring it
+to be deleted. The file itself is never opened or scanned.
 
-The scan is intentionally limited to MaryV2 release source. Host-managed
-dependency trees such as Replit's ``.pythonlibs`` are not project source.
-Example environment templates may contain obvious placeholder values such as
-``your_provider_key_here``; those are not treated as leaked credentials.
+The scan intentionally ignores local dependency/runtime trees such as .venv,
+.venv-1, Replit .pythonlibs, node_modules, build/dist output, caches, and
+Mary's private data directory.
+
+Example environment templates are scanned, but obvious placeholders such as
+``your_provider_key_here`` are allowed.
 """
 from __future__ import annotations
 
@@ -19,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TEXT_SUFFIXES = {
     ".py",
     ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
     ".html",
     ".css",
     ".md",
@@ -32,24 +37,42 @@ TEXT_SUFFIXES = {
     ".example",
 }
 
-RAW_SECRET_PATTERNS = [
+# Strong provider-shaped secrets. These remain suspicious anywhere in scanned
+# project source, even if they are not assigned to a variable.
+RAW_SECRET_PATTERNS = (
     re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"),
     re.compile(r"sk-[A-Za-z0-9_-]{32,}"),
-]
+)
 
-SECRET_ASSIGNMENT_PATTERN = re.compile(
+# Only inspect literal assignments on a single line. This intentionally avoids
+# treating normal code such as ``token = request.approval_token`` as a secret.
+QUOTED_SECRET_ASSIGNMENT = re.compile(
     r"""(?ix)
+    \b
+    [A-Za-z0-9_$-]*
     (?:api[_-]?key|secret|token)
+    [A-Za-z0-9_$-]*
     \s*=\s*
-    ["']?
-    (?P<value>[A-Za-z0-9_./:+\-{}$<>]{20,})
+    ["']
+    (?P<value>[^"'\r\n]+)
+    ["']
     """
 )
 
-SKIP_PARTS = {
+ENV_ASSIGNMENT = re.compile(
+    r"""(?x)
+    ^
+    \s*
+    (?P<name>[A-Za-z_][A-Za-z0-9_]*)
+    \s*=\s*
+    (?P<value>.*?)
+    \s*
+    $
+    """
+)
+
+EXACT_SKIP_PARTS = {
     ".git",
-    ".venv",
-    "venv",
     ".pythonlibs",
     "__pypackages__",
     "node_modules",
@@ -69,6 +92,12 @@ LOCAL_SECRET_NAMES = {
     ".env.before_cleanup.bak",
 }
 
+# These files intentionally contain fake secret-shaped strings/patterns in
+# order to test the hygiene scanner itself. They are not release credentials.
+SELF_TEST_EXEMPTIONS = {
+    Path("tests/scripts/test_release_hygiene.py"),
+}
+
 PLACEHOLDER_PREFIXES = (
     "your_",
     "example_",
@@ -82,6 +111,15 @@ PLACEHOLDER_PREFIXES = (
     "<",
     "${",
 )
+
+PLACEHOLDER_EXACT = {
+    "",
+    "none",
+    "null",
+    "unset",
+    "disabled",
+    "off",
+}
 
 
 def _gitignore_rules() -> set[str]:
@@ -105,37 +143,84 @@ def _is_local_secret_file(path: Path) -> bool:
     )
 
 
+def _is_dependency_or_runtime_part(part: str) -> bool:
+    lowered = str(part or "").strip().lower()
+
+    if lowered in EXACT_SKIP_PARTS:
+        return True
+
+    # Windows/Replit/IDE-created environment variants:
+    # .venv, .venv-1, .venv311, venv, venv-2, etc.
+    if lowered == ".venv" or lowered.startswith(".venv-"):
+        return True
+    if lowered == "venv" or lowered.startswith("venv-"):
+        return True
+
+    return False
+
+
 def _is_placeholder_value(value: str) -> bool:
     normalized = str(value or "").strip().strip("\"'").lower()
-    if not normalized:
+
+    if normalized in PLACEHOLDER_EXACT:
         return True
 
-    if normalized in {
-        "none",
-        "null",
-        "unset",
-        "disabled",
-        "off",
-    }:
+    if normalized.startswith(PLACEHOLDER_PREFIXES):
         return True
 
-    return normalized.startswith(PLACEHOLDER_PREFIXES) or normalized.endswith(
-        ("_here", "-here")
+    if normalized.endswith(("_here", "-here")):
+        return True
+
+    return False
+
+
+def _looks_like_secret_name(name: str) -> bool:
+    normalized = str(name or "").strip().lower().replace("-", "_")
+    return any(
+        marker in normalized
+        for marker in ("api_key", "apikey", "secret", "token")
     )
 
 
-def _contains_possible_secret(text: str) -> bool:
-    # Provider-shaped raw keys are always suspicious, even inside examples.
+def _contains_possible_secret(text: str, *, env_template: bool = False) -> bool:
+    # A real provider-shaped raw key is suspicious anywhere.
     if any(pattern.search(text) for pattern in RAW_SECRET_PATTERNS):
         return True
 
-    # Generic API_KEY/TOKEN/SECRET assignments are suspicious only when the
-    # assigned value is not clearly an example/template placeholder.
-    for match in SECRET_ASSIGNMENT_PATTERN.finditer(text):
-        if not _is_placeholder_value(match.group("value")):
+    # In Python/JS/etc., only literal string assignments are considered generic
+    # secret evidence. Normal object/attribute assignments are not.
+    for line in text.splitlines():
+        match = QUOTED_SECRET_ASSIGNMENT.search(line)
+        if match and not _is_placeholder_value(match.group("value")):
             return True
 
+    # Environment templates commonly use unquoted KEY=value assignments.
+    if env_template:
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            match = ENV_ASSIGNMENT.match(line)
+            if match is None:
+                continue
+
+            name = match.group("name")
+            value = match.group("value")
+
+            if not _looks_like_secret_name(name):
+                continue
+
+            if not _is_placeholder_value(value):
+                return True
+
     return False
+
+
+def _is_scannable_text(path: Path) -> bool:
+    if path.name in {".env.example", "example.env.example"}:
+        return True
+    return path.suffix.lower() in TEXT_SUFFIXES
 
 
 def main() -> int:
@@ -151,7 +236,18 @@ def main() -> int:
         problems.append("local .env exists but .gitignore does not exclude it")
 
     for path in ROOT.rglob("*"):
-        if not path.is_file() or any(part in SKIP_PARTS for part in path.parts):
+        if not path.is_file():
+            continue
+
+        try:
+            relative = path.relative_to(ROOT)
+        except ValueError:
+            continue
+
+        if any(_is_dependency_or_runtime_part(part) for part in relative.parts):
+            continue
+
+        if relative in SELF_TEST_EXEMPTIONS:
             continue
 
         # Never inspect private local environment files. Their contract is
@@ -159,7 +255,7 @@ def main() -> int:
         if _is_local_secret_file(path):
             continue
 
-        if path.suffix.lower() not in TEXT_SUFFIXES and path.name != ".env.example":
+        if not _is_scannable_text(path):
             continue
 
         try:
@@ -167,8 +263,10 @@ def main() -> int:
         except OSError:
             continue
 
-        if _contains_possible_secret(text):
-            problems.append(f"possible secret in {path.relative_to(ROOT)}")
+        env_template = path.name in {".env.example", "example.env.example"}
+
+        if _contains_possible_secret(text, env_template=env_template):
+            problems.append(f"possible secret in {relative}")
 
     if problems:
         for problem in problems:
