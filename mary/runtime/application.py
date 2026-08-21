@@ -220,6 +220,48 @@ def format_resource_state(application: "MaryApplication") -> str:
     return "\n".join(lines)
 
 
+def format_memory_status(application: "MaryApplication") -> str:
+    """Show why memory did or did not change without exposing private bodies."""
+
+    state = application.mary.memory_lifecycle_status()
+    counts = dict(state.get("counts", {}) or {})
+    capacities = dict(state.get("capacities", {}) or {})
+    last_event = dict(state.get("last_memory_event", {}) or {})
+    consolidation = dict(state.get("consolidation", {}) or {})
+    shared = dict(state.get("shared_work", {}) or {})
+    last_shared = dict(shared.get("last_learning", {}) or {})
+    last_recall = dict(shared.get("last_recall", {}) or {})
+
+    lines = [
+        "MARYV2 MEMORY LIFECYCLE",
+        "────────────────────────────────",
+        f"Episodic: {counts.get('episodic', 0)} / {capacities.get('episodic', '?')}",
+        f"Semantic: {counts.get('semantic', 0)} / {capacities.get('semantic', '?')}",
+        f"Working:  {counts.get('working', 0)} / {capacities.get('working', '?')}",
+        "",
+        "Last durable memory action:",
+        f"- operation: {last_event.get('operation', 'none')}",
+        f"- detected: {last_event.get('detected', 'n/a')}",
+        f"- stored: {last_event.get('stored', False)}",
+        f"- relationship_committed: {last_event.get('relationship_committed', False)}",
+        f"- reason: {last_event.get('reason', 'n/a')}",
+        "",
+        "Semantic consolidation:",
+        f"- automatic during normal conversation: {'YES' if consolidation.get('automatic') else 'NO'}",
+        f"- currently eligible candidates: {consolidation.get('eligible_candidates', 0)}",
+        f"- explanation: {consolidation.get('reason', 'unknown')}",
+        "",
+        f"Durable shared-work events: {shared.get('durable_events', 0)}",
+        f"Last shared-work detection: recorded={last_shared.get('recorded', False)} reason={last_shared.get('reason', 'n/a')}",
+    ]
+    if last_recall:
+        lines.extend([
+            f"Last shared-work recall: candidates={last_recall.get('candidate_count', 0)} selected={last_recall.get('selected_count', 0)}",
+            "Recall sources: " + (", ".join(map(str, last_recall.get('sources', []))) or "none"),
+        ])
+    return "\n".join(lines)
+
+
 def format_route_state(application: "MaryApplication") -> str:
     """Show preferred policy, host availability, and effective routes truthfully."""
 
@@ -580,7 +622,7 @@ def run_interactive(
         print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help', '/state', '/resources', '/route', '/environment', '/contract', '/audit', '/pending', '/last', or 'exit'.")
+    print("Type '/help', '/state', '/resources', '/memory-status', '/route', '/environment', '/contract', '/audit', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -630,6 +672,10 @@ def run_interactive(
 
             if command in {"/resources", "/resource", "resources"}:
                 print(format_resource_state(app))
+                continue
+
+            if command in {"/memory-status", "/memory", "memory status", "memory lifecycle"}:
+                print(format_memory_status(app))
                 continue
 
             if command in {"/route", "/model", "route", "model route"}:

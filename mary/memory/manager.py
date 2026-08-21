@@ -61,6 +61,11 @@ class MemoryManager:
         self.last_load_source: str | None = None
         self.recovered_from_backup = False
         self.stale_temps_removed = 0
+        self.last_lifecycle_event: Dict[str, Any] = {
+            "operation": "startup",
+            "stored": False,
+            "reason": "no_memory_operation_yet",
+        }
         if auto_load and self.storage_path is not None:
             self.load()
 
@@ -86,15 +91,31 @@ class MemoryManager:
                 emotional_context=metadata.get("emotional_context", {}),
                 metadata=metadata,
             )
+            self.record_lifecycle_event({
+                "operation": "remember",
+                "stored": result is not None,
+                "memory_type": "episodic",
+                "memory_id": getattr(result, "id", None),
+                "importance": importance,
+                "source": metadata.get("source", "interaction"),
+            })
             self._persist_if_enabled()
             return result
         if memory_type == "working":
-            return self.working.add(
+            result = self.working.add(
                 content=content,
                 category=metadata.get("category", "general"),
                 importance=importance,
                 source=metadata.get("source"),
             )
+            self.record_lifecycle_event({
+                "operation": "remember",
+                "stored": result is not None,
+                "memory_type": "working",
+                "importance": importance,
+                "source": metadata.get("source"),
+            })
+            return result
         if memory_type == "semantic":
             subject = metadata.get("subject")
             predicate = metadata.get("predicate")
@@ -110,6 +131,14 @@ class MemoryManager:
                 confidence=metadata.get("confidence", 1.0),
                 source=metadata.get("source"),
             )
+            self.record_lifecycle_event({
+                "operation": "remember",
+                "stored": result is not None,
+                "memory_type": "semantic",
+                "memory_id": result.get("id") if isinstance(result, dict) else None,
+                "importance": importance,
+                "source": metadata.get("source"),
+            })
             self._persist_if_enabled()
             return result
         raise ValueError(f"Unknown memory type: {memory_type}")
@@ -274,6 +303,43 @@ class MemoryManager:
             self.recovered_from_backup = False
             self.last_load_source = str(self.storage_path) if self.storage_path else None
         return ok
+
+    def record_lifecycle_event(self, event: Dict[str, Any] | None) -> None:
+        """Record a compact, display-safe explanation of the latest memory action."""
+        if not isinstance(event, dict):
+            return
+        allowed = {
+            "operation", "detected", "learned", "stored", "already_known",
+            "memory_type", "memory_id", "importance", "category", "label",
+            "reason", "source", "relationship_committed", "shared_work_recorded",
+        }
+        self.last_lifecycle_event = {
+            key: event.get(key)
+            for key in allowed
+            if key in event
+        }
+
+    def lifecycle_status(self) -> Dict[str, Any]:
+        """Return read-only observability for storage and semantic consolidation."""
+        try:
+            candidates = list(self.consolidation.consolidate())
+        except Exception:
+            candidates = []
+        semantic_count = self.semantic.count()
+        return {
+            "policy": "bounded_selective_persistence",
+            "last_event": dict(self.last_lifecycle_event),
+            "consolidation": {
+                "automatic": False,
+                "eligible_candidates": len(candidates),
+                "semantic_count": semantic_count,
+                "reason": (
+                    "semantic promotion is selective and not automatic during normal conversation"
+                    if semantic_count == 0
+                    else "semantic memory contains promoted durable facts; normal conversation still does not auto-promote every episode"
+                ),
+            },
+        }
 
     def _persist_if_enabled(self) -> None:
         if self.auto_save and self.storage_path is not None:
