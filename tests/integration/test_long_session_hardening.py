@@ -298,9 +298,10 @@ def test_prior_mary_improvisation_cannot_become_creator_history(tmp_path, monkey
 
     # The natural project-continuity phrase is now handled locally, so Mary's
     # own improvised assistant turn cannot be reinterpreted as creator history.
-    assert result.intent.intent_type == IntentType.CONVERSATION_RECALL
+    assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert result.intent.parameters["relationship_query_type"] == "shared_work"
     lowered = result.final_response.lower()
-    assert "don't have a grounded shared-work item" in lowered
+    assert "don't have enough grounded shared-work history" in lowered
     assert "you've been humming" not in lowered
     assert "red panda" not in lowered
 

@@ -641,6 +641,25 @@ class CognitiveOrchestrator:
         query_type = query_map.get(normalized)
 
         if query_type is None:
+            # Broad shared-work/history questions belong to Mary's durable
+            # relationship continuity, not only the active chat window.  This
+            # intentionally runs before generic conversation-recall detection.
+            shared_work_patterns = (
+                r"\bwhat do you remember about what we(?:'ve| have) been working on together\b",
+                r"\bwhat do you remember about what we(?:'ve| have) worked on together\b",
+                r"\bwhat (?:have|did) we work on together\b",
+                r"\bwhat have we been working on together\b",
+                r"\bwhat have we worked on together\b",
+                r"\bwhat are we working on together\b",
+                r"\bwhat have we been building together\b",
+                r"\bwhat have we built together\b",
+                r"\bwhat projects have we worked on together\b",
+                r"\bwhat do you remember about our work together\b",
+            )
+            if any(re.search(pattern, normalized) for pattern in shared_work_patterns):
+                query_type = "shared_work"
+
+        if query_type is None:
             # Natural creator-memory phrasing should stay on the local creator
             # model instead of falling through to generic memory or dynamic-web
             # heuristics.  Keep this ownership-specific: "about me" here means

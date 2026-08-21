@@ -1,5 +1,6 @@
 {
-  "version": 2,
+  "version": 3,
+  "policy": "bounded_relationship_continuity",
   "user_model": {
     "creator_id": "creator",
     "name": "unbe",
@@ -2015,10 +2016,38 @@
           "evidence_id": "episode_211fd0c530c549aa9092564f46d3d4a9"
         },
         "created_at": "2026-08-19T00:22:42.658608"
+      },
+      {
+        "id": "relationship_1a9c59556abc",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We've spent all day building you",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-21T01:46:57.332111"
+      },
+      {
+        "id": "relationship_cc1034112681",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "we're running on my MacBook for the first time",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-21T01:46:58.281056"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-19T00:22:42.658612"
+    "updated_at": "2026-08-21T01:46:58.281058"
   },
   "understanding": {
     "observations": [
