@@ -1,0 +1,20 @@
+MARYV2 12.8 ECOSYSTEM + PRESENCE — PACKAGE VALIDATION
+======================================================
+
+Canonical pytest: 660 passed, 1 skipped
+Mary diagnostics: 54 / 54 PASS; Healthy True
+Complete deterministic/offline release gate: PASS
+12.8 Ecosystem + Presence verifier: PASS
+Release hygiene: PASS
+Standalone source readiness: PASS
+Frontend JavaScript syntax check (`npm run check`): PASS
+Persistent repo data after tests/release gate: ABSENT
+
+The packaging environment could not complete `npm ci` because registry access
+timed out, so Vite was unavailable for the final production bundle here.
+The target Windows PC performs the host-native `npm ci` + `npm run build`.
+
+External Twitch/OBS/vision/Ren'Py skills are disabled by default for first boot.
+Local-first voice support is included; ElevenLabs cloud fallback is opt-in.
+
+Start with: START_HERE_12_8.md

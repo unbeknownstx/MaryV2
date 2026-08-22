@@ -59,7 +59,8 @@ def test_desktop_full_body_camera_framing_is_geometry_based() -> None:
 
     assert "verticalDistance" in source
     assert "horizontalDistance" in source
-    assert "Math.max(verticalDistance, horizontalDistance) * 1.18" in source
+    assert "setAvatarFraming" in source
+    assert "Math.max(verticalDistance, horizontalDistance) * padding" in source
     assert "const distance = height * 1.05" not in source
 
 
@@ -95,16 +96,15 @@ def test_groq_provider_has_bounded_interactive_timeout_without_sdk_retries() -> 
 
 def test_conversation_composer_stays_visible_while_messages_scroll() -> None:
     source = (_root() / "desktop" / "src" / "style.css").read_text(encoding="utf-8")
+    html = (_root() / "desktop" / "index.html").read_text(encoding="utf-8")
 
-    assert "grid-template-rows: auto minmax(0, 1fr) auto" in source
-    assert ".conversation-pane" in source
-    assert "height: 100%" in source
-    assert "overflow: hidden" in source
-    assert ".messages" in source
-    assert "min-height: 0" in source
-    assert "overflow-y: auto" in source
-    assert ".composer" in source
-    assert "z-index: 2" in source
+    assert ".main-column" in source
+    assert "grid-template-rows: var(--titlebar-height) minmax(0, 1fr) 120px" in source
+    assert ".chat-scroll" in source
+    assert "overflow-y:auto" in source.replace(" ", "")
+    assert ".composer-deck" in source
+    assert 'id="composer"' in html
+    assert 'id="messages"' in html
 
 
 def test_desktop_voice_and_avatar_share_marys_existing_emotion_state() -> None:
@@ -162,10 +162,29 @@ def test_desktop_exposes_display_safe_live_character_state() -> None:
     html = (root / "desktop" / "index.html").read_text(encoding="utf-8")
 
     assert "characterStateChanged = Signal(str)" in bridge
+    assert "dashboardStateChanged = Signal(str)" in bridge
     assert "def getCharacterState" in bridge
-    assert "self.application.mary.live_state" in bridge
+    assert "def getDashboardState" in bridge
+    assert "build_desktop_dashboard_state" in bridge
     assert "applyCharacterState" in frontend
+    assert "applyDashboardState" in frontend
     assert "bridge.getCharacterState" in frontend
-    assert 'id="character-state-card"' in html
+    assert "bridge.getDashboardState" in frontend
     assert 'id="state-mood"' in html
-    assert 'id="state-memories"' in html
+    assert 'id="connection-meter"' in html
+    assert 'id="memory-highlights"' in html
+    assert 'id="recent-activities"' in html
+
+
+def test_game_shell_contains_required_navigation_and_workspaces() -> None:
+    root = _root()
+    html = (root / "desktop" / "index.html").read_text(encoding="utf-8")
+    frontend = (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+
+    for screen in ("chat", "memories", "personality", "studio", "gallery", "media", "voice", "settings"):
+        assert f'data-screen="{screen}"' in html
+    assert "renderStudio" in frontend
+    assert "renderMedia" in frontend
+    assert "renderPersonality" in frontend
+    assert "openCommandPalette" in frontend
+

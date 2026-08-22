@@ -23,7 +23,7 @@ def main() -> int:
         ("bridge.voicePlaybackStopRequested.connect" in frontend, "frontend obeys authoritative playback-stop requests"),
         ("stopVoicePlayback({ notifyBridge: false });" in frontend, "barge-in silences Mary before the next input path starts"),
         ("bridge?.voicePlaybackStarted?.();" in frontend and "bridge?.voicePlaybackFinished?.();" in frontend, "actual audio playback drives speaking lifecycle"),
-        ("'Interrupt'" in frontend and "#mic-button.speaking" in css, "mic UI visibly becomes an interruption control while Mary speaks"),
+        ("'Interrupt'" in frontend and ".round-button.speaking" in css, "mic UI visibly becomes an interruption control while Mary speaks"),
     ]
 
     print("MARYV2 DESKTOP CONVERSATION RUNTIME INSTALL VERIFICATION")

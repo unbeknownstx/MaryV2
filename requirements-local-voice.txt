@@ -1,0 +1,8 @@
+# Optional MaryV2 12.8 local speech extras.
+# Main Mary does not require these to start.
+#
+# Local STT (optional; downloads a Whisper model on first use):
+faster-whisper>=1.1,<2
+#
+# Piper TTS is distributed as a local executable/model, not required as a pip
+# dependency here. Configure MARY_PIPER_EXECUTABLE and MARY_PIPER_MODEL.

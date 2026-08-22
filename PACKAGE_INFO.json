@@ -1,0 +1,20 @@
+{
+  "application": "MaryV2",
+  "version": "12.8.0",
+  "release": "Ecosystem + Presence + Polished First Program Pass",
+  "channel": "private-v2",
+  "desktop_phase": "ecosystem-presence-first-program",
+  "base_release": "MaryV2 12.7 Desktop Game Shell",
+  "private_runtime_state_included": false,
+  "environment_secrets_included": false,
+  "avatar_model_assets_included": true,
+  "canonical_test_result": "660 passed, 1 skipped",
+  "diagnostics": "54/54 PASS; Healthy True",
+  "offline_release_gate": "PASS",
+  "ecosystem_presence_verifier": "PASS",
+  "frontend_source_check": "PASS (node --check + desktop regression tests)",
+  "frontend_host_build_note": "npm registry timed out in packaging environment; run npm ci/npm run build on target PC",
+  "start_here": "START_HERE_12_8.md",
+  "first_boot_helper": "scripts/first_boot_windows.ps1",
+  "asset_policy": "project-created/procedural assets; no third-party asset download required for first boot"
+}

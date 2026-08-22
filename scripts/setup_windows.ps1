@@ -17,10 +17,8 @@ $Python = ".venv\Scripts\python.exe"
 
 & $Python -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed." }
-
 & $Python -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "Core dependency installation failed." }
-
 & $Python -m pip install -r requirements-desktop.txt
 if ($LASTEXITCODE -ne 0) { throw "Desktop dependency installation failed." }
 
@@ -35,16 +33,23 @@ Push-Location desktop
 try {
     npm ci
     if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
-
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "Desktop frontend build failed." }
 }
-finally {
-    Pop-Location
-}
+finally { Pop-Location }
+
+& $Python -m scripts.final_preflight --build-ready
+if ($LASTEXITCODE -ne 0) { throw "Final build preflight failed." }
 
 & $Python -m scripts.run_release_verification --offline
 if ($LASTEXITCODE -ne 0) { throw "Release verification failed." }
 
-Write-Host "Setup complete. Launch Mary with:"
-Write-Host "  .venv\Scripts\python.exe -m scripts.run_desktop"
+& $Python -m scripts.verify_state_integrity
+if ($LASTEXITCODE -ne 0) { throw "Persistent state integrity check failed." }
+
+Write-Host "Setup complete. Launch Mary with the canonical Windows state using:"
+Write-Host "  powershell -ExecutionPolicy Bypass -File scripts\run_mary_windows.ps1"
+Write-Host "Game-style launcher:"
+Write-Host "  powershell -ExecutionPolicy Bypass -File scripts\launch_launcher_windows.ps1"
+Write-Host "Direct desktop shell (bypass launcher):"
+Write-Host "  powershell -ExecutionPolicy Bypass -File scripts\launch_windows.ps1"

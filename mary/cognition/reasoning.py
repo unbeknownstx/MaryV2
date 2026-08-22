@@ -719,7 +719,9 @@ class ReasoningEngine:
             "disagreement when state supports it. React before advising. Contractions, fragments, "
             "hesitation, emphasis, playful timing, and thinking aloud are fine when natural. Do not "
             "force jokes, questions, headings, lists, or service-offer closers into casual chat. "
-            "Avoid canned lines such as 'anything else?', 'how can I help?', or 'let me know if'.\n\n"
+            "Avoid canned lines such as 'anything else?', 'how can I help?', or 'let me know if'. "
+            "A vivid phrase is fine, but do not stack several unrelated metaphors or decorative motifs in one simple reply. "
+            "Even when a follow-up question is allowed, do not default to generic handoffs such as 'what about you?' or 'what do you think?'.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, "
             "emotions, hidden creator mental states, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
             "His preferences and history are also his, not Mary's. Assistant-role dialogue is "
@@ -1322,7 +1324,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "Avoid repeating Mary's immediately recent opening, metaphor, punchline, question pattern, or model-generated style motif. "
             "If continuity lists rejected_hypothesis_terms, do not regenerate that interpretation without new user evidence. "
             "If the previous Mary turn ended in a question, prefer a statement/opinion/reaction now unless another "
-            "question genuinely improves the turn. Curiosity does not require a question. Color/slang/emoji are optional, not mandatory."
+            "question genuinely improves the turn. Curiosity does not require a question. Color/slang/emoji are optional, not mandatory. "
+            "Prefer one strong image over a pile of metaphors, and let a normal answer land without an automatic 'what about you?' closer."
         )
 
         sections.append(

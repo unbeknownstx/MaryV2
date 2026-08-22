@@ -49,7 +49,7 @@ def main() -> int:
         ("expression = mary.avatar.sync_emotion()" not in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop bridge keeps AvatarState and AvatarExpression types separate"),
         ("leftUpperArm: { rotation: quaternionArrayFromEuler(0, 0, -1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "left arm lowers from T-pose"),
         ("rightUpperArm: { rotation: quaternionArrayFromEuler(0, 0, 1.28) }" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "right arm lowers from T-pose"),
-        ("Math.max(verticalDistance, horizontalDistance) * 1.18" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "camera frames Mary using full-body geometry"),
+        ("const distance = Math.max(verticalDistance, horizontalDistance) * padding" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8") and "setAvatarFraming" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "camera frames Mary using geometry-aware adjustable presentation"),
         ("worker.moveToThread(thread)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop conversation uses a dedicated QThread"),
         ("@Slot(object)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop completion is marshalled through a Qt slot"),
         ("Avatar presentation is best-effort" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "avatar presentation cannot swallow a chat response"),
@@ -69,7 +69,7 @@ def main() -> int:
         ("canonical_text: str" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop preserves canonical Mary response for debug/history"),
         ("display_text = spoken_text or response_text" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop transcript matches Mary's exact spoken wording"),
         ("class SpeechRenderer" in (root / "mary" / "voice" / "speech_renderer.py").read_text(encoding="utf-8"), "local deterministic speech renderer is installed"),
-        ("grid-template-rows: auto minmax(0, 1fr) auto" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8"), "desktop pins composer while messages scroll"),
+        (".main-column" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8") and "grid-template-rows: var(--titlebar-height) minmax(0, 1fr) 120px" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8") and ".chat-scroll" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8") and "overflow-y:auto" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8") and ".composer-deck" in (root / "desktop" / "src" / "style.css").read_text(encoding="utf-8"), "desktop pins composer while chat/workspace content can scroll"),
         ("emotional_state=mary.emotion.state" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop voice and avatar share Mary's existing emotion state"),
         ("resolve_emotion_voice_settings" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "Mary voice delivery resolves from emotional state"),
         ("class EmotionVoiceAdjustment" in (root / "mary" / "voice" / "emotion_profile.py").read_text(encoding="utf-8"), "emotion voice profile is local and provider-independent"),
@@ -95,7 +95,7 @@ def main() -> int:
         ("characterStateChanged = Signal(str)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop publishes live character state"),
         ("def getCharacterState" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop exposes display-safe character snapshot"),
         ("applyCharacterState" in (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8"), "frontend renders Mary state in real time"),
-        ('id="character-state-card"' in (root / "desktop" / "index.html").read_text(encoding="utf-8"), "desktop includes Mary live-state card"),
+        ('id="sidebar-status-card"' in (root / "desktop" / "index.html").read_text(encoding="utf-8") and 'id="avatar-live-state"' in (root / "desktop" / "index.html").read_text(encoding="utf-8"), "desktop includes Mary live-state presentation"),
     ]
 
     failed = False

@@ -106,6 +106,9 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("breakthrough_runtime_introspection_12_2", "scripts.verify_breakthrough_12_2"),
     ("breakthrough_mixed_runtime_personal_12_3", "scripts.verify_breakthrough_12_3"),
     ("breakthrough_memory_shared_history_12_4", "scripts.verify_breakthrough_12_4"),
+    ("final_core_12_6", "scripts.verify_final_core_12_6"),
+    ("desktop_game_shell_12_7", "scripts.verify_desktop_game_shell_12_7"),
+    ("ecosystem_presence_12_8", "scripts.verify_ecosystem_presence_12_8"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
@@ -117,6 +120,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("orchestration_execution", "scripts.verify_orchestration_execution"),
     ("resource_governance", "scripts.verify_resource_governance"),
     ("persistence_recovery", "scripts.verify_persistence_recovery"),
+    ("state_integrity", "scripts.verify_state_integrity"),
     ("live_character_state", "scripts.verify_live_character_state"),
     ("release_hygiene", "scripts.verify_release_hygiene"),
     ("standalone_readiness", "scripts.verify_standalone_readiness"),
@@ -130,7 +134,7 @@ def _heading(title: str) -> None:
     print("=" * 80)
 
 
-def _offline_environment() -> dict[str, str]:
+def _offline_environment(*, data_dir: str | Path | None = None) -> dict[str, str]:
     """Return a deterministic child-process environment for offline checks."""
 
     environment = os.environ.copy()
@@ -138,39 +142,42 @@ def _offline_environment() -> dict[str, str]:
         environment.pop(name, None)
 
     environment["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
+    if data_dir is not None:
+        environment["MARY_DATA_DIR"] = str(Path(data_dir))
     return environment
 
 
 @contextmanager
 def _offline_process_environment():
-    """Temporarily isolate in-process deterministic checks from live providers.
-
-    ``mary.core.config`` may already have loaded the developer's ``.env`` by
-    the time this runner starts.  Removing the relevant values around each
-    in-process check keeps verifier behavior identical across Windows, macOS,
-    Linux, Replit, and CI while restoring the user's real environment after
-    the check completes.
-    """
+    """Isolate one in-process deterministic check from providers and real state."""
 
     saved = {name: os.environ.get(name) for name in _OFFLINE_STRIP_ENV}
     saved_env_file = os.environ.get("MARY_ENV_FILE")
+    saved_data_dir = os.environ.get("MARY_DATA_DIR")
 
-    try:
-        for name in _OFFLINE_STRIP_ENV:
-            os.environ.pop(name, None)
-        os.environ["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
-        yield
-    finally:
-        for name, value in saved.items():
-            if value is None:
+    with tempfile.TemporaryDirectory(prefix="maryv2_release_state_") as directory:
+        try:
+            for name in _OFFLINE_STRIP_ENV:
                 os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
+            os.environ["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
+            os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
+            yield
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
-        if saved_env_file is None:
-            os.environ.pop("MARY_ENV_FILE", None)
-        else:
-            os.environ["MARY_ENV_FILE"] = saved_env_file
+            if saved_env_file is None:
+                os.environ.pop("MARY_ENV_FILE", None)
+            else:
+                os.environ["MARY_ENV_FILE"] = saved_env_file
+
+            if saved_data_dir is None:
+                os.environ.pop("MARY_DATA_DIR", None)
+            else:
+                os.environ["MARY_DATA_DIR"] = saved_data_dir
 
 
 def discover_verifier_modules() -> tuple[str, ...]:
@@ -206,18 +213,19 @@ def run_pytest() -> bool:
     """Run the canonical deterministic suite with live LLM testing disabled."""
 
     _heading("PYTEST - DETERMINISTIC / OFFLINE")
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "tests",
-            "-q",
-        ],
-        cwd=ROOT,
-        env=_offline_environment(),
-        check=False,
-    )
+    with tempfile.TemporaryDirectory(prefix="maryv2_release_pytest_") as directory:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests",
+                "-q",
+            ],
+            cwd=ROOT,
+            env=_offline_environment(data_dir=Path(directory) / "data"),
+            check=False,
+        )
     return completed.returncode == 0
 
 
@@ -342,19 +350,21 @@ def run_live_llm() -> bool:
 
     environment = os.environ.copy()
     environment["MARY_RUN_LIVE_TESTS"] = "1"
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            LIVE_LLM_TEST,
-            "-q",
-            "-s",
-        ],
-        cwd=ROOT,
-        env=environment,
-        check=False,
-    )
+    with tempfile.TemporaryDirectory(prefix="maryv2_release_live_llm_") as directory:
+        environment["MARY_DATA_DIR"] = str(Path(directory) / "data")
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                LIVE_LLM_TEST,
+                "-q",
+                "-s",
+            ],
+            cwd=ROOT,
+            env=environment,
+            check=False,
+        )
     return completed.returncode == 0
 
 
@@ -367,14 +377,22 @@ def run_live_web() -> bool:
 
     with tempfile.TemporaryDirectory(prefix="maryv2_live_") as directory:
         memory_path = Path(directory) / "memory.json"
-        app = create_application(
-            memory_path=memory_path,
-            auto_save=False,
-            load_memory=False,
-        )
-        result = app.run(
-            "search the web for the latest Python news"
-        )
+        saved_data_dir = os.environ.get("MARY_DATA_DIR")
+        os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
+        try:
+            app = create_application(
+                memory_path=memory_path,
+                auto_save=False,
+                load_memory=False,
+            )
+            result = app.run(
+                "search the web for the latest Python news"
+            )
+        finally:
+            if saved_data_dir is None:
+                os.environ.pop("MARY_DATA_DIR", None)
+            else:
+                os.environ["MARY_DATA_DIR"] = saved_data_dir
 
         if not result.success:
             print(f"FAIL: {result.error}")

@@ -13,12 +13,18 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot, QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QFileDialog
 
 from mary.runtime.application import MaryApplication
 from mary.desktop.voice import DesktopVoiceEngine
 from mary.desktop.microphone import DesktopMicrophoneRecorder
 from mary.desktop.stt import DesktopSpeechToText
+from mary.desktop.dashboard import build_desktop_dashboard_state
+from mary.desktop.integrations import DesktopIntegrationRegistry
+from mary.desktop.projects import CreativeWorkspaceManager
+from mary.ecosystem import MaryEcosystem
 from mary.desktop.conversation_runtime import (
     DesktopConversationRuntime,
     DesktopConversationState,
@@ -192,7 +198,12 @@ class MaryDesktopBridge(QObject):
     transcriptionReady = Signal(str)
     conversationStateChanged = Signal(str)
     characterStateChanged = Signal(str)
+    dashboardStateChanged = Signal(str)
     voicePlaybackStopRequested = Signal()
+    minimizeRequested = Signal()
+    maximizeRequested = Signal()
+    closeRequested = Signal()
+    windowMoveRequested = Signal()
 
     def __init__(self, application: MaryApplication) -> None:
         super().__init__()
@@ -206,6 +217,9 @@ class MaryDesktopBridge(QObject):
         self.voice = DesktopVoiceEngine.from_environment()
         self.stt = DesktopSpeechToText.from_environment()
         self.microphone = DesktopMicrophoneRecorder()
+        self.integrations = DesktopIntegrationRegistry()
+        self.creative_workspace = CreativeWorkspaceManager()
+        self.ecosystem = MaryEcosystem(self.application.mary)
         self.microphone.stateChanged.connect(self._on_microphone_state_changed)
         self.microphone.recordingReady.connect(self._on_recording_ready)
         self.microphone.errorOccurred.connect(self._on_microphone_error)
@@ -346,8 +360,248 @@ class MaryDesktopBridge(QObject):
             )
         )
 
+    @Slot(result=str)
+    def getDashboardState(self) -> str:  # noqa: N802 - JS-facing API
+        payload = build_desktop_dashboard_state(
+            self.application.mary,
+            runtime_status=self.conversation_runtime.state.value,
+        )
+        payload["ecosystem"] = self.ecosystem.snapshot()
+        return _json(payload)
+
+    @Slot(result=str)
+    def getEcosystemState(self) -> str:  # noqa: N802
+        return _json(self.ecosystem.snapshot())
+
+    @Slot(str, str, result=str)
+    def addCommandItem(self, title: str, kind: str = "task") -> str:  # noqa: N802
+        try:
+            item = self.ecosystem.command.add(title, kind=kind or "task")
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "item": item})
+        except Exception as exc:
+            self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(str, str, result=str)
+    def updateCommandStatus(self, item_id: str, status: str) -> str:  # noqa: N802
+        try:
+            item = self.ecosystem.command.update(item_id, status=status)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "item": item})
+        except Exception as exc:
+            self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(int, str, result=str)
+    def startFocus(self, minutes: int, task: str = "") -> str:  # noqa: N802
+        try:
+            state = self.ecosystem.focus.start(minutes, task=task)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "focus": state})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(result=str)
+    def stopFocus(self) -> str:  # noqa: N802
+        state = self.ecosystem.focus.stop()
+        self.dashboardStateChanged.emit(self.getDashboardState())
+        return _json({"ok": True, "focus": state})
+
+    @Slot(str, str, result=str)
+    def createStudyProject(self, title: str, objective: str = "") -> str:  # noqa: N802
+        try:
+            project = self.ecosystem.study.create_project(title, objective=objective)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "project": project})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(str, str, str, result=str)
+    def addStudyCard(self, project_id: str, prompt: str, answer: str) -> str:  # noqa: N802
+        try:
+            card = self.ecosystem.study.add_card(project_id, prompt, answer)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "card": card})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(str, str, int, result=str)
+    def reviewStudyCard(self, project_id: str, card_id: str, score: int) -> str:  # noqa: N802
+        try:
+            card = self.ecosystem.study.review(project_id, card_id, score)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "card": card})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(str, result=str)
+    def personalSearch(self, query: str) -> str:  # noqa: N802
+        try:
+            return _json({"ok": True, "results": self.ecosystem.search.search(query)})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc), "results": []})
+
+    @Slot(result=str)
+    def chooseSearchRoot(self) -> str:  # noqa: N802
+        path = QFileDialog.getExistingDirectory(None, "Choose a folder Mary may search", "")
+        if not path:
+            return _json({"selected": False})
+        self.ecosystem.add_search_root(path)
+        self.dashboardStateChanged.emit(self.getDashboardState())
+        return _json({"selected": True, "path": path, "roots": [str(x) for x in self.ecosystem.search.roots]})
+
+    @Slot(str, result=bool)
+    def markNoticeRead(self, notice_id: str) -> bool:  # noqa: N802
+        changed = self.ecosystem.inbox.mark_read(notice_id, True)
+        if changed:
+            self.dashboardStateChanged.emit(self.getDashboardState())
+        return changed
+
+    @Slot(str, str, result=str)
+    def createResearchThread(self, title: str, question: str = "") -> str:  # noqa: N802
+        try:
+            thread = self.ecosystem.research.create(title, question=question)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "thread": thread})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(str, str, str, result=str)
+    def playArcade(self, key: str, payload: str = "", unused: str = "") -> str:  # noqa: N802
+        try:
+            return _json({"ok": True, **self.ecosystem.arcade.play(key, payload)})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
+
+    @Slot(result=str)
+    def getIdleAction(self) -> str:  # noqa: N802
+        return _json(self.ecosystem.presence.idle_tick())
+
+    @Slot(result=str)
+    def getIntegrationState(self) -> str:  # noqa: N802 - JS-facing API
+        self.integrations.refresh()
+        return _json({"creative_apps": self.integrations.status()})
+
+    @Slot(str, result=bool)
+    def openExternalUrl(self, url: str) -> bool:  # noqa: N802 - JS-facing API
+        value = str(url or "").strip()
+        parsed = QUrl(value)
+        if parsed.scheme().lower() not in {"http", "https"} or not parsed.host():
+            self.errorOccurred.emit("Only http(s) links can be opened from Mary's media panel.")
+            return False
+        return bool(QDesktopServices.openUrl(parsed))
+
+    @Slot(str, str, result=bool)
+    def launchCreativeApp(self, key: str, file_path: str = "") -> bool:  # noqa: N802
+        try:
+            self.integrations.launch(key, file_path=file_path or None)
+            return True
+        except Exception as exc:
+            self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
+            return False
+
+    @Slot(result=str)
+    def chooseMediaFile(self) -> str:  # noqa: N802 - JS-facing API
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose music or audio for Mary",
+            "",
+            "Audio (*.mp3 *.wav *.ogg *.m4a *.flac);;All files (*)",
+        )
+        if not path:
+            return _json({"selected": False})
+        resolved = QUrl.fromLocalFile(path)
+        return _json({"selected": True, "path": path, "url": resolved.toString()})
+
+    @Slot(result=str)
+    def chooseCreativeFile(self) -> str:  # noqa: N802 - JS-facing API
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose a creative project file",
+            "",
+            "Creative files (*.psd *.psb *.kra *.clip *.blend *.xcf *.txt *.md *.docx);;All files (*)",
+        )
+        return _json({"selected": bool(path), "path": path or ""})
+
+    @Slot(result=str)
+    def getCreativeWorkspaceState(self) -> str:  # noqa: N802 - JS-facing API
+        try:
+            return _json(self.creative_workspace.status())
+        except Exception as exc:
+            return _json({"configured": False, "error": f"{type(exc).__name__}: {exc}", "files": []})
+
+    @Slot(result=str)
+    def chooseCreativeWorkspace(self) -> str:  # noqa: N802 - JS-facing API
+        path = QFileDialog.getExistingDirectory(
+            None,
+            "Choose Unbeknownst / creative project folder",
+            str(self.creative_workspace.root or ""),
+        )
+        if not path:
+            return _json({"selected": False, **self.creative_workspace.status()})
+        try:
+            self.creative_workspace.set_root(path)
+            return _json({"selected": True, **self.creative_workspace.status()})
+        except Exception as exc:
+            self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
+            return _json({"selected": False, "configured": False, "files": []})
+
+    @Slot(str, result=str)
+    def readCreativeTextFile(self, relative_path: str) -> str:  # noqa: N802 - JS-facing API
+        try:
+            return _json({"ok": True, **self.creative_workspace.read_text(relative_path)})
+        except Exception as exc:
+            self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, str, result=str)
+    def saveCreativeTextFile(self, relative_path: str, content: str) -> str:  # noqa: N802 - JS-facing API
+        try:
+            return _json({"ok": True, **self.creative_workspace.save_text(relative_path, content)})
+        except Exception as exc:
+            self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(result=bool)
+    def openCreativeWorkspaceFolder(self) -> bool:  # noqa: N802 - JS-facing API
+        path = self.creative_workspace.root
+        if path is None:
+            self.errorOccurred.emit("Choose a creative workspace in Studio first.")
+            return False
+        return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+
+    @Slot(result=bool)
+    def openDataFolder(self) -> bool:  # noqa: N802 - JS-facing API
+        path = self.application.mary.config.paths.data
+        path.mkdir(parents=True, exist_ok=True)
+        return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+
+    @Slot(result=bool)
+    def openWorkspaceFolder(self) -> bool:  # noqa: N802 - JS-facing API
+        path = self.application.mary.config.paths.workspace
+        path.mkdir(parents=True, exist_ok=True)
+        return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+
+    @Slot()
+    def minimizeWindow(self) -> None:  # noqa: N802
+        self.minimizeRequested.emit()
+
+    @Slot()
+    def maximizeWindow(self) -> None:  # noqa: N802
+        self.maximizeRequested.emit()
+
+    @Slot()
+    def closeWindow(self) -> None:  # noqa: N802
+        self.closeRequested.emit()
+
+    @Slot()
+    def startWindowMove(self) -> None:  # noqa: N802
+        self.windowMoveRequested.emit()
+
     def _emit_character_state(self) -> None:
         self.characterStateChanged.emit(self.getCharacterState())
+        self.dashboardStateChanged.emit(self.getDashboardState())
 
     @Slot()
     def save(self) -> None:

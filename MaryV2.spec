@@ -4,6 +4,7 @@ import sys
 
 ROOT = Path(SPEC).resolve().parent
 ENV_EXAMPLE = ROOT / ".env.example"
+ICON = ROOT / "desktop" / "public" / "assets" / "mary_icon.ico"
 if not ENV_EXAMPLE.exists():
     ENV_EXAMPLE = ROOT / "example.env.example"
 
@@ -23,9 +24,7 @@ analysis = Analysis(
     noarchive=False,
     optimize=1,
 )
-
 pyz = PYZ(analysis.pure)
-
 exe = EXE(
     pyz,
     analysis.scripts,
@@ -37,9 +36,9 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
+    icon=str(ICON) if sys.platform == "win32" and ICON.exists() else None,
     disable_windowed_traceback=False,
 )
-
 collection = COLLECT(
     exe,
     analysis.binaries,
@@ -48,6 +47,7 @@ collection = COLLECT(
     upx=False,
     name="MaryV2",
 )
+
 
 # PyInstaller uses COLLECT for Windows/Linux. On macOS, wrap the same
 # verified runtime in a native .app bundle so Mary can launch like an app.

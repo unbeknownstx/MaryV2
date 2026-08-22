@@ -248,6 +248,7 @@ class Mary:
         # ============================================================
 
         self.relationship = RelationshipManager(
+            path=self.config.paths.relationship / "relationship.json",
             limits=self.config.governance,
         )
         self.relationship.load()
@@ -266,6 +267,7 @@ class Mary:
         self.natural_relationship_learning = NaturalRelationshipLearner()
 
         self.creator_directives = CreatorDirectiveSystem(
+            path=self.config.paths.relationship / "creator_directives.json",
             capacity=self.config.governance.creator_directive_capacity,
             content_limit=self.config.governance.agency_text_characters,
             backup_generations=self.config.governance.backup_generations,
@@ -473,7 +475,10 @@ class Mary:
         # AGENCY
         # ============================================================
 
-        self.agency = Agency(limits=self.config.governance)
+        self.agency = Agency(
+            limits=self.config.governance,
+            storage_root=self.config.paths.goals,
+        )
         self.agency.load()
 
         # Creator directives are the durable source of creator-directed

@@ -216,11 +216,24 @@ class MemoryManager:
         }
 
     def consolidate(self) -> int:
+        # Safe default: high importance creates a candidate, but only
+        # structured/deterministic facts cross into semantic memory.
         promoted = self.consolidation.consolidate_and_promote()
         # Semantic/episodic stores enforce their own hard capacities.
         if promoted:
             self._persist_if_enabled()
         return promoted
+
+
+    def consolidation_candidates(self) -> List[Dict[str, Any]]:
+        """Return candidates with non-mutating semantic-promotion review data."""
+
+        reviewed: List[Dict[str, Any]] = []
+        for candidate in self.consolidation.consolidate():
+            item = dict(candidate)
+            item["review"] = self.consolidation.review_candidate(candidate)
+            reviewed.append(item)
+        return reviewed
 
     def configure_persistence(
         self,
@@ -322,9 +335,16 @@ class MemoryManager:
     def lifecycle_status(self) -> Dict[str, Any]:
         """Return read-only observability for storage and semantic consolidation."""
         try:
-            candidates = list(self.consolidation.consolidate())
+            candidates = self.consolidation_candidates()
         except Exception:
             candidates = []
+        promotable = sum(1 for item in candidates if item.get("review", {}).get("promotable"))
+        review_required = sum(
+            1
+            for item in candidates
+            if item.get("review", {}).get("classification") == "review_required"
+        )
+        blocked = max(0, len(candidates) - promotable - review_required)
         semantic_count = self.semantic.count()
         return {
             "policy": "bounded_selective_persistence",
@@ -332,6 +352,9 @@ class MemoryManager:
             "consolidation": {
                 "automatic": False,
                 "eligible_candidates": len(candidates),
+                "promotable_candidates": promotable,
+                "review_required_candidates": review_required,
+                "blocked_candidates": blocked,
                 "semantic_count": semantic_count,
                 "reason": (
                     "semantic promotion is selective and not automatic during normal conversation"

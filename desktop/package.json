@@ -1,12 +1,13 @@
 {
   "name": "maryv2-desktop-ui",
   "private": true,
-  "version": "0.1.0",
+  "version": "12.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "node --check src/main.js && node --check src/launcher.js && node --check vite.config.js"
   },
   "dependencies": {
     "@pixiv/three-vrm": "3.5.5",

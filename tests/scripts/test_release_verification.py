@@ -90,3 +90,19 @@ def test_verifier_runner_does_not_leak_release_cli_arguments(monkeypatch):
     assert release.run_verifier("fake", "scripts.verify_fake") is True
     assert seen["argv"] == ["scripts.verify_fake"]
     assert release.sys.argv == ["run_release_verification.py", "--offline"]
+
+
+
+def test_offline_process_environment_isolates_and_restores_data_dir(monkeypatch, tmp_path):
+    original = tmp_path / "real_mary_data"
+    monkeypatch.setenv("MARY_DATA_DIR", str(original))
+
+    with release._offline_process_environment():
+        active = release.os.environ.get("MARY_DATA_DIR")
+        assert active is not None
+        assert active != str(original)
+        assert "maryv2_release_state_" in active
+        environment = release._offline_environment()
+        assert environment["MARY_DATA_DIR"] == active
+
+    assert release.os.environ.get("MARY_DATA_DIR") == str(original)

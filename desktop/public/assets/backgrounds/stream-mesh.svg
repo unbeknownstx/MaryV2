@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+<defs><radialGradient id="g"><stop stop-color="#5c2aff" stop-opacity=".2"/><stop offset=".45" stop-color="#ff3f9e" stop-opacity=".08"/><stop offset="1" stop-color="#03040c"/></radialGradient><pattern id="m" width="36" height="36" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#ff72b9" fill-opacity=".14"/><path d="M2 2L34 34M34 2L2 34" stroke="#5fe7ff" stroke-opacity=".025"/></pattern></defs><rect width="1600" height="900" fill="#03040c"/><rect width="1600" height="900" fill="url(#g)"/><rect width="1600" height="900" fill="url(#m)"/>
+</svg>

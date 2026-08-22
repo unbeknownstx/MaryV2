@@ -88,6 +88,12 @@ class PerformanceDirector:
         if drive in {"react", "tease"}:
             energy += 0.10
             spontaneity += 0.12
+        elif drive == "think_aloud":
+            spontaneity += 0.08
+            theatricality += 0.03
+        elif drive == "acknowledge":
+            energy += 0.04
+            spontaneity += 0.05
         elif drive in {"opine", "disagree"}:
             energy += 0.05
             theatricality += 0.08
@@ -130,6 +136,9 @@ class PerformanceDirector:
             "recall": "direct_callback",
             "ask": "genuine_curiosity",
             "reflect": "brief_thoughtful_beat",
+            "tease": "playful_counterpunch",
+            "think_aloud": "visible_thought_process",
+            "acknowledge": "familiar_greeting",
         }.get(drive, "natural_entry")
 
         ending_style = (

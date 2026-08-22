@@ -43,6 +43,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from mary.relationship.provenance import text_has_test_probe_marker
+
 
 class MemoryConsolidator:
     """
@@ -121,6 +123,8 @@ class MemoryConsolidator:
     def promote(
         self,
         candidate: dict[str, Any],
+        *,
+        allow_unstructured: bool = False,
     ) -> bool:
         """
         Promote one consolidation candidate into semantic memory.
@@ -132,6 +136,10 @@ class MemoryConsolidator:
             return False
 
         if self.semantic_memory is None:
+            return False
+
+        review = self.review_candidate(candidate)
+        if not review["promotable"] and not allow_unstructured:
             return False
 
         content = candidate.get("content")
@@ -217,23 +225,94 @@ class MemoryConsolidator:
 
             return False
 
-    def consolidate_and_promote(self) -> int:
-        """
-        Consolidate eligible memories and promote them.
+    def consolidate_and_promote(self, *, allow_unstructured: bool = False) -> int:
+        """Consolidate eligible memories and safely promote durable facts.
 
-        Returns the number of newly promoted memories.
+        Importance alone is enough to create a *candidate*, but not enough to
+        turn an episode into semantic truth.  By default only deterministic
+        semantic extractions or explicitly structured facts are promoted.
+        ``allow_unstructured=True`` exists only for deliberate legacy/manual
+        migrations.
         """
 
         candidates = self.consolidate()
-
         promoted = 0
 
         for candidate in candidates:
-
-            if self.promote(candidate):
+            if self.promote(candidate, allow_unstructured=allow_unstructured):
                 promoted += 1
 
         return promoted
+
+    def review_candidate(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        """Classify one candidate without mutating memory.
+
+        The review boundary prevents high-importance events, test probes, and
+        relationship history from silently becoming generic semantic facts.
+        """
+
+        if not isinstance(candidate, dict):
+            return {
+                "promotable": False,
+                "classification": "invalid",
+                "reason": "candidate is not a mapping",
+            }
+
+        content = str(candidate.get("content", "") or "").strip()
+        metadata = candidate.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        source = str(metadata.get("source_memory_source", "") or "").casefold()
+        event_type = str(metadata.get("source_event_type", "") or "").casefold()
+        owner = str(metadata.get("owner", "") or "").casefold()
+        if text_has_test_probe_marker(content) or source.startswith(("test", "pytest", "verify")):
+            return {
+                "promotable": False,
+                "classification": "blocked_test_probe",
+                "reason": "development/test evidence stays auditable but not semantic",
+            }
+
+        if event_type in {"relationship", "shared_work", "relationship_milestone"}:
+            return {
+                "promotable": False,
+                "classification": "relationship_owned",
+                "reason": "relationship history has its own authoritative durable store",
+            }
+
+        extraction = str(metadata.get("semantic_extraction", "") or "").strip()
+        subject = candidate.get("subject", metadata.get("subject"))
+        predicate = candidate.get("predicate", metadata.get("predicate"))
+        has_structure = (
+            subject is not None
+            and str(subject).strip()
+            and predicate is not None
+            and str(predicate).strip()
+            and ("value" in candidate or "value" in metadata)
+        )
+
+        if extraction == "deterministic_v2" and has_structure:
+            return {
+                "promotable": True,
+                "classification": "deterministic_semantic",
+                "reason": "content maps to a deterministic V2 semantic fact",
+            }
+
+        if extraction == "explicit_source_structure" and has_structure:
+            return {
+                "promotable": True,
+                "classification": "explicit_semantic",
+                "reason": "source memory supplied explicit semantic structure",
+            }
+
+        return {
+            "promotable": False,
+            "classification": "review_required",
+            "reason": (
+                "importance makes this an eligible candidate, but there is not "
+                "enough structure to promote it as durable semantic truth"
+            ),
+        }
 
     # ============================================================
     # COLLECTION
@@ -576,15 +655,20 @@ class MemoryConsolidator:
             )
         )
 
+        source_metadata = memory.get("metadata", {})
+        if not isinstance(source_metadata, dict):
+            source_metadata = {}
+
         metadata = {
             "source": "memory_consolidation",
             "memory_type": memory_type,
             "importance": importance,
             "emotional_weight": emotional_weight,
-            "tags": memory.get(
-                "tags",
-                [],
-            ),
+            "tags": memory.get("tags", source_metadata.get("tags", [])),
+            "source_memory_source": memory.get("source", source_metadata.get("source", "")),
+            "source_event_type": memory.get("event_type", source_metadata.get("event_type", "")),
+            "owner": source_metadata.get("owner", memory.get("owner", "")),
+            "speaker": source_metadata.get("speaker", memory.get("speaker", "")),
         }
 
         # --------------------------------------------------------
@@ -612,17 +696,19 @@ class MemoryConsolidator:
 
         else:
 
-            # Preserve explicit semantic structure if the source
-            # memory already contains one.
-            for key in (
-                "subject",
-                "predicate",
-                "value",
-                "confidence",
-            ):
-
+            # Preserve explicitly supplied semantic structure. EpisodicMemory
+            # stores caller metadata in a nested ``metadata`` mapping, while
+            # older/imported records may keep these keys at top level.
+            found_structure = False
+            for key in ("subject", "predicate", "value", "confidence"):
                 if key in memory:
                     metadata[key] = memory[key]
+                    found_structure = True
+                elif key in source_metadata:
+                    metadata[key] = source_metadata[key]
+                    found_structure = True
+            if found_structure and all(key in metadata for key in ("subject", "predicate", "value")):
+                metadata["semantic_extraction"] = "explicit_source_structure"
 
         confidence = self._safe_float(
             memory.get(

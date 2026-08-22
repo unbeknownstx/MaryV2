@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from mary.governance.limits import RuntimeLimits
 
+from pathlib import Path
 from typing import Any
 
 from mary.agency.curiosity import CuriositySystem
@@ -44,13 +45,16 @@ class Agency:
         priority_system: PrioritySystem | None = None,
         decision_system: DecisionSystem | None = None,
         limits: RuntimeLimits | None = None,
+        storage_root: str | Path | None = None,
     ) -> None:
 
         self.limits = limits or RuntimeLimits()
+        self.storage_root = Path(storage_root) if storage_root is not None else None
         self.goals = (
             goal_system
             if goal_system is not None
             else GoalSystem(
+                path=(self.storage_root / "goals.json") if self.storage_root is not None else "data/goals/goals.json",
                 capacity=self.limits.goal_capacity,
                 content_limit=self.limits.agency_text_characters,
                 backup_generations=self.limits.backup_generations,
@@ -61,6 +65,7 @@ class Agency:
             intention_system
             if intention_system is not None
             else IntentionSystem(
+                path=(self.storage_root / "intentions.json") if self.storage_root is not None else "data/goals/intentions.json",
                 capacity=self.limits.intention_capacity,
                 content_limit=self.limits.agency_text_characters,
                 backup_generations=self.limits.backup_generations,
@@ -71,6 +76,7 @@ class Agency:
             curiosity_system
             if curiosity_system is not None
             else CuriositySystem(
+                path=(self.storage_root / "curiosities.json") if self.storage_root is not None else "data/goals/curiosities.json",
                 capacity=self.limits.curiosity_capacity,
                 content_limit=self.limits.agency_text_characters,
                 backup_generations=self.limits.backup_generations,

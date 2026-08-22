@@ -234,6 +234,8 @@ class ReflectionEngine:
                             "If it flags capability truth, never roleplay or narrate a provider/tool call: state only what runtime evidence shows. "
                             "If it flags creator mind-reading, respond to what Unbe actually said and phrase tone-reading as uncertainty, not direct access to his mind. "
                             "If it flags semantic repetition or a rejected hypothesis, preserve the point but choose genuinely new language and do not resurrect the rejected interpretation. "
+                            "If it flags a generic conversation handoff, remove the reflexive engagement question and let Mary's statement land unless Unbe explicitly invited a question. "
+                            "If it flags ornamental overload, keep at most one light metaphor and prefer vivid spoken character dialogue over stacked poetic imagery. "
                             "Rewrite the reply so it sounds like Mary rather than a generic assistant. Return only the revised reply."
                         ),
                     ),
@@ -500,6 +502,8 @@ class ReflectionEngine:
         if current_opening and current_opening in recent_openings:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
+        issues.extend(self._generic_handoff_audit(context, text))
+        issues.extend(self._ornamental_overload_audit(context, text))
         issues.extend(self._near_duplicate_response_audit(text, recent_mary))
         issues.extend(self._semantic_style_repetition_audit(context, text, recent_mary))
         issues.extend(self._rejected_hypothesis_audit(context, text))
@@ -527,6 +531,114 @@ class ReflectionEngine:
         )
 
         return issues
+
+    @staticmethod
+    def _generic_handoff_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Reject reflexive assistant-style conversation handoffs.
+
+        Mary is allowed to ask questions, but a normal answer/reaction should not
+        automatically end by returning control to Unbe with a generic engagement
+        prompt. Explicit invitations to ask a question remain allowed.
+        """
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        mode = str(disposition.get("mode", "conversation"))
+        if mode not in {"relational_conversation", "conversation", "creative_collaboration"}:
+            return []
+
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        drive = str(continuity.get("drive", "react")).strip().lower()
+        if drive == "ask":
+            return []
+
+        normalized_input = re.sub(r"[^a-z0-9']+", " ", str(context.input_text or "").lower()).strip()
+        question_invited = any(
+            phrase in normalized_input
+            for phrase in (
+                "ask me",
+                "you can ask",
+                "u can ask",
+                "anything you want to know",
+                "anything u want to know",
+                "what do you want to know",
+                "what do u want to know",
+                "got any questions",
+            )
+        )
+        if question_invited:
+            return []
+
+        lowered = str(text or "").lower().strip()
+        tail = lowered[-220:]
+        handoff_markers = (
+            "what about you?",
+            "how about you?",
+            "anything on your mind?",
+            "anything that's on your mind?",
+            "anything that is on your mind?",
+            "anything that feels off",
+            "anything you want to talk about?",
+            "what do you think?",
+            "thoughts?",
+        )
+        if any(marker in tail for marker in handoff_markers):
+            return [
+                "Conversation handoff boundary: ends a normal answer/reaction with a generic engagement question instead of letting Mary's own line land."
+            ]
+        return []
+
+    @staticmethod
+    def _ornamental_overload_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Catch model-generated metaphor piles in otherwise simple dialogue.
+
+        This is intentionally a high threshold. One vivid phrase can be Mary; a
+        stack of unrelated decorative motifs in a short casual answer tends to be
+        provider style leakage rather than character performance. Terms introduced
+        by Unbe are excluded so Mary can naturally mirror the conversation.
+        """
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        mode = str(disposition.get("mode", "conversation"))
+        if mode not in {"relational_conversation", "conversation", "creative_collaboration"}:
+            return []
+
+        if len(str(context.input_text or "").split()) > 28:
+            return []
+
+        user_terms = set(re.findall(r"[a-z0-9']+", str(context.input_text or "").lower()))
+        response_terms = set(re.findall(r"[a-z0-9']+", str(text or "").lower()))
+        ornamental_terms = {
+            "spark", "sparks", "sparkle", "glow", "magic", "vibe", "vibes",
+            "vibing", "buzz", "buzzing", "colors", "colours", "palette",
+            "paint", "painting", "rain", "rainy", "windowpane", "drip",
+            "jazz", "whirlwind", "dance", "dancing", "fireworks", "bloom",
+            "blooming", "shimmer", "shimmering", "tapestry", "symphony",
+        }
+        model_only = (response_terms & ornamental_terms) - user_terms
+        lowered = str(text or "").lower()
+        figurative_cues = (
+            "think of me as",
+            "feels like",
+            "feel like a",
+            "like a " ,
+            "like an ",
+            "as if",
+        )
+        figurative = any(cue in lowered for cue in figurative_cues)
+
+        if len(model_only) >= 7 or (figurative and len(model_only) >= 5):
+            return [
+                "Conversational texture boundary: piles multiple model-generated decorative metaphors/style motifs into a simple reply instead of sounding like spontaneous spoken dialogue."
+            ]
+        return []
 
     @classmethod
     def _near_duplicate_response_audit(

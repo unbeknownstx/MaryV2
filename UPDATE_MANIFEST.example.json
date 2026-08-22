@@ -1,0 +1,7 @@
+{
+  "version": "12.8.0",
+  "channel": "private-v2",
+  "package_url": "https://example.com/private/MaryV2-12.8.0.zip",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "notes": "Replace this example with the release notes for the actual private update."
+}

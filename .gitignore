@@ -1,60 +1,48 @@
-# Python
+# Local secrets / provider configuration
+.env
+.env.*
+!.env.example
+!example.env.example
+
+# Runtime state and personal data
+data/
+
+# Python environments / caches
+.venv*/
+venv*/
+.pythonlibs/
+__pypackages__/
 __pycache__/
 *.py[cod]
-*.pyo
-
-# Virtual environment
-.venv/
-venv/
-env/
-
-# Environment variables
-.env
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Runtime data
-data/runtime/
-
-# Local databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Test/cache
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-# Build
+# Local state backups
+backups/
+
+# Build / packaging outputs
 build/
 dist/
 *.egg-info/
 
-# Secrets
-*.pem
-*.key
+# Desktop dependencies / generated frontend output
+desktop/node_modules/
+desktop/dist/
 
-# Persistent personal Mary state (never commit)
-data/
+# Personal avatar/model assets
+# Keep source code under desktop/public, but do not source-control local VRM/Vroid models.
+desktop/public/models/
 
-# Local environment/editor secret artifacts
-.env.bak
-.env.before_cleanup.bak
-*.swp
-*.swo
+# OS/editor noise
+.DS_Store
+__MACOSX/
+.vscode/
+.idea/
+
+# Logs / temporary files
+*.log
 *.tmp
-
-# Standalone/package output
-MaryV2.spec.bak
+*.swp

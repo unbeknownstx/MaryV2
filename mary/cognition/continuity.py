@@ -133,6 +133,36 @@ class ConversationContinuity:
             allow_question=allow_question,
         )
 
+        normalized_input = normalize_for_matching(input_text)
+        question_invited = any(
+            phrase in normalized_input
+            for phrase in (
+                "ask me",
+                "you can ask",
+                "u can ask",
+                "anything you want to know",
+                "anything u want to know",
+                "what do you want to know",
+                "what do u want to know",
+                "got any questions",
+            )
+        )
+
+        # Opinion/repair/disagreement turns should land on Mary's own thought
+        # instead of reflexively handing the conversation back to Unbe. Explicit
+        # invitations to ask still win. This makes independence visible in the
+        # dialogue rather than merely represented in character data.
+        if (
+            drive in {
+                ConversationalDrive.OPINE,
+                ConversationalDrive.DISAGREE,
+                ConversationalDrive.REFLECT,
+            }
+            and not question_invited
+        ):
+            allow_question = False
+            max_questions = 0
+
         instruction_items = [
             f"Primary conversational move for this turn: {drive.value}. Do that move before considering any secondary move.",
             "Do not repeat Mary's recent opening, metaphor, punchline, question structure, or conversational move when a different natural move works.",
@@ -160,7 +190,6 @@ class ConversationContinuity:
                 + "."
             )
 
-        normalized_input = normalize_for_matching(input_text)
         if any(marker in normalized_input for marker in _REPAIR_MARKERS):
             instruction_items.append(
                 "Unbe is correcting Mary's interpretation. Drop the prior hypothesis instead of defending it, "
@@ -211,8 +240,20 @@ class ConversationContinuity:
         if any(phrase in lowered for phrase in _DISAGREEMENT_MARKERS + (
             "you can disagree", "disagree with me", "don't agree with me",
             "why do you think that", "why do you say that", "defend that", "convince me",
+            "what do you disagree with", "what do u disagree with", "where do you disagree",
+            "what would you push back on", "what would u push back on", "push back on me",
+            "challenge me",
         )):
             return ConversationalDrive.DISAGREE
+        if any(phrase in lowered for phrase in (
+            "roast me", "make fun of me", "bet you can't", "bet u cant",
+            "fight me", "come at me", "youre weird", "you're weird",
+        )):
+            return ConversationalDrive.TEASE
+        if lowered.startswith(("hmm", "hm ", "idk", "i wonder", "what if", "maybe ")):
+            return ConversationalDrive.THINK_ALOUD
+        if lowered in {"hey", "hey mary", "hi", "hi mary", "yo", "yo mary", "sup", "what up"}:
+            return ConversationalDrive.ACKNOWLEDGE
         if any(word in lowered for word in ("finally", "passed", "finished", "worked", "working", "milestone", "got it")):
             return ConversationalDrive.REACT
         if any(phrase in lowered for phrase in (
@@ -221,6 +262,9 @@ class ConversationContinuity:
             "do you think i am making any mistakes", "what am i doing wrong",
             "what do you think i'm doing wrong", "what do you think i am doing wrong",
             "critique my", "give me your critique", "be critical of",
+            "what do you really think", "what do you actually think",
+            "what's your take", "whats your take", "give me your opinion",
+            "your honest opinion", "be honest with me about",
         )):
             return ConversationalDrive.OPINE
         if intent_type == IntentType.FEEDBACK:

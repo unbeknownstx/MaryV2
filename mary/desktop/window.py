@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -27,8 +27,9 @@ class MaryDesktopWindow(QMainWindow):
         self.bridge = MaryDesktopBridge(application)
 
         self.setWindowTitle("MaryV2 — Mary Cosma")
-        self.resize(1440, 900)
-        self.setMinimumSize(1000, 680)
+        self.resize(1600, 960)
+        self.setMinimumSize(1180, 720)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
 
         self.web = QWebEngineView(self)
         self.setCentralWidget(self.web)
@@ -42,13 +43,36 @@ class MaryDesktopWindow(QMainWindow):
             QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture,
             False,
         )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
+            True,
+        )
 
         self.channel = QWebChannel(self.web.page())
         self.channel.registerObject("maryBridge", self.bridge)
         self.web.page().setWebChannel(self.channel)
 
         self.bridge.errorOccurred.connect(self._show_error)
+        self.bridge.minimizeRequested.connect(self.showMinimized)
+        self.bridge.maximizeRequested.connect(self._toggle_maximized)
+        self.bridge.closeRequested.connect(self.close)
+        self.bridge.windowMoveRequested.connect(self._start_system_move)
         self.web.setUrl(QUrl.fromLocalFile(str(frontend_path.resolve())))
+
+
+    def _toggle_maximized(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def _start_system_move(self) -> None:
+        handle = self.windowHandle()
+        if handle is not None:
+            try:
+                handle.startSystemMove()
+            except Exception:
+                pass
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         try:

@@ -12,10 +12,24 @@ from pathlib import Path
 import shutil
 import sys
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # Doctor should still run before dependencies are installed.
+    load_dotenv = None
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
+
+def _module_installed(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError, AttributeError):
+        # Some test harnesses or embedding hosts leave a partially constructed
+        # module in sys.modules with __spec__ = None. Treat that as unavailable
+        # rather than crashing the read-only doctor.
+        module = sys.modules.get(name)
+        return module is not None and getattr(module, "__file__", None) is not None
 
 def _present_env(name: str) -> str:
     return "configured" if bool(os.getenv(name, "").strip()) else "not configured"
@@ -23,14 +37,14 @@ def _present_env(name: str) -> str:
 
 def main() -> int:
     env_path = ROOT / ".env"
-    if env_path.exists():
+    if env_path.exists() and load_dotenv is not None:
         load_dotenv(dotenv_path=env_path, override=False)
 
     checks: list[tuple[str, bool, str]] = []
 
     checks.append(("Python 3.10+", sys.version_info >= (3, 10), sys.version.split()[0]))
     for module in ("dotenv", "groq", "openai"):
-        installed = importlib.util.find_spec(module) is not None
+        installed = _module_installed(module)
         checks.append(
             (
                 f"Python module: {module}",
