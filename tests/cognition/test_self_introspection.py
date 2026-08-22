@@ -44,6 +44,7 @@ SELF_QUERIES = {
     "What do you think your relationship with Unbe should be?": "relationship",
     "Do you have your own personality, or are you just copying mine?": "personality",
     "What are you curious about right now?": "curiosity",
+    "What are you currently curious about?": "curiosity",
     "What do you think you should become?": "purpose",
     "What color is your hair?": "appearance",
     "What is your favorite color?": "preferences",
@@ -126,7 +127,7 @@ def test_current_curiosity_does_not_trigger_web_and_does_not_invent_one(tmp_path
     assert result.success is True
     assert "don't currently have any open" in result.output.lower()
     assert mary.tools.pending_requests() == []
-    assert provider.calls == 1
+    assert provider.calls == 0
 
 
 def test_current_curiosity_reports_actual_agency_state(tmp_path, monkeypatch):
@@ -137,12 +138,12 @@ def test_current_curiosity_reports_actual_agency_state(tmp_path, monkeypatch):
         source="test",
     )
 
-    result = app.run("What are you curious about right now?")
+    result = app.run("What are you currently curious about?")
 
     assert result.success is True
     assert "how memory shapes a persistent character" in result.output.lower()
     assert mary.tools.pending_requests() == []
-    assert provider.calls == 1
+    assert provider.calls == 0
 
 
 class GroundedProvider(LLMInterface):

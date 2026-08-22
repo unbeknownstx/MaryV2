@@ -151,9 +151,9 @@ def test_self_curiosity_reports_creator_directive_during_429(tmp_path, monkeypat
     assert "learn more about unbe" in curiosity.output.lower()
     assert priorities.success is True
     assert "learn more about unbe" in priorities.output.lower()
-    # Curiosity prose may use the provider and fall back during a 429, but
-    # dynamic priority ranking is now a deterministic local read.
-    assert provider.calls == 1
+    # Current curiosity and dynamic priority ranking are authoritative agency
+    # state, so neither query should call a provider or improvise extra items.
+    assert provider.calls == 0
     assert mary.tools.pending_requests() == []
 
 

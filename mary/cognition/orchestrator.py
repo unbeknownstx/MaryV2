@@ -645,8 +645,10 @@ class CognitiveOrchestrator:
             # relationship continuity, not only the active chat window.  This
             # intentionally runs before generic conversation-recall detection.
             shared_work_patterns = (
-                r"\bwhat do you remember about what we(?:'ve| have) been working on together\b",
-                r"\bwhat do you remember about what we(?:'ve| have) worked on together\b",
+                r"\bwhat do you remember about what we(?:'ve|ve| have) been working on together\b",
+                r"\bwhat do you remember about what we(?:'ve|ve| have) worked on together\b",
+                r"\bwhat do you remember we(?:'ve|ve| have) been working on together\b",
+                r"\bwhat do you remember we(?:'ve|ve| have) worked on together\b",
                 r"\bwhat (?:have|did) we work on together\b",
                 r"\bwhat have we been working on together\b",
                 r"\bwhat have we worked on together\b",
@@ -1046,6 +1048,9 @@ class CognitiveOrchestrator:
                 "what's your underlying architecture running on",
                 "what is your underlying architecture",
                 "what's your underlying architecture",
+                "what is your architecture",
+                "what's your architecture",
+                "describe your architecture",
                 "what model are you using",
                 "what model are you running",
                 "which model are you using",
@@ -1175,6 +1180,7 @@ class CognitiveOrchestrator:
             )),
             ("curiosity", (
                 "what are you curious about right now",
+                "what are you currently curious about",
                 "what are you curious about",
                 "what are your current curiosities",
             )),
@@ -1256,11 +1262,13 @@ class CognitiveOrchestrator:
 
         runtime_markers = (
             "your underlying architecture",
-            # Natural architecture questions should never fall through to a
-            # language model that can invent its own provider-centric identity.
-            # Keep this deliberately scoped to *Mary's* architecture.
-            "your architecture",
+            # Keep technical architecture detection narrow.  A conversational
+            # opinion such as "we may have overcomplicated your architecture —
+            # what do you think?" must stay a Mary conversation rather than
+            # becoming a runtime diagnostic dump.
             "your architecture running",
+            "language models fit into your architecture",
+            "language model fit into your architecture",
             "model are you using",
             "model are you running",
             "model do you use",

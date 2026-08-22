@@ -2525,11 +2525,11 @@ class Mary:
                     if incoming_emotion_appraisal.get(key) not in (None, "")
                 }
 
-        # Dynamic agency rankings are runtime state, not prose-generation tasks.
-        # The actual PrioritySystem is authoritative, so top-priority queries are
-        # answered locally and deterministically instead of allowing an LLM to
-        # replace the ranking with a generic relationship statement.
-        if subtype == "priorities":
+        # Dynamic agency state is runtime truth, not a prose-generation task.
+        # Current priorities and current curiosities are therefore answered
+        # locally and deterministically so a language model cannot invent items
+        # that are not represented in Mary's actual agency state.
+        if subtype in {"priorities", "curiosity"}:
             return {
                 "system_response": str(
                     evidence.get("fallback_response", "")
