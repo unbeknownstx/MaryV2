@@ -41,6 +41,21 @@ class MaryLauncherWindow(QMainWindow):
 
         self.web.setUrl(QUrl.fromLocalFile(str(frontend_path.resolve())))
 
+    def show_centered(self) -> None:
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            self.show()
+            return
+        available = screen.availableGeometry()
+        width = min(1180, max(self.minimumWidth(), int(available.width() * 0.92)))
+        height = min(720, max(self.minimumHeight(), int(available.height() * 0.88)))
+        self.resize(width, height)
+        self.move(
+            available.x() + max(0, (available.width() - width) // 2),
+            available.y() + max(0, (available.height() - height) // 2),
+        )
+        self.show()
+
     def _start_system_move(self) -> None:
         handle = self.windowHandle()
         if handle is not None:
@@ -65,5 +80,5 @@ def run_launcher() -> int:
     qt_app.setApplicationName("Mary Launcher")
     qt_app.setOrganizationName("Unbe")
     window = MaryLauncherWindow(frontend_path=frontend_path)
-    window.show()
+    window.show_centered()
     return int(qt_app.exec())

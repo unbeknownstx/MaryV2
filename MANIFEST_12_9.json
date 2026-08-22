@@ -1,0 +1,159 @@
+{
+  "application": "MaryV2",
+  "version": "12.9.0",
+  "release": "Desktop Uplift + Runtime Instrumentation + UX Polish",
+  "source_baseline": "uploaded MaryV2 12.8.x / 12.8.2 Windows hotfix package",
+  "preserve": [
+    ".env",
+    "data/",
+    "persistent creator state",
+    "provider secrets"
+  ],
+  "files": [
+    {
+      "path": ".env.example",
+      "sha256": "04d5c4e69b6a1aeeca2759bf58e033b24e311fd308edbb948233547d2912acbf"
+    },
+    {
+      "path": "PACKAGE_INFO.json",
+      "sha256": "558d67ce10dc120493d2fed8bac0d39d6d3d4251a97b85f8f2c593eff715afa7"
+    },
+    {
+      "path": "README.md",
+      "sha256": "3c94ff99372cc8e05aba16a7f20a43c50c8a43a0496f78c29ddb24b79fea2d8b"
+    },
+    {
+      "path": "START_HERE_12_9.md",
+      "sha256": "0befd5fe0433ca3c0dd66151f77327d09fd50b00c324ecc62eb23dd2fa92ef56"
+    },
+    {
+      "path": "TEST_RESULTS_12_9.md",
+      "sha256": "b850659c625243d2d1f1f0374ff1bfe99243177919224dc0fdd49096a6693afe"
+    },
+    {
+      "path": "conftest.py",
+      "sha256": "1a698095cc998faabdf69bfadc9f845e156bcbc2541445826ea3efb64b330189"
+    },
+    {
+      "path": "desktop/index.html",
+      "sha256": "191c77551d525f23da5c891b616d0f2aae225a80eb1ee9572569276a00f3b528"
+    },
+    {
+      "path": "desktop/launcher.html",
+      "sha256": "19bb6f40cde57a163e204828a4a2b8015d30b0d9dba18f14ac2b3429d19c7d7c"
+    },
+    {
+      "path": "desktop/package-lock.json",
+      "sha256": "5efcba4085daebbd319f4502e2f7c5249fad5088a66574f28c313929b810342c"
+    },
+    {
+      "path": "desktop/package.json",
+      "sha256": "75877501a181f527306d36ad15b49c1a6c2d14590a9c7de320e74f72906968fd"
+    },
+    {
+      "path": "desktop/src/main.js",
+      "sha256": "fce09b50efab815fbf0b3e56530a2cc645e3c78b09cf87a52f4a5713ed780582"
+    },
+    {
+      "path": "desktop/src/runtime/turnTrace.js",
+      "sha256": "cdeeaa591bcbd1e4d4e9e8eafc57480831a442ea60dfd0c8f72ade642944b475"
+    },
+    {
+      "path": "desktop/src/uplift.css",
+      "sha256": "9552a9cf1bb1650e7e75475a0453f4501b9fff811a95bdf9ee85c901f9194598"
+    },
+    {
+      "path": "docs/releases/12.9/README.md",
+      "sha256": "0befd5fe0433ca3c0dd66151f77327d09fd50b00c324ecc62eb23dd2fa92ef56"
+    },
+    {
+      "path": "mary/cognition/mind_state.py",
+      "sha256": "646a7fa92bb260ccad97c2ac4e63e024c87853066a5259dda73b05d8b86fe1e6"
+    },
+    {
+      "path": "mary/cognition/orchestrator.py",
+      "sha256": "97ed74e0d60b7d610ade5db5c8510aebda30a874617ccf1a309cf404d5a48b90"
+    },
+    {
+      "path": "mary/cognition/reasoning.py",
+      "sha256": "ba7374158ec9ab0ccee5ad7dc01a328368269e7121cd18f44b4d9145f41fb1ea"
+    },
+    {
+      "path": "mary/desktop/bridge.py",
+      "sha256": "6da275ea41911de5cd56b7a423d69303b68584551a28e0ff0cd7574ee70b1c0c"
+    },
+    {
+      "path": "mary/desktop/turn_trace.py",
+      "sha256": "2e519b09c38af077e638b6797f6f5c29423bb6e96ebcd6e679fadc3898d97165"
+    },
+    {
+      "path": "mary/desktop/voice.py",
+      "sha256": "6a9c9a42a27b2e3adab839cf0644e9fb019df83460f23bd4c08e09fec3ee9d87"
+    },
+    {
+      "path": "mary/desktop/window.py",
+      "sha256": "5c60941854055dd5bef879eedc716114b98310be5d525c250e40a80a357373bf"
+    },
+    {
+      "path": "mary/ecosystem/manager.py",
+      "sha256": "0b2fdba3b6bd1090d8f7beb8fe87e63653d2456b8ca39f08e93f8be9a2774f38"
+    },
+    {
+      "path": "mary/llm/router.py",
+      "sha256": "777f0343f9ee3b5bbd40213c9579defc89dff37257b737860bc075b2e62060eb"
+    },
+    {
+      "path": "mary/productivity/metrics.py",
+      "sha256": "9bf8dc6b1cb7335385742743bfa660d97bc7649aea1af58be14da86477423453"
+    },
+    {
+      "path": "mary/runtime/release.py",
+      "sha256": "d3287a3454495836c89260d1fe52cb27b15c26d5ca6ae45cbac7c13933f51a1e"
+    },
+    {
+      "path": "mary/runtime/system_contract.py",
+      "sha256": "797041a58db9dc374c7b38a8cb011f4e0553345a1599ab6b545dfa796c993c52"
+    },
+    {
+      "path": "pytest.ini",
+      "sha256": "22cc467dcc439b5974db1ddecc45186d4f5aaf5cf1ead9fa69dfc903b11b2214"
+    },
+    {
+      "path": "scripts/run_release_verification.py",
+      "sha256": "327098910cd4b4e7a6da8b216d8717fa85b5cc37eb4fe3e6a7fd5f23c0778930"
+    },
+    {
+      "path": "scripts/verify_ecosystem_presence_12_8.py",
+      "sha256": "143a12cb125fffb4134213b1deec1b07a9150265bd9e4d0c2e86f2d6c721243a"
+    },
+    {
+      "path": "scripts/verify_uplift_12_9.py",
+      "sha256": "da7f1749e4b2c9b1adb17fe89f1e6bc26f9621c91bf7e2912e5cd03646d4fa58"
+    },
+    {
+      "path": "tests/cognition/test_turn_mind_state.py",
+      "sha256": "5b4eae53fc0b797ef6aaac046fc7ca3ea7ce1d7deca0a318e8671c79df523402"
+    },
+    {
+      "path": "tests/desktop/test_desktop_ecosystem_12_8.py",
+      "sha256": "1829ccf1d93d631e82ba825208a71241f6e04dccf452119b03b2e7860c5eada0"
+    },
+    {
+      "path": "tests/desktop/test_desktop_polish_assets_12_8.py",
+      "sha256": "960d1192c46a5077b26c657f21722a22dba4bb301131cb240c2b9b201e4b6c32"
+    },
+    {
+      "path": "tests/desktop/test_desktop_uplift_12_9.py",
+      "sha256": "7ef1e9468a0b7cf187c7d07189c38e41a7cdba264fae76a01124085dae9b8487"
+    },
+    {
+      "path": "tests/desktop/test_game_shell_12_7.py",
+      "sha256": "6f790dfc2caa2159304847b64c1ead9e9c49661521e7af811e41b4ba3933d777"
+    },
+    {
+      "path": "tests/llm/test_provider_timing_12_9.py",
+      "sha256": "55e6c51d03e7319a0bb0cc9d34a9505fe7d2d3bb58f402bf53030112a4be7473"
+    }
+  ],
+  "installer_revision": "v2-discovery-hotfix"
+}

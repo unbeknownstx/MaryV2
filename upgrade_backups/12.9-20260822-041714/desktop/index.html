@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Mary — AI Companion</title>
+  </head>
+  <body>
+    <main id="app" class="app-shell" data-screen="chat">
+      <section id="boot-screen" class="boot-screen" aria-live="polite">
+        <div class="boot-sigil"><img src="./assets/ui/mary-sigil.svg" alt="" /></div>
+        <div class="boot-logo">Mary<span>♡</span></div>
+        <div class="boot-subtitle">PERSONAL COMPANION SYSTEM · 12.8</div>
+        <div class="boot-progress"><i id="boot-progress-bar"></i></div>
+        <div class="boot-status" id="boot-status">Initializing Mary…</div>
+      </section>
+      <aside class="sidebar glass-edge" aria-label="Primary navigation">
+        <section class="brand-block">
+          <div class="brand-logo">Mary<span>♡</span></div>
+          <div class="brand-subtitle">AI COMPANION</div>
+          <div class="brand-version" id="app-version-label">V2 · 12.8</div>
+        </section>
+
+        <nav class="nav-stack" id="primary-nav">
+          <button class="nav-item active" data-screen="chat"><span class="nav-icon">▣</span><span>Chat</span></button>
+          <button class="nav-item" data-screen="memories"><span class="nav-icon">◫</span><span>Memories</span></button>
+          <button class="nav-item" data-screen="personality"><span class="nav-icon">✦</span><span>Personality</span></button>
+          <button class="nav-item" data-screen="studio"><span class="nav-icon">⌘</span><span>Studio</span></button>
+          <button class="nav-item" data-screen="study"><span class="nav-icon">◈</span><span>Study</span><span class="nav-badge">NEW</span></button>
+          <button class="nav-item" data-screen="command"><span class="nav-icon">✓</span><span>Command</span></button>
+          <button class="nav-item" data-screen="focus"><span class="nav-icon">◎</span><span>Focus</span></button>
+          <button class="nav-item" data-screen="stream"><span class="nav-icon">◉</span><span>Stream</span></button>
+          <button class="nav-item" data-screen="gallery"><span class="nav-icon">▧</span><span>Gallery</span></button>
+          <button class="nav-item" data-screen="media"><span class="nav-icon">♫</span><span>Media</span></button>
+          <button class="nav-item" data-screen="voice"><span class="nav-icon">◉</span><span>Voice & Avatar</span></button>
+          <button class="nav-item" data-screen="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+        </nav>
+
+        <section class="status-card neon-card compact" id="sidebar-status-card">
+          <header class="card-header">
+            <span>MARY'S STATUS</span>
+            <span class="live-pill"><i></i> LIVE</span>
+          </header>
+          <div class="status-line"><span>☼ Mood</span><strong id="state-mood">Neutral</strong></div>
+          <div class="meter"><i id="mood-meter"></i></div>
+          <div class="status-line"><span>ϟ Energy</span><strong id="state-energy">Calm</strong></div>
+          <div class="meter cyan"><i id="energy-meter"></i></div>
+          <div class="status-line"><span>♡ Connection</span><strong id="connection-label">Beginning</strong></div>
+          <div class="meter"><i id="connection-meter"></i></div>
+          <div class="status-line"><span>◈ Continuity</span><strong id="state-continuity">Persistent</strong></div>
+          <div class="meter violet"><i style="width:100%"></i></div>
+          <div class="status-divider"></div>
+          <div class="activity-line"><span class="activity-dot"></span><span id="sidebar-activity">Talking with you</span></div>
+          <div class="activity-topic" id="state-task">No active task</div>
+        </section>
+
+        <section class="music-card neon-card compact" id="music-card">
+          <div class="album-art" id="album-art"></div>
+          <div class="music-meta">
+            <strong id="track-name">No track loaded</strong>
+            <span id="track-artist">Choose local audio</span>
+            <div class="mini-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="music-controls">
+              <button id="choose-music-button" title="Choose music">＋</button>
+              <button id="music-back-button" disabled>◀</button>
+              <button id="music-play-button">▶</button>
+              <button id="music-forward-button" disabled>▶</button>
+              <button id="music-volume-button">♪</button>
+            </div>
+          </div>
+          <audio id="music-audio"></audio>
+        </section>
+      </aside>
+
+      <section class="main-column">
+        <header class="titlebar" id="titlebar">
+          <div class="welcome-copy" id="welcome-copy">Mary is awake and ready to keep you company. <span>♥</span></div>
+          <div class="titlebar-spacer"></div>
+          <div class="title-clock"><strong id="clock-time">--:--</strong><span id="clock-date">MaryV2 12.8</span></div><div class="connection-status"><i id="status-dot" class="status-dot"></i><span id="status-text">Connecting…</span></div>
+          <button class="title-icon" data-screen-jump="settings" title="Settings">⚙</button>
+          <button class="window-control" id="window-minimize" title="Minimize">—</button>
+          <button class="window-control" id="window-maximize" title="Maximize">□</button>
+          <button class="window-control close" id="window-close" title="Close">×</button>
+        </header>
+
+        <section class="main-stage neon-stage" id="main-stage">
+          <div class="ambient-grid" aria-hidden="true"></div>
+          <div class="ambient-orb orb-one" aria-hidden="true"></div>
+          <div class="ambient-orb orb-two" aria-hidden="true"></div>
+
+          <div class="stage-header">
+            <div>
+              <div class="stage-name" id="state-name">MARY</div>
+              <div class="stage-subtitle">Your AI Companion</div>
+            </div>
+            <div class="online-badge"><i></i><span>Online</span></div>
+          </div>
+
+          <div class="avatar-stage" id="avatar-stage">
+            <canvas id="avatar-canvas" aria-label="Mary live VRM avatar"></canvas>
+            <div id="avatar-fallback" class="avatar-fallback">
+              <img src="./assets/mary-reference.jpeg" alt="Mary reference artwork" />
+              <div class="fallback-caption">
+                <strong>Mary Cosma</strong>
+                <span>VRM unavailable — using reference art</span>
+              </div>
+            </div>
+            <div class="avatar-hud top-left">
+              <span>LIVE AVATAR</span>
+              <strong id="avatar-live-state">STATUS: ACTIVE</strong>
+            </div>
+            <div class="avatar-hud lower-left mood-hud">
+              <span>EXPRESSIVE STATE</span>
+              <strong id="avatar-mood-label">Neutral</strong>
+            </div>
+          </div>
+
+          <section class="workspace-overlay hidden" id="workspace-overlay" aria-live="polite">
+            <header class="workspace-header">
+              <div>
+                <span class="eyebrow" id="workspace-eyebrow">MARY WORKSPACE</span>
+                <h2 id="workspace-title">Workspace</h2>
+                <p id="workspace-description">A connected surface over Mary's existing systems.</p>
+              </div>
+              <button class="ghost-button" id="workspace-close">Return to Chat</button>
+            </header>
+            <div class="workspace-body" id="workspace-body"></div>
+          </section>
+
+          <section class="chat-card" id="chat-card">
+            <div class="chat-scroll" id="messages" aria-live="polite">
+              <article class="message mary">
+                <div class="message-meta"><span>Mary</span><time>now</time></div>
+                <div class="bubble">I'm here.</div>
+              </article>
+            </div>
+            <div id="thinking" class="thinking hidden"><span></span><span></span><span></span><em>Mary is thinking</em></div>
+          </section>
+        </section>
+
+        <section class="composer-deck">
+          <form id="composer" class="composer">
+            <textarea id="message-input" rows="1" placeholder="Type your message to Mary…" autocomplete="off"></textarea>
+            <button id="mic-button" class="round-button mic" type="button" aria-pressed="false" title="Push to talk">◉</button>
+            <button id="send-button" class="round-button send" type="submit" title="Send">➤</button>
+          </form>
+          <div class="quick-actions" id="quick-actions">
+            <button data-prompt="Let's brainstorm ideas together."><span>✦</span> Brainstorm Ideas</button>
+            <button data-prompt="Can we have a real deep talk for a bit?"><span>●</span> Deep Talk</button>
+            <button data-screen-jump="studio"><span>⌘</span> Story Studio</button>
+            <button data-screen-jump="media"><span>♫</span> Music Together</button>
+            <button id="command-palette-button"><span>•••</span> More</button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="inspector-column glass-edge">
+        <section class="inspector-scroll">
+          <article class="neon-card inspector-card" id="memory-highlights-card">
+            <header class="card-header"><span>◉ MEMORY HIGHLIGHTS</span><span class="card-accent">LIVE</span></header>
+            <div id="memory-highlights" class="memory-list empty-state">No structured highlights yet.</div>
+            <button class="text-link" data-screen-jump="memories">View All Memories →</button>
+          </article>
+
+          <article class="neon-card inspector-card relationship-card">
+            <header class="card-header"><span>♥ OUR CONTINUITY</span></header>
+            <div class="relationship-layout">
+              <div>
+                <strong id="relationship-headline">Beginning</strong>
+                <span id="relationship-subline">Building shared context over time</span>
+              </div>
+              <div class="ring" id="relationship-ring"><span id="relationship-score">0%</span></div>
+            </div>
+            <div class="meter large"><i id="relationship-meter"></i></div>
+            <small id="relationship-semantics">Derived from shared history and creator-model continuity.</small>
+          </article>
+
+          <article class="neon-card inspector-card mood-card">
+            <header class="card-header"><span>☻ MARY'S MOOD</span><span id="mood-intensity-label">LOW</span></header>
+            <div class="mood-layout">
+              <div>
+                <strong id="mood-headline">Neutral</strong>
+                <span id="mood-subline">Expressive state</span>
+                <div class="mood-blocks" id="mood-blocks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+              <div class="mood-avatar">M</div>
+            </div>
+          </article>
+
+          <article class="neon-card inspector-card curiosity-card">
+            <header class="card-header"><span>◇ CURRENT CURIOSITY</span><span class="card-accent">AGENCY</span></header>
+            <strong id="curiosity-headline">Nothing open right now</strong>
+            <small id="curiosity-subline">Mary will only show curiosity actually represented in her agency state.</small>
+          </article>
+
+          <article class="neon-card inspector-card">
+            <header class="card-header"><span>◷ RECENT ACTIVITY</span></header>
+            <div id="recent-activities" class="activity-list empty-state">No recent relationship activity yet.</div>
+            <button class="text-link" data-screen-jump="memories">View Activity →</button>
+          </article>
+
+          <article class="neon-card inspector-card ecosystem-card">
+            <header class="card-header"><span>✦ ECOSYSTEM</span><span class="card-accent">12.8</span></header>
+            <div class="ecosystem-mini-grid">
+              <div><span>Study due</span><strong id="eco-study-due">0</strong></div>
+              <div><span>Tasks</span><strong id="eco-task-count">0</strong></div>
+              <div><span>Inbox</span><strong id="eco-inbox-count">0</strong></div>
+              <div><span>Focus</span><strong id="eco-focus-state">Idle</strong></div>
+            </div>
+            <button class="text-link" data-screen-jump="command">Open Command Center →</button>
+          </article>
+
+          <article class="neon-card inspector-card provider-card">
+            <header class="card-header"><span>⌁ CONNECTION</span><span id="model-label">MaryV2</span></header>
+            <div id="provider-route" class="route-line">Waiting for runtime…</div>
+            <div id="provider-badges" class="provider-badges"></div>
+          </article>
+        </section>
+      </aside>
+
+      <dialog id="command-palette" class="command-palette">
+        <div class="command-header"><span>COMMAND PALETTE</span><kbd>ESC</kbd></div>
+        <input id="command-input" placeholder="What do you want to do?" autocomplete="off" />
+        <div class="command-results" id="command-results"></div>
+      </dialog>
+
+      <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+      <audio id="ui-startup-sound" src="./assets/sounds/startup.wav" preload="auto"></audio>
+      <audio id="ui-select-sound" src="./assets/sounds/ui_select.wav" preload="auto"></audio>
+      <audio id="ui-hover-sound" src="./assets/sounds/ui_hover.wav" preload="auto"></audio>
+    </main>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -659,7 +659,12 @@ button, [role="button"], a, .nav-item, .game-card, .project-file, .action-button
 .app-shell[data-screen="study"] .main-stage { background-image: linear-gradient(rgba(4,5,14,.26),rgba(4,5,14,.50)), url('/assets/backgrounds/study-grid.svg'); }
 .app-shell[data-screen="stream"] .main-stage { background-image: linear-gradient(rgba(4,5,14,.20),rgba(4,5,14,.44)), url('/assets/backgrounds/stream-mesh.svg'); }
 .main-stage::before { content:""; position:absolute; inset:10px; pointer-events:none; background:url('/assets/ui/hud-corners.svg') center/100% 100% no-repeat; opacity:.24; z-index:1; }
-.main-stage > * { position:relative; z-index:2; }
+/* Preserve each stage child's declared positioning.
+   A blanket position:relative here collapses the absolute VRM/fallback layer
+   in Qt WebEngine on smaller Windows displays. */
+.main-stage > .stage-header,
+.main-stage > .chat-card,
+.main-stage > .workspace-overlay { z-index:2; }
 .app-shell::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:9000; background:url('/assets/ui/holo-scan.svg') center/100% 280px repeat-y; opacity:.22; mix-blend-mode:screen; animation:mary-scan 13s linear infinite; }
 @keyframes mary-scan { from { background-position:center -280px; } to { background-position:center 280px; } }
 .neon-card, .workspace-panel, .composer, .chat-card { transition:border-color .2s ease, box-shadow .2s ease, transform .2s ease, background-color .2s ease; }

@@ -1,0 +1,35 @@
+MARYV2 12.8.2 WINDOWS LIVE DESKTOP HOTFIX
+
+Fixes:
+- VRM stage collapsed by a late CSS positioning override on Windows/Qt WebEngine.
+- VRM camera reframes again after Qt finishes first layout.
+- Desktop starts maximized by default.
+- F11 / Alt+Enter toggle true fullscreen; Escape returns.
+- Double-click titlebar toggles maximize.
+- Launcher clamps/centers inside the available desktop area.
+- Adds a dry-run-first Windows state migration helper for repo data -> %LOCALAPPDATA%\MaryV2\data.
+
+INSTALL:
+1. Close Mary Desktop and Mary Launcher.
+2. Copy this package's files over the matching paths in the MaryV2 repository.
+3. Rebuild frontend:
+     cd desktop
+     npm run check
+     npm run build
+     cd ..
+4. Run focused hotfix tests:
+     python -m pytest tests/desktop/test_windows_live_hotfix_12_8_2.py -q
+5. State migration dry run:
+     powershell -ExecutionPolicy Bypass -File scripts\migrate_repo_state_windows.ps1
+6. If counts look correct, apply:
+     powershell -ExecutionPolicy Bypass -File scripts\migrate_repo_state_windows.ps1 -Apply
+7. Launch Desktop:
+     powershell -ExecutionPolicy Bypass -File scripts\launch_windows.ps1
+
+Window mode:
+- default: maximized
+- F11 or Alt+Enter: true fullscreen
+- Escape: leave fullscreen
+- optional .env setting: MARY_DESKTOP_START_MODE=fullscreen|maximized|windowed
+
+The state migration does not delete repo data. Existing LocalAppData desktop state is moved to a timestamped backup before the repo data is copied.

@@ -35,6 +35,35 @@ def _truthy_env(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _platform_home() -> Path:
+    """Return the home directory for the platform Mary is resolving.
+
+    Tests intentionally simulate frozen Windows/macOS/Linux builds from a
+    different host OS. ``Path.home()`` follows the *host* Python runtime, so a
+    Windows test process pretending to be macOS would otherwise keep resolving
+    ``C:\\Users\\...`` even after HOME is redirected. Prefer the
+    platform-appropriate environment variable first and use ``Path.home()``
+    only as the final host-native fallback.
+    """
+
+    if sys.platform == "win32":
+        user_profile = os.getenv("USERPROFILE", "").strip()
+        if user_profile:
+            return Path(user_profile).expanduser()
+
+        home_drive = os.getenv("HOMEDRIVE", "").strip()
+        home_path = os.getenv("HOMEPATH", "").strip()
+        if home_drive and home_path:
+            return Path(home_drive + home_path).expanduser()
+
+    else:
+        home = os.getenv("HOME", "").strip()
+        if home:
+            return Path(home).expanduser()
+
+    return Path.home()
+
+
 def _platform_data_base() -> Path:
     """Return the host-native writable application-data directory.
 
@@ -47,15 +76,15 @@ def _platform_data_base() -> Path:
         local_app_data = os.getenv("LOCALAPPDATA", "").strip()
         if local_app_data:
             return Path(local_app_data).expanduser()
-        return Path.home() / "AppData" / "Local"
+        return _platform_home() / "AppData" / "Local"
 
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support"
+        return _platform_home() / "Library" / "Application Support"
 
     xdg_data_home = os.getenv("XDG_DATA_HOME", "").strip()
     if xdg_data_home:
         return Path(xdg_data_home).expanduser()
-    return Path.home() / ".local" / "share"
+    return _platform_home() / ".local" / "share"
 
 
 def _default_data_root(resource_root: Path) -> Path:
@@ -76,13 +105,13 @@ def _platform_config_base() -> Path:
         local_app_data = os.getenv("LOCALAPPDATA", "").strip()
         if local_app_data:
             return Path(local_app_data).expanduser()
-        return Path.home() / "AppData" / "Local"
+        return _platform_home() / "AppData" / "Local"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support"
+        return _platform_home() / "Library" / "Application Support"
     xdg_config_home = os.getenv("XDG_CONFIG_HOME", "").strip()
     if xdg_config_home:
         return Path(xdg_config_home).expanduser()
-    return Path.home() / ".config"
+    return _platform_home() / ".config"
 
 
 def _dotenv_path() -> Path:
