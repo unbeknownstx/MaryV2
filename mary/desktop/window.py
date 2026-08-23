@@ -9,12 +9,30 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QUrl
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import QWebEngineSettings
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from mary.desktop.bridge import MaryDesktopBridge
 from mary.runtime.application import MaryApplication, create_application
+
+
+class MaryWebEnginePage(QWebEnginePage):
+    """WebEngine page that preserves useful frontend console diagnostics."""
+
+    def javaScriptConsoleMessage(  # noqa: N802 - Qt virtual method
+        self,
+        level,
+        message: str,
+        line_number: int,
+        source_id: str,
+    ) -> None:
+        source = source_id or "<inline>"
+        print(
+            f"[MaryDesktop][JS] {source}:{line_number} {message}",
+            flush=True,
+        )
+
 
 
 class MaryDesktopWindow(QMainWindow):
@@ -39,6 +57,7 @@ class MaryDesktopWindow(QMainWindow):
         self._was_maximized_before_fullscreen = True
 
         self.web = QWebEngineView(self)
+        self.web.setPage(MaryWebEnginePage(self.web))
         self.setCentralWidget(self.web)
 
         settings = self.web.settings()

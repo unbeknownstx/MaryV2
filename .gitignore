@@ -39,8 +39,12 @@ desktop/public/models/
 # OS/editor noise
 .DS_Store
 __MACOSX/
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 .idea/
+
+# Local benchmark / voice-lab reports
+runtime_reports/
 
 # Logs / temporary files
 *.log

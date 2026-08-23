@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QFileDialog
 
 from mary.runtime.application import MaryApplication
 from mary.desktop.voice import DesktopVoiceEngine
+from mary.desktop.audio_cache import DesktopAudioCache
 from mary.desktop.microphone import DesktopMicrophoneRecorder
 from mary.desktop.stt import DesktopSpeechToText
 from mary.desktop.dashboard import build_desktop_dashboard_state
@@ -26,6 +27,9 @@ from mary.desktop.integrations import DesktopIntegrationRegistry
 from mary.desktop.projects import CreativeWorkspaceManager
 from mary.desktop.turn_trace import build_turn_trace
 from mary.ecosystem import MaryEcosystem
+from mary.presence import PresenceEventType
+from mary.presence.websocket_server import LocalPresenceWebSocket
+from mary.conversation import ConversationLane, classify_conversation_lane
 from mary.desktop.conversation_runtime import (
     DesktopConversationRuntime,
     DesktopConversationState,
@@ -69,11 +73,13 @@ class _ConversationWorker(QObject):
         application: MaryApplication,
         text: str,
         voice: DesktopVoiceEngine,
+        audio_cache: DesktopAudioCache | None = None,
     ) -> None:
         super().__init__()
         self.application = application
         self.text = text
         self.voice = voice
+        self.audio_cache = audio_cache
 
     @Slot()
     def run(self) -> None:
@@ -92,6 +98,10 @@ class _ConversationWorker(QObject):
 
             response_text = str(result.output or "")
             mary = self.application.mary
+            pipeline_values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
+            cognitive_cycle = pipeline_values.get("cognitive_cycle")
+            cycle_metadata = dict(getattr(cognitive_cycle, "metadata", {}) or {})
+            delivery_plan = dict(cycle_metadata.get("delivery_plan", {}) or {})
 
             # Avatar presentation is best-effort. A visual-state defect must
             # never swallow an otherwise valid conversation response.
@@ -102,7 +112,7 @@ class _ConversationWorker(QObject):
                 avatar_state = mary.avatar.controller.present(
                     text=response_text,
                     speaking=False,
-                    metadata={"surface": "desktop"},
+                    metadata={"surface": "desktop", "delivery_plan": delivery_plan},
                 )
                 avatar_payload = avatar_state.to_dict()
             except Exception as exc:
@@ -121,6 +131,7 @@ class _ConversationWorker(QObject):
                     response_text,
                     user_text=self.text,
                     emotional_state=mary.emotion.state,
+                    delivery_plan=delivery_plan,
                 )
             except Exception as exc:
                 voice_error = f"{type(exc).__name__}: {exc}"
@@ -139,6 +150,11 @@ class _ConversationWorker(QObject):
                 }
 
             voice_ms = (monotonic() - voice_started) * 1000.0
+            # Large base64 audio blobs are expensive to serialize through
+            # QWebChannel. Stage them into a finite temp cache and send a local
+            # file URL instead. Keep base64 only as a fallback if staging fails.
+            if self.audio_cache is not None and voice_payload.get("status") == "success":
+                voice_payload = self.audio_cache.stage(voice_payload)
             spoken_text = str(voice_payload.get("spoken_text") or "").strip()
             display_text = spoken_text or response_text
             worker_total_ms = (monotonic() - started) * 1000.0
@@ -235,11 +251,14 @@ class MaryDesktopBridge(QObject):
         self._speech_worker: _TranscriptionWorker | None = None
         self.conversation_runtime = DesktopConversationRuntime()
         self.voice = DesktopVoiceEngine.from_environment()
+        self.audio_cache = DesktopAudioCache()
         self.stt = DesktopSpeechToText.from_environment()
         self.microphone = DesktopMicrophoneRecorder()
         self.integrations = DesktopIntegrationRegistry()
         self.creative_workspace = CreativeWorkspaceManager()
         self.ecosystem = MaryEcosystem(self.application.mary)
+        self.presence_socket = LocalPresenceWebSocket(self.ecosystem.snapshot)
+        self.presence_socket.start()
         self._active_turn_submitted_at: float | None = None
         self._pending_turn_trace: dict[str, Any] | None = None
         self._pending_turn_submitted_at: float | None = None
@@ -276,14 +295,20 @@ class MaryDesktopBridge(QObject):
             self.voicePlaybackStopRequested.emit()
 
         self._active_turn_submitted_at = monotonic()
+        lane = classify_conversation_lane(value)
+        presentation_state = (
+            DesktopConversationState.RESPONDING
+            if lane.lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
+            else DesktopConversationState.THINKING
+        )
         self._transition_conversation_state(
-            DesktopConversationState.THINKING,
-            reason="message_submitted",
+            presentation_state,
+            reason=f"message_submitted:{lane.lane.value}",
         )
         self._set_busy(True)
 
         thread = QThread(self)
-        worker = _ConversationWorker(self.application, value, self.voice)
+        worker = _ConversationWorker(self.application, value, self.voice, self.audio_cache)
         worker.moveToThread(thread)
 
         # Keep both wrappers alive for the full turn.
@@ -300,7 +325,7 @@ class MaryDesktopBridge(QObject):
     @Slot()
     def startListening(self) -> None:  # noqa: N802 - JS-facing API
         state = self.conversation_runtime.state
-        if self._busy or state == DesktopConversationState.THINKING:
+        if self._busy or state in {DesktopConversationState.RESPONDING, DesktopConversationState.THINKING}:
             self.errorOccurred.emit("Mary is still thinking about the current message.")
             return
         if self._speech_thread is not None or state == DesktopConversationState.TRANSCRIBING:
@@ -333,6 +358,25 @@ class MaryDesktopBridge(QObject):
     def stopListening(self) -> None:  # noqa: N802 - JS-facing API
         self.microphone.stop()
 
+    @Slot(str)
+    def voicePlaybackStage(self, stage: str) -> None:  # noqa: N802 - JS-facing API
+        """Record browser/audio startup milestones without finalizing the turn."""
+        trace = self._pending_turn_trace
+        submitted_at = self._pending_turn_submitted_at
+        if not trace or submitted_at is None:
+            return
+        key_map = {
+            "payload_received": "ui_payload_ms",
+            "play_requested": "play_request_ms",
+            "audio_ready": "audio_ready_ms",
+        }
+        key = key_map.get(str(stage or "").strip().lower())
+        if not key:
+            return
+        timings = dict(trace.get("timings") or {})
+        timings.setdefault(key, round((monotonic() - submitted_at) * 1000.0, 2))
+        trace["timings"] = timings
+
     @Slot()
     def voicePlaybackStarted(self) -> None:  # noqa: N802 - JS-facing API
         state = self.conversation_runtime.state
@@ -355,6 +399,7 @@ class MaryDesktopBridge(QObject):
         self._finalize_pending_turn_trace(reason="voice_playback_finished")
         if self.conversation_runtime.state in {
             DesktopConversationState.SPEAKING,
+            DesktopConversationState.RESPONDING,
             DesktopConversationState.THINKING,
         }:
             self._transition_conversation_state(
@@ -376,6 +421,7 @@ class MaryDesktopBridge(QObject):
                 "conversation": self.conversation_runtime.snapshot.to_dict(),
                 "voice": self.voice.status.to_dict(),
                 "speech_to_text": self.stt.status.to_dict(),
+                "presence_socket": self.presence_socket.status(),
             }
         )
 
@@ -398,6 +444,10 @@ class MaryDesktopBridge(QObject):
             runtime_status=self.conversation_runtime.state.value,
         )
         payload["ecosystem"] = self.ecosystem.snapshot()
+        try:
+            payload["mind"] = self.application.mary.mind.status()
+        except Exception as exc:
+            payload["mind"] = {"enabled": False, "error": f"{type(exc).__name__}: {exc}"}
         return _json(payload)
 
     @Slot(result=str)
@@ -405,14 +455,56 @@ class MaryDesktopBridge(QObject):
         return _json(self.ecosystem.snapshot())
 
     @Slot(result=str)
+    def getMindStatus(self) -> str:  # noqa: N802
+        try:
+            return _json(self.application.mary.mind.status())
+        except Exception as exc:
+            return _json({"enabled": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(result=str)
+    def rebuildCognitiveReservoir(self) -> str:  # noqa: N802
+        """Rebuild only Mary's derived local index; canonical state is untouched."""
+        try:
+            count = int(self.application.mary.mind.rebuild_reservoir())
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "records": count, "status": self.application.mary.mind.status()})
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(result=str)
     def getLastTurnTrace(self) -> str:  # noqa: N802
         """Return display-safe timing/provider metadata for the latest desktop turn."""
         return _json(self.ecosystem.metrics.last_turn())
+
+    def _publish_workspace_event(
+        self,
+        event_type: PresenceEventType,
+        summary: str,
+        *,
+        importance: float = .55,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Best-effort live context; workspace actions must never fail because Presence did."""
+        try:
+            self.ecosystem.publish_workspace_event(
+                event_type,
+                summary,
+                importance=importance,
+                metadata=metadata,
+            )
+        except Exception:
+            pass
 
     @Slot(str, str, result=str)
     def addCommandItem(self, title: str, kind: str = "task") -> str:  # noqa: N802
         try:
             item = self.ecosystem.command.add(title, kind=kind or "task")
+            self._publish_workspace_event(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Command Center added {item.get('kind', 'item')}: {item.get('title', '')}",
+                importance=.58,
+                metadata={"item_id": item.get("id"), "status": item.get("status")},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "item": item})
         except Exception as exc:
@@ -423,6 +515,12 @@ class MaryDesktopBridge(QObject):
     def updateCommandStatus(self, item_id: str, status: str) -> str:  # noqa: N802
         try:
             item = self.ecosystem.command.update(item_id, status=status)
+            self._publish_workspace_event(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Command Center updated {item.get('title', 'an item')} to {item.get('status', status)}",
+                importance=.54,
+                metadata={"item_id": item.get("id"), "status": item.get("status")},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "item": item})
         except Exception as exc:
@@ -433,6 +531,12 @@ class MaryDesktopBridge(QObject):
     def startFocus(self, minutes: int, task: str = "") -> str:  # noqa: N802
         try:
             state = self.ecosystem.focus.start(minutes, task=task)
+            self._publish_workspace_event(
+                PresenceEventType.FOCUS_CHANGED,
+                f"Focus started for {int(minutes)} minutes" + (f" on {task}" if task else ""),
+                importance=.44,
+                metadata={"active": True, "minutes": int(minutes)},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "focus": state})
         except Exception as exc:
@@ -441,6 +545,12 @@ class MaryDesktopBridge(QObject):
     @Slot(result=str)
     def stopFocus(self) -> str:  # noqa: N802
         state = self.ecosystem.focus.stop()
+        self._publish_workspace_event(
+            PresenceEventType.FOCUS_CHANGED,
+            "Focus session stopped",
+            importance=.42,
+            metadata={"active": False},
+        )
         self.dashboardStateChanged.emit(self.getDashboardState())
         return _json({"ok": True, "focus": state})
 
@@ -448,6 +558,12 @@ class MaryDesktopBridge(QObject):
     def createStudyProject(self, title: str, objective: str = "") -> str:  # noqa: N802
         try:
             project = self.ecosystem.study.create_project(title, objective=objective)
+            self._publish_workspace_event(
+                PresenceEventType.STUDY_CHANGED,
+                f"Study project created: {project.get('title', title)}",
+                importance=.58,
+                metadata={"project_id": project.get("id")},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "project": project})
         except Exception as exc:
@@ -457,6 +573,12 @@ class MaryDesktopBridge(QObject):
     def addStudyCard(self, project_id: str, prompt: str, answer: str) -> str:  # noqa: N802
         try:
             card = self.ecosystem.study.add_card(project_id, prompt, answer)
+            self._publish_workspace_event(
+                PresenceEventType.STUDY_CHANGED,
+                "A study card was added",
+                importance=.46,
+                metadata={"project_id": project_id, "card_id": card.get("id")},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "card": card})
         except Exception as exc:
@@ -466,6 +588,12 @@ class MaryDesktopBridge(QObject):
     def reviewStudyCard(self, project_id: str, card_id: str, score: int) -> str:  # noqa: N802
         try:
             card = self.ecosystem.study.review(project_id, card_id, score)
+            self._publish_workspace_event(
+                PresenceEventType.STUDY_CHANGED,
+                f"A study review was scored {int(score)}/5",
+                importance=.5,
+                metadata={"project_id": project_id, "card_id": card_id, "score": int(score)},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "card": card})
         except Exception as exc:
@@ -498,6 +626,12 @@ class MaryDesktopBridge(QObject):
     def createResearchThread(self, title: str, question: str = "") -> str:  # noqa: N802
         try:
             thread = self.ecosystem.research.create(title, question=question)
+            self._publish_workspace_event(
+                PresenceEventType.PROJECT_CHANGED,
+                f"Research thread created: {thread.get('title', title)}",
+                importance=.57,
+                metadata={"thread_id": thread.get("id")},
+            )
             self.dashboardStateChanged.emit(self.getDashboardState())
             return _json({"ok": True, "thread": thread})
         except Exception as exc:
@@ -512,12 +646,53 @@ class MaryDesktopBridge(QObject):
 
     @Slot(result=str)
     def getIdleAction(self) -> str:  # noqa: N802
-        return _json(self.ecosystem.presence.idle_tick())
+        focus_active = bool(self.ecosystem.focus.snapshot().get("active"))
+        maintenance = {}
+        try:
+            maintenance = self.application.mary.mind.maintenance()
+        except Exception as exc:
+            maintenance = {"error": f"{type(exc).__name__}: {exc}"}
+        payload = self.ecosystem.presence.idle_tick(focus_active=focus_active)
+        payload["mind_maintenance"] = maintenance
+        return _json(payload)
 
     @Slot(result=str)
     def getIntegrationState(self) -> str:  # noqa: N802 - JS-facing API
         self.integrations.refresh()
         return _json({"creative_apps": self.integrations.status()})
+
+    @Slot(result=str)
+    def getYouTubeStatus(self) -> str:  # noqa: N802
+        return _json(self.ecosystem.youtube.status())
+
+    @Slot(str, result=str)
+    def searchYouTube(self, query: str) -> str:  # noqa: N802
+        try:
+            results = self.ecosystem.youtube.search(query)
+            self._publish_workspace_event(
+                PresenceEventType.MEDIA_CHANGED,
+                f"YouTube search requested: {str(query or '').strip()[:120]}",
+                importance=.38,
+                metadata={"result_count": len(results), "source": "youtube_data_api"},
+            )
+            return _json({"ok": True, "results": results, "status": self.ecosystem.youtube.status()})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc), "results": [], "status": self.ecosystem.youtube.status()})
+
+    @Slot(str, str, result=str)
+    def saveYouTubeToResearch(self, title: str, url: str) -> str:  # noqa: N802
+        try:
+            thread = self.ecosystem.research.create(str(title or "YouTube research"), question=str(url or ""))
+            self._publish_workspace_event(
+                PresenceEventType.PROJECT_CHANGED,
+                f"Saved YouTube result to research: {thread.get('title', title)}",
+                importance=.48,
+                metadata={"thread_id": thread.get("id"), "source": "youtube"},
+            )
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json({"ok": True, "thread": thread})
+        except Exception as exc:
+            return _json({"ok": False, "error": str(exc)})
 
     @Slot(str, result=bool)
     def openExternalUrl(self, url: str) -> bool:  # noqa: N802 - JS-facing API
@@ -578,6 +753,12 @@ class MaryDesktopBridge(QObject):
             return _json({"selected": False, **self.creative_workspace.status()})
         try:
             self.creative_workspace.set_root(path)
+            self._publish_workspace_event(
+                PresenceEventType.CREATIVE_CHANGED,
+                "Creative workspace changed",
+                importance=.56,
+                metadata={"configured": True},
+            )
             return _json({"selected": True, **self.creative_workspace.status()})
         except Exception as exc:
             self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
@@ -594,7 +775,14 @@ class MaryDesktopBridge(QObject):
     @Slot(str, str, result=str)
     def saveCreativeTextFile(self, relative_path: str, content: str) -> str:  # noqa: N802 - JS-facing API
         try:
-            return _json({"ok": True, **self.creative_workspace.save_text(relative_path, content)})
+            result = self.creative_workspace.save_text(relative_path, content)
+            self._publish_workspace_event(
+                PresenceEventType.CREATIVE_CHANGED,
+                f"Creative text saved: {relative_path}",
+                importance=.5,
+                metadata={"relative_path": str(relative_path)[:240]},
+            )
+            return _json({"ok": True, **result})
         except Exception as exc:
             self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
             return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
@@ -647,7 +835,9 @@ class MaryDesktopBridge(QObject):
             self.errorOccurred.emit(f"{type(exc).__name__}: {exc}")
 
     def close(self) -> None:
+        self.presence_socket.stop()
         self.microphone.stop()
+        self.audio_cache.cleanup()
         speech_thread = self._speech_thread
         if speech_thread is not None and speech_thread.isRunning():
             speech_thread.quit()
@@ -760,6 +950,7 @@ class MaryDesktopBridge(QObject):
             flush=True,
         )
         self.conversationStateChanged.emit(_json(snapshot.to_dict()))
+        self.presence_socket.publish("conversation_state", snapshot.to_dict())
         self._emit_character_state()
 
     def _set_busy(self, value: bool) -> None:
@@ -780,11 +971,14 @@ class MaryDesktopBridge(QObject):
         trace["timings"] = timings
         trace["completion_event"] = str(reason)
         self.ecosystem.record_turn(trace=trace)
+        self.presence_socket.publish("turn_trace", trace)
         print(
             "[MaryDesktop] trace "
             f"provider={trace.get('provider', 'unknown')} "
             f"pipeline={timings.get('pipeline_ms', 'n/a')}ms "
             f"tts={timings.get('tts_synthesis_ms', 'n/a')}ms "
+            f"ui={timings.get('ui_payload_ms', 'n/a')}ms "
+            f"ready={timings.get('audio_ready_ms', 'n/a')}ms "
             f"perceived={timings.get('perceived_ms', 'n/a')}ms",
             flush=True,
         )
@@ -827,7 +1021,7 @@ class MaryDesktopBridge(QObject):
         voice_will_play = bool(
             voice.get("enabled")
             and voice.get("status") == "success"
-            and voice.get("audio_base64")
+            and (voice.get("audio_url") or voice.get("audio_base64"))
         )
         if not voice_will_play:
             self._finalize_pending_turn_trace(reason="text_ready")

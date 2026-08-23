@@ -35,7 +35,10 @@ def test_frontend_marks_mary_speaking_during_audio_playback() -> None:
     source = (_root() / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
     assert "function playVoice(voice = {})" in source
     assert "Mary speaking" in source
-    assert "new Audio(`data:${mimeType};base64,${voice.audio_base64}`)" in source
+    assert "function audioSourceFromVoice(voice = {})" in source
+    assert "voice.audio_url" in source
+    assert "URL.createObjectURL" in source
+    assert "voicePlaybackStarted" in source
 
 
 def test_desktop_voice_uses_calibrated_mary_settings_from_environment() -> None:

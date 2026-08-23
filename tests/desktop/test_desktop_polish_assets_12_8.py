@@ -23,5 +23,5 @@ def test_first_program_polish_assets_are_packaged():
 def test_launcher_static_fallback_tracks_current_release():
     root = Path(__file__).resolve().parents[2]
     html = (root / "desktop" / "launcher.html").read_text(encoding="utf-8")
-    assert 'id="installed-version">12.9.0<' in html
-    assert 'id="desktop-phase">desktop-uplift-runtime<' in html
+    assert 'id="installed-version">12.10.0<' in html
+    assert 'id="desktop-phase">presence-presentation<' in html

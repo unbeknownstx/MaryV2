@@ -53,6 +53,7 @@ def main() -> int:
 
     original_cwd = Path.cwd()
     failures: list[str] = []
+    app = None
 
     with TemporaryDirectory() as temp_dir:
         try:
@@ -78,6 +79,8 @@ def main() -> int:
                 if not ok:
                     failures.append(query)
         finally:
+            if app is not None:
+                app.close()
             # Windows cannot remove the process's current working directory.
             # Leave the temporary workspace before TemporaryDirectory cleanup.
             os.chdir(original_cwd)

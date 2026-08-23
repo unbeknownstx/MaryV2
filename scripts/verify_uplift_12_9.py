@@ -22,8 +22,8 @@ def main() -> int:
     print("MARYV2 12.9 DESKTOP UPLIFT + RUNTIME INSTRUMENTATION")
     print("=" * 72)
 
-    check("software version is 12.9.0", APP_VERSION == "12.9.0")
-    check("desktop phase is uplift runtime", DESKTOP_PHASE == "desktop-uplift-runtime")
+    check("12.9 uplift remains installed under current release", APP_VERSION in {"12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2"})
+    check("uplift runtime remains installed under current phase", DESKTOP_PHASE in {"desktop-uplift-runtime", "presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime"})
 
     required = (
         "mary/desktop/turn_trace.py",
@@ -57,7 +57,7 @@ def main() -> int:
     check("voice timing metadata records while disabled", "timings" in DesktopVoiceEngine().synthesize("hello"))
 
     package = json.loads((ROOT / "PACKAGE_INFO.json").read_text(encoding="utf-8"))
-    check("package metadata matches 12.9", package.get("version") == "12.9.0")
+    check("package metadata is 12.9 or later", package.get("version") in {"12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2"})
 
     print("=" * 72)
     print("MARYV2 12.9 UPLIFT VERIFIED")

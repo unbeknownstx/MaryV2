@@ -22,6 +22,7 @@ from mary.cognition.intent import Intent
 from mary.cognition.reasoning import ReasoningResult
 from mary.llm.router import LLMRouter
 from mary.llm.interface import LLMMessage, LLMProviderError
+from mary.conversation import ConversationLane, choose_reflection_action, local_conversation_repair
 
 
 class ReflectionDecision(str, Enum):
@@ -196,6 +197,35 @@ class ReflectionEngine:
                 metadata={
                     "mode": "local_character_audit",
                     "llm_calls": 0,
+                },
+            )
+
+        lane_meta = reasoning.metadata.get("conversation_lane")
+        lane_name = str(lane_meta.get("lane") if isinstance(lane_meta, dict) else "thinking")
+        try:
+            lane = ConversationLane(lane_name)
+        except ValueError:
+            lane = ConversationLane.THINKING
+        reflection_policy = choose_reflection_action(lane, issues)
+        if reflection_policy.action == "local_repair":
+            repaired = local_conversation_repair(
+                reasoning.response,
+                micro=(lane == ConversationLane.SOCIAL_INSTANT),
+            )
+            return ReflectionResult(
+                decision=(
+                    ReflectionDecision.REVISE
+                    if repaired != str(reasoning.response or "").strip()
+                    else ReflectionDecision.ACCEPT
+                ),
+                confidence=0.88,
+                assessment=reflection_policy.rationale,
+                issues=issues,
+                revised_response=(repaired if repaired != str(reasoning.response or "").strip() else None),
+                metadata={
+                    "mode": "local_fast_repair",
+                    "llm_calls": 0,
+                    "conversation_lane": lane.value,
                 },
             )
 

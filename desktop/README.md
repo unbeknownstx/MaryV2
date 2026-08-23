@@ -1,10 +1,10 @@
-# MaryV2 Desktop 12.8 — Ecosystem Game Shell
+# MaryV2 Desktop 12.10 — Presence + Presentation Game Shell
 
 The desktop is a presentation layer over the **same canonical `MaryApplication`** used by the terminal runtime. It does not create a second Mary, a second memory database, another relationship model, or another LLM router.
 
 ## What exists in this pass
 
-12.8 keeps the 12.7 VRM/chat game shell and adds first-program ecosystem polish plus connected productivity/presence workspaces:
+12.10 retains the proven 12.7/12.8 VRM/chat ecosystem shell and the 12.9 runtime instrumentation, then adds Mary Home / Companion Pulse, stronger workspace-to-Presence connections, Focus-aware quiet behavior, Portrait Art presentation, and responsive UI polish:
 
 - frameless game-like Mary window with custom title bar;
 - left navigation rail: Chat, Memories, Personality, Studio, Study, Command, Focus, Stream, Gallery, Media, Voice & Avatar, Settings;

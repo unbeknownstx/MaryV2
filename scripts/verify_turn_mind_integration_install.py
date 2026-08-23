@@ -54,9 +54,14 @@ def main() -> int:
     print("=" * 72)
 
     original = os.getcwd()
+    previous_local_mind = os.environ.get("MARY_LOCAL_MIND_ENABLED")
     with TemporaryDirectory(prefix="maryv2_turnmind_", ignore_cleanup_errors=True) as temp:
         try:
             os.chdir(temp)
+            # This milestone specifically verifies the full TurnMind -> reasoning
+            # -> reflection path. 12.12 adds a pre-cognition local reflex layer,
+            # so disable that optional front porch for this historical verifier.
+            os.environ["MARY_LOCAL_MIND_ENABLED"] = "false"
 
             router = FakeRouter()
             mary = Mary()
@@ -110,6 +115,10 @@ def main() -> int:
             _pass("normal Mary turns are committed through the existing dialogue/expression systems")
 
         finally:
+            if previous_local_mind is None:
+                os.environ.pop("MARY_LOCAL_MIND_ENABLED", None)
+            else:
+                os.environ["MARY_LOCAL_MIND_ENABLED"] = previous_local_mind
             os.chdir(original)
 
     print("=" * 72)

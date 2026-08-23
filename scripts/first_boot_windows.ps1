@@ -9,7 +9,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 Write-Host "============================================================"
-Write-Host "MARYV2 12.9 FIRST BOOT - WINDOWS"
+Write-Host "MARYV2 12.10 FIRST BOOT - WINDOWS"
 Write-Host "============================================================"
 Write-Host "This script never deletes or replaces your existing data/ or .env."
 Write-Host ""

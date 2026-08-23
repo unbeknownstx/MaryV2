@@ -17,6 +17,7 @@ class DesktopConversationState(str, Enum):
     IDLE = "idle"
     LISTENING = "listening"
     TRANSCRIBING = "transcribing"
+    RESPONDING = "responding"
     THINKING = "thinking"
     SPEAKING = "speaking"
     INTERRUPTED = "interrupted"
@@ -25,6 +26,7 @@ class DesktopConversationState(str, Enum):
 _ALLOWED_TRANSITIONS: dict[DesktopConversationState, set[DesktopConversationState]] = {
     DesktopConversationState.IDLE: {
         DesktopConversationState.LISTENING,
+        DesktopConversationState.RESPONDING,
         DesktopConversationState.THINKING,
         DesktopConversationState.SPEAKING,
     },
@@ -35,6 +37,11 @@ _ALLOWED_TRANSITIONS: dict[DesktopConversationState, set[DesktopConversationStat
     },
     DesktopConversationState.TRANSCRIBING: {
         DesktopConversationState.IDLE,
+    },
+    DesktopConversationState.RESPONDING: {
+        DesktopConversationState.SPEAKING,
+        DesktopConversationState.IDLE,
+        DesktopConversationState.INTERRUPTED,
     },
     DesktopConversationState.THINKING: {
         DesktopConversationState.SPEAKING,
@@ -47,6 +54,7 @@ _ALLOWED_TRANSITIONS: dict[DesktopConversationState, set[DesktopConversationStat
     },
     DesktopConversationState.INTERRUPTED: {
         DesktopConversationState.LISTENING,
+        DesktopConversationState.RESPONDING,
         DesktopConversationState.THINKING,
         DesktopConversationState.IDLE,
     },

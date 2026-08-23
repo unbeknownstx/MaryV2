@@ -15,6 +15,10 @@ class PresenceEventType(str, Enum):
     VISUAL_OBSERVATION = "visual_observation"
     MEDIA_CHANGED = "media_changed"
     PROJECT_CHANGED = "project_changed"
+    COMMAND_CHANGED = "command_changed"
+    STUDY_CHANGED = "study_changed"
+    FOCUS_CHANGED = "focus_changed"
+    CREATIVE_CHANGED = "creative_changed"
     IDLE_TICK = "idle_tick"
     SYSTEM = "system"
 

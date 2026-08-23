@@ -9,8 +9,12 @@ def text(path: str) -> str:
 
 def test_release_metadata_preserves_12_8_foundation_under_12_9():
     source = text("mary/runtime/release.py")
-    assert 'APP_VERSION = "12.9.0"' in source
-    assert 'DESKTOP_PHASE = "desktop-uplift-runtime"' in source
+    assert ('APP_VERSION = "12.11.0"' in source or ('APP_VERSION = "12.12.0"' in source or 'APP_VERSION = "12.12.2"' in source))
+    assert any(phase in source for phase in (
+        'DESKTOP_PHASE = "presence-presentation"',
+        'DESKTOP_PHASE = "fast-dialogue-connected-presence"',
+        'DESKTOP_PHASE = "cognitive-reservoir-character-runtime"',
+    ))
 
 
 def test_game_shell_exposes_new_core_workspaces():
@@ -65,7 +69,7 @@ def test_local_voice_is_optional_and_cloud_fallback_is_opt_in():
     assert "windows_sapi" in source
     assert "piper" in source.lower()
     assert "MARY_TTS_ALLOW_CLOUD_FALLBACK" in source
-    assert "MARY_TTS_PROVIDER=local_first" in env
+    assert any(mode in env for mode in ("MARY_TTS_PROVIDER=local_first", "MARY_TTS_PROVIDER=auto_fast"))
     assert "MARY_TTS_ALLOW_CLOUD_FALLBACK=false" in env
 
 

@@ -65,6 +65,7 @@ def main() -> int:
     print("Mary core:", Path(__import__("mary.core.mary", fromlist=["x"]).__file__).resolve())
     print("LLM router:", Path(__import__("mary.llm.router", fromlist=["x"]).__file__).resolve())
 
+    app = None
     with tempfile.TemporaryDirectory(prefix="maryv2-resilience-") as tmp:
         tmp_path = Path(tmp)
         app = create_application(
@@ -107,6 +108,8 @@ def main() -> int:
             "In-character rate-limit fallback message was not returned.",
         )
         print("PASS ordinary conversation stays in-character on simulated 429")
+        app.close()
+        app = None
 
     print("=" * 72)
     print("RESILIENCE UPDATE INSTALLED CORRECTLY")

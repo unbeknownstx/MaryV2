@@ -29,6 +29,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
 from mary.runtime.turn_policy import TurnPolicyEngine
+from mary.conversation import ConversationLane, classify_conversation_lane
 from mary.llm.interface import (
     LLMMessage,
     LLMProviderError,
@@ -158,12 +159,27 @@ class ReasoningEngine:
             local_tool_grounded=local_tool_grounded,
             self_grounded=self_grounded,
         )
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        lane = classify_conversation_lane(
+            context.input_text,
+            intent_name=(intent.intent_type.value if intent is not None else ""),
+            preferred_length=str(disposition.get("preferred_length", "")),
+        )
         generation_purpose = turn_policy.generation_purpose
+        routing_purpose = generation_purpose
+        # Keep the public semantic purpose as "conversation" for compatibility
+        # while selecting a purpose-specific low-latency Groq model internally.
         if (
-            generation_purpose is not None
+            generation_purpose == "conversation"
+            and lane.lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
+        ):
+            routing_purpose = "conversation_fast"
+        if (
+            routing_purpose is not None
             and callable(getattr(self.llm, "conversation_provider_order", None))
         ):
-            generation_kwargs["purpose"] = generation_purpose
+            generation_kwargs["purpose"] = routing_purpose
 
         try:
             response = self.llm.generate(
@@ -207,6 +223,8 @@ class ReasoningEngine:
                 "provider_attempt_timings": list(getattr(self.llm, "last_generation_attempt_timings", [])),
                 "generation_purpose": generation_purpose,
                 "turn_policy": turn_policy.to_dict(),
+                "conversation_lane": lane.to_dict(),
+                "routing_purpose": routing_purpose,
             }
         else:
             final_response = response.content
@@ -247,6 +265,8 @@ class ReasoningEngine:
                 "provider_attempt_timings": list(getattr(self.llm, "last_generation_attempt_timings", [])),
                 "generation_purpose": generation_purpose,
                 "turn_policy": turn_policy.to_dict(),
+                "conversation_lane": lane.to_dict(),
+                "routing_purpose": routing_purpose,
             }
 
         return ReasoningResult(
@@ -716,14 +736,19 @@ class ReasoningEngine:
             "values, memory, relationship, agency, and expressive state. You are not a generic "
             "customer-service assistant. Treat the supplied TurnMindState/local evidence as "
             "authoritative for who you are and what you know.\n\n"
-            "Talk to Unbe with appropriate familiarity. You are performing Mary Cosma's dialogue as natural spoken "
-            "dialogue: warm, curious, playful, witty, direct, and capable of opinions or respectful "
-            "disagreement when state supports it. React before advising. Contractions, fragments, "
-            "hesitation, emphasis, playful timing, and thinking aloud are fine when natural. Do not "
-            "force jokes, questions, headings, lists, or service-offer closers into casual chat. "
-            "Avoid canned lines such as 'anything else?', 'how can I help?', or 'let me know if'. "
-            "A vivid phrase is fine, but do not stack several unrelated metaphors or decorative motifs in one simple reply. "
-            "Even when a follow-up question is allowed, do not default to generic handoffs such as 'what about you?' or 'what do you think?'.\n\n"
+            "Talk to Unbe with appropriate familiarity. Sound like Mary is simply talking, not performing "
+            "the role of Mary for an audience. Default ordinary conversation is low-key, comfortable, warm, "
+            "witty, direct, and capable of opinions or respectful disagreement when state supports it. "
+            "React before advising. Personality should come through mainly in viewpoint and word choice, not "
+            "through constant dramatic pauses, mysterious phrasing, theatrical emphasis, or cinematic prose. "
+            "Use contractions and occasional fragments naturally, but do not manufacture hesitation or stylized "
+            "cadence. Most ordinary conversational replies should land in one to four sentences; a micro reply is "
+            "usually one or two. Treat the token budget as a ceiling, never a target. Do not force jokes, questions, "
+            "headings, lists, or service-offer closers into casual chat. Avoid canned lines such as 'anything else?', "
+            "'how can I help?', or 'let me know if'. Avoid mystical/main-character framing unless the actual topic or "
+            "creator explicitly invites that style. A vivid phrase is fine when it genuinely fits, but do not stack "
+            "metaphors or decorative motifs in a simple reply. Even when a follow-up question is allowed, do not "
+            "default to generic handoffs such as 'what about you?' or 'what do you think?'.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, "
             "emotions, hidden creator mental states, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
             "His preferences and history are also his, not Mary's. Assistant-role dialogue is "

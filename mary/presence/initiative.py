@@ -27,13 +27,17 @@ class InitiativeEngine:
         elif event.event_type==PresenceEventType.CREATOR_SPEECH: score=max(score,.78)
         elif event.event_type in {PresenceEventType.OBS_SCENE,PresenceEventType.FOREGROUND_APP}: score*=.62
         elif event.event_type==PresenceEventType.IDLE_TICK: score*=.45
+        elif event.event_type==PresenceEventType.FOCUS_CHANGED: score*=.35
+        elif event.event_type in {PresenceEventType.COMMAND_CHANGED,PresenceEventType.STUDY_CHANGED}: score*=.82
+        elif event.event_type==PresenceEventType.CREATIVE_CHANGED: score*=.90
         if creator_active and monotonic()-self._last_spoke_at<self.min_speak_interval: score*=.45
         if score < self.threshold:
-            action=InitiativeAction.HOLD_THOUGHT if score>=self.threshold*.72 and event.event_type in {PresenceEventType.VISUAL_OBSERVATION,PresenceEventType.PROJECT_CHANGED} else InitiativeAction.SILENCE
+            hold_types={PresenceEventType.VISUAL_OBSERVATION,PresenceEventType.PROJECT_CHANGED,PresenceEventType.CREATIVE_CHANGED,PresenceEventType.COMMAND_CHANGED,PresenceEventType.STUDY_CHANGED}
+            action=InitiativeAction.HOLD_THOUGHT if score>=self.threshold*.72 and event.event_type in hold_types else InitiativeAction.SILENCE
             return InitiativeDecision(action,round(score,3),"not salient enough to interrupt",False)
         action=InitiativeAction.REACT
         if event.event_type==PresenceEventType.TWITCH_MENTION: action=InitiativeAction.REACT
         elif event.event_type==PresenceEventType.VISUAL_OBSERVATION: action=InitiativeAction.OPINE
-        elif event.event_type==PresenceEventType.PROJECT_CHANGED: action=InitiativeAction.HELP
+        elif event.event_type in {PresenceEventType.PROJECT_CHANGED,PresenceEventType.CREATIVE_CHANGED,PresenceEventType.COMMAND_CHANGED,PresenceEventType.STUDY_CHANGED}: action=InitiativeAction.HELP
         return InitiativeDecision(action,round(score,3),"salient live-context event",True)
     def mark_spoken(self): self._last_spoke_at=monotonic()

@@ -88,7 +88,7 @@ Useful commands while Mary is running:
 
 ## Run Mary Desktop / Launcher
 
-12.9 builds on the validated 12.8 ecosystem/presence shell and adds measured runtime telemetry, a responsive desktop uplift, a live developer trace, window-geometry quality-of-life, and tighter micro/social response budgets. The underlying 12.8 ecosystem still provides: live VRM, persistent chat, real mood/relationship/memory panels, navigation workspaces, local music, command palette, Studio/Unbeknownst shell, creative-app integration hooks, and a separate launcher. The desktop remains a presentation layer over the same canonical `MaryApplication`.
+12.10 builds on the validated 12.9 runtime instrumentation and 12.8 ecosystem/presence shell. It adds Mary Home / Companion Pulse, typed cross-workspace Presence pathways, Focus-aware quiet behavior, local Portrait Art presentation beside the working VRM, stronger responsive polish, and Vite 8/Rolldown bundle-splitting configuration. The desktop remains a presentation layer over the same canonical `MaryApplication`; the Companion Pulse is read-only and does not become another memory or planner.
 
 On Windows, normal source testing now starts with the launcher:
 
@@ -189,11 +189,43 @@ Mary's character/runtime core no longer assumes Ollama exists on every host. `Ru
 
 ### Windows first boot
 
-After backing up your existing `.env` and `data/`, the consolidated 12.9 package can be validated on Windows with:
+The canonical Windows repository remains `C:\Users\Melvin\Documents\GitHub\MaryV2`. After preserving your existing private `.env` and runtime state, validate 12.10 with:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-.\scripts\first_boot_windows.ps1
+.\SETUP_WINDOWS_12_10.ps1
 ```
 
-See `START_HERE_12_8.md` for the staged migration and troubleshooting order.
+See `START_HERE_12_10.md` for the current canonical Windows setup, FAST/FULL/RELEASE test tiers, and 12.10 Presence/Presentation boundaries.
+
+
+## 12.11 fast dialogue + connected presence
+
+Mary now separates ordinary conversation from deliberate thinking. Short/social and ordinary conversational turns use a deterministic fast lane, a purpose-specific Groq conversation model (`MARY_GROQ_CONVERSATION_MODEL`, default `llama-3.1-8b-instant`), local character/style repair when safe, and ElevenLabs/local TTS independently. Semantic/provenance/capability boundary defects still retain the stronger revision path.
+
+Optional integrations remain explicit and disabled by default: loopback read-only WebSocket presence (`MARY_WEBSOCKET_ENABLED`) and YouTube Data API public search (`MARY_YOUTUBE_ENABLED` + `YOUTUBE_API_KEY`). YouTube search metadata never becomes permanent Mary memory automatically; selected results can be explicitly saved into Research. Paid OpenAI remains the explicit expert route only.
+
+## 12.12 Cognitive Reservoir + Character Runtime
+
+12.12 adds a rebuildable local character-mind layer **above Mary's existing
+canonical state and below language-model calls**.  Simple dialogue acts,
+represented status and high-confidence local facts can be handled without an
+LLM.  A bounded SQLite/FTS5 Cognitive Reservoir indexes provenance-bearing
+projections of existing creator state, Mary preferences, semantic/episodic
+memory and verified knowledge.  It is derived cache state, never a new identity
+or truth authority.
+
+The release also adds a hardware-conscious local Ollama model lab, optional
+purpose-specific local conversation model routing, one deterministic
+Expression Director shared by TTS and VRM presentation, and a character utility
+layer for cheap idle/autonomy behavior where silence remains valid.
+
+Start with `START_HERE_12_12.md`.  Useful development commands:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\test_fast.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\test_character.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\test_full.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\test_release.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\benchmark_local_models_windows.ps1
+```

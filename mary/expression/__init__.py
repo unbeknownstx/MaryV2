@@ -48,6 +48,10 @@ from .response import (
     create_response_builder,
 )
 
+
+from .delivery_plan import DeliveryPlan
+from .director import ExpressionDirector
+
 from .dialogue import (
     DialogueMode,
     SpeakerRole,
@@ -79,6 +83,10 @@ __all__ = [
     "Response",
     "ResponseBuilder",
     "create_response_builder",
+
+    # Performance direction
+    "DeliveryPlan",
+    "ExpressionDirector",
 
     # Dialogue
     "DialogueMode",

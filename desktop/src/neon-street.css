@@ -1,0 +1,170 @@
+/* MaryV2 12.11 — clarity + blue-neon street polish. */
+:root {
+  --street-blue: #2aa9ff;
+  --street-cyan: #48e7ff;
+  --street-indigo: #525dff;
+  --panel-readable: rgba(7, 8, 22, .93);
+  --panel-readable-soft: rgba(11, 12, 30, .88);
+}
+
+body {
+  background:
+    radial-gradient(circle at 72% 25%, rgba(28, 111, 255, .16), transparent 32%),
+    radial-gradient(circle at 44% 68%, rgba(255, 48, 153, .14), transparent 35%),
+    linear-gradient(135deg, #03050e 0%, #090717 50%, #030817 100%);
+}
+
+.main-stage {
+  background:
+    linear-gradient(180deg, rgba(7, 7, 22, .32), rgba(3, 6, 19, .66)),
+    radial-gradient(circle at 50% 20%, rgba(73, 90, 255, .16), transparent 38%),
+    radial-gradient(circle at 75% 72%, rgba(36, 184, 255, .13), transparent 36%);
+}
+
+.main-stage::before {
+  content: "MARY  //  LIVE  //  V2";
+  position: absolute;
+  left: 7%;
+  bottom: 24%;
+  transform: rotate(-7deg) skewX(-8deg);
+  font: 800 clamp(26px, 3.4vw, 62px)/1 "Segoe UI Variable", sans-serif;
+  letter-spacing: .08em;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(52, 187, 255, .10);
+  text-shadow: 0 0 26px rgba(42, 169, 255, .08);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.glass-edge,
+.neon-card,
+.chat-card,
+.workspace-overlay,
+.composer {
+  background-color: var(--panel-readable-soft);
+  backdrop-filter: blur(22px) saturate(1.17) contrast(1.04);
+}
+
+.chat-card,
+.workspace-overlay {
+  background:
+    linear-gradient(160deg, rgba(15, 11, 37, .94), rgba(5, 8, 24, .94));
+  box-shadow: 0 18px 52px rgba(0,0,0,.35), 0 0 28px rgba(40,166,255,.06);
+}
+
+.message .bubble,
+.workspace-panel p,
+.inspector-card small,
+.data-row,
+.status-line {
+  text-shadow: 0 1px 2px rgba(0,0,0,.8);
+}
+
+.message .bubble {
+  color: #fffaff;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.message.mary .bubble {
+  background: linear-gradient(145deg, rgba(73, 27, 91, .82), rgba(21, 25, 64, .92));
+  border: 1px solid rgba(255, 83, 175, .25);
+}
+
+.message.user .bubble {
+  background: rgba(9, 21, 48, .91);
+  border: 1px solid rgba(46, 181, 255, .2);
+}
+
+.inspector-card,
+.status-card,
+.music-card {
+  background: linear-gradient(160deg, rgba(14, 12, 32, .95), rgba(5, 8, 22, .96));
+}
+
+.inspector-card strong,
+.workspace-panel strong,
+.card-header,
+.stage-name { text-rendering: geometricPrecision; }
+
+/* Blue secondary edge so the palette isn't pink-only. */
+.avatar-stage::after,
+.workspace-panel::after {
+  content:"";
+  position:absolute;
+  inset:auto 12% -1px 12%;
+  height:1px;
+  pointer-events:none;
+  background:linear-gradient(90deg, transparent, rgba(50,190,255,.6), rgba(116,72,255,.5), transparent);
+  box-shadow:0 0 14px rgba(42,169,255,.22);
+}
+
+.avatar-stage canvas {
+  filter: saturate(1.06) contrast(1.04) drop-shadow(0 0 18px rgba(52, 164, 255, .08));
+}
+
+.composer-deck {
+  grid-template-rows: minmax(54px, auto) 42px;
+  padding: 8px 14px 9px;
+  gap: 7px;
+}
+
+.composer {
+  min-height: 54px;
+  border-color: rgba(80, 165, 255, .28);
+  box-shadow: 0 10px 30px rgba(0,0,0,.22), 0 0 20px rgba(53,151,255,.06);
+}
+
+.compact-dock {
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap:7px;
+  min-height:0;
+}
+.compact-dock button { min-height: 34px; padding: 0 10px; }
+
+.screen-launcher {
+  width:min(900px, calc(100vw - 56px));
+  max-height:min(690px, calc(100vh - 70px));
+  border:1px solid rgba(64,190,255,.28);
+  border-radius:20px;
+  color:var(--text);
+  padding:0;
+  background:linear-gradient(145deg, rgba(6,8,24,.985), rgba(15,8,31,.985));
+  box-shadow:0 30px 100px rgba(0,0,0,.64), 0 0 45px rgba(45,158,255,.14), 0 0 35px rgba(255,57,149,.1);
+}
+.screen-launcher::backdrop { background:rgba(0,2,10,.68); backdrop-filter:blur(8px); }
+.screen-launcher-head { display:flex; justify-content:space-between; align-items:center; padding:20px 22px 15px; border-bottom:1px solid rgba(255,255,255,.06); }
+.screen-launcher-head span { display:block; color:var(--cyan); font-size:9px; letter-spacing:.18em; }
+.screen-launcher-head strong { display:block; margin-top:5px; font-size:21px; }
+.screen-launcher-head button { width:38px; height:38px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.03); color:#fff; cursor:pointer; }
+.screen-launcher-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:13px; padding:18px 20px 22px; }
+.screen-launcher-grid section { display:grid; gap:8px; align-content:start; }
+.screen-launcher-grid h3 { margin:0 0 4px; color:#8f97bd; font-size:9px; letter-spacing:.16em; }
+.screen-launcher-grid button { display:grid; grid-template-columns:32px 1fr; gap:9px; align-items:center; text-align:left; min-height:62px; padding:10px 12px; color:#eae6f4; border:1px solid rgba(75,145,255,.12); border-radius:12px; background:rgba(255,255,255,.025); cursor:pointer; transition:.16s ease; }
+.screen-launcher-grid button:hover { transform:translateY(-1px); border-color:rgba(55,188,255,.42); background:linear-gradient(120deg,rgba(48,159,255,.12),rgba(255,62,158,.07)); box-shadow:0 0 18px rgba(42,169,255,.07); }
+.screen-launcher-grid button span { font-size:11px; }
+.screen-launcher-grid button small { display:block; margin-top:3px; color:#8f8aa2; font-size:8px; }
+
+.media-policy { display:flex; gap:9px; align-items:center; margin-top:9px; color:var(--muted); }
+.youtube-results { display:grid; gap:9px; }
+.youtube-result { display:grid; grid-template-columns:140px minmax(0,1fr) auto; gap:12px; align-items:center; padding:10px; border:1px solid rgba(64,169,255,.12); border-radius:12px; background:rgba(7,11,29,.62); }
+.youtube-result img,.youtube-thumb-fallback { width:140px; height:79px; object-fit:cover; border-radius:8px; background:rgba(40,90,160,.12); display:grid; place-items:center; }
+.youtube-result strong { display:block; font-size:11px; }
+.youtube-result small { display:block; margin-top:4px; color:var(--cyan); font-size:8px; }
+.youtube-result p { margin:6px 0 0; color:var(--muted); font-size:9px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.youtube-actions { display:grid; gap:6px; }
+.youtube-actions button { min-width:105px; border:1px solid rgba(255,76,166,.2); border-radius:8px; background:rgba(255,255,255,.025); color:#eee6f7; padding:7px 8px; font-size:8px; cursor:pointer; }
+
+@media (max-width: 1180px) {
+  .screen-launcher-grid { grid-template-columns:1fr 1fr; }
+  .youtube-result { grid-template-columns:110px minmax(0,1fr); }
+  .youtube-result img,.youtube-thumb-fallback { width:110px; height:62px; }
+  .youtube-actions { grid-column:2; display:flex; }
+}
+
+@media (max-height: 760px) {
+  .composer-deck { grid-template-rows:52px 36px; padding-block:6px; }
+  .compact-dock button { min-height:30px; font-size:9px; }
+  .chat-card { bottom: 104px; }
+}

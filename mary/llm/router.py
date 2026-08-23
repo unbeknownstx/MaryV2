@@ -63,6 +63,8 @@ _CONVERSATION_PURPOSES = {
     "character",
     "relational",
     "self",
+    "conversation_fast",
+    "social_instant",
 }
 
 
@@ -72,6 +74,7 @@ class LLMRouter:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.providers: dict[str, LLMInterface] = {}
+        self._purpose_providers: dict[tuple[str, str], LLMInterface] = {}
         # Preserve the long-standing public attempt record shape for callers
         # and tests. Timing is carried in a parallel display-safe structure so
         # instrumentation does not silently break routing consumers.
@@ -93,20 +96,27 @@ class LLMRouter:
     # PROVIDERS
     # ============================================================
 
-    def _create_provider(self, name: str) -> LLMInterface:
+    def _create_provider(self, name: str, *, purpose: str | None = None) -> LLMInterface:
         name = str(name).lower().strip()
+        purpose_name = str(purpose or "").lower().strip()
 
         if name == "groq":
             from .providers.groq import GroqProvider
 
-            model = (
-                self.config.llm.model
-                if self.config.llm.provider == "groq"
-                else os.getenv(
-                    "MARY_GROQ_MODEL",
-                    "openai/gpt-oss-20b",
+            if purpose_name in {"conversation_fast", "social_instant"}:
+                model = os.getenv(
+                    "MARY_GROQ_CONVERSATION_MODEL",
+                    "llama-3.1-8b-instant",
+                ).strip() or "llama-3.1-8b-instant"
+            else:
+                model = (
+                    self.config.llm.model
+                    if self.config.llm.provider == "groq"
+                    else os.getenv(
+                        "MARY_GROQ_MODEL",
+                        "openai/gpt-oss-20b",
+                    )
                 )
-            )
             return GroqProvider(model=model)
 
         if name == "gemini":
@@ -137,6 +147,9 @@ class LLMRouter:
         if name == "ollama":
             from .providers.ollama import OllamaProvider
 
+            if purpose_name in {"conversation_fast", "social_instant"}:
+                fast_model = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip()
+                return OllamaProvider(model=fast_model or None)
             return OllamaProvider()
 
         if name == "openai":
@@ -183,6 +196,26 @@ class LLMRouter:
             provider = self._create_provider(provider_name)
             self.providers[provider_name] = provider
 
+        return provider
+
+    def _get_provider_for_purpose(self, name: str, purpose: str | None) -> LLMInterface:
+        """Return a provider instance whose model may be purpose-specific.
+
+        Registered providers keep priority so tests/custom integrations retain
+        the long-standing public override behavior.
+        """
+        provider_name = str(name).lower().strip()
+        registered = self.providers.get(provider_name)
+        if registered is not None:
+            return registered
+        purpose_name = str(purpose or "").lower().strip()
+        if purpose_name not in {"conversation_fast", "social_instant"} or provider_name not in {"groq", "ollama"}:
+            return self.get_provider(provider_name)
+        key = (provider_name, "conversation_fast")
+        provider = self._purpose_providers.get(key)
+        if provider is None:
+            provider = self._create_provider(provider_name, purpose="conversation_fast")
+            self._purpose_providers[key] = provider
         return provider
 
     # ============================================================
@@ -628,7 +661,7 @@ class LLMRouter:
                 continue
 
             try:
-                selected = self.get_provider(provider_name)
+                selected = self._get_provider_for_purpose(provider_name, effective_purpose)
             except Exception as exc:
                 error = self._normalize_error(
                     exc,

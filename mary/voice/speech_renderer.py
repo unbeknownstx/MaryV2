@@ -29,6 +29,9 @@ class SpeechRenderer:
     _WHITESPACE_RE = re.compile(r"[ \t]+")
     _EXCESS_NEWLINES_RE = re.compile(r"\n{2,}")
     _SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([,.;:!?])")
+    _DRAMATIC_PAUSE_RE = re.compile(r"\s*(?:\.{3,}|…)\s*")
+    _REPEATED_EXCLAMATION_RE = re.compile(r"!{2,}")
+    _REPEATED_QUESTION_RE = re.compile(r"\?{2,}")
 
     _LEARN_ACK_RE = re.compile(
         r"^Got it\. I've preserved that in memory and added it to my structured "
@@ -85,6 +88,14 @@ class SpeechRenderer:
         value = self._BULLET_RE.sub("", value)
         value = self._BLOCKQUOTE_RE.sub("", value)
         value = self._EMPHASIS_RE.sub("", value)
+
+        # 12.12.2 natural-conversation calibration. Long ellipses and stacked
+        # punctuation are strong TTS performance cues. Keep
+        # the meaning while turning those cues into ordinary conversational
+        # punctuation so the voice does not over-act routine dialogue.
+        value = self._DRAMATIC_PAUSE_RE.sub(", ", value)
+        value = self._REPEATED_EXCLAMATION_RE.sub("!", value)
+        value = self._REPEATED_QUESTION_RE.sub("?", value)
 
         # A few Mary-specific technical forms are clearer when spoken.
         value = re.sub(r"\bMaryV2\b", "Mary V two", value, flags=re.IGNORECASE)

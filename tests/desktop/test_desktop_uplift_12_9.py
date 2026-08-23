@@ -20,8 +20,12 @@ def text(relative: str) -> str:
 def test_12_9_release_metadata_and_runtime_surface_are_packaged():
     release = text("mary/runtime/release.py")
     html = text("desktop/index.html")
-    assert 'APP_VERSION = "12.9.0"' in release
-    assert 'DESKTOP_PHASE = "desktop-uplift-runtime"' in release
+    assert (('APP_VERSION = "12.11.0"' in release or ('APP_VERSION = "12.12.0"' in release or 'APP_VERSION = "12.12.2"' in release)) or ('APP_VERSION = "12.12.0"' in release or 'APP_VERSION = "12.12.2"' in release))
+    assert any(phase in release for phase in (
+        'DESKTOP_PHASE = "presence-presentation"',
+        'DESKTOP_PHASE = "fast-dialogue-connected-presence"',
+        'DESKTOP_PHASE = "cognitive-reservoir-character-runtime"',
+    ))
     assert 'data-screen="diagnostics"' in html
     assert 'id="runtime-perceived"' in html
     assert (ROOT / "desktop/src/runtime/turnTrace.js").is_file()

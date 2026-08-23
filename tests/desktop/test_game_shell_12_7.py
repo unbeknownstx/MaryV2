@@ -113,6 +113,6 @@ def test_game_shell_and_launcher_are_local_build_surfaces() -> None:
     assert "qrc:///qtwebchannel/qwebchannel.js" in launcher_html
     assert "https://fonts.googleapis.com" not in main_html + launcher_html
     assert "cdn.jsdelivr.net" not in main_html + launcher_html
-    assert "launcher: resolve(__dirname, 'launcher.html')" in vite
-    assert package["version"] in {"12.7.0", "12.8.0", "12.9.0"}
+    assert "launcher: resolve(import.meta.dirname, 'launcher.html')" in vite
+    assert package["version"] in {"12.7.0", "12.8.0", "12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2"}
     assert package["dependencies"]["@pixiv/three-vrm"] == "3.5.5"

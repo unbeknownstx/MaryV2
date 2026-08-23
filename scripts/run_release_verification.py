@@ -68,6 +68,7 @@ _OFFLINE_STRIP_ENV: tuple[str, ...] = (
     "MARY_OPENROUTER_MODEL",
     "MARY_OPENAI_MODEL",
     "MARY_OPENAI_REASONING_EFFORT",
+    "MARY_RESERVOIR_STORAGE",
 )
 
 # Point child processes at a deliberately nonexistent dotenv path so importing
@@ -110,6 +111,10 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("desktop_game_shell_12_7", "scripts.verify_desktop_game_shell_12_7"),
     ("ecosystem_presence_12_8", "scripts.verify_ecosystem_presence_12_8"),
     ("desktop_uplift_12_9", "scripts.verify_uplift_12_9"),
+    ("presence_presentation_12_10", "scripts.verify_presence_presentation_12_10"),
+    ("fast_dialogue_connected_presence_12_11", "scripts.verify_connected_companion_12_11"),
+    ("cognitive_character_runtime_12_12", "scripts.verify_character_runtime_12_12"),
+    ("natural_conversation_12_12_2", "scripts.verify_natural_conversation_12_12_2"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
@@ -162,6 +167,7 @@ def _offline_process_environment():
                 os.environ.pop(name, None)
             os.environ["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
             os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
+            os.environ["MARY_RESERVOIR_STORAGE"] = "memory"
             yield
         finally:
             for name, value in saved.items():

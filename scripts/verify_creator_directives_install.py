@@ -44,6 +44,7 @@ def main() -> int:
 
     original_cwd = Path.cwd()
     failures: list[str] = []
+    app = None
 
     with TemporaryDirectory() as temp_dir:
         try:
@@ -118,6 +119,8 @@ def main() -> int:
             if not ok:
                 failures.append("memory-separation")
         finally:
+            if app is not None:
+                app.close()
             os.chdir(original_cwd)
 
     print("=" * 72)

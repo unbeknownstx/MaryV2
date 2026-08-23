@@ -11,7 +11,7 @@
       <section id="boot-screen" class="boot-screen" aria-live="polite">
         <div class="boot-sigil"><img src="./assets/ui/mary-sigil.svg" alt="" /></div>
         <div class="boot-logo">Mary<span>♡</span></div>
-        <div class="boot-subtitle">PERSONAL COMPANION SYSTEM · 12.9</div>
+        <div class="boot-subtitle">PERSONAL COMPANION SYSTEM · 12.12</div>
         <div class="boot-progress"><i id="boot-progress-bar"></i></div>
         <div class="boot-status" id="boot-status">Initializing Mary…</div>
       </section>
@@ -19,13 +19,15 @@
         <section class="brand-block">
           <div class="brand-logo">Mary<span>♡</span></div>
           <div class="brand-subtitle">AI COMPANION</div>
-          <div class="brand-version" id="app-version-label">V2 · 12.9</div>
+          <div class="brand-version" id="app-version-label">V2 · 12.12</div>
         </section>
 
         <nav class="nav-stack" id="primary-nav">
+          <button class="nav-item" data-screen="home"><span class="nav-icon">⌂</span><span>Home</span><span class="nav-badge">LIVE</span></button>
           <button class="nav-item active" data-screen="chat"><span class="nav-icon">▣</span><span>Chat</span></button>
           <button class="nav-item" data-screen="memories"><span class="nav-icon">◫</span><span>Memories</span></button>
           <button class="nav-item" data-screen="personality"><span class="nav-icon">✦</span><span>Personality</span></button>
+          <button class="nav-item" data-screen="mind"><span class="nav-icon">⌬</span><span>Mind</span><span class="nav-badge">LOCAL</span></button>
           <button class="nav-item" data-screen="studio"><span class="nav-icon">⌘</span><span>Studio</span></button>
           <button class="nav-item" data-screen="study"><span class="nav-icon">◈</span><span>Study</span><span class="nav-badge">NEW</span></button>
           <button class="nav-item" data-screen="command"><span class="nav-icon">✓</span><span>Command</span></button>
@@ -71,6 +73,7 @@
             </div>
           </div>
           <audio id="music-audio"></audio>
+          <audio id="ambient-audio" src="./assets/sounds/ambient_neon.wav" preload="auto" loop></audio>
         </section>
       </aside>
 
@@ -78,7 +81,8 @@
         <header class="titlebar" id="titlebar">
           <div class="welcome-copy" id="welcome-copy">Mary is awake and ready to keep you company. <span>♥</span></div>
           <div class="titlebar-spacer"></div>
-          <div class="title-clock"><strong id="clock-time">--:--</strong><span id="clock-date">MaryV2 12.9</span></div><div class="connection-status"><i id="status-dot" class="status-dot"></i><span id="status-text">Connecting…</span></div>
+          <div class="title-clock"><strong id="clock-time">--:--</strong><span id="clock-date">MaryV2 12.12</span></div><div class="connection-status"><i id="status-dot" class="status-dot"></i><span id="status-text">Connecting…</span></div>
+          <button class="title-icon" id="screen-launcher-button" title="Open workspace menu">⊞</button>
           <button class="title-icon" data-screen-jump="settings" title="Settings">⚙</button>
           <button class="window-control" id="window-minimize" title="Minimize">—</button>
           <button class="window-control" id="window-maximize" title="Maximize">□</button>
@@ -103,8 +107,8 @@
             <div id="avatar-fallback" class="avatar-fallback">
               <img src="./assets/mary-reference.jpeg" alt="Mary reference artwork" />
               <div class="fallback-caption">
-                <strong>Mary Cosma</strong>
-                <span>VRM unavailable — using reference art</span>
+                <strong id="avatar-fallback-title">Mary Cosma</strong>
+                <span id="avatar-fallback-caption">Portrait presentation · local reference art</span>
               </div>
             </div>
             <div class="avatar-hud top-left">
@@ -146,12 +150,11 @@
             <button id="mic-button" class="round-button mic" type="button" aria-pressed="false" title="Push to talk">◉</button>
             <button id="send-button" class="round-button send" type="submit" title="Send">➤</button>
           </form>
-          <div class="quick-actions" id="quick-actions">
-            <button data-prompt="Let's brainstorm ideas together."><span>✦</span> Brainstorm Ideas</button>
+          <div class="quick-actions compact-dock" id="quick-actions">
             <button data-prompt="Can we have a real deep talk for a bit?"><span>●</span> Deep Talk</button>
-            <button data-screen-jump="studio"><span>⌘</span> Story Studio</button>
-            <button data-screen-jump="media"><span>♫</span> Music Together</button>
-            <button id="command-palette-button"><span>•••</span> More</button>
+            <button data-screen-jump="studio"><span>⌘</span> Studio</button>
+            <button data-screen-jump="media"><span>♫</span> Media</button>
+            <button id="workspace-menu-button"><span>⊞</span> Workspaces</button>
           </div>
         </section>
       </section>
@@ -202,7 +205,7 @@
           </article>
 
           <article class="neon-card inspector-card ecosystem-card">
-            <header class="card-header"><span>✦ ECOSYSTEM</span><span class="card-accent">12.9</span></header>
+            <header class="card-header"><span>✦ ECOSYSTEM</span><span class="card-accent">12.12</span></header>
             <div class="ecosystem-mini-grid">
               <div><span>Study due</span><strong id="eco-study-due">0</strong></div>
               <div><span>Tasks</span><strong id="eco-task-count">0</strong></div>
@@ -212,8 +215,23 @@
             <button class="text-link" data-screen-jump="command">Open Command Center →</button>
           </article>
 
+          <article class="neon-card inspector-card companion-pulse-card" id="companion-pulse-card">
+            <header class="card-header"><span>✦ COMPANION PULSE</span><span class="card-accent">LIVE</span></header>
+            <div class="companion-pulse-copy">
+              <strong id="pulse-headline">Mary is here.</strong>
+              <small id="pulse-detail">Loading bounded workspace context…</small>
+            </div>
+            <div class="companion-pulse-actions">
+              <div><span>COMMAND</span><strong id="pulse-command">0</strong></div>
+              <div><span>STUDY</span><strong id="pulse-study">0</strong></div>
+              <div><span>INBOX</span><strong id="pulse-inbox">0</strong></div>
+              <div><span>FOCUS</span><strong id="pulse-focus">—</strong></div>
+            </div>
+            <button class="text-link" data-screen-jump="home">Open Mary Home →</button>
+          </article>
+
           <article class="neon-card inspector-card runtime-card">
-            <header class="card-header"><span>⌁ LIVE TURN</span><span class="card-accent">12.9</span></header>
+            <header class="card-header"><span>⌁ LIVE TURN</span><span class="card-accent">12.12</span></header>
             <div class="runtime-mini-grid">
               <div><span>Provider</span><strong id="runtime-last-provider">Waiting</strong></div>
               <div><span>Pipeline</span><strong id="runtime-pipeline">—</strong></div>
@@ -232,6 +250,15 @@
           </article>
         </section>
       </aside>
+
+      <dialog id="screen-launcher" class="screen-launcher">
+        <div class="screen-launcher-head"><div><span>MARY SYSTEM</span><strong>Choose a workspace</strong></div><button id="screen-launcher-close">×</button></div>
+        <div class="screen-launcher-grid">
+          <section><h3>COMPANION</h3><button data-launch-screen="home">⌂ <span>Home<small>Presence + companion pulse</small></span></button><button data-launch-screen="chat">▣ <span>Chat<small>Talk with Mary</small></span></button><button data-launch-screen="memories">◫ <span>Memories<small>Continuity and recall</small></span></button><button data-launch-screen="personality">✦ <span>Personality<small>Mary's developed self</small></span></button></section>
+          <section><h3>WORK</h3><button data-launch-screen="study">◈ <span>Study<small>Projects + spaced review</small></span></button><button data-launch-screen="command">✓ <span>Command<small>Tasks, goals and waiting</small></span></button><button data-launch-screen="focus">◎ <span>Focus<small>Quiet co-working</small></span></button><button data-launch-screen="diagnostics">⌁ <span>Runtime<small>Latency + routing</small></span></button></section>
+          <section><h3>CREATE / MEDIA</h3><button data-launch-screen="studio">⌘ <span>Studio<small>Unbeknownst workspace</small></span></button><button data-launch-screen="gallery">▧ <span>Gallery<small>Mary + project art</small></span></button><button data-launch-screen="media">♫ <span>Media<small>YouTube + music</small></span></button><button data-launch-screen="voice">◉ <span>Voice & Avatar<small>Speech + presentation</small></span></button></section>
+        </div>
+      </dialog>
 
       <dialog id="command-palette" class="command-palette">
         <div class="command-header"><span>COMMAND PALETTE</span><kbd>ESC</kbd></div>

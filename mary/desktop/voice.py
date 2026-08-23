@@ -19,6 +19,7 @@ from time import monotonic
 from typing import Any
 
 from mary.expression.emotion import EmotionalState
+from mary.expression.delivery_plan import DeliveryPlan
 from mary.voice import (
     SpeechAudioFormat,
     SpeechRenderer,
@@ -82,6 +83,34 @@ def _piper_paths() -> tuple[Path | None, Path | None]:
     return exe_path, model_path
 
 
+def _apply_delivery_plan(settings: VoiceSettings, plan: DeliveryPlan | dict[str, Any] | None) -> VoiceSettings:
+    if plan is None:
+        return settings
+    values = plan.to_dict() if hasattr(plan, "to_dict") else dict(plan)
+    metadata = dict(settings.metadata)
+    if values.get("stability") is not None:
+        metadata["stability"] = max(0.0, min(1.0, float(values["stability"])))
+    if values.get("style") is not None:
+        metadata["style"] = max(0.0, min(1.0, float(values["style"])))
+    metadata["delivery_profile"] = str(values.get("profile") or "neutral")
+    metadata["delivery_energy"] = max(0.0, min(1.0, float(values.get("energy", 0.5))))
+    metadata["delivery_warmth"] = max(0.0, min(1.0, float(values.get("warmth", 0.5))))
+    speed = max(0.7, min(1.2, float(values.get("pace", settings.speed))))
+    return VoiceSettings(
+        voice=settings.voice,
+        language=settings.language,
+        speed=speed,
+        pitch=settings.pitch,
+        volume=settings.volume,
+        style=settings.style,
+        emotion=settings.emotion,
+        emotion_intensity=settings.emotion_intensity,
+        output_format=settings.output_format,
+        sample_rate=settings.sample_rate,
+        metadata=metadata,
+    )
+
+
 class DesktopVoiceEngine:
     """Best-effort desktop TTS with local-first routing."""
 
@@ -134,6 +163,16 @@ class DesktopVoiceEngine:
             return cls()
         if provider_name == "elevenlabs":
             return cls._elevenlabs_from_environment()
+
+        # Fast companion policy for the creator's primary Windows host:
+        # prefer the configured ElevenLabs Flash voice when credentials are
+        # present, otherwise fall back to the existing local-first chain.
+        # This keeps cloud voice optional for portable/offline installs.
+        if provider_name in {"auto_fast", "fast_voice"}:
+            cloud = cls._elevenlabs_from_environment()
+            if cloud.status.enabled:
+                return cloud
+            provider_name = "local_first"
 
         if provider_name in {"local", "local_first", "auto"}:
             piper_exe, piper_model = _piper_paths()
@@ -216,7 +255,7 @@ class DesktopVoiceEngine:
                 "audio_base64": base64.b64encode(audio).decode("ascii"), "audio_size": len(audio), "spoken_text": spoken_text,
                 "emotion": "presentation", "emotion_intensity": 0.0, "emotion_profile": "local_default"}
 
-    def synthesize(self, text: str, *, user_text: str | None = None, emotional_state: EmotionalState | None = None) -> dict[str, Any]:
+    def synthesize(self, text: str, *, user_text: str | None = None, emotional_state: EmotionalState | None = None, delivery_plan: DeliveryPlan | dict[str, Any] | None = None) -> dict[str, Any]:
         """Render + synthesize speech and attach display-safe timing metadata."""
 
         total_started = monotonic()
@@ -247,6 +286,7 @@ class DesktopVoiceEngine:
                         text,
                         user_text=user_text,
                         emotional_state=emotional_state,
+                        delivery_plan=delivery_plan,
                     )
                     payload["fallback_from"] = self.status.provider
                     payload["local_error"] = f"{type(exc).__name__}: {exc}"
@@ -268,6 +308,7 @@ class DesktopVoiceEngine:
             return finish({**self.status.to_dict(), "status": "disabled", "spoken_text": spoken_text})
 
         active_settings = resolve_emotion_voice_settings(self.base_settings, emotional_state)
+        active_settings = _apply_delivery_plan(active_settings, delivery_plan)
         synth_started = monotonic()
         speech = self.service.synthesize(spoken_text, settings=active_settings)
         if not speech.is_successful:
@@ -288,6 +329,7 @@ class DesktopVoiceEngine:
                 "emotion": active_settings.emotion.value if active_settings.emotion else "neutral",
                 "emotion_intensity": active_settings.emotion_intensity,
                 "emotion_profile": emotion_voice_profile_name(emotional_state),
+                "delivery_profile": active_settings.metadata.get("delivery_profile"),
                 "voice_settings": {
                     "stability": active_settings.metadata.get("stability"),
                     "similarity_boost": active_settings.metadata.get("similarity_boost"),

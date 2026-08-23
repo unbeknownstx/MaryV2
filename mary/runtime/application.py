@@ -19,6 +19,7 @@ conversation, expression, avatar, and audio.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any
 
@@ -406,7 +407,18 @@ class MaryApplication:
     def close(self) -> bool:
         """Persist state needed when the application exits."""
 
-        return self.save()
+        saved = self.save()
+        try:
+            # Flush any deferred *derived* reservoir refresh after canonical
+            # state has been saved. This work is outside conversational latency.
+            self.mary.mind.maintenance()
+        except Exception:
+            pass
+        try:
+            self.mary.mind.close()
+        except Exception:
+            pass
+        return saved
 
 
 def create_persistent_mary(
@@ -519,6 +531,21 @@ def create_application(
     )
     if callable(sync_relationship):
         sync_relationship()
+
+    # Configure Mary's rebuildable local cognitive reservoir beside the same
+    # data root as canonical memory. Custom/test memory paths therefore keep
+    # reservoir files isolated automatically instead of touching real state.
+    try:
+        reservoir_storage = os.getenv("MARY_RESERVOIR_STORAGE", "persistent").strip().lower()
+        if reservoir_storage in {"memory", "ephemeral", "temporary", "temp"}:
+            mary.mind.configure_ephemeral(rebuild=True)
+        else:
+            reservoir_path = resolved_memory_path.parent.parent / "reservoir" / "mary_reservoir.sqlite3"
+            mary.mind.configure_persistence(reservoir_path, rebuild=None)
+    except Exception as exc:
+        # The reservoir accelerates conversation but is never authoritative; a
+        # failure must not prevent Mary from starting.
+        mary._reservoir_startup_error = f"{type(exc).__name__}: {exc}"
 
     state = RuntimeState()
 

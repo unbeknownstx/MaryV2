@@ -56,6 +56,8 @@ def main() -> int:
 
     original_cwd = Path.cwd()
     failures: list[str] = []
+    app = None
+    restarted_app = None
 
     with TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -167,6 +169,15 @@ def main() -> int:
                 failures.append("restart")
 
         finally:
+            # Disposable verification applications must release the derived
+            # SQLite reservoir before Windows removes the TemporaryDirectory.
+            if restarted_app is not None:
+                restarted_app.close()
+            if app is not None:
+                try:
+                    app.mary.mind.close()
+                except Exception:
+                    pass
             os.chdir(original_cwd)
 
     print("=" * 72)

@@ -11,7 +11,7 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-12.9-uplift"
+    VERSION = "v2-breakthrough-12.10-presence-presentation"
 
     AUTHORITY = {
         "character_canon": "mary.character + identity/biography/personality authored state",

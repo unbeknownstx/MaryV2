@@ -51,6 +51,7 @@ from mary.expression.emotion import EmotionManager
 from mary.expression.appraisal import ConversationEmotionAppraiser
 from mary.expression.response import ResponseBuilder
 from mary.expression.expression import ExpressionSystem
+from mary.expression.director import ExpressionDirector
 
 from mary.avatar.bridge import AvatarBridge
 
@@ -121,6 +122,7 @@ from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.environment import RuntimeEnvironment
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
+from mary.mind import CharacterMind
 
 
 class Mary:
@@ -359,6 +361,11 @@ class Mary:
             ).title(),
         )
 
+        # Shared deterministic performance direction for TTS + avatar.  This
+        # colors delivery from Mary's represented state without requiring a
+        # second model call or inferring the creator's hidden emotions.
+        self.expression_director = ExpressionDirector()
+
         # ============================================================
         # AVATAR
         # ============================================================
@@ -561,6 +568,15 @@ class Mary:
         # only one authoritative drive/question-budget implementation.
         self.continuity = self.turn_mind.continuity
         self.performance = self.turn_mind.performance
+
+        # ============================================================
+        # LOCAL CHARACTER MIND / COGNITIVE RESERVOIR
+        # ============================================================
+
+        # Starts in-memory so plain Mary() remains side-effect-light for tests.
+        # The canonical persistent application configures a rebuildable SQLite
+        # reservoir beside Mary's data tree after durable state has loaded.
+        self.mind = CharacterMind(self)
 
         # Read-only architecture contract: proves that the subsystems above still
         # share one router/emotion/authority layout after integration changes.
@@ -888,6 +904,57 @@ class Mary:
                 result=cycle,
             )
 
+        # Before spending a provider call, give Mary's always-running local
+        # character mind a chance to answer from represented state.  This path
+        # is intentionally narrow: reflexes, represented status, and high-
+        # confidence local facts. Novel language still escalates to cognition.
+        try:
+            local_mind_result = self.mind.try_respond(
+                input_text,
+                intent=intent,
+                context=context,
+            )
+        except Exception as exc:
+            local_mind_result = None
+            local_mind_error = f"{type(exc).__name__}: {exc}"
+        else:
+            local_mind_error = None
+
+        if local_mind_result is not None and local_mind_result.handled:
+            cycle = self._build_system_cycle_result(
+                input_text=input_text,
+                intent=intent,
+                response=local_mind_result.response,
+                context=context,
+                metadata={
+                    "handled_by": "mary_local_mind",
+                    "local_mind": dict(local_mind_result.metadata),
+                    "llm_calls_after_action": 0,
+                },
+            )
+            plan = dict(local_mind_result.metadata.get("plan", {}) or {})
+            cycle.reasoning.reasoning_type = "local_character_mind"
+            cycle.reasoning.metadata.update({
+                "provider": "local/mind",
+                "model": "procedural-reservoir",
+                "generation_purpose": "local_dialogue",
+                "routing_purpose": "local_dialogue",
+                "conversation_lane": {
+                    "lane": "social_instant" if plan.get("target_length", "micro") == "micro" else "conversation",
+                    "rationale": plan.get("rationale", "local mind"),
+                    "latency_target_ms": 200,
+                    "allow_model_revision": False,
+                },
+            })
+            cycle.reflection.metadata.update({
+                "mode": "local_mind_no_model",
+                "llm_calls": 0,
+            })
+            return self._finalize_turn(input_text=input_text, result=cycle)
+
+        if local_mind_error:
+            context.setdefault("mind_state", {}).setdefault("local_mind", {})["error"] = local_mind_error
+
         result = self.cognition.process(
             input_text=input_text,
             intent=intent,
@@ -976,6 +1043,24 @@ class Mary:
             result=result,
         )
 
+        # One deterministic performance plan drives both voice and avatar so
+        # expression is coherent instead of each surface guessing separately.
+        try:
+            reasoning_meta = dict(getattr(result.reasoning, "metadata", {}) or {})
+            lane_data = dict(reasoning_meta.get("conversation_lane", {}) or {})
+            local_meta = dict(result.metadata.get("local_mind", {}) or {})
+            local_plan = dict(local_meta.get("plan", {}) or {})
+            delivery = self.expression_director.plan(
+                input_text=input_text,
+                response_text=result.final_response,
+                emotional_state=self.emotion.state,
+                conversation_lane=str(lane_data.get("lane") or "conversation"),
+                dialogue_act=str(local_plan.get("act") or ""),
+            )
+            result.metadata["delivery_plan"] = delivery.to_dict()
+        except Exception as exc:
+            result.metadata["delivery_plan_error"] = f"{type(exc).__name__}: {exc}"
+
         try:
             response = self.expression.build_response(
                 result.final_response,
@@ -990,6 +1075,7 @@ class Mary:
                         else "unknown"
                     ),
                     "reflection_mode": result.reflection.metadata.get("mode"),
+                    "delivery_plan": dict(result.metadata.get("delivery_plan", {}) or {}),
                     "conversational_drive": (
                         result.context.mind_state.get("continuity", {}).get("drive")
                         if isinstance(result.context.mind_state, dict)
@@ -1041,6 +1127,11 @@ class Mary:
                 }
         except Exception:
             pass
+
+        try:
+            self.mind.observe_completed_turn(result)
+        except Exception as exc:
+            result.metadata["local_mind_observe_error"] = f"{type(exc).__name__}: {exc}"
 
         return result
 
@@ -1152,6 +1243,20 @@ class Mary:
         pending_question = self.conversation_learning.prompt_view()
         if pending_question is not None:
             relationship_view["pending_curiosity_question"] = pending_question
+
+        # Bounded derived reservoir hits can enrich a model-backed turn without
+        # turning the reservoir into an authority.  Each hit carries provenance
+        # and confidence, and the entire reservoir can be rebuilt from canonical
+        # Mary state.
+        try:
+            reservoir_hits = self.mind.prompt_hits(input_text, limit=5)
+        except Exception:
+            reservoir_hits = []
+        if reservoir_hits:
+            prompt_mind_state["cognitive_reservoir"] = {
+                "hits": reservoir_hits,
+                "semantics": "derived local retrieval; canonical state outranks this projection",
+            }
 
         # Hybrid personal/runtime turns remain Mary conversation, but the model
         # receives a tiny authoritative host snapshot so it can react naturally

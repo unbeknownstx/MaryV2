@@ -1,3 +1,6 @@
 # MaryV2 Desktop Alpha dependencies
 # Kept separate from requirements.txt so the headless/core runtime stays lean.
 PySide6==6.11.1
+
+# Optional local loopback presence transport used by the desktop when enabled.
+websockets>=16,<17

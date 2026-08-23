@@ -100,15 +100,20 @@ def main() -> int:
     first_prompt = router.calls[0][0]
     system_prompt = str(first_prompt[0].content)
     user_prompt = str(first_prompt[1].content)
-    if "performing Mary Cosma's dialogue" not in system_prompt:
-        raise AssertionError("reasoning system prompt is not performance-first")
+    natural_performance_policy = (
+        "Sound like Mary is simply talking" in system_prompt
+        and "not performing the role of Mary for an audience" in system_prompt
+    )
+    legacy_performance_policy = "performing Mary Cosma's dialogue" in system_prompt
+    if not (natural_performance_policy or legacy_performance_policy):
+        raise AssertionError("reasoning system prompt has no character-performance policy")
     if (
         "Performance direction:" not in system_prompt
         or "Compact TurnMindState" not in user_prompt
         or "'performance':" not in user_prompt
     ):
         raise AssertionError("performance plan is not supplied to reasoning")
-    _pass("reasoning asks the model to perform Mary, not write support copy")
+    _pass("reasoning keeps Mary character-first without stage-performing ordinary dialogue")
 
     if "?" in result.final_response or "radar" in result.final_response.lower():
         raise AssertionError("polished assistant closer was not revised away")
