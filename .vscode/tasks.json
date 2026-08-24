@@ -12,16 +12,16 @@
     {
       "label": "Mary: Full Tests",
       "type": "shell",
-      "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\test_full.ps1"],
+      "command": ".\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "pytest", "tests", "-q"],
       "group": "test",
       "problemMatcher": []
     },
     {
       "label": "Mary: Release Gate",
       "type": "shell",
-      "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\test_release.ps1"],
+      "command": ".\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "scripts.run_release_verification", "--offline"],
       "group": "test",
       "problemMatcher": []
     },

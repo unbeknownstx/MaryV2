@@ -10,12 +10,3 @@
 8. Continue character-performance work with subtle gaze, body timing, emotional inertia and idle behavior. Expression should support dialogue rather than advertise itself.
 9. Use Codex directly in the canonical VS Code workspace for iterative code work, with `AGENTS.md` boundaries and the VS Code test tasks.
 10. When the RTX 3090 arrives, benchmark larger local language, TTS, STT and vision engines behind the same interfaces instead of redesigning Mary around the GPU.
-
-## Hybrid dialogue benchmark next step
-
-Run the benchmark-only hybrid matrix on the canonical Windows host, review the
-preserved deterministic/1.7B/4B samples by response class, and repeat the
-low-risk social cases across more turns to measure repetition and p95 latency.
-Keep precision answers in the typed local composer, keep open/thinking work on
-their existing classes, and do not promote or route any local model until the
-human review and repeated measurements support a separate explicit decision.

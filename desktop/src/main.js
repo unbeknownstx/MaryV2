@@ -7,6 +7,8 @@ import './presence.css';
 import './neon-street.css';
 import { renderPresenceHome } from './ui/presenceHome.js';
 import { formatMilliseconds, normalizeTurnTrace, providerAttemptSummary, timingValue } from './runtime/turnTrace.js';
+import { createHttpBridge, installMaryPwa } from './runtime/httpBridge.js';
+import './mobile.css';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -1104,10 +1106,6 @@ function renderDiagnostics() {
   const trace = normalizeTurnTrace(ecosystemState.last_turn || lastTurnTrace);
   const timings = trace.timings || {};
   const timeline = [
-    ['Classification', timingValue(trace, 'classification_ms')],
-    ['Local composer', timingValue(trace, 'local_composer_ms')],
-    ['Local audit', timingValue(trace, 'local_audit_ms')],
-    ['Shadow', timingValue(trace, 'shadow_ms')],
     ['Provider call', timingValue(trace, 'provider_call_ms')],
     ['Reasoning', timingValue(trace, 'reasoning_ms')],
     ['Reflection', timingValue(trace, 'reflection_ms')],
@@ -1120,18 +1118,11 @@ function renderDiagnostics() {
     ['Playback / perceived', timingValue(trace, 'perceived_ms')],
   ].filter(([,value]) => value !== null);
   const max = Math.max(1, ...timeline.map(([,value]) => value || 0));
-  const shadowTiming = timingValue(trace, 'shadow_ms');
-  const shadowSummary = trace.shadow_enabled
-    ? `${trace.shadow_model || 'Enabled'}${shadowTiming === null ? '' : ` · ${formatMilliseconds(shadowTiming)}`}`
-    : 'Off';
-  const escalationRow = trace.escalation_reason
-    ? `<div class="data-row"><span>Escalation</span><strong>${escapeHtml(trace.escalation_reason)}</strong></div>`
-    : '';
   return `<div class="trace-hero">
     <div class="workspace-panel hero-panel"><h3>Last Turn Trace</h3><p>Measured from the real runtime: provider, cognition, reflection, speech, and perceived response timing. This telemetry is ephemeral and never becomes Mary memory.</p>
       <div class="trace-stack">${timeline.length ? timeline.map(([label,value]) => `<div class="trace-row"><span>${escapeHtml(label)}</span><i style="width:${Math.max(2,(value/max)*100)}%"></i><strong>${escapeHtml(formatMilliseconds(value))}</strong></div>`).join('') : '<div class="workspace-empty">Complete one desktop turn to populate the trace.</div>'}</div>
     </div>
-    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Response class</span><strong>${escapeHtml(titleCase(trace.response_class || '—'))}</strong></div><div class="data-row"><span>Engine</span><strong>${escapeHtml(trace.response_engine || '—')}</strong></div>${escalationRow}<div class="data-row"><span>Shadow</span><strong>${escapeHtml(shadowSummary)}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
+    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
   </div>
   <div class="section-title">ROLLING METRICS</div>
   <div class="workspace-panel"><div class="metric-grid">${rows.length ? rows.map(([k,v])=>`<div class="metric-card"><span>${escapeHtml(titleCase(k))}</span><strong>${escapeHtml(v.last_ms)} ms</strong><small>avg ${escapeHtml(v.avg_ms)} · max ${escapeHtml(v.max_ms)}</small></div>`).join('') : '<div class="workspace-empty">Metrics appear after live turns.</div>'}</div></div>`;
@@ -1554,84 +1545,99 @@ $('#titlebar')?.addEventListener('dblclick', (event) => {
 // Qt bridge
 // ---------------------------------------------------------------------------
 
-function connectBridge() {
-  if (!window.qt?.webChannelTransport || typeof QWebChannel === 'undefined') {
-    setConnected(false, 'Open through MaryV2 Desktop');
-    renderWorkspace(currentScreen);
-    return;
-  }
+function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
+  bridge = connectedBridge;
+  document.body.classList.toggle('mary-web-mobile', surface === 'mobile');
+  if (surface === 'mobile') installMaryPwa();
+  bootStep(58, surface === 'mobile' ? 'Connected to Mary mobile core…' : 'Connected to Mary core…');
+  setConnected(true, 'Connection: Strong');
 
-  new QWebChannel(window.qt.webChannelTransport, (channel) => {
-    bridge = channel.objects.maryBridge;
-    bootStep(58, 'Connected to Mary core…');
-    setConnected(true, 'Connection: Strong');
+  window.setTimeout(() => {
+    const boot = $('#boot-screen');
+    if (boot && !boot.classList.contains('hidden')) {
+      finishBoot('Mary is ready.');
+      ensureAmbientMusic();
+    }
+  }, 5000);
 
-    // A non-critical dashboard/panel failure must never leave the app trapped
-    // behind the boot overlay. Normal dashboard completion still finishes boot
-    // earlier; this is only a defensive watchdog.
-    window.setTimeout(() => {
-      const boot = $('#boot-screen');
-      if (boot && !boot.classList.contains('hidden')) {
-        finishBoot('Mary is ready.');
-        ensureAmbientMusic();
-      }
-    }, 5000);
+  bridge.messageReady.connect((raw) => {
+    const payload = parsePayload(raw);
+    appendMessage('Mary', payload.text || '[No response]', 'mary');
+    applyAvatarState(payload.avatar || {});
+    if (payload.runtime?.trace) applyTurnTrace(payload.runtime.trace);
+    // Desktop voice returns audio. Mobile browser voice is handled by the
+    // HTTP bridge so the same transcript never plays twice.
+    if (!bridge._isHttpBridge) playVoice(payload.voice || {});
+  });
+  bridge.avatarStateChanged.connect((raw) => applyAvatarState(parsePayload(raw)));
+  bridge.busyChanged.connect((value) => setBusy(value));
+  bridge.conversationStateChanged.connect((raw) => setConversationState(raw));
+  bridge.characterStateChanged?.connect((raw) => applyCharacterState(raw));
+  bridge.dashboardStateChanged?.connect((raw) => applyDashboardState(raw));
+  bridge.voicePlaybackStopRequested.connect(() => stopVoicePlayback({ notifyBridge: false }));
+  bridge.errorOccurred.connect((message) => {
+    setBusy(false);
+    toast(message, 'error');
+    appendMessage('System', message, 'system');
+  });
+  bridge.listeningStateChanged.connect((state) => {
+    const value = String(state || '').toLowerCase();
+    if (['listening', 'transcribing'].includes(value)) setConversationState(value);
+  });
+  bridge.transcriptionReady.connect((text) => {
+    const transcript = String(text || '').trim();
+    if (!transcript || busy) return;
+    appendMessage('Unbe', transcript, 'user');
+    bridge.sendMessage(transcript);
+  });
 
-    bridge.messageReady.connect((raw) => {
-      const payload = parsePayload(raw);
-      appendMessage('Mary', payload.text || '[No response]', 'mary');
-      applyAvatarState(payload.avatar || {});
-      if (payload.runtime?.trace) applyTurnTrace(payload.runtime.trace);
-      playVoice(payload.voice || {});
-    });
-    bridge.avatarStateChanged.connect((raw) => applyAvatarState(parsePayload(raw)));
-    bridge.busyChanged.connect((value) => setBusy(value));
-    bridge.conversationStateChanged.connect((raw) => setConversationState(raw));
-    bridge.characterStateChanged?.connect((raw) => applyCharacterState(raw));
-    bridge.dashboardStateChanged?.connect((raw) => applyDashboardState(raw));
-    bridge.voicePlaybackStopRequested.connect(() => stopVoicePlayback({ notifyBridge: false }));
-    bridge.errorOccurred.connect((message) => {
-      setBusy(false);
-      toast(message, 'error');
-      appendMessage('System', message, 'system');
-    });
-    bridge.listeningStateChanged.connect((state) => {
-      const value = String(state || '').toLowerCase();
-      if (['listening', 'transcribing'].includes(value)) setConversationState(value);
-    });
-    bridge.transcriptionReady.connect((text) => {
-      const transcript = String(text || '').trim();
-      if (!transcript || busy) return;
-      appendMessage('Unbe', transcript, 'user');
-      bridge.sendMessage(transcript);
-    });
-
-    bridge.getStatus((raw) => {
-      runtimeStatus = parsePayload(raw);
-      const voiceLabel = runtimeStatus.voice?.enabled ? ` · voice:${runtimeStatus.voice.provider}` : '';
-      const sttLabel = runtimeStatus.speech_to_text?.enabled ? ` · mic:${runtimeStatus.speech_to_text.provider}` : '';
-      modelLabel.textContent = `${runtimeStatus.provider || 'runtime'} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
-      if (runtimeStatus.conversation) setConversationState(runtimeStatus.conversation);
-    });
-    bridge.getLastTurnTrace?.((raw) => applyTurnTrace(parsePayload(raw)));
-    bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));
-    bridge.getCharacterState?.((raw) => applyCharacterState(raw));
-    bridge.getDashboardState?.((raw) => { applyDashboardState(raw); bootStep(86, 'Loading memory, state, and ecosystem…'); window.setTimeout(()=>{ finishBoot('Mary is ready.'); ensureAmbientMusic(); }, 280); });
-    bridge.getYouTubeStatus?.((raw) => {
-      youtubeStatus = parsePayload(raw);
-      if (currentScreen === 'media') renderWorkspace('media');
-    });
-    bridge.getIntegrationState?.((raw) => {
-      integrationState = parsePayload(raw);
-      if (currentScreen === 'studio' || currentScreen === 'settings') renderWorkspace(currentScreen);
-    });
-    bridge.getCreativeWorkspaceState?.((raw) => {
-      creativeWorkspaceState = parsePayload(raw);
-      if (currentScreen === 'studio') renderWorkspace('studio');
-    });
+  bridge.getStatus((raw) => {
+    runtimeStatus = parsePayload(raw);
+    const voiceLabel = runtimeStatus.voice?.enabled ? ` · voice:${runtimeStatus.voice.provider}` : '';
+    const sttLabel = runtimeStatus.speech_to_text?.enabled ? ` · mic:${runtimeStatus.speech_to_text.provider}` : '';
+    modelLabel.textContent = `${runtimeStatus.provider || 'runtime'} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
+    if (runtimeStatus.conversation) setConversationState(runtimeStatus.conversation);
+  });
+  bridge.getLastTurnTrace?.((raw) => applyTurnTrace(parsePayload(raw)));
+  bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));
+  bridge.getCharacterState?.((raw) => applyCharacterState(raw));
+  bridge.getDashboardState?.((raw) => {
+    applyDashboardState(raw);
+    bootStep(86, 'Loading memory, state, and ecosystem…');
+    window.setTimeout(() => { finishBoot('Mary is ready.'); ensureAmbientMusic(); }, 280);
+  });
+  bridge.getYouTubeStatus?.((raw) => {
+    youtubeStatus = parsePayload(raw);
+    if (currentScreen === 'media') renderWorkspace('media');
+  });
+  bridge.getIntegrationState?.((raw) => {
+    integrationState = parsePayload(raw);
+    if (currentScreen === 'studio' || currentScreen === 'settings') renderWorkspace(currentScreen);
+  });
+  bridge.getCreativeWorkspaceState?.((raw) => {
+    creativeWorkspaceState = parsePayload(raw);
+    if (currentScreen === 'studio') renderWorkspace('studio');
   });
 }
 
+async function connectBridge() {
+  if (window.qt?.webChannelTransport && typeof QWebChannel !== 'undefined') {
+    new QWebChannel(window.qt.webChannelTransport, (channel) => {
+      activateBridge(channel.objects.maryBridge, { surface: 'desktop' });
+    });
+    return;
+  }
+
+  try {
+    const webBridge = await createHttpBridge();
+    activateBridge(webBridge, { surface: 'mobile' });
+  } catch (error) {
+    setConnected(false, 'Mary mobile server unavailable');
+    renderWorkspace(currentScreen);
+    finishBoot('Mary mobile server unavailable.');
+    console.error('[MaryMobile] bridge connection failed', error);
+  }
+}
 
 window.setInterval(() => {
   const now=new Date();
@@ -1664,7 +1670,7 @@ window.addEventListener('resize', () => {
 bootStep(28, 'Loading character renderer…');
 syncAvatarPresentation();
 loadMaryVrm();
-window.setTimeout(()=>{ if(!bridge) finishBoot('Desktop preview mode.'); }, 2800);
+window.setTimeout(()=>{ if(!bridge) finishBoot('Mary web preview mode.'); }, 4000);
 connectBridge();
 refreshConversationControls();
 animate();

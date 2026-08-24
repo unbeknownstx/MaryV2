@@ -26,15 +26,19 @@ It is also the default when no live flag is supplied.
 from __future__ import annotations
 
 import argparse
+import compileall
 from contextlib import contextmanager
 import importlib
 import os
-import py_compile
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from mary.core.diagnostics import MaryDiagnostics
+from mary.core.mary import Mary
+from mary.runtime.application import create_application
+from mary.tools.manager import ToolManager
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,8 +71,9 @@ _OFFLINE_STRIP_ENV: tuple[str, ...] = (
     "MARY_RESERVOIR_STORAGE",
 )
 
-_OFFLINE_TEMP_PREFIX = "maryv2-release-offline-"
-_LIVE_TEMP_PREFIX = "maryv2-release-live-"
+# Point child processes at a deliberately nonexistent dotenv path so importing
+# mary.core.config cannot silently reload the developer's real project .env.
+_OFFLINE_ENV_FILE = ROOT / ".maryv2_release_offline_no_env"
 
 # Keep this list explicit. New verify_*.py scripts must be deliberately added
 # here rather than silently entering the release gate. A unit test guards that
@@ -110,7 +115,6 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("fast_dialogue_connected_presence_12_11", "scripts.verify_connected_companion_12_11"),
     ("cognitive_character_runtime_12_12", "scripts.verify_character_runtime_12_12"),
     ("natural_conversation_12_12_2", "scripts.verify_natural_conversation_12_12_2"),
-    ("production_hybrid_dialogue_12_12_3", "scripts.verify_production_hybrid_dialogue_12_12_3"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
@@ -136,135 +140,35 @@ def _heading(title: str) -> None:
     print("=" * 80)
 
 
-def _is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
-
-
-def _validate_bounded_temp_root(path: str | Path, *, prefix: str) -> Path:
-    """Validate a direct, non-link child of the host system temp directory."""
-
-    candidate = Path(path)
-    system_temp = Path(tempfile.gettempdir()).resolve()
-    if candidate.is_symlink():
-        raise RuntimeError("refusing recursive release cleanup of a symlink")
-    is_junction = getattr(candidate, "is_junction", None)
-    if callable(is_junction) and is_junction():
-        raise RuntimeError("refusing recursive release cleanup of a junction")
-    resolved = candidate.resolve()
-    if resolved.parent != system_temp or not resolved.name.startswith(prefix):
-        raise RuntimeError("release isolation root is outside the bounded system temp location")
-    return resolved
-
-
-@contextmanager
-def _bounded_temp_root(*, prefix: str):
-    """Yield a fresh system-temp root and safely remove only that root."""
-
-    root = Path(tempfile.mkdtemp(prefix=prefix)).resolve()
-    _validate_bounded_temp_root(root, prefix=prefix)
-    try:
-        yield root
-    finally:
-        if root.exists():
-            shutil.rmtree(_validate_bounded_temp_root(root, prefix=prefix))
-
-
-def _validate_offline_data_dir(data_dir: str | Path) -> Path:
-    resolved = Path(data_dir).expanduser().resolve()
-    system_temp = Path(tempfile.gettempdir()).resolve()
-    if resolved == system_temp or not _is_relative_to(resolved, system_temp):
-        raise RuntimeError("offline release data must stay beneath system temp")
-    return resolved
-
-
 def _offline_environment(*, data_dir: str | Path | None = None) -> dict[str, str]:
-    """Return a deterministic child environment that cannot load live state."""
-
-    selected_data = data_dir or os.environ.get("MARY_DATA_DIR")
-    if not selected_data:
-        raise RuntimeError("offline release environment requires an isolated data directory")
-    isolated_data = _validate_offline_data_dir(selected_data)
-    isolated_root = isolated_data.parent
-    env_file = isolated_root / "no-live-config"
-    pytest_root = isolated_root / "pytest"
-    if env_file.exists():
-        raise RuntimeError("offline release MARY_ENV_FILE target must not exist")
-    pytest_root.mkdir(parents=True, exist_ok=True)
+    """Return a deterministic child-process environment for offline checks."""
 
     environment = os.environ.copy()
     for name in _OFFLINE_STRIP_ENV:
         environment.pop(name, None)
-    environment["MARY_DATA_DIR"] = str(isolated_data)
-    environment["MARY_ENV_FILE"] = str(env_file)
-    environment["MARY_RESERVOIR_STORAGE"] = "memory"
-    environment["PYTEST_DEBUG_TEMPROOT"] = str(pytest_root)
-    environment["PYTEST_ADDOPTS"] = "-p no:cacheprovider"
+
+    environment["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
+    if data_dir is not None:
+        environment["MARY_DATA_DIR"] = str(Path(data_dir))
     return environment
-
-
-def _assert_active_state_isolation(expected_data: Path) -> None:
-    """Fail before Mary construction if Config does not resolve fresh temp state."""
-
-    active_data = Path(os.environ.get("MARY_DATA_DIR", "")).expanduser().resolve()
-    if active_data != expected_data.resolve():
-        raise RuntimeError("release environment did not select its isolated data root")
-    _validate_offline_data_dir(active_data)
-    env_file_value = os.environ.get("MARY_ENV_FILE", "").strip()
-    if not env_file_value:
-        raise RuntimeError("release MARY_ENV_FILE isolation is missing")
-    env_file = Path(env_file_value).expanduser()
-    if env_file.exists():
-        raise RuntimeError("release MARY_ENV_FILE must be a nonexistent isolated target")
-
-    # Lazy by design: this is the earliest Mary import in the release runner,
-    # and it happens only after MARY_ENV_FILE/MARY_DATA_DIR are installed.
-    from mary.core.config import Config
-
-    if Config().paths.data.resolve() != active_data:
-        raise RuntimeError("release Config resolved a non-isolated data root")
 
 
 @contextmanager
 def _offline_process_environment():
-    """Isolate one in-process check before it imports any Mary module."""
+    """Isolate one in-process deterministic check from providers and real state."""
 
-    tracked = tuple(dict.fromkeys((
-        *_OFFLINE_STRIP_ENV,
-        "MARY_DATA_DIR",
-        "MARY_ENV_FILE",
-        "MARY_RESERVOIR_STORAGE",
-        "PYTEST_DEBUG_TEMPROOT",
-        "PYTEST_ADDOPTS",
-    )))
-    saved = {name: os.environ.get(name) for name in tracked}
+    saved = {name: os.environ.get(name) for name in _OFFLINE_STRIP_ENV}
+    saved_env_file = os.environ.get("MARY_ENV_FILE")
+    saved_data_dir = os.environ.get("MARY_DATA_DIR")
 
-    with _bounded_temp_root(prefix=_OFFLINE_TEMP_PREFIX) as root:
-        data_dir = root / "data"
-        pytest_root = root / "pytest"
-        env_file = root / "no-live-config"
-        data_dir.mkdir(parents=True, exist_ok=False)
-        pytest_root.mkdir(parents=True, exist_ok=False)
-        if env_file.exists():
-            raise RuntimeError("offline release MARY_ENV_FILE target must not exist")
+    with tempfile.TemporaryDirectory(prefix="maryv2_release_state_") as directory:
         try:
             for name in _OFFLINE_STRIP_ENV:
                 os.environ.pop(name, None)
-            os.environ["MARY_DATA_DIR"] = str(data_dir)
-            os.environ["MARY_ENV_FILE"] = str(env_file)
+            os.environ["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
+            os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
             os.environ["MARY_RESERVOIR_STORAGE"] = "memory"
-            os.environ["PYTEST_DEBUG_TEMPROOT"] = str(pytest_root)
-            os.environ["PYTEST_ADDOPTS"] = "-p no:cacheprovider"
-            _assert_active_state_isolation(data_dir)
-            yield {
-                "root": root,
-                "data": data_dir,
-                "env_file": env_file,
-                "pytest": pytest_root,
-            }
+            yield
         finally:
             for name, value in saved.items():
                 if value is None:
@@ -272,46 +176,15 @@ def _offline_process_environment():
                 else:
                     os.environ[name] = value
 
+            if saved_env_file is None:
+                os.environ.pop("MARY_ENV_FILE", None)
+            else:
+                os.environ["MARY_ENV_FILE"] = saved_env_file
 
-@contextmanager
-def _live_process_environment():
-    """Preserve explicitly exported credentials while isolating all state."""
-
-    tracked = (
-        "MARY_DATA_DIR",
-        "MARY_ENV_FILE",
-        "MARY_RESERVOIR_STORAGE",
-        "PYTEST_DEBUG_TEMPROOT",
-        "PYTEST_ADDOPTS",
-    )
-    saved = {name: os.environ.get(name) for name in tracked}
-    with _bounded_temp_root(prefix=_LIVE_TEMP_PREFIX) as root:
-        data_dir = root / "data"
-        pytest_root = root / "pytest"
-        env_file = root / "no-live-config"
-        data_dir.mkdir(parents=True, exist_ok=False)
-        pytest_root.mkdir(parents=True, exist_ok=False)
-        if env_file.exists():
-            raise RuntimeError("live release MARY_ENV_FILE target must not exist")
-        try:
-            os.environ["MARY_DATA_DIR"] = str(data_dir)
-            os.environ["MARY_ENV_FILE"] = str(env_file)
-            os.environ["MARY_RESERVOIR_STORAGE"] = "memory"
-            os.environ["PYTEST_DEBUG_TEMPROOT"] = str(pytest_root)
-            os.environ["PYTEST_ADDOPTS"] = "-p no:cacheprovider"
-            _assert_active_state_isolation(data_dir)
-            yield {
-                "root": root,
-                "data": data_dir,
-                "env_file": env_file,
-                "pytest": pytest_root,
-            }
-        finally:
-            for name, value in saved.items():
-                if value is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = value
+            if saved_data_dir is None:
+                os.environ.pop("MARY_DATA_DIR", None)
+            else:
+                os.environ["MARY_DATA_DIR"] = saved_data_dir
 
 
 def discover_verifier_modules() -> tuple[str, ...]:
@@ -326,25 +199,18 @@ def discover_verifier_modules() -> tuple[str, ...]:
 def run_compile_check() -> bool:
     _heading("PYTHON COMPILE CHECK")
     ok = True
-    sources = [
-        *(ROOT / "mary").rglob("*.py"),
-        *(ROOT / "scripts").rglob("*.py"),
-        ROOT / "main.py",
-    ]
-    with _bounded_temp_root(prefix=_OFFLINE_TEMP_PREFIX) as compile_root:
-        for source in sorted(set(sources)):
-            relative = source.relative_to(ROOT)
-            destination = (compile_root / relative).with_suffix(".pyc")
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                py_compile.compile(
-                    str(source),
-                    cfile=str(destination),
-                    doraise=True,
-                )
-            except py_compile.PyCompileError as exc:
-                print(exc)
-                ok = False
+    for target in (ROOT / "mary", ROOT / "scripts"):
+        ok = compileall.compile_dir(
+            str(target),
+            quiet=1,
+            force=True,
+        ) and ok
+
+    ok = compileall.compile_file(
+        str(ROOT / "main.py"),
+        quiet=1,
+        force=True,
+    ) and ok
 
     print("PASS" if ok else "FAIL")
     return bool(ok)
@@ -354,11 +220,7 @@ def run_pytest() -> bool:
     """Run the canonical deterministic suite with live LLM testing disabled."""
 
     _heading("PYTEST - DETERMINISTIC / OFFLINE")
-    with _bounded_temp_root(prefix=_OFFLINE_TEMP_PREFIX) as isolated_root:
-        data_dir = isolated_root / "data"
-        pytest_root = isolated_root / "pytest"
-        data_dir.mkdir(parents=True, exist_ok=False)
-        pytest_root.mkdir(parents=True, exist_ok=False)
+    with tempfile.TemporaryDirectory(prefix="maryv2_release_pytest_") as directory:
         completed = subprocess.run(
             [
                 sys.executable,
@@ -366,13 +228,9 @@ def run_pytest() -> bool:
                 "pytest",
                 "tests",
                 "-q",
-                "--basetemp",
-                str(isolated_root / "pytest"),
-                "-p",
-                "no:cacheprovider",
             ],
             cwd=ROOT,
-            env=_offline_environment(data_dir=data_dir),
+            env=_offline_environment(data_dir=Path(directory) / "data"),
             check=False,
         )
     return completed.returncode == 0
@@ -381,16 +239,10 @@ def run_pytest() -> bool:
 def run_diagnostics() -> bool:
     _heading("SYSTEM DIAGNOSTICS")
     with _offline_process_environment():
-        from mary.core.diagnostics import MaryDiagnostics
-        from mary.core.mary import Mary
-
         mary = Mary()
-        try:
-            diagnostics = MaryDiagnostics(mary)
-            print(diagnostics.report())
-            summary = diagnostics.summary()
-        finally:
-            mary.mind.close()
+        diagnostics = MaryDiagnostics(mary)
+        print(diagnostics.report())
+        summary = diagnostics.summary()
     return bool(
         summary.get("healthy")
         and summary.get("failed") == 0
@@ -428,11 +280,8 @@ def run_verifier(name: str, module: str) -> bool:
 def run_local_safety_smoke() -> bool:
     _heading("LOCAL TOOL SAFETY SMOKE")
 
-    with _offline_process_environment() as isolation:
-        from mary.tools.manager import ToolManager
-
-        root = isolation["root"] / "workspace"
-        root.mkdir(parents=True, exist_ok=False)
+    with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
+        root = Path(directory)
         manager = ToolManager(workspace_root=root)
 
         # Workspace escape must fail.
@@ -506,21 +355,10 @@ def run_live_llm() -> bool:
         "It runs only the dedicated live conversation test."
     )
 
-    with _bounded_temp_root(prefix=_LIVE_TEMP_PREFIX) as isolation_root:
-        data_dir = isolation_root / "data"
-        pytest_root = isolation_root / "pytest"
-        env_file = isolation_root / "no-live-config"
-        data_dir.mkdir(parents=True, exist_ok=False)
-        pytest_root.mkdir(parents=True, exist_ok=False)
-        if env_file.exists():
-            raise RuntimeError("live LLM MARY_ENV_FILE target must not exist")
-        environment = os.environ.copy()
-        environment["MARY_RUN_LIVE_TESTS"] = "1"
-        environment["MARY_DATA_DIR"] = str(data_dir)
-        environment["MARY_ENV_FILE"] = str(env_file)
-        environment["MARY_RESERVOIR_STORAGE"] = "memory"
-        environment["PYTEST_DEBUG_TEMPROOT"] = str(pytest_root)
-        environment["PYTEST_ADDOPTS"] = "-p no:cacheprovider"
+    environment = os.environ.copy()
+    environment["MARY_RUN_LIVE_TESTS"] = "1"
+    with tempfile.TemporaryDirectory(prefix="maryv2_release_live_llm_") as directory:
+        environment["MARY_DATA_DIR"] = str(Path(directory) / "data")
         completed = subprocess.run(
             [
                 sys.executable,
@@ -544,25 +382,24 @@ def run_live_web() -> bool:
         "It performs one explicit public web search."
     )
 
-    with _live_process_environment() as isolation:
-        from mary.runtime.application import create_application
-
-        memory_path = isolation["data"] / "memory" / "memory.json"
-        app = None
+    with tempfile.TemporaryDirectory(prefix="maryv2_live_") as directory:
+        memory_path = Path(directory) / "memory.json"
+        saved_data_dir = os.environ.get("MARY_DATA_DIR")
+        os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
         try:
             app = create_application(
                 memory_path=memory_path,
                 auto_save=False,
                 load_memory=False,
-                load_developed_self=False,
-                load_preference_promotion=False,
             )
             result = app.run(
                 "search the web for the latest Python news"
             )
         finally:
-            if app is not None:
-                app.close()
+            if saved_data_dir is None:
+                os.environ.pop("MARY_DATA_DIR", None)
+            else:
+                os.environ["MARY_DATA_DIR"] = saved_data_dir
 
         if not result.success:
             print(f"FAIL: {result.error}")

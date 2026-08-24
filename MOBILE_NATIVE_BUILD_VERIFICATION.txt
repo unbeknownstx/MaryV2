@@ -1,0 +1,57 @@
+MARYV2 12.12.2 NATIVE MOBILE COMPANION — BUILD VERIFICATION
+============================================================
+
+Canonical architecture
+----------------------
+PASS  Mobile still routes through one MaryApplication.
+PASS  No second identity, memory, relationship, personality, or provider store.
+PASS  Provider/API secrets remain server-side.
+PASS  Mobile Studio uses CreativeWorkspaceManager sandbox.
+PASS  Arbitrary desktop application launch / host file picker remains unavailable remotely.
+
+Mobile transport
+----------------
+PASS  Token protection retained for non-loopback hosts.
+PASS  Native/file-origin CORS preflight test.
+PASS  Authorization header accepted for native/file-origin API requests.
+PASS  OPTIONS / GET / POST mobile routes remain bounded.
+
+Mobile UI
+---------
+PASS  Zero-build JS syntax (`node --check mobile_web/app.js`).
+PASS  Mobile workspace hooks present for Memories, Personality, Mind, Studio,
+      Study, Presence, Gallery, Media, Voice, Runtime, Settings, Search,
+      Research and Arcade, plus pinned Home/Chat/Command/Focus navigation.
+PASS  Native iPhone bundle contains the same mobile web client.
+NOTE  Headless Chromium navigation is blocked by this execution sandbox, so a
+      visual browser click-through could not be executed here.
+
+Native iPhone project
+---------------------
+PASS  Xcode project.pbxproj syntax (`plutil -lint`).
+PASS  Info.plist syntax.
+PASS  AppIcon asset catalog JSON.
+PASS  Swift parse of MaryMobileApp.swift, MaryViewController.swift,
+      MaryNativeBridge.swift using Swift 6.2.1 parser.
+PASS  Native Speech framework bridge present.
+PASS  AVSpeechSynthesizer voice bridge present.
+PASS  Native haptics bridge present.
+PASS  Microphone, speech-recognition and local-network privacy strings present.
+NOTE  Apple iOS linking/signing cannot be run on this Linux host. Final device
+      compile/sign is performed by opening mobile_native/MaryMobile.xcodeproj
+      in Xcode on macOS and pressing Run.
+
+Regression tests
+----------------
+PASS  Targeted mobile/presence suite: 21 passed.
+PASS  Full MaryV2 suite after mobile changes: 772 passed, 1 skipped in 26.21s.
+PASS  Live canonical MaryMobileRuntime check:
+      status/dashboard OK
+      "hey mary" -> "Oh hey. What's up?"
+      conversation lane -> social_instant
+      post-turn character state -> idle
+
+Result
+------
+PASS  Source/integration verification complete.
+MAC REQUIRED ONLY FOR FINAL IOS BUILD + APPLE CODE SIGNING.

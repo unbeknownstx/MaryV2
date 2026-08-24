@@ -128,7 +128,6 @@ class CognitiveOrchestrator:
         personality_context: dict[str, Any] | None = None,
         active_goals: list[Any] | None = None,
         mind_state: dict[str, Any] | None = None,
-        response_risk_class: str | None = None,
     ) -> CognitiveCycleResult:
         """
         Run one complete cognitive cycle.
@@ -183,17 +182,6 @@ class CognitiveOrchestrator:
             context.mind_state.update(
                 mind_state
             )
-
-        risk_class = str(response_risk_class or "").strip().lower()
-        if risk_class in {
-            "precision_local",
-            "social_low_risk",
-            "open_conversation",
-            "thinking_required",
-        }:
-            # Ephemeral route control only. This is neither copied into Mary's
-            # state nor treated as an authority source.
-            context.metadata["response_risk_class"] = risk_class
 
         context_completed = monotonic()
 

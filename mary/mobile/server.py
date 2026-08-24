@@ -37,10 +37,12 @@ from mary.desktop.projects import CreativeWorkspaceManager
 from mary.ecosystem import MaryEcosystem
 from mary.presence import PresenceEventType
 from mary.runtime.application import MaryApplication, create_application
+from mary.mobile.audio import MobileSpeechService
 
 
-MOBILE_PROTOCOL_VERSION = "1"
+MOBILE_PROTOCOL_VERSION = "2"
 MAX_REQUEST_BYTES = 256_000
+MAX_AUDIO_REQUEST_BYTES = 12_000_000
 
 
 def _json_safe(value: Any) -> Any:
@@ -117,6 +119,7 @@ class MaryMobileRuntime:
         self.application = application or create_application(name="mary_mobile")
         self.ecosystem = MaryEcosystem(self.application.mary)
         self.creative_workspace = CreativeWorkspaceManager()
+        self.speech = MobileSpeechService()
         self._lock = RLock()
         self._busy = False
         self._last_trace: dict[str, Any] = {}
@@ -143,14 +146,12 @@ class MaryMobileRuntime:
                     "busy": self._busy,
                     "conversation": {"state": "thinking" if self._busy else "idle"},
                     "voice": {
-                        "enabled": True,
-                        "provider": "browser",
-                        "mode": "device_speech_synthesis",
+                        **dict(self.speech.status().get("tts", {}) or {}),
+                        "mode": "server_preferred_with_device_fallback",
                     },
                     "speech_to_text": {
-                        "enabled": True,
-                        "provider": "browser",
-                        "mode": "web_speech_when_supported",
+                        **dict(self.speech.status().get("stt", {}) or {}),
+                        "mode": "server_upload_with_browser_fallback",
                     },
                     "mobile": {
                         "protocol": MOBILE_PROTOCOL_VERSION,
@@ -237,6 +238,7 @@ class MaryMobileRuntime:
             response_text = str(result.output or "")
             mary = self.application.mary
             avatar_started = monotonic()
+            delivery_plan: dict[str, Any] = {}
             try:
                 values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
                 cycle = values.get("cognitive_cycle")
@@ -255,14 +257,15 @@ class MaryMobileRuntime:
                     avatar = {}
             avatar_ms = (monotonic() - avatar_started) * 1000.0
             worker_total_ms = (monotonic() - started) * 1000.0
+            voice_status = dict(self.speech.status().get("tts", {}) or {})
             trace = build_turn_trace(
                 result,
                 pipeline_ms=pipeline_ms,
                 avatar_ms=avatar_ms,
                 voice_payload={
-                    "enabled": True,
-                    "provider": "browser",
-                    "status": "client_side",
+                    "enabled": bool(voice_status.get("enabled", True)),
+                    "provider": voice_status.get("provider") or "device_fallback",
+                    "status": "deferred_mobile_playback",
                 },
                 worker_total_ms=worker_total_ms,
             )
@@ -278,10 +281,12 @@ class MaryMobileRuntime:
                     "canonical_text": response_text,
                     "avatar": avatar,
                     "voice": {
+                        **voice_status,
                         "enabled": True,
-                        "provider": "browser",
-                        "status": "client_side",
+                        "status": "ready",
                         "spoken_text": response_text,
+                        "delivery_plan": delivery_plan,
+                        "device_fallback": True,
                     },
                     "runtime": {
                         "turn_id": result.turn_id,
@@ -297,6 +302,37 @@ class MaryMobileRuntime:
         finally:
             with self._lock:
                 self._busy = False
+
+
+    def voice_status(self) -> dict[str, Any]:
+        with self._lock:
+            return _json_safe(self.speech.status())
+
+    def synthesize_speech(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ):
+        return self.speech.synthesize(
+            text,
+            user_text=user_text,
+            delivery_plan=delivery_plan,
+        )
+
+    def transcribe_audio(
+        self,
+        audio: bytes,
+        *,
+        filename: str | None = None,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
+        return self.speech.transcribe(
+            audio,
+            filename=filename,
+            content_type=content_type,
+        )
 
     def _publish(self, event_type: PresenceEventType, summary: str, **metadata: Any) -> None:
         try:
@@ -329,6 +365,8 @@ class MaryMobileRuntime:
                 return self.mind_status()
             if name == "getLastTurnTrace":
                 return self.last_turn_trace()
+            if name == "getMobileVoiceStatus":
+                return self.voice_status()
             if name == "rebuildCognitiveReservoir":
                 try:
                     count = int(self.application.mary.mind.rebuild_reservoir())
@@ -465,7 +503,7 @@ class MaryMobileRequestHandler(SimpleHTTPRequestHandler):
             return
         self.send_response(HTTPStatus.NO_CONTENT)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Mary-Audio-Filename")
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 
@@ -474,9 +512,17 @@ class MaryMobileRequestHandler(SimpleHTTPRequestHandler):
         if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
+            self.send_header(
+                "Access-Control-Expose-Headers",
+                "X-Mary-Voice-Provider, X-Mary-Voice-Model, X-Mary-Voice-Status, X-Mary-Voice-Cache",
+            )
+        if not urlparse(self.path).path.startswith("/api/"):
+            suffix = Path(urlparse(self.path).path).suffix.lower()
+            if suffix in {".html", ".js", ".css", ".webmanifest"} or self.path == "/":
+                self.send_header("Cache-Control", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Permissions-Policy", "camera=(), geolocation=()")
+        self.send_header("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)")
         super().end_headers()
 
     def _authorized(self) -> bool:
@@ -494,6 +540,29 @@ class MaryMobileRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
+
+    def _send_audio(self, audio: bytes, *, mime_type: str, metadata: dict[str, Any]) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", str(mime_type or "application/octet-stream"))
+        self.send_header("Content-Length", str(len(audio)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Mary-Voice-Status", str(metadata.get("status") or "success"))
+        self.send_header("X-Mary-Voice-Provider", str(metadata.get("provider") or "unknown")[:120])
+        self.send_header("X-Mary-Voice-Model", str(metadata.get("model") or "")[:160])
+        self.send_header("X-Mary-Voice-Cache", "hit" if metadata.get("cached") else "miss")
+        self.end_headers()
+        self.wfile.write(audio)
+
+    def _read_bytes(self, *, maximum: int) -> bytes:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("Invalid Content-Length.") from exc
+        if length <= 0:
+            raise ValueError("Request body is empty.")
+        if length > maximum:
+            raise OverflowError("Request body is too large.")
+        return self.rfile.read(length)
 
     def _read_json(self) -> dict[str, Any]:
         try:
@@ -544,6 +613,11 @@ class MaryMobileRequestHandler(SimpleHTTPRequestHandler):
                 return
             self._send_json(self.mary_server.runtime.last_turn_trace())
             return
+        if path == "/api/voice/status":
+            if not self._require_api_auth():
+                return
+            self._send_json({"ok": True, **self.mary_server.runtime.voice_status()})
+            return
         if path.startswith("/api/"):
             self._send_json({"ok": False, "error": "Unknown API route."}, HTTPStatus.NOT_FOUND)
             return
@@ -562,10 +636,41 @@ class MaryMobileRequestHandler(SimpleHTTPRequestHandler):
         if not self._require_api_auth():
             return
         try:
+            if path == "/api/stt":
+                raw = self._read_bytes(maximum=MAX_AUDIO_REQUEST_BYTES)
+                payload = self.mary_server.runtime.transcribe_audio(
+                    raw,
+                    filename=self.headers.get("X-Mary-Audio-Filename"),
+                    content_type=self.headers.get("Content-Type"),
+                )
+                self._send_json({"ok": True, **payload})
+                return
+
             body = self._read_json()
             if path == "/api/chat":
                 payload = self.mary_server.runtime.chat(str(body.get("text") or ""))
                 self._send_json({"ok": True, **payload})
+                return
+            if path == "/api/tts":
+                delivery_plan = body.get("delivery_plan") or {}
+                if not isinstance(delivery_plan, dict):
+                    raise ValueError("delivery_plan must be a JSON object.")
+                speech = self.mary_server.runtime.synthesize_speech(
+                    str(body.get("text") or ""),
+                    user_text=str(body.get("user_text") or "") or None,
+                    delivery_plan=delivery_plan,
+                )
+                if speech.successful:
+                    self._send_audio(
+                        speech.audio,
+                        mime_type=speech.mime_type,
+                        metadata={**speech.metadata, "cached": speech.cached},
+                    )
+                else:
+                    self._send_json(
+                        {"ok": False, "fallback": "device", **speech.metadata},
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                    )
                 return
             if path == "/api/bridge":
                 method = str(body.get("method") or "")

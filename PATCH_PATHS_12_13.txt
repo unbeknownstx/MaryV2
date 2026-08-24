@@ -1,0 +1,32 @@
+MaryV2 12.13 Mobile Voice Upgrade — Patch Paths
+================================================
+
+.env.example
+.replit
+MOBILE_12_13_BUILD_NOTES.md
+MOBILE_12_13_VERIFICATION.txt
+MOBILE_12_13_VOICE_SETUP.md
+MOBILE_COMPANION_README.md
+PATCH_PATHS_12_13.txt
+mary/mobile/__init__.py
+mary/mobile/audio.py
+mary/mobile/server.py
+scripts/run_mobile.py
+scripts/check_mobile_voice.py
+scripts/rotate_mobile_token.py
+scripts/verify_mobile_12_13.py
+tests/mobile/test_mobile_audio_12_13.py
+tests/mobile/test_mobile_surface.py
+tests/mobile/test_native_mobile_package.py
+mobile_web/index.html
+mobile_web/style.css
+mobile_web/app.js
+mobile_web/sw.js
+mobile_web/manifest.webmanifest
+mobile_web/assets/mary-reference.jpeg
+mobile_web/assets/mary-icon.png
+mobile_web/assets/mary-icon-192.png
+mobile_web/assets/mary-icon-180.png
+mobile_web/assets/mary-sigil.svg
+mobile_web/assets/cyber-grid.svg
+mobile_native/  (complete native iPhone project, with synchronized www bundle)

@@ -25,3 +25,11 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -m scripts.run_mary"
+
+[[workflows.workflow]]
+name = "Check Mobile Voice"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m scripts.check_mobile_voice"

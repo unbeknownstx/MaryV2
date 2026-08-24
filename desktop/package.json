@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "node --check src/main.js && node --check src/launcher.js && node --check src/runtime/turnTrace.js && node --check src/ui/presenceHome.js && node --check vite.config.js"
+    "check": "node --check src/main.js && node --check src/launcher.js && node --check src/runtime/turnTrace.js && node --check src/runtime/httpBridge.js && node --check src/ui/presenceHome.js && node --check vite.config.js"
   },
   "dependencies": {
     "@pixiv/three-vrm": "3.5.5",

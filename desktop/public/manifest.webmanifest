@@ -1,0 +1,19 @@
+{
+  "name": "Mary — AI Companion",
+  "short_name": "Mary",
+  "description": "Private mobile companion surface for MaryV2.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#050611",
+  "theme_color": "#090b18",
+  "icons": [
+    {
+      "src": "/mary-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -8,7 +8,7 @@
   "private_runtime_state_included": false,
   "environment_secrets_included": false,
   "avatar_model_assets_included": true,
-  "canonical_test_result": "740 passed, 1 skipped",
+  "canonical_test_result": "772 passed, 1 skipped",
   "diagnostics": "54/54 PASS; Healthy True",
   "offline_release_gate": "PASS; deterministic/offline release verification",
   "ecosystem_presence_verifier": "PASS; milestone verifiers through 12.12.2 retained",
@@ -16,5 +16,42 @@
   "frontend_host_build_note": "This build environment has no desktop/node_modules Vite binary. Canonical Windows setup runs npm ci + npm run check + npm run build and stops on failure.",
   "start_here": "START_HERE_12_12_2.md",
   "first_boot_helper": "SETUP_WINDOWS.ps1",
-  "asset_policy": "project-created/procedural assets; no third-party asset download required for first boot"
+  "asset_policy": "project-created/procedural assets; no third-party asset download required for first boot",
+  "mobile_surface": {
+    "version": "12.12.2-mobile-native-1",
+    "type": "native_ios_app_plus_pwa",
+    "native_stack": "Swift + SwiftUI host + WKWebView + Speech + AVFoundation + UIKit; no third-party mobile framework",
+    "transport": "standard_library_http_json",
+    "canonical_runtime_reused": true,
+    "api_keys_client_side": false,
+    "workspaces": [
+      "home",
+      "chat",
+      "command",
+      "focus",
+      "memories",
+      "personality",
+      "mind",
+      "studio",
+      "study",
+      "presence",
+      "search",
+      "research",
+      "arcade",
+      "gallery",
+      "media",
+      "voice",
+      "runtime",
+      "settings"
+    ],
+    "native_features": [
+      "speech_recognition",
+      "speech_synthesis",
+      "haptics",
+      "app_icon",
+      "launch_screen",
+      "persistent_connection_settings"
+    ],
+    "ios_project": "mobile_native/MaryMobile.xcodeproj"
+  }
 }

@@ -1,0 +1,51 @@
+MaryV2 12.12.2 Mobile Companion Alpha - Verification
+=====================================================
+Base: MaryV2_12_12_2_NATURAL_CONVERSATION_CANONICAL_FULL
+
+Verified in this build workspace on 2026-08-24:
+
+1. Mobile unit tests
+   python -m pytest tests/mobile -q
+   RESULT: 3 passed
+
+2. Targeted mobile/presence regressions
+   python -m pytest tests/mobile tests/desktop/test_presence_presentation_12_10.py tests/integration/test_presence_pathways_12_10.py -q
+   RESULT: 17 passed
+
+3. Canonical Python repository suite
+   python -m pytest tests test_breakthrough_11.py test_breakthrough_12.py -q
+   RESULT: 768 passed, 1 skipped
+
+4. Desktop/shared-UI JavaScript syntax gate
+   cd desktop && npm run check
+   RESULT: PASS
+   Includes src/runtime/httpBridge.js and modified src/main.js.
+
+5. Standalone mobile HTTP smoke test
+   - GET /api/health: 200
+   - GET /api/state: 200
+   - GET /manifest.webmanifest: 200
+   - GET /app.js: 200
+   - POST /api/bridge startFocus: PASS
+   - POST /api/bridge stopFocus: PASS
+   - POST /api/chat with "hey mary": PASS
+     response: "Oh hey. What's up?"
+     conversation lane: social_instant
+     local engine: procedural-reservoir
+     returned post-turn dashboard status: idle
+
+6. Production Vite bundle note
+   npm ci could not access the npm registry from this isolated build environment
+   (EAI_AGAIN), so a new desktop/dist production bundle was not generated here.
+   This does not block the included zero-build mobile_web shell, which is the
+   default mobile surface when desktop/dist is absent. On a normal connected
+   PC/Replit environment, the existing desktop package can still be built with:
+     cd desktop
+     npm ci
+     npm run build
+
+Security checked by design/tests:
+- provider API keys remain server-side
+- non-loopback mobile API requires a bearer token
+- loopback development can run without a token
+- desktop-only remote app/file operations are not exposed by the mobile bridge

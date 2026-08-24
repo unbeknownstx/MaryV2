@@ -132,31 +132,8 @@ class TurnPolicyEngine:
         intent: Intent | None,
         local_tool_grounded: bool = False,
         self_grounded: bool = False,
-        response_risk_class: str | None = None,
     ) -> TurnPolicyDecision:
         """Return the bounded provider-purpose decision for this turn."""
-
-        risk_class = str(response_risk_class or "").strip().lower()
-        if risk_class == "thinking_required":
-            return TurnPolicyDecision(
-                category="response_risk_thinking",
-                generation_purpose=None,
-                local_first=False,
-                rationale=(
-                    "the production response-risk boundary requires Mary's "
-                    "existing task/reasoning route"
-                ),
-            )
-        if risk_class in {"open_conversation", "social_low_risk"}:
-            return TurnPolicyDecision(
-                category="response_risk_conversation",
-                generation_purpose="conversation",
-                local_first=True,
-                rationale=(
-                    "the production response-risk boundary selected Mary's "
-                    "existing fast conversation route"
-                ),
-            )
 
         if local_tool_grounded:
             return TurnPolicyDecision(

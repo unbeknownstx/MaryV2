@@ -35,8 +35,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
-from math import isfinite
 from typing import Any
 
 from mary.core.config import Config
@@ -125,204 +123,6 @@ from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.environment import RuntimeEnvironment
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 from mary.mind import CharacterMind
-
-
-_LOCAL_RESPONSE_CLASSES = {
-    "precision_local",
-    "social_low_risk",
-    "open_conversation",
-    "thinking_required",
-}
-_LOCAL_RESPONSE_ENGINES = {
-    "local_composer_v2",
-    "conversation_generation",
-    "task_generation",
-    "reasoning_generation",
-    "expert_consultation",
-    "research_synthesis",
-}
-_CONVERSATION_LANES = {
-    "social_instant",
-    "conversation",
-    "thinking",
-    "expert",
-}
-_LOCAL_DIALOGUE_ACTS = {
-    "greet",
-    "acknowledge",
-    "thanks_response",
-    "goodbye",
-    "laugh",
-    "react",
-    "status",
-    "known_fact",
-    "known_preference",
-    "opine",
-    "ask",
-    "answer",
-    "follow_up",
-    "clarify",
-    "stay_quiet",
-    "escalate",
-}
-_LOCAL_TARGET_LENGTHS = {"micro", "brief", "short", "medium", "long"}
-_LOCAL_TIMING_KEYS = (
-    "classification_ms",
-    "local_composer_ms",
-    "local_audit_ms",
-    "shadow_ms",
-)
-
-
-def _bounded_display_text(value: Any, *, limit: int = 240) -> str:
-    """Return one bounded scalar for diagnostics, never a semantic object."""
-
-    if value is None or isinstance(value, (Mapping, list, tuple, set)):
-        return ""
-    enum_value = getattr(value, "value", value)
-    text = " ".join(str(enum_value).split()).strip()
-    return text[:limit]
-
-
-def _safe_nonnegative_ms(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        number = float(value)
-        if not isfinite(number):
-            return None
-        return round(max(0.0, number), 2)
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_local_lane(value: Any) -> dict[str, Any]:
-    """Project a LaneDecision without carrying arbitrary nested metadata."""
-
-    source = value if isinstance(value, Mapping) else {"lane": value}
-    lane = _bounded_display_text(source.get("lane"), limit=32).lower()
-    if lane not in _CONVERSATION_LANES:
-        return {}
-
-    projected: dict[str, Any] = {"lane": lane}
-    try:
-        latency_target_ms = int(source.get("latency_target_ms"))
-    except (TypeError, ValueError):
-        latency_target_ms = 0
-    if latency_target_ms > 0:
-        projected["latency_target_ms"] = min(latency_target_ms, 120_000)
-    if "allow_model_revision" in source:
-        projected["allow_model_revision"] = bool(source.get("allow_model_revision"))
-    return projected
-
-
-def _safe_local_plan_summary(value: Any) -> dict[str, Any]:
-    """Keep delivery hints while excluding facts, values, slots, and units."""
-
-    if not isinstance(value, Mapping):
-        return {}
-    result: dict[str, Any] = {}
-    act = _bounded_display_text(
-        value.get("act") or value.get("dialogue_act"),
-        limit=48,
-    ).lower()
-    if act in _LOCAL_DIALOGUE_ACTS:
-        result["act"] = act
-    if "local" in value:
-        result["local"] = bool(value.get("local"))
-    target_length = _bounded_display_text(value.get("target_length"), limit=32).lower()
-    if target_length in _LOCAL_TARGET_LENGTHS:
-        result["target_length"] = target_length
-    return result
-
-
-def _safe_local_mind_metadata(value: Any) -> dict[str, Any]:
-    """Allowlist CharacterMind metadata that is safe for status and tracing."""
-
-    if not isinstance(value, Mapping):
-        return {}
-
-    result: dict[str, Any] = {}
-    response_class = _bounded_display_text(value.get("response_class"), limit=40).lower()
-    if response_class in _LOCAL_RESPONSE_CLASSES:
-        result["response_class"] = response_class
-
-    response_engine = _bounded_display_text(value.get("response_engine"), limit=64).lower()
-    if response_engine in _LOCAL_RESPONSE_ENGINES:
-        result["response_engine"] = response_engine
-
-    escalation_reason = _bounded_display_text(value.get("escalation_reason"), limit=240)
-    if escalation_reason:
-        result["escalation_reason"] = escalation_reason
-
-    for name in _LOCAL_TIMING_KEYS:
-        number = _safe_nonnegative_ms(value.get(name))
-        if number is not None:
-            result[name] = number
-    elapsed_ms = _safe_nonnegative_ms(value.get("elapsed_ms"))
-    if elapsed_ms is not None:
-        result["elapsed_ms"] = elapsed_ms
-
-    if "shadow_enabled" in value:
-        result["shadow_enabled"] = bool(value.get("shadow_enabled"))
-    if "local_only" in value:
-        result["local_only"] = bool(value.get("local_only"))
-    shadow_model = _bounded_display_text(value.get("shadow_model"), limit=96)
-    if shadow_model:
-        result["shadow_model"] = shadow_model
-
-    lane = _safe_local_lane(value.get("conversation_lane") or value.get("lane"))
-    if lane:
-        result["conversation_lane"] = lane
-    plan = _safe_local_plan_summary(value.get("plan"))
-    if plan:
-        result["plan"] = plan
-    return result
-
-
-def _merge_local_mind_timings(
-    cycle_metadata: dict[str, Any],
-    local_metadata: Mapping[str, Any],
-) -> None:
-    timings = cycle_metadata.setdefault("timings", {})
-    if not isinstance(timings, dict):
-        timings = {}
-        cycle_metadata["timings"] = timings
-    for name in _LOCAL_TIMING_KEYS:
-        number = _safe_nonnegative_ms(local_metadata.get(name))
-        if number is not None:
-            timings[name] = number
-
-
-def _model_response_engine(
-    reasoning_metadata: Mapping[str, Any],
-    *,
-    response_class: str,
-) -> str:
-    """Name the existing model path without changing its routing policy."""
-
-    lane_data = reasoning_metadata.get("conversation_lane")
-    lane = _bounded_display_text(
-        lane_data.get("lane") if isinstance(lane_data, Mapping) else lane_data,
-        limit=32,
-    ).lower()
-    purpose = _bounded_display_text(
-        reasoning_metadata.get("generation_purpose")
-        or reasoning_metadata.get("routing_purpose"),
-        limit=64,
-    ).lower()
-    existing = _bounded_display_text(
-        reasoning_metadata.get("response_engine"),
-        limit=64,
-    ).lower()
-    if existing in _LOCAL_RESPONSE_ENGINES and existing != "local_composer_v2":
-        return existing
-    if purpose in {"conversation", "conversation_fast"} and (
-        lane in {"social_instant", "conversation"}
-        or not lane and response_class == "open_conversation"
-    ):
-        return "conversation_generation"
-    return "task_generation"
 
 
 class Mary:
@@ -1120,85 +920,31 @@ class Mary:
         else:
             local_mind_error = None
 
-        local_mind_metadata = (
-            _safe_local_mind_metadata(
-                getattr(local_mind_result, "metadata", {})
-            )
-            if local_mind_result is not None
-            else {}
-        )
-        local_response_class = str(
-            local_mind_metadata.get("response_class") or ""
-        )
-        local_response_eligible = local_response_class in {
-            "precision_local",
-            "social_low_risk",
-        }
-        if (
-            local_mind_result is not None
-            and local_mind_result.handled
-            and not local_response_eligible
-        ):
-            local_mind_metadata["escalation_reason"] = (
-                local_mind_metadata.get("escalation_reason")
-                or "local_response_class_not_eligible"
-            )
-
-        if (
-            local_mind_result is not None
-            and local_mind_result.handled
-            and local_response_eligible
-        ):
-            plan = dict(local_mind_metadata.get("plan", {}) or {})
-            lane = dict(local_mind_metadata.get("conversation_lane", {}) or {})
-            if not lane:
-                lane = {
-                    "lane": (
-                        "social_instant"
-                        if plan.get("target_length", "micro") == "micro"
-                        else "conversation"
-                    ),
-                    "rationale": "bounded local character response",
-                    "latency_target_ms": 200,
-                }
-            lane["allow_model_revision"] = False
-            response_class = local_response_class
-            local_mind_metadata.update({
-                "response_class": response_class,
-                "response_engine": "local_composer_v2",
-                "conversation_lane": lane,
-            })
-            local_cycle_metadata: dict[str, Any] = {
-                "handled_by": "mary_local_mind",
-                "local_mind": local_mind_metadata,
-                "llm_calls_after_action": 0,
-            }
-            _merge_local_mind_timings(
-                local_cycle_metadata,
-                local_mind_metadata,
-            )
+        if local_mind_result is not None and local_mind_result.handled:
             cycle = self._build_system_cycle_result(
                 input_text=input_text,
                 intent=intent,
                 response=local_mind_result.response,
                 context=context,
-                metadata=local_cycle_metadata,
+                metadata={
+                    "handled_by": "mary_local_mind",
+                    "local_mind": dict(local_mind_result.metadata),
+                    "llm_calls_after_action": 0,
+                },
             )
+            plan = dict(local_mind_result.metadata.get("plan", {}) or {})
             cycle.reasoning.reasoning_type = "local_character_mind"
             cycle.reasoning.metadata.update({
                 "provider": "local/mind",
-                "model": "local-composer-v2",
+                "model": "procedural-reservoir",
                 "generation_purpose": "local_dialogue",
                 "routing_purpose": "local_dialogue",
-                "response_class": response_class,
-                "response_engine": "local_composer_v2",
-                "escalation_reason": "",
-                "shadow_enabled": bool(local_mind_metadata.get("shadow_enabled", False)),
-                "shadow_model": local_mind_metadata.get("shadow_model"),
-                "shadow_ms": local_mind_metadata.get("shadow_ms"),
-                "conversation_lane": lane,
-                "provider_attempts": [],
-                "provider_attempt_timings": [],
+                "conversation_lane": {
+                    "lane": "social_instant" if plan.get("target_length", "micro") == "micro" else "conversation",
+                    "rationale": plan.get("rationale", "local mind"),
+                    "latency_target_ms": 200,
+                    "allow_model_revision": False,
+                },
             })
             cycle.reflection.metadata.update({
                 "mode": "local_mind_no_model",
@@ -1224,35 +970,7 @@ class Mary:
                 "agency", {}
             ).get("active_goals", []),
             mind_state=context.get("mind_state", {}),
-            response_risk_class=local_response_class or None,
         )
-
-        # A miss is still an important routing decision. Carry only its
-        # bounded diagnostic projection across cognition; canonical response
-        # semantics remain inside CharacterMind and never enter turn tracing.
-        if local_mind_result is not None:
-            if local_mind_metadata:
-                result.metadata["local_mind"] = local_mind_metadata
-                _merge_local_mind_timings(result.metadata, local_mind_metadata)
-                response_class = str(
-                    local_mind_metadata.get("response_class") or ""
-                )
-                response_engine = _model_response_engine(
-                    result.reasoning.metadata,
-                    response_class=response_class,
-                )
-                result.reasoning.metadata.update({
-                    "response_class": response_class or "n/a",
-                    "response_engine": response_engine,
-                    "escalation_reason": str(
-                        local_mind_metadata.get("escalation_reason") or ""
-                    ),
-                    "shadow_enabled": bool(
-                        local_mind_metadata.get("shadow_enabled", False)
-                    ),
-                    "shadow_model": local_mind_metadata.get("shadow_model"),
-                    "shadow_ms": local_mind_metadata.get("shadow_ms"),
-                })
 
         if natural_relationship_learning is not None:
             result.metadata["natural_relationship_learning"] = dict(

@@ -1,0 +1,50 @@
+MARYV2 MOBILE COMPANION 12.13 VERIFICATION
+==========================================
+
+Base:
+- MaryV2 12.12.2 canonical/native mobile source
+- Phone-first mobile frontend patch overlaid before 12.13 work
+
+12.13 verification completed in the build container:
+
+1. Mobile + voice targeted tests
+   python -m pytest tests/mobile tests/voice -q
+   RESULT: 33 passed
+
+2. Full deterministic test suite
+   python -m pytest tests -q
+   RESULT: 754 passed, 1 skipped
+
+3. Deterministic/offline release gate
+   python -m scripts.run_release_verification
+   RESULT: PASSED
+   - 754 passed, 1 skipped
+   - Python compile PASS
+   - Diagnostics 54/54 PASS, Healthy True
+   - memory restart PASS
+   - provider resilience PASS
+   - relationship / personality / agency / persistence gates PASS
+   - release hygiene PASS
+   - standalone readiness PASS
+   - local safety PASS
+
+4. Mobile 12.13 verifier
+   python -m scripts.verify_mobile_12_13
+   RESULT: MOBILE 12.13 VERIFIED
+
+5. JavaScript syntax
+   node --check mobile_web/app.js
+   RESULT: PASS
+
+6. Live local server smoke
+   - GET /api/health -> HTTP 200, protocol 2
+   - GET /api/voice/status -> HTTP 200
+   - POST /api/tts with no configured server TTS -> HTTP 503 + device fallback contract
+   - Mobile UI root confirmed: mobile_web
+
+Security / packaging:
+- No .env file is included in the 12.13 patch.
+- No data/ directory is included in the 12.13 patch.
+- No provider API keys are sent to the browser.
+- Mobile TTS/STT share the existing bearer-token boundary.
+- The full source snapshot intentionally excludes data/, .env, caches, and local build environments.

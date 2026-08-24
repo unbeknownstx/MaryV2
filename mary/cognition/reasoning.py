@@ -29,7 +29,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
 from mary.runtime.turn_policy import TurnPolicyEngine
-from mary.conversation import ConversationLane, LaneDecision, classify_conversation_lane
+from mary.conversation import ConversationLane, classify_conversation_lane
 from mary.llm.interface import (
     LLMMessage,
     LLMProviderError,
@@ -153,15 +153,11 @@ class ReasoningEngine:
                 context
             )
 
-        response_risk_class = str(
-            context.metadata.get("response_risk_class") or ""
-        ).strip().lower()
         turn_policy = self.turn_policy.decide(
             input_text=context.input_text,
             intent=intent,
             local_tool_grounded=local_tool_grounded,
             self_grounded=self_grounded,
-            response_risk_class=response_risk_class,
         )
         mind = context.mind_state if isinstance(context.mind_state, dict) else {}
         disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
@@ -170,16 +166,6 @@ class ReasoningEngine:
             intent_name=(intent.intent_type.value if intent is not None else ""),
             preferred_length=str(disposition.get("preferred_length", "")),
         )
-        if (
-            response_risk_class == "thinking_required"
-            and lane.lane != ConversationLane.EXPERT
-        ):
-            lane = LaneDecision(
-                ConversationLane.THINKING,
-                "production response-risk boundary requires higher-authority reasoning",
-                12_000,
-                True,
-            )
         generation_purpose = turn_policy.generation_purpose
         routing_purpose = generation_purpose
         # Keep the public semantic purpose as "conversation" for compatibility
@@ -239,7 +225,6 @@ class ReasoningEngine:
                 "turn_policy": turn_policy.to_dict(),
                 "conversation_lane": lane.to_dict(),
                 "routing_purpose": routing_purpose,
-                "response_risk_route_applied": response_risk_class == "thinking_required",
             }
         else:
             final_response = response.content
@@ -282,7 +267,6 @@ class ReasoningEngine:
                 "turn_policy": turn_policy.to_dict(),
                 "conversation_lane": lane.to_dict(),
                 "routing_purpose": routing_purpose,
-                "response_risk_route_applied": response_risk_class == "thinking_required",
             }
 
         return ReasoningResult(

@@ -1,8 +1,4 @@
-"""Legacy V1 local composer retained for import compatibility.
-
-Production CharacterMind uses the typed V2 composer.  This module remains for
-older integrations and regression fixtures; new routing must not select it.
-"""
+"""Procedural local dialogue composer for quick character beats."""
 from __future__ import annotations
 
 import hashlib
