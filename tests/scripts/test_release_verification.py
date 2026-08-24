@@ -47,9 +47,19 @@ def test_normal_pytest_run_uses_offline_environment(monkeypatch):
     monkeypatch.setattr(release.subprocess, "run", fake_run)
 
     assert release.run_pytest() is True
-    assert captured["command"][-2:] == ["tests", "-q"]
+    assert captured["command"][:5] == [
+        release.sys.executable,
+        "-m",
+        "pytest",
+        "tests",
+        "-q",
+    ]
+    assert captured["command"][5] == "--basetemp"
+    assert captured["command"][6].endswith("pytest")
+    assert captured["command"][-2:] == ["-p", "no:cacheprovider"]
     assert "MARY_RUN_LIVE_TESTS" not in captured["env"]
     assert "MARY_RUN_OPENAI_TESTS" not in captured["env"]
+    assert captured["env"]["MARY_DATA_DIR"]
 
 
 def test_live_llm_is_explicit_and_scoped_to_dedicated_test(monkeypatch):

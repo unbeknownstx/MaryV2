@@ -221,6 +221,7 @@ def run_pytest() -> bool:
 
     _heading("PYTEST - DETERMINISTIC / OFFLINE")
     with tempfile.TemporaryDirectory(prefix="maryv2_release_pytest_") as directory:
+        isolated_root = Path(directory)
         completed = subprocess.run(
             [
                 sys.executable,
@@ -228,9 +229,13 @@ def run_pytest() -> bool:
                 "pytest",
                 "tests",
                 "-q",
+                "--basetemp",
+                str(isolated_root / "pytest"),
+                "-p",
+                "no:cacheprovider",
             ],
             cwd=ROOT,
-            env=_offline_environment(data_dir=Path(directory) / "data"),
+            env=_offline_environment(data_dir=isolated_root / "data"),
             check=False,
         )
     return completed.returncode == 0

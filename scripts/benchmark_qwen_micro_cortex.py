@@ -41,11 +41,18 @@ from mary.mind.verbalization_plan import (
 
 
 DEFAULT_MODELS = ("qwen3:1.7b", "qwen3:4b")
+SURFACE_V3_DEFAULT_MODELS = ("qwen3:1.7b", "qwen3:4b-instruct")
 DEFAULT_WARM_RUNS = 2
 DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_PROMPT_PROFILE = "compact_v2"
-PROMPT_PROFILES = ("compact_v1", "compact_v2")
+SURFACE_V3_PROFILE = "surface_v3"
+PROMPT_PROFILES = ("compact_v1", "compact_v2", SURFACE_V3_PROFILE)
 PROMPT_CONTRACT_VERSION = 2
+PROMPT_CONTRACT_VERSIONS = {
+    "compact_v1": 1,
+    "compact_v2": 2,
+    SURFACE_V3_PROFILE: 3,
+}
 
 SYSTEM_PROMPT_V1 = """/no_think
 You are a benchmark-only wording layer beneath Mary's CharacterMind.
@@ -749,12 +756,20 @@ def _render_messages_v2(plan: CompactVerbalizationPlan) -> tuple[dict[str, str],
 
 
 def render_messages(
-    plan: CompactVerbalizationPlan,
+    plan: Any,
     *,
     profile: str = DEFAULT_PROMPT_PROFILE,
 ) -> tuple[dict[str, str], ...]:
     """Render one versioned contract; evaluator/reference data stays absent."""
 
+    if profile == SURFACE_V3_PROFILE:
+        from scripts.qwen_surface_realizer_v3 import render_surface_messages
+
+        return render_surface_messages(plan)
+    if hasattr(plan, "plan"):
+        plan = plan.plan
+    if not isinstance(plan, CompactVerbalizationPlan):
+        raise TypeError("plan must be a CompactVerbalizationPlan")
     if profile == "compact_v1":
         return _render_messages_v1(plan)
     if profile == "compact_v2":
@@ -1370,6 +1385,7 @@ def _sample(
     payload: dict[str, Any],
     output_ceiling: int,
     prompt_profile: str,
+    messages: tuple[dict[str, str], ...] | None = None,
 ) -> dict[str, Any]:
     message = dict(payload.get("message") or {})
     response_raw = str(message.get("content") or "")
@@ -1382,7 +1398,7 @@ def _sample(
     tokens_per_second = 0.0
     if eval_count > 0 and eval_duration_ns > 0:
         tokens_per_second = eval_count / (eval_duration_ns / 1_000_000_000.0)
-    messages = render_messages(case.plan, profile=prompt_profile)
+    messages = messages or render_messages(case, profile=prompt_profile)
     prompt_serialized = json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
     client_wall_ms = round(float(payload.get("_client_wall_ms") or 0.0), 2)
     ollama_total_ms = _ns_to_ms(payload.get("total_duration"))
@@ -1401,7 +1417,7 @@ def _sample(
         if payload.get("total_duration") is not None
         else None
     )
-    return {
+    sample = {
         "sample_id": f"{model}|{case.plan.plan_id}|{phase}|{run}",
         "model": model,
         "case_id": case.plan.plan_id,
@@ -1435,7 +1451,30 @@ def _sample(
         "thinking": thinking,
         "thinking_raw": thinking_raw,
         "unexpected_tool_calls": tool_calls,
-        "assessment": evaluate_response(
+    }
+    if prompt_profile == SURFACE_V3_PROFILE:
+        from scripts.qwen_surface_realizer_v3 import assess_surface_response
+
+        verification = assess_surface_response(
+            case,
+            response_raw,
+            thinking=thinking_raw,
+            done_reason=payload.get("done_reason"),
+            tokens_generated=eval_count,
+            output_ceiling=output_ceiling,
+            done=payload.get("done") is True,
+            unexpected_tool_calls=len(tool_calls),
+        )
+        sample["surface_verification"] = verification
+        sample["response_final"] = verification.get("accepted_response")
+        sample["verifier_repair_ms"] = verification.get("verifier_repair_ms")
+        sample["verified_ready_ms"] = round(
+            client_wall_ms + float(verification.get("verifier_repair_ms") or 0.0),
+            4,
+        )
+        sample["assessment"] = verification["final_verification"]
+    else:
+        sample["assessment"] = evaluate_response(
             case,
             response,
             thinking,
@@ -1444,8 +1483,8 @@ def _sample(
             output_ceiling=output_ceiling,
             done=payload.get("done") is True,
             unexpected_tool_calls=len(tool_calls),
-        ),
-    }
+        )
+    return sample
 
 
 def _successful(samples: list[dict[str, Any]], *, phase: str | None = None) -> list[dict[str, Any]]:
@@ -1515,18 +1554,29 @@ def _phase_metrics(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "client_wall_p95_ms": _percentile(samples, "client_wall_ms", 0.95),
         "ollama_total_median_ms": _median(samples, "ollama_total_ms"),
         "ollama_total_p95_ms": _percentile(samples, "ollama_total_ms", 0.95),
+        "verified_ready_median_ms": _median(samples, "verified_ready_ms"),
+        "verified_ready_p95_ms": _percentile(samples, "verified_ready_ms", 0.95),
+        "verifier_repair_median_ms": _median(samples, "verifier_repair_ms"),
+        "verifier_repair_p95_ms": _percentile(samples, "verifier_repair_ms", 0.95),
         "http_headers_median_ms": _median(samples, "http_headers_ms"),
         "first_chunk_median_ms": _median(samples, "first_chunk_ms"),
         "first_thinking_median_ms": _median(samples, "first_thinking_ms"),
         "first_content_median_ms": _median(samples, "first_content_ms"),
+        "first_content_p95_ms": _percentile(samples, "first_content_ms", 0.95),
         "prompt_eval_median_ms": _median(samples, "prompt_eval_ms"),
+        "prompt_eval_p95_ms": _percentile(samples, "prompt_eval_ms", 0.95),
         "generation_median_ms": _median(samples, "generation_ms"),
+        "generation_p95_ms": _percentile(samples, "generation_ms", 0.95),
         "load_median_ms": _median(samples, "load_ms"),
+        "load_p95_ms": _percentile(samples, "load_ms", 0.95),
         "client_transport_overhead_median_ms": _median(samples, "client_transport_overhead_ms"),
         "ollama_unattributed_median_ms": _median(samples, "ollama_unattributed_ms"),
         "prompt_tokens_median": _median(samples, "prompt_tokens"),
+        "prompt_tokens_p95": _percentile(samples, "prompt_tokens", 0.95),
         "tokens_generated_median": _median(samples, "tokens_generated"),
+        "tokens_generated_p95": _percentile(samples, "tokens_generated", 0.95),
         "tokens_per_second_median": _median(samples, "tokens_per_second"),
+        "tokens_per_second_p95": _percentile(samples, "tokens_per_second", 0.95),
     }
 
 
@@ -1564,17 +1614,24 @@ def _summarize(samples: list[dict[str, Any]], *, output_ceiling: int) -> dict[st
         for item in ordered[1:]:
             repeat_comparisons += 1
             repeat_matches += str(item.get("response_raw") or "") == baseline
-    return {
+    summary = {
         "cold_total_latency_ms": cold[0].get("ollama_total_ms") if cold else None,
         "cold_client_wall_latency_ms": cold[0].get("client_wall_ms") if cold else None,
         "cold_load_latency_ms": cold[0].get("load_ms") if cold else None,
         "cold_first_content_latency_ms": cold[0].get("first_content_ms") if cold else None,
         "cold_is_single_diagnostic_sample": True,
         "warm_total_latency_median_ms": _median(novel, "ollama_total_ms"),
+        "warm_total_latency_p95_ms": _percentile(novel, "ollama_total_ms", 0.95),
         "warm_client_wall_latency_median_ms": _median(novel, "client_wall_ms"),
+        "warm_client_wall_latency_p95_ms": _percentile(novel, "client_wall_ms", 0.95),
+        "warm_verified_ready_latency_median_ms": _median(novel, "verified_ready_ms"),
+        "warm_verified_ready_latency_p95_ms": _percentile(novel, "verified_ready_ms", 0.95),
         "warm_first_content_latency_median_ms": _median(novel, "first_content_ms"),
+        "warm_first_content_latency_p95_ms": _percentile(novel, "first_content_ms", 0.95),
         "warm_prompt_eval_latency_median_ms": _median(novel, "prompt_eval_ms"),
+        "warm_prompt_eval_latency_p95_ms": _percentile(novel, "prompt_eval_ms", 0.95),
         "warm_generation_latency_median_ms": _median(novel, "generation_ms"),
+        "warm_generation_latency_p95_ms": _percentile(novel, "generation_ms", 0.95),
         "warm_load_latency_median_ms": _median(novel, "load_ms"),
         "warm_client_transport_overhead_median_ms": _median(novel, "client_transport_overhead_ms"),
         "warm_ollama_unattributed_median_ms": _median(novel, "ollama_unattributed_ms"),
@@ -1613,12 +1670,17 @@ def _summarize(samples: list[dict[str, Any]], *, output_ceiling: int) -> dict[st
         "no_aggregate_character_score": True,
         "human_sample_review_required": True,
     }
+    if any("surface_verification" in item for item in novel):
+        from scripts.qwen_surface_realizer_v3 import summarize_surface_samples
+
+        summary["semantic_surface_v3"] = summarize_surface_samples(novel)
+    return summary
 
 
-def cold_probe_case() -> BenchmarkCase:
+def cold_probe_case(*, prompt_profile: str = DEFAULT_PROMPT_PROFILE) -> Any:
     """Use a plan outside the core ten so warm prompts are genuinely novel."""
 
-    return _make_case(
+    case = _make_case(
         case_id="cold-start-probe",
         input_text="Morning, Mary.",
         act=DialogueAct.GREET,
@@ -1632,6 +1694,11 @@ def cold_probe_case() -> BenchmarkCase:
         max_words=10,
         human_review_focus="Cold diagnostic only; it is excluded from core quality counts.",
     )
+    if prompt_profile == SURFACE_V3_PROFILE:
+        from scripts.qwen_surface_realizer_v3 import surface_cold_probe_case
+
+        return surface_cold_probe_case(case)
+    return case
 
 
 def _warm_schedule(cases: tuple[BenchmarkCase, ...], run_index: int) -> tuple[BenchmarkCase, ...]:
@@ -1773,11 +1840,18 @@ def _build_human_review_packet(
                     str(sample.get("sample_id") or "")
                 )
             for response_raw, sample_ids in unique.items():
+                representative = next(
+                    item for item in matching
+                    if str(item.get("response_raw") or "") == response_raw
+                )
+                surface = dict(representative.get("surface_verification") or {})
                 outputs.append({
                     "candidate": labels[model],
                     "sample_ids": sample_ids,
                     "occurrences": len(sample_ids),
                     "response_raw": response_raw,
+                    "response_final": representative.get("response_final"),
+                    "verifier_disposition": surface.get("disposition"),
                     "rubric": {
                         "fact_fidelity": None,
                         "stance_preserved": None,
@@ -1794,7 +1868,11 @@ def _build_human_review_packet(
         packet_cases.append({
             "case_id": case.plan.plan_id,
             "human_review_focus": case.human_review_focus,
-            "required_meanings": list(case.plan.required_meanings),
+            "required_meanings": list(
+                case.surface_contract.required_units
+                if hasattr(case, "surface_contract")
+                else case.plan.required_meanings
+            ),
             "outputs": outputs,
         })
     return {
@@ -1804,11 +1882,38 @@ def _build_human_review_packet(
     }
 
 
+def _system_prompt_for_profile(prompt_profile: str) -> str:
+    if prompt_profile == "compact_v1":
+        return SYSTEM_PROMPT_V1
+    if prompt_profile == "compact_v2":
+        return SYSTEM_PROMPT_V2
+    if prompt_profile == SURFACE_V3_PROFILE:
+        from scripts.qwen_surface_realizer_v3 import SYSTEM_PROMPT_V3
+
+        return SYSTEM_PROMPT_V3
+    raise ValueError(f"unsupported prompt profile: {prompt_profile}")
+
+
+def _case_manifest_entry(case: Any, *, prompt_profile: str) -> dict[str, Any]:
+    entry: dict[str, Any] = {"plan": case.plan.to_report_dict()}
+    if prompt_profile == SURFACE_V3_PROFILE:
+        entry["semantic_surface_contract"] = case.surface_contract.to_report_dict()
+        verifier_manifest = getattr(case, "verifier_manifest", None)
+        entry["deterministic_verifier"] = (
+            verifier_manifest()
+            if callable(verifier_manifest)
+            else case.evaluator_dict()
+        )
+    else:
+        entry["evaluator"] = case.evaluator_dict()
+    return entry
+
+
 def run_benchmark(
     *,
     client: Any,
-    models: tuple[str, ...] = DEFAULT_MODELS,
-    cases: tuple[BenchmarkCase, ...] | None = None,
+    models: tuple[str, ...] | None = None,
+    cases: tuple[Any, ...] | None = None,
     warm_runs: int = DEFAULT_WARM_RUNS,
     options: BenchmarkOptions | None = None,
     prompt_profile: str = DEFAULT_PROMPT_PROFILE,
@@ -1818,10 +1923,24 @@ def run_benchmark(
 
     benchmark_started_at_utc = datetime.now(timezone.utc).isoformat()
     benchmark_started_ns = perf_counter_ns()
-    selected_cases = cases or fixed_cases()
-    selected_options = options or BenchmarkOptions()
     if prompt_profile not in PROMPT_PROFILES:
         raise ValueError(f"unsupported prompt profile: {prompt_profile}")
+    if models is None:
+        models = (
+            SURFACE_V3_DEFAULT_MODELS
+            if prompt_profile == SURFACE_V3_PROFILE
+            else DEFAULT_MODELS
+        )
+    if cases is None:
+        if prompt_profile == SURFACE_V3_PROFILE:
+            from scripts.qwen_surface_realizer_v3 import fixed_surface_v3_cases
+
+            selected_cases = fixed_surface_v3_cases()
+        else:
+            selected_cases = fixed_cases()
+    else:
+        selected_cases = cases
+    selected_options = options or BenchmarkOptions()
     if warm_runs < 1:
         raise ValueError("warm_runs must be at least 1")
     if len({item.plan.plan_id for item in selected_cases}) != len(selected_cases):
@@ -1841,7 +1960,7 @@ def run_benchmark(
         str(run_index): [case.plan.plan_id for case in _warm_schedule(selected_cases, run_index)]
         for run_index in range(1, warm_runs + 1)
     }
-    cold_case = cold_probe_case()
+    cold_case = cold_probe_case(prompt_profile=prompt_profile)
 
     for model in models:
         tag = next((item for item in installed if _matches_model_name(_model_name(item), model)), None)
@@ -1888,9 +2007,10 @@ def run_benchmark(
 
         samples: list[dict[str, Any]] = []
         try:
+            sent_messages = render_messages(cold_case, profile=prompt_profile)
             payload = client.chat(
                 model=model,
-                messages=render_messages(cold_case.plan, profile=prompt_profile),
+                messages=sent_messages,
                 options=selected_options,
             )
             samples.append(_sample(
@@ -1901,6 +2021,7 @@ def run_benchmark(
                 payload=payload,
                 output_ceiling=selected_options.num_predict,
                 prompt_profile=prompt_profile,
+                messages=sent_messages,
             ))
         except Exception as exc:
             samples.append({
@@ -1964,9 +2085,10 @@ def run_benchmark(
             phase = nominal_phase if warm_start_confirmed else f"{nominal_phase}_unconfirmed"
             for case in _warm_schedule(selected_cases, run_index):
                 try:
+                    sent_messages = render_messages(case, profile=prompt_profile)
                     payload = client.chat(
                         model=model,
-                        messages=render_messages(case.plan, profile=prompt_profile),
+                        messages=sent_messages,
                         options=selected_options,
                     )
                     samples.append(_sample(
@@ -1977,6 +2099,7 @@ def run_benchmark(
                         payload=payload,
                         output_ceiling=selected_options.num_predict,
                         prompt_profile=prompt_profile,
+                        messages=sent_messages,
                     ))
                 except Exception as exc:
                     samples.append({
@@ -1997,6 +2120,45 @@ def run_benchmark(
             placement_after_warm = {"error": f"{type(exc).__name__}: {exc}"}
 
         summary = _summarize(samples, output_ceiling=selected_options.num_predict)
+        mode_compatibility = _observed_mode_compatibility(metadata, summary)
+        if prompt_profile == SURFACE_V3_PROFILE:
+            surface = dict(summary.get("semantic_surface_v3") or {})
+            raw_quality = dict(surface.get("raw_model") or {})
+            post_quality = dict(surface.get("post_verifier") or {})
+            p95_wall = summary.get("warm_client_wall_latency_p95_ms")
+            checks = {
+                "strict_semantic_fidelity_at_least_90_percent": (
+                    float(post_quality.get("strict_semantic_fidelity_rate") or 0.0) >= 0.9
+                ),
+                "stance_fidelity_100_percent": (
+                    bool(post_quality.get("stance_samples"))
+                    and float(post_quality.get("stance_fidelity_rate") or 0.0) == 1.0
+                ),
+                "form_fidelity_100_percent": (
+                    float(post_quality.get("form_fidelity_rate") or 0.0) == 1.0
+                ),
+                "zero_raw_third_person_planner_leakage": (
+                    int(raw_quality.get("third_person_planner_leakage_detected") or 0) == 0
+                ),
+                "zero_raw_unsupported_personal_claims": (
+                    int(raw_quality.get("unsupported_personal_claims_detected") or 0) == 0
+                ),
+                "warm_novel_client_wall_p95_under_2000_ms": (
+                    p95_wall is not None and float(p95_wall) < 2000.0
+                ),
+                "thinking_disabled_effective": (
+                    mode_compatibility.get("observed_status") == "effective"
+                ),
+                "all_18_quality_samples_measured": (
+                    int(post_quality.get("samples") or 0) == len(selected_cases)
+                ),
+            }
+            surface["experimental_target_assessment"] = {
+                "checks": checks,
+                "all_targets_met": all(checks.values()),
+                "targets_are_not_promotion_criteria": True,
+            }
+            summary["semantic_surface_v3"] = surface
         results.append({
             "model": model,
             "installed": True,
@@ -2025,7 +2187,7 @@ def run_benchmark(
             },
             "runtime_allocation_after_warm": placement_after_warm,
             "summary": summary,
-            "thinking_mode_compatibility": _observed_mode_compatibility(metadata, summary),
+            "thinking_mode_compatibility": mode_compatibility,
             "samples": samples,
         })
 
@@ -2071,18 +2233,22 @@ def run_benchmark(
     initial_requested_signature = _requested_residency_signature(initial_running, models)
     final_requested_signature = _requested_residency_signature(final_running, models)
 
-    case_manifest = [case.plan.to_report_dict() for case in selected_cases]
+    case_manifest = [
+        _case_manifest_entry(case, prompt_profile=prompt_profile)
+        for case in selected_cases
+    ]
     case_manifest_serialized = json.dumps(case_manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    system_prompt = SYSTEM_PROMPT_V1 if prompt_profile == "compact_v1" else SYSTEM_PROMPT_V2
+    system_prompt = _system_prompt_for_profile(prompt_profile)
     script_path = Path(__file__).resolve()
     project_root = script_path.parents[1]
     plan_module_path = project_root / "mary" / "mind" / "verbalization_plan.py"
     launcher_path = project_root / "scripts" / "benchmark_qwen_micro_cortex_windows.ps1"
+    is_surface_v3 = prompt_profile == SURFACE_V3_PROFILE
     report = {
-        "schema_version": 3,
+        "schema_version": 4 if is_surface_v3 else 3,
         "experiment": "qwen_micro_cortex_benchmark_only",
-        "suite_version": "core_10_v2",
-        "prompt_contract_version": PROMPT_CONTRACT_VERSION,
+        "suite_version": "core_10_plus_adversarial_8_surface_v3" if is_surface_v3 else "core_10_v2",
+        "prompt_contract_version": PROMPT_CONTRACT_VERSIONS[prompt_profile],
         "prompt_profile": prompt_profile,
         "benchmark_started_at_utc": benchmark_started_at_utc,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -2126,6 +2292,12 @@ def run_benchmark(
             "reported allocation only and do not prove definitive CPU/GPU compute placement."
         ),
         "evaluation_method": (
+            "Deterministic V3 verification of relational semantic units, stance, form, "
+            "role/planner leakage, entities, personal claims, assistant framing, and "
+            "configured unsupported additions, followed by at most one conservative "
+            "non-semantic repair and full re-verification."
+            if is_surface_v3
+            else
             "Case-specific semantic envelopes plus structural provenance, speaker-role, "
             "assistant-register, theatricality, and unsupported-claim audits. No aggregate "
             "keyword character score or automatic winner is produced; all samples are preserved."
@@ -2138,13 +2310,12 @@ def run_benchmark(
             "case_manifest_sha256": hashlib.sha256(case_manifest_serialized.encode("utf-8")).hexdigest(),
         },
         "cold_probe": {
-            "plan": cold_case.plan.to_report_dict(),
-            "rendered_messages": list(render_messages(cold_case.plan, profile=prompt_profile)),
+            **_case_manifest_entry(cold_case, prompt_profile=prompt_profile),
+            "rendered_messages": list(render_messages(cold_case, profile=prompt_profile)),
         },
         "cases": [{
-            "plan": case.plan.to_report_dict(),
-            "evaluator": case.evaluator_dict(),
-            "rendered_messages": list(render_messages(case.plan, profile=prompt_profile)),
+            **_case_manifest_entry(case, prompt_profile=prompt_profile),
+            "rendered_messages": list(render_messages(case, profile=prompt_profile)),
         } for case in selected_cases],
         "results": results,
         "ollama_residency": {
@@ -2174,7 +2345,61 @@ def run_benchmark(
             "Exact-repeat latency is reported separately from ordinary novel-prompt warm latency.",
         ],
     }
+    if is_surface_v3:
+        v3_module_path = project_root / "scripts" / "qwen_surface_realizer_v3.py"
+        v3_launcher_path = project_root / "scripts" / "benchmark_qwen_surface_realizer_v3_windows.ps1"
+        report["integrity"].update({
+            "surface_v3_module_sha256": hashlib.sha256(v3_module_path.read_bytes()).hexdigest(),
+            "surface_v3_launcher_sha256": hashlib.sha256(v3_launcher_path.read_bytes()).hexdigest(),
+            "verifier_manifest_sha256": hashlib.sha256(
+                json.dumps(
+                    [item["deterministic_verifier"] for item in case_manifest],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+            "model_visible_contract_manifest_sha256": hashlib.sha256(
+                json.dumps(
+                    [item["semantic_surface_contract"]["model_payload"] for item in case_manifest],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+        })
+        report["experimental_targets"] = {
+            "strict_semantic_fidelity_rate_minimum": 0.9,
+            "stance_fidelity_rate_minimum": 1.0,
+            "form_fidelity_rate_minimum": 1.0,
+            "third_person_planner_leakage_samples_maximum": 0,
+            "unsupported_personal_claim_samples_maximum": 0,
+            "warm_novel_client_wall_p95_ms_maximum_exclusive": 2000.0,
+            "targets_are_not_promotion_criteria": True,
+        }
+        report["metric_definitions"] = {
+            "quality_sample_phase": "warm_novel_prompt",
+            "full_response_latency": "client wall time from request start through terminal streamed response",
+            "first_content_latency": "client wall time through the first non-whitespace content fragment",
+            "verified_ready_latency": "full-response client wall time plus deterministic verifier/repair time",
+            "p50": "median of all successful samples in the named phase",
+            "p95": "linear interpolation at position (n - 1) * 0.95 over sorted samples",
+            "strict_semantic_fidelity": "all configured relational units and stance preserved, no contradiction or detected unsupported addition",
+            "acceptance": "strict semantic fidelity, form fidelity, completion, and thinking-disabled checks all pass after zero or one conservative repair",
+            "rejected_outputs_count_as_target_failures": True,
+        }
+        report["warnings"].extend([
+            "V3 deterministic rules are bounded triage and may miss paraphrased inventions or reject valid unseen paraphrases.",
+            "One conservative repair may remove formatting wrappers or restore unambiguous question punctuation; it never inserts missing meaning or changes referents.",
+            "qwen3:4b-instruct is an explicit quality control only and is not selected or promoted.",
+        ])
     report["human_review_packet"] = _build_human_review_packet(results, selected_cases)
+    report["completion_errors"] = report_completion_errors(
+        report,
+        expected_models=models,
+        warm_runs=warm_runs,
+    )
+    report["execution_matrix_complete"] = not report["completion_errors"]
     report["generated_at_utc"] = datetime.now(timezone.utc).isoformat()
     report["benchmark_wall_ms"] = round(
         (perf_counter_ns() - benchmark_started_ns) / 1_000_000.0,
@@ -2250,6 +2475,15 @@ def _print_summary(report: dict[str, Any], target: Path) -> None:
             f"no-think {counts.get('thinking_disabled_effective', 0)}/{total}  "
             f"mode={mode.get('observed_status')}"
         )
+        surface = dict(summary.get("semantic_surface_v3") or {})
+        if surface:
+            post = dict(surface.get("post_verifier") or {})
+            print(
+                f"           V3 accepted {post.get('accepted', 0)}/{post.get('samples', 0)}  "
+                f"strict {post.get('strict_semantic_fidelity_passed', 0)}/{post.get('samples', 0)}  "
+                f"form {post.get('form_fidelity_passed', 0)}/{post.get('samples', 0)}  "
+                f"leakage {post.get('third_person_planner_leakage_detected', 0)}"
+            )
     print("-" * 104)
     print("No model was ranked, selected, promoted, or connected to production routing.")
     print(f"Report: {target}")
@@ -2287,6 +2521,26 @@ def report_completion_errors(
             errors.append(f"{model}: expected {expected_novel} successful novel warm samples, measured {len(novel)}")
         if len(repeat) != expected_repeat:
             errors.append(f"{model}: expected {expected_repeat} successful exact-repeat samples, measured {len(repeat)}")
+        if report.get("prompt_profile") == SURFACE_V3_PROFILE:
+            completed = cold + novel + repeat
+            for sample in completed:
+                surface = dict(sample.get("surface_verification") or {})
+                disposition = surface.get("disposition")
+                if disposition not in {"accepted_raw", "accepted_repaired", "rejected"}:
+                    errors.append(
+                        f"{model}: sample {sample.get('sample_id')} has no valid V3 verifier disposition"
+                    )
+                    continue
+                final = dict(surface.get("final_verification") or {})
+                accepted = disposition in {"accepted_raw", "accepted_repaired"}
+                if accepted != bool(final.get("verifier_accepted")):
+                    errors.append(
+                        f"{model}: sample {sample.get('sample_id')} acceptance does not reconcile"
+                    )
+                if accepted != bool(surface.get("accepted_response")):
+                    errors.append(
+                        f"{model}: sample {sample.get('sample_id')} accepted response does not reconcile"
+                    )
     residency = dict(report.get("ollama_residency") or {})
     if not residency.get("requested_residency_restored"):
         errors.append("requested Ollama residency was not restored")
@@ -2312,7 +2566,7 @@ def report_completion_errors(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", default=list(DEFAULT_MODELS))
+    parser.add_argument("--models", nargs="+", default=None)
     parser.add_argument("--warm-runs", type=int, default=DEFAULT_WARM_RUNS)
     parser.add_argument("--save", default="")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -2321,13 +2575,22 @@ def main() -> int:
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
 
+    selected_models = tuple(
+        args.models
+        or (
+            SURFACE_V3_DEFAULT_MODELS
+            if args.prompt_profile == SURFACE_V3_PROFILE
+            else DEFAULT_MODELS
+        )
+    )
+
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target = Path(args.save) if args.save else Path("runtime_reports") / f"qwen-micro-cortex-{stamp}.json"
     client = OllamaHTTPClient(base_url=args.base_url, timeout=args.timeout)
     try:
         report = run_benchmark(
             client=client,
-            models=tuple(args.models),
+            models=selected_models,
             warm_runs=args.warm_runs,
             prompt_profile=args.prompt_profile,
         )
@@ -2341,11 +2604,11 @@ def main() -> int:
         return 5
     _print_summary(report, written)
     measured = [item for item in report.get("results") or [] if item.get("installed")]
-    if len(measured) != len(args.models):
+    if len(measured) != len(selected_models):
         return 3
     completion_errors = report_completion_errors(
         report,
-        expected_models=tuple(args.models),
+        expected_models=selected_models,
         warm_runs=args.warm_runs,
     )
     if completion_errors:

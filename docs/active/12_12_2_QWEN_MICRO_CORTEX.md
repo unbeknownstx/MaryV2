@@ -8,14 +8,22 @@ production routing.
 Mary's local systems decide the dialogue act, response intent, required
 meanings, grounded facts and provenance, represented stance, relevant context,
 delivery target, and response form before a model is called. The immutable
-`CompactVerbalizationPlan` gives the model one narrow job:
+`CompactVerbalizationPlan` remains evaluator/internal context and gives the
+model one narrow job:
 
 > Turn this already-decided Mary response plan into natural conversational wording.
 
-The compact v2 prompt omits raw source IDs and evaluator rules. It grants no
-access to authoritative state and forbids new identity, memory, preference,
-motive, relationship, capability, truth, or state decisions. Raw output is
-stored only in the requested developer report for human review.
+The compact v2 prompt omits raw source IDs and evaluator rules. V3 goes further:
+`SemanticSurfaceContract` projects only `speaker`, `mode`, `form`, sentence and
+word ceilings, required speaker-relative meanings, and an optional exact
+question count. It removes the original turn, dialogue-act/intent/drive names,
+facts/stance metadata, relationship hints, provenance, authority, confidence,
+delivery scalars, and identity labels such as Mary/user/creator. Necessary
+project names or factual entities may remain inside a selected semantic unit.
+
+Neither version grants access to authoritative state. Both forbid new identity,
+memory, preference, motive, relationship, capability, truth, or state decisions.
+Raw output is stored only in the requested developer report for human review.
 
 The benchmark is not imported by production code. It does not instantiate Mary
 or call `LLMRouter`, CharacterMind, memory, relationship, agency, developed-self,
@@ -34,6 +42,12 @@ Add the installed non-thinking 4B control explicitly:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\benchmark_qwen_micro_cortex_windows.ps1 -IncludeInstructControl
+```
+
+Run the strict V3 surface-realizer comparison with the exact requested pair:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark_qwen_surface_realizer_v3_windows.ps1 -WarmRuns 2 -Report .\runtime_reports\qwen-surface-realizer-v3-<timestamp>.json
 ```
 
 Reports are no-clobber by default. Use `-Overwrite` only when intentionally
@@ -129,14 +143,115 @@ It still failed the represented-preference case with “That's all I ever
 wanted,” inventing an enduring personal desire, and omitted the reservoir's
 derived/cache status. It is a useful control, not a substitute or promotion.
 
+## Semantic Surface Realizer V3
+
+V3 keeps the original ten categories and adds eight adversarial cases for
+third-person reference, question-form drift, disagreement, uncertainty,
+fact-bounded warmth, exact factual recall, refusal to embellish, and pronoun
+handling. Both tags receive identical rendered message content. Settings remain
+`think=false`, temperature `0.2`, seed `424242`, context `1024`, output ceiling
+`48`, keep-alive `10m`, and Ollama streaming.
+
+The deterministic verifier uses evaluator-only semantic patterns and explicit
+reference relations. It checks required meaning, stance, form, sentence/word
+ceilings, role/planner leakage, assistant framing, unexpected entities/numbers,
+unsupported causes, first-person personal claims, and obvious embellishment.
+Ordinary sentence-initial capitalization is not treated as a proper noun by
+itself. One optional repair pass may only remove wrappers/labels or restore
+unambiguous question punctuation; it cannot add meaning, rewrite facts, change
+referents, or soften stance. Anything else is rejected.
+
+Validated run: 2026-08-23, Ollama 0.32.14, Windows/AMD64, Python 3.14.7. Report:
+`runtime_reports/qwen-surface-realizer-v3-20260823-validated.json`.
+
+| Metric | qwen3:1.7b | qwen3:4b-instruct |
+|---|---:|---:|
+| Cold Ollama total | 6,916.01 ms | 11,260.94 ms |
+| Cold load | 6,533.79 ms | 10,301.43 ms |
+| Cold first content | 6,819.67 ms | 11,024.54 ms |
+| Warm first content, p50 / p95 | 449.24 / 497.18 ms | 781.54 / 820.93 ms |
+| Warm full client response, p50 / p95 | 821.37 / 1,216.81 ms | 1,699.10 / 2,619.84 ms |
+| Verified-ready, p50 / p95 | 821.58 / 1,217.12 ms | 1,699.31 / 2,620.17 ms |
+| Prompt evaluation, p50 / p95 | 208.82 / 263.68 ms | 505.22 / 543.67 ms |
+| Generation, p50 / p95 | 360.58 / 774.78 ms | 915.73 / 1,862.57 ms |
+| Generated tokens, p50 / p95 | 12.0 / 24.6 | 12.5 / 24.3 |
+| Generation rate, p50 / p95 | 33.28 / 36.74 tok/s | 13.65 / 14.13 tok/s |
+| Response median, chars / words / sentences | 50 / 10 / 1 | 51 / 9 / 1.5 |
+
+| V3 boundary result | qwen3:1.7b | qwen3:4b-instruct |
+|---|---:|---:|
+| Strict semantic fidelity | 8/18 (44.44%) | 9/18 (50.00%) |
+| Stance fidelity where represented | 3/4 (75.00%) | 2/4 (50.00%) |
+| Question/statement form fidelity | 18/18 (100%) | 16/18 (88.89%) |
+| Third-person/planner leakage | 1/18 | 0/18 |
+| Unsupported personal claims | 4/18 | 1/18 |
+| Unsupported additions | 7/18 | 3/18 |
+| Post-verifier accepted | 8/18 (44.44%) | 9/18 (50.00%) |
+| Post-verifier rejected | 10/18 (55.56%) | 9/18 (50.00%) |
+| Repair attempted / accepted | 0 / 0 | 0 / 0 |
+
+The 1.7B p95 full-response target was met, and its form fidelity reached 100%.
+It missed every quality target: strict fidelity, stance, combined
+third-person/planner leakage, and unsupported personal claims. The single
+leakage was instruction replay (`/No_think`), not a Mary/user/creator noun;
+literal third-person role-label leakage was zero. The 4B control missed the
+two-second p95 target as well as fidelity/form/personal-claim targets.
+
+Compared on the original ten categories only, V3 gave 1.7B 5/10 strict
+acceptance, 3/3 stance fidelity, 10/10 form fidelity, and zero role/planner
+leaks. That is a clear perspective/form/stance improvement over V2's observed
+third-person/planner failures and 2/3 stance triage, but not an improvement in
+the 5/10 overall fidelity yield. The adversarial cases exposed the remaining
+weakness sharply.
+
+Representative accepted samples:
+
+- 1.7B greeting: “Hi there! Want to chat more?”
+- 1.7B exact reference: “I sent you the draft after you asked for it.”
+- 1.7B bounded fact: “The process exited with code 2, and the cause is unknown.”
+- 4B disagreement: “I don't agree with dramatic replies. Normal ones should be simple and calm.”
+- 4B uncertainty: “I don't know if the installed tag supports thinking disabled.”
+- 4B playful reaction: “One comma—bug solved! 😄”
+
+Representative rejected samples:
+
+- 1.7B changed the addressee's state into an unsupported speaker state:
+  “I'm really tired, let me take a pause and rest.”
+- 1.7B exact recall returned only “/temperature 0.2/”, dropping context and
+  output-ceiling facts.
+- 1.7B returned “/No_think” for uncertainty, replaying an instruction and
+  dropping every required meaning.
+- 1.7B preserved the preference stance but added a reason: “It's more
+  comfortable for me.”
+- 4B changed `your headache` to “My headache feels rough today.”
+- 4B changed first-content-versus-generation timing into “before or after my
+  first response,” dropping both required stage meanings.
+- 4B said “I sent you the draft as asked,” dropping `after` and the explicit
+  second-person request relation.
+- 4B's known-preference reply added an unsupplied walking-down-the-street
+  comparison and used three sentences against the two-sentence ceiling.
+
+The safe repair path neither helped nor hurt this live matrix: no output had a
+format-only defect that was eligible for repair. This is desirable for these
+failures; a deterministic rewrite would have needed to invent missing meaning
+or change referents. Focused tests separately prove the one-pass label/terminal
+punctuation repair and full re-verification behavior.
+
+Ollama `/api/ps` reported all 1,342,932,253 allocated bytes for 1.7B in VRAM and
+2,534,953,450 of 2,750,217,981 bytes (92.17%) for 4B-instruct. Those are raw
+allocation values, not proof of actual CPU/GPU compute placement, and the report
+does not guess beyond them. Initially resident 4B-instruct digest/context
+residency was restored exactly after the cold measurements.
+
 ## Finding and risks
 
-`qwen3:1.7b` is useful as a fast experimental verbalizer: on this host its warm
-novel median and p95 both met the two-second full-response target, it stayed in
-thinking-disabled mode, and it introduced no unsupported memories, capabilities,
-or tool calls. It is not reliable enough to promote. Only about half the fixed
-cases passed strict fact/stance/form triage; its dominant failures were planner
-recitation, third-person perspective, omitted meaning, and form drift.
+`qwen3:1.7b` remains useful for benchmark-only latency and contract research,
+but it is not currently useful as an unguarded Mary verbalizer. Its speed and
+perfect V3 form fidelity are promising; its 44.44% strict acceptance, reference
+reversals, missing meanings, instruction replay, and unsupported speaker claims
+are disqualifying for production. V3 demonstrates that removing identity labels
+solves literal third-person-role leakage, but a minimal payload alone does not
+make 1.7B a reliable semantic realizer. No model is promoted.
 
 Additional risks:
 
@@ -145,23 +260,49 @@ Additional risks:
 - 1.7B throughput varied materially between validation runs, so token rate
   should not be treated as a stable hardware constant;
 - first content can still become an unusable answer, as exact 4B demonstrates;
-- exact-repeat cache misses occurred, so repeat medians need their p95 context;
-- live residency restoration was verified from empty to empty; restoration of
-  an initially resident requested tag is covered by tests but not this live run;
-- automatic rules cannot replace human semantic and character review.
+- exact-repeat timings are cache-favorable and must stay separate from novel
+  prompt p50/p95 values;
+- the initially resident 4B-instruct tag was restored exactly in this run, but
+  residency restoration remains best-effort if Ollama itself fails;
+- automatic rules cannot replace human semantic and character review;
+- the 18 novel prompts provide useful p50/p95 triage, not a statistically broad
+  latency distribution;
+- sentence-initial capitalization alone cannot distinguish a new proper noun,
+  so entity detection remains deliberately conservative and human review is
+  still required;
+- deterministic paraphrase patterns can miss valid unseen wording or fail to
+  recognize a novel invention;
+- the repair policy is intentionally too weak to rescue substantive omissions,
+  referent swaps, or stance flattening;
+- 4B-instruct was more fluent but still accepted only half the adversarially
+  expanded suite and exceeded the two-second p95 target.
 
 No model was ranked, promoted, or connected to production routing.
 
+## Hybrid dialogue follow-up experiment
+
+The next benchmark-only architecture experiment is documented in
+[`12_12_2_HYBRID_DIALOGUE_RUNTIME.md`](12_12_2_HYBRID_DIALOGUE_RUNTIME.md).
+It does not retry the universal surface-realizer premise. Instead, a
+deterministic authority/risk classifier keeps represented precision semantics
+in a typed procedural composer, permits qwen3:1.7b only as an invisible
+low-risk social shadow by default, and preserves open/thinking turns for their
+existing stronger classes. Production routing remains unchanged and no model
+is promoted.
+
 ## Verification
 
-- Focused benchmark/boundary suite: **156 passed**.
-- `scripts/test_fast.ps1`: **13 + 174 + 24 passed**; both deterministic
+- Final focused V3 plan/verifier suite: **171 passed**.
+- Full Micro-Cortex focused suite before the final added regressions:
+  **211 passed**.
+- `scripts/test_fast.ps1`: **13 + 238 + 24 passed**; both deterministic
   verifiers and frontend syntax passed.
-- `scripts/test_release.ps1`: **896 passed, 1 skipped**; compile, diagnostics,
+- `scripts/test_release.ps1`: **960 passed, 1 skipped**; compile, diagnostics,
   routing guarantees, persistence/state integrity, release hygiene, standalone
   readiness, and local tool safety all passed.
+- Validated live execution matrix: **18/18 cases for each model**, no sample
+  failures, no completion errors, exact-repeat rate **18/18** for both tags.
 
-Pytest emitted one non-failing warning because the existing `.pytest_cache`
-path is unusable. All test and verifier state used fresh isolated roots; live
-persistent Mary data, `.env`, API keys, user state, and network voice synthesis
-were untouched.
+All pytest and verifier state used fresh isolated roots. Live persistent Mary
+data, `.env`, API keys, user state, production routing/defaults, and network
+voice synthesis were untouched.

@@ -68,6 +68,17 @@ _UNSAFE_TEXT_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
 _MAX_REQUIRED_MEANINGS = 4
 _MAX_REQUIRED_MEANING_LENGTH = 280
 _MAX_REQUIRED_MEANINGS_TOTAL = 800
+_SURFACE_MODES = frozenset({"casual", "direct", "plain", "playful", "warm"})
+_SURFACE_SPEAKERS = frozenset({"first_person"})
+_SURFACE_FORBIDDEN_PLANNER_TEXT = re.compile(
+    r"\b(?:mary|creator|user|assistant|speaker|addressee|dialogue[ -]?act|"
+    r"response[ -]?intent|represented[ -]?stance|authority|confidence|provenance|"
+    r"benchmark[ -]?state)\b",
+    flags=re.I,
+)
+_MAX_SURFACE_UNITS = 4
+_MAX_SURFACE_UNIT_LENGTH = 180
+_MAX_SURFACE_UNITS_TOTAL = 560
 
 
 def _require_plain_string(name: str, value: Any) -> str:
@@ -398,6 +409,97 @@ class VerbalizationFormTarget:
 
 
 @dataclass(frozen=True, slots=True)
+class SemanticSurfaceContract:
+    """Minimal, non-authoritative semantics for a wording-only realizer.
+
+    The source plan ID exists only so a benchmark report can prove which local
+    decision this projection came from. It is deliberately absent from the
+    model payload. Required units must already use the intended conversational
+    reference frame (``I``, ``you``, or ``we`` where relevant); planner role
+    labels and provenance metadata are rejected before rendering.
+    """
+
+    source_plan_id: str
+    required_units: tuple[str, ...]
+    mode: str
+    form_target: VerbalizationFormTarget
+    speaker: str = "first_person"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "source_plan_id",
+            _bounded_id("source_plan_id", self.source_plan_id),
+        )
+        speaker = _bounded_id("speaker", self.speaker)
+        if speaker not in _SURFACE_SPEAKERS:
+            raise ValueError(f"unsupported semantic-surface speaker: {speaker}")
+        mode = _bounded_id("mode", self.mode)
+        if mode not in _SURFACE_MODES:
+            raise ValueError(f"unsupported semantic-surface mode: {mode}")
+        units = _bounded_text_tuple(
+            "required_units",
+            self.required_units,
+            max_items=_MAX_SURFACE_UNITS,
+            item_limit=_MAX_SURFACE_UNIT_LENGTH,
+            total_limit=_MAX_SURFACE_UNITS_TOTAL,
+        )
+        for unit in units:
+            match = _SURFACE_FORBIDDEN_PLANNER_TEXT.search(unit)
+            if match is not None:
+                raise ValueError(
+                    "required_units must be speaker-relative semantics without "
+                    f"planner/identity label {match.group(0)!r}"
+                )
+        if not isinstance(self.form_target, VerbalizationFormTarget):
+            raise TypeError("form_target must be a VerbalizationFormTarget")
+        object.__setattr__(self, "speaker", speaker)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "required_units", units)
+
+    def to_model_payload(self) -> dict[str, Any]:
+        """Return only the information required to realize the decided text."""
+
+        payload: dict[str, Any] = {
+            "speaker": self.speaker,
+            "mode": self.mode,
+            "form": self.form_target.response_form,
+            "max_sentences": self.form_target.sentence_max,
+            "max_words": self.form_target.max_words,
+            "required": list(self.required_units),
+            "limit": "no_new_meaning",
+        }
+        if self.form_target.exact_question_count is not None:
+            payload["exact_questions"] = self.form_target.exact_question_count
+        return payload
+
+    def to_report_dict(self) -> dict[str, Any]:
+        """Describe both the tiny payload and the intentionally removed fields."""
+
+        return {
+            "source_plan_id": self.source_plan_id,
+            "model_payload": self.to_model_payload(),
+            "authoritative_state_access": "none",
+            "omitted_from_model_payload": [
+                "input_text",
+                "dialogue_act",
+                "conversational_drive",
+                "response_intent",
+                "raw_grounded_facts",
+                "stance_labels_and_metadata",
+                "relationship_hints",
+                "source_ids",
+                "authority",
+                "confidence",
+                "numeric_delivery_controls",
+                "identity_role_labels",
+                "evaluator_rules",
+                "repair_rules",
+            ],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CompactVerbalizationPlan:
     """Everything a wording-only model may see, and nothing authoritative."""
 
@@ -535,6 +637,29 @@ class CompactVerbalizationPlan:
         payload["mary_stance"] = self.mary_stance.to_dict() if self.mary_stance else None
         payload["relationship_hints"] = [item.to_dict() for item in self.relationship_hints]
         return {"plan_id": self.plan_id, **payload}
+
+
+def project_semantic_surface_contract(
+    *,
+    plan: CompactVerbalizationPlan,
+    required_units: Sequence[str],
+    mode: str,
+) -> SemanticSurfaceContract:
+    """Copy only already-selected, speaker-relative semantics from a plan.
+
+    Callers must perform the semantic selection themselves. This projector does
+    not derive truth, stance, uncertainty, or references from planner prose and
+    therefore cannot accidentally promote raw facts or relationship hints.
+    """
+
+    if not isinstance(plan, CompactVerbalizationPlan):
+        raise TypeError("plan must be a CompactVerbalizationPlan")
+    return SemanticSurfaceContract(
+        source_plan_id=plan.plan_id,
+        required_units=tuple(required_units),
+        mode=mode,
+        form_target=plan.form_target,
+    )
 
 
 _NON_VERBALIZABLE_ACTS = frozenset({DialogueAct.STAY_QUIET, DialogueAct.ESCALATE})

@@ -15,9 +15,11 @@ from mary.mind.verbalization_plan import (
     GroundedFact,
     RelationshipHint,
     RepresentedStance,
+    SemanticSurfaceContract,
     VerbalizationDeliveryTarget,
     VerbalizationFormTarget,
     grounded_facts_from_dialogue_plan,
+    project_semantic_surface_contract,
     project_verbalization_plan,
 )
 
@@ -568,3 +570,122 @@ def test_model_projection_excludes_dialogue_rationale_slots_and_authoritative_ob
     assert payload["authoritative_state_access"] == "none"
     assert payload["capability_constraints"]
     assert payload["provenance_constraint"]
+
+
+def test_v3_surface_contract_exposes_only_minimum_speaker_relative_semantics():
+    plan = _project(
+        input_text="The user reports that Mary and the creator saw a delay.",
+        response_intent="Ask whether the delay came from loading or generation.",
+        required_meanings=("Planner-facing meaning that must not be copied.",),
+        grounded_facts=(
+            _fact(text="Mary and the creator observed the model delay."),
+        ),
+        response_form="question",
+        sentence_min=1,
+        sentence_max=1,
+        max_words=18,
+        exact_question_count=1,
+        terminal_punctuation="?",
+    )
+    contract = project_semantic_surface_contract(
+        plan=plan,
+        mode="casual",
+        required_units=(
+            "ask whether the delay came from loading",
+            "ask whether the delay came from response generation",
+        ),
+    )
+
+    assert contract.to_model_payload() == {
+        "speaker": "first_person",
+        "mode": "casual",
+        "form": "question",
+        "max_sentences": 1,
+        "max_words": 18,
+        "required": [
+            "ask whether the delay came from loading",
+            "ask whether the delay came from response generation",
+        ],
+        "limit": "no_new_meaning",
+        "exact_questions": 1,
+    }
+    rendered = str(contract.to_model_payload()).lower()
+    for forbidden in (
+        "mary",
+        "creator",
+        "user",
+        "input_text",
+        "dialogue_act",
+        "response_intent",
+        "authority",
+        "confidence",
+        "provenance",
+        "relationship",
+        "energy",
+        "warmth",
+        "source_plan_id",
+    ):
+        assert forbidden not in rendered
+
+
+def test_v3_surface_contract_is_immutable_and_payloads_are_fresh():
+    contract = project_semantic_surface_contract(
+        plan=_project(),
+        mode="plain",
+        required_units=("state the bounded answer",),
+    )
+    first = contract.to_model_payload()
+    first["required"].append("mutated copy")
+
+    assert contract.to_model_payload()["required"] == ["state the bounded answer"]
+    with pytest.raises(FrozenInstanceError):
+        contract.mode = "warm"  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    "unsafe_unit",
+    (
+        "Mary prefers the plain option",
+        "the creator asked for a reply",
+        "the user reports a delay",
+        "the assistant should answer",
+        "the speaker should disagree",
+        "copy the response intent",
+        "repeat the represented stance",
+        "include authority and confidence",
+        "mention the benchmark state",
+    ),
+)
+def test_v3_surface_contract_rejects_identity_and_planner_labels(unsafe_unit: str):
+    with pytest.raises(ValueError, match="planner/identity label"):
+        project_semantic_surface_contract(
+            plan=_project(),
+            mode="plain",
+            required_units=(unsafe_unit,),
+        )
+
+
+def test_v3_surface_contract_allows_real_entity_names_without_role_label_leakage():
+    contract = project_semantic_surface_contract(
+        plan=_project(),
+        mode="plain",
+        required_units=(
+            "we have been calibrating MaryV2 12.12.2 together",
+            "the Cognitive Reservoir is derived and rebuildable",
+        ),
+    )
+
+    payload = contract.to_model_payload()
+    assert "MaryV2 12.12.2" in payload["required"][0]
+    assert payload["speaker"] == "first_person"
+
+
+@pytest.mark.parametrize("mode", ("cinematic", "theatrical", "performative", ""))
+def test_v3_surface_contract_rejects_unbounded_delivery_modes(mode: str):
+    with pytest.raises(ValueError):
+        SemanticSurfaceContract(
+            source_plan_id="surface-test",
+            required_units=("say hello",),
+            mode=mode,
+            form_target=VerbalizationFormTarget(response_form="greeting"),
+        )

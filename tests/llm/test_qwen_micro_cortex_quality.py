@@ -33,7 +33,8 @@ def _rendered_text(case_id: str, profile: str) -> tuple[str, str]:
 
 
 def test_compact_v1_and_v2_are_explicit_distinct_reproducible_contracts():
-    assert PROMPT_PROFILES == ("compact_v1", "compact_v2")
+    assert PROMPT_PROFILES[:2] == ("compact_v1", "compact_v2")
+    assert "surface_v3" in PROMPT_PROFILES
 
     for case in fixed_cases():
         v1 = render_messages(case.plan, profile="compact_v1")
