@@ -8,6 +8,7 @@ module makes a network request until ``synthesize`` is explicitly called.
 from __future__ import annotations
 
 import json
+import ssl
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -68,6 +69,43 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
         self.output_format = str(output_format or "mp3_44100_128").strip()
         self.timeout = max(1.0, float(timeout))
         self.base_url = str(base_url).rstrip("/")
+
+
+    def _open_audio(self, request: Request) -> bytes:
+        """Open an ElevenLabs request with a verified TLS 1.2 retry.
+
+        Some Windows/OpenSSL/network-filter combinations fail the initial TLS
+        negotiation with ``SSLV3_ALERT_HANDSHAKE_FAILURE`` even though the
+        endpoint is reachable.  Retrying with TLS 1.2 keeps certificate and
+        hostname verification enabled while avoiding the broken negotiation
+        path.  No insecure SSL mode is ever used.
+        """
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                return response.read()
+        except URLError as exc:
+            reason = exc.reason
+            if not self._should_retry_tls12(reason):
+                raise
+
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.maximum_version = ssl.TLSVersion.TLSv1_2
+        with urlopen(request, timeout=self.timeout, context=context) as response:
+            return response.read()
+
+    @staticmethod
+    def _should_retry_tls12(reason: object) -> bool:
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            return False
+        if isinstance(reason, ssl.SSLError):
+            return True
+        text = str(reason or "").upper()
+        return (
+            "SSLV3_ALERT_HANDSHAKE_FAILURE" in text
+            or "TLSV1_ALERT_PROTOCOL_VERSION" in text
+            or "SSL_HANDSHAKE_FAILURE" in text
+        )
 
     def supports_format(self, audio_format: SpeechAudioFormat) -> bool:
         return audio_format == SpeechAudioFormat.MP3
@@ -132,8 +170,7 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
         )
 
         try:
-            with urlopen(request, timeout=self.timeout) as response:
-                audio = response.read()
+            audio = self._open_audio(request)
         except HTTPError as exc:
             detail = ""
             try:
