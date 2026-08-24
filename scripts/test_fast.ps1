@@ -3,18 +3,30 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Python = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
 $PreviousMaryDataDirectory = $env:MARY_DATA_DIR
+$PreviousMaryEnvironmentFile = $env:MARY_ENV_FILE
+$PreviousMaryReservoirStorage = $env:MARY_RESERVOIR_STORAGE
 $PreviousPytestTempRoot = $env:PYTEST_DEBUG_TEMPROOT
 $PreviousPytestAddopts = $env:PYTEST_ADDOPTS
 $SystemTempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $FastCheckRoot = [System.IO.Path]::GetFullPath(
   (Join-Path $SystemTempRoot ("maryv2-fast-check-" + [guid]::NewGuid().ToString("N")))
 )
-New-Item -ItemType Directory -Path $FastCheckRoot -Force | Out-Null
-$env:MARY_DATA_DIR = Join-Path $FastCheckRoot "state"
-$env:PYTEST_DEBUG_TEMPROOT = $FastCheckRoot
-$env:PYTEST_ADDOPTS = "-p no:cacheprovider"
+$FastCheckDataDirectory = Join-Path $FastCheckRoot "state"
+$FastCheckPytestTempRoot = Join-Path $FastCheckRoot "pytest"
+$FastCheckEnvironmentFile = Join-Path $FastCheckRoot "no-live-config"
 
 try {
+  New-Item -ItemType Directory -Path $FastCheckDataDirectory -Force | Out-Null
+  New-Item -ItemType Directory -Path $FastCheckPytestTempRoot -Force | Out-Null
+  if (Test-Path -LiteralPath $FastCheckEnvironmentFile) {
+    throw "Fast Check isolation requires a nonexistent MARY_ENV_FILE target."
+  }
+  $env:MARY_DATA_DIR = $FastCheckDataDirectory
+  $env:MARY_ENV_FILE = $FastCheckEnvironmentFile
+  $env:MARY_RESERVOIR_STORAGE = "memory"
+  $env:PYTEST_DEBUG_TEMPROOT = $FastCheckPytestTempRoot
+  $env:PYTEST_ADDOPTS = "-p no:cacheprovider"
+
   Write-Host "============================================================" -ForegroundColor Cyan
   Write-Host "MARYV2 FAST CHECK - 12.12.2" -ForegroundColor Cyan
   Write-Host "============================================================" -ForegroundColor Cyan
@@ -76,6 +88,16 @@ Write-Host "[5/5] Frontend syntax" -ForegroundColor Cyan
   } else {
     $env:MARY_DATA_DIR = $PreviousMaryDataDirectory
   }
+  if ($null -eq $PreviousMaryEnvironmentFile) {
+    Remove-Item Env:MARY_ENV_FILE -ErrorAction SilentlyContinue
+  } else {
+    $env:MARY_ENV_FILE = $PreviousMaryEnvironmentFile
+  }
+  if ($null -eq $PreviousMaryReservoirStorage) {
+    Remove-Item Env:MARY_RESERVOIR_STORAGE -ErrorAction SilentlyContinue
+  } else {
+    $env:MARY_RESERVOIR_STORAGE = $PreviousMaryReservoirStorage
+  }
   if ($null -eq $PreviousPytestTempRoot) {
     Remove-Item Env:PYTEST_DEBUG_TEMPROOT -ErrorAction SilentlyContinue
   } else {
@@ -91,8 +113,16 @@ Write-Host "[5/5] Frontend syntax" -ForegroundColor Cyan
     $PathSeparators = [char[]]@('\', '/')
     $ResolvedFastCheckParent = [System.IO.Path]::GetDirectoryName($ResolvedFastCheckRoot).TrimEnd($PathSeparators)
     $ResolvedSystemTempRoot = $SystemTempRoot.TrimEnd($PathSeparators)
-    if (-not $ResolvedFastCheckParent.Equals($ResolvedSystemTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $FastCheckLeaf = [System.IO.Path]::GetFileName($ResolvedFastCheckRoot)
+    if (
+      -not $ResolvedFastCheckParent.Equals($ResolvedSystemTempRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+      -not $FastCheckLeaf.StartsWith("maryv2-fast-check-", [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
       throw "Refusing to remove a Fast Check path outside the system temp root."
+    }
+    $FastCheckRootItem = Get-Item -LiteralPath $ResolvedFastCheckRoot -Force
+    if (($FastCheckRootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw "Refusing to recursively remove a reparse-point Fast Check path."
     }
     Remove-Item -LiteralPath $ResolvedFastCheckRoot -Recurse -Force
   }

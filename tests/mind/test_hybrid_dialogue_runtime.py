@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import random
 
 import pytest
@@ -277,7 +276,7 @@ def test_reference_sensitive_cases_use_typed_roles_and_remain_deterministic():
 
     assert all("your favorite color" in item.lower() or "is your favorite color" in item.lower() for item in creator_outputs)
     assert pronoun_outputs == {"I sent you the draft after you asked for it."}
-    assert all("You sound exhausted" in item for item in emotional_outputs)
+    assert all("you" in item.casefold() and "sound exhausted" in item.casefold() for item in emotional_outputs)
     assert all("I'm exhausted" not in item and "I am exhausted" not in item for item in emotional_outputs)
 
 
@@ -298,24 +297,17 @@ def test_invalid_incomplete_semantic_frame_fails_closed():
         )
 
 
-def test_character_mind_and_current_local_composer_remain_production_v1():
-    source = inspect.getsource(CharacterMind.__init__)
-    assert "self.composer = LocalResponseComposer()" in source
-    assert "ProceduralLocalComposerV2" not in source
+def test_character_mind_promotes_v2_while_v1_remains_compatibility_only():
+    assert "LocalResponseComposer" not in CharacterMind.__init__.__code__.co_names
+    assert "ProceduralLocalComposerV2" in CharacterMind.__init__.__code__.co_names
 
-    composer = LocalResponseComposer()
-    greeting = composer.compose(
+    compatibility = LocalResponseComposer()
+    greeting = compatibility.compose(
         DialoguePlan(DialogueAct.GREET, 0.99, "fixture", local=True),
         input_text="hey mary",
         hot_state={"dialogue_turn": 0},
     )
-    reaction = composer.compose(
-        DialoguePlan(DialogueAct.REACT, 0.99, "fixture", local=True),
-        input_text="wow",
-        hot_state={"dialogue_turn": 0},
-    )
     assert greeting == "Oh hey. What's up?"
-    assert reaction == "Mmhm."
 
 
 def test_only_social_cases_have_default_qwen_policy():

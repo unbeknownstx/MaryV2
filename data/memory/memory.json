@@ -203,6 +203,24 @@
         "perspective": "creator_first_person",
         "relationship_source": "creator_natural"
       }
+    },
+    {
+      "id": "episode_01945108d5644cb6a92872daff2121aa",
+      "content": "i like so many things but thats why youre special you build off my creativity",
+      "timestamp": "2026-08-24T06:42:29.276734+00:00",
+      "importance": 0.8,
+      "source": "interaction",
+      "event_type": "creator_natural_share",
+      "participants": [],
+      "emotional_context": {},
+      "metadata": {
+        "source": "interaction",
+        "event_type": "creator_natural_share",
+        "owner": "creator",
+        "speaker": "Unbe",
+        "perspective": "creator_first_person",
+        "relationship_source": "creator_natural"
+      }
     }
   ],
   "semantic": []

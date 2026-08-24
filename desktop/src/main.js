@@ -1104,6 +1104,10 @@ function renderDiagnostics() {
   const trace = normalizeTurnTrace(ecosystemState.last_turn || lastTurnTrace);
   const timings = trace.timings || {};
   const timeline = [
+    ['Classification', timingValue(trace, 'classification_ms')],
+    ['Local composer', timingValue(trace, 'local_composer_ms')],
+    ['Local audit', timingValue(trace, 'local_audit_ms')],
+    ['Shadow', timingValue(trace, 'shadow_ms')],
     ['Provider call', timingValue(trace, 'provider_call_ms')],
     ['Reasoning', timingValue(trace, 'reasoning_ms')],
     ['Reflection', timingValue(trace, 'reflection_ms')],
@@ -1116,11 +1120,18 @@ function renderDiagnostics() {
     ['Playback / perceived', timingValue(trace, 'perceived_ms')],
   ].filter(([,value]) => value !== null);
   const max = Math.max(1, ...timeline.map(([,value]) => value || 0));
+  const shadowTiming = timingValue(trace, 'shadow_ms');
+  const shadowSummary = trace.shadow_enabled
+    ? `${trace.shadow_model || 'Enabled'}${shadowTiming === null ? '' : ` · ${formatMilliseconds(shadowTiming)}`}`
+    : 'Off';
+  const escalationRow = trace.escalation_reason
+    ? `<div class="data-row"><span>Escalation</span><strong>${escapeHtml(trace.escalation_reason)}</strong></div>`
+    : '';
   return `<div class="trace-hero">
     <div class="workspace-panel hero-panel"><h3>Last Turn Trace</h3><p>Measured from the real runtime: provider, cognition, reflection, speech, and perceived response timing. This telemetry is ephemeral and never becomes Mary memory.</p>
       <div class="trace-stack">${timeline.length ? timeline.map(([label,value]) => `<div class="trace-row"><span>${escapeHtml(label)}</span><i style="width:${Math.max(2,(value/max)*100)}%"></i><strong>${escapeHtml(formatMilliseconds(value))}</strong></div>`).join('') : '<div class="workspace-empty">Complete one desktop turn to populate the trace.</div>'}</div>
     </div>
-    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
+    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Response class</span><strong>${escapeHtml(titleCase(trace.response_class || '—'))}</strong></div><div class="data-row"><span>Engine</span><strong>${escapeHtml(trace.response_engine || '—')}</strong></div>${escalationRow}<div class="data-row"><span>Shadow</span><strong>${escapeHtml(shadowSummary)}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
   </div>
   <div class="section-title">ROLLING METRICS</div>
   <div class="workspace-panel"><div class="metric-grid">${rows.length ? rows.map(([k,v])=>`<div class="metric-card"><span>${escapeHtml(titleCase(k))}</span><strong>${escapeHtml(v.last_ms)} ms</strong><small>avg ${escapeHtml(v.avg_ms)} · max ${escapeHtml(v.max_ms)}</small></div>`).join('') : '<div class="workspace-empty">Metrics appear after live turns.</div>'}</div></div>`;

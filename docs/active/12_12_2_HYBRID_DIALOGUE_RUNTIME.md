@@ -1,8 +1,10 @@
 # MaryV2 12.12.2 Hybrid Dialogue Runtime
 
-Status: benchmark/shadow experiment only. It is not imported by
-`CharacterMind`, the production router, or any presentation path. No model is
-selected or promoted by this work.
+Status: validated 12.12.2 benchmark evidence. MaryV2 12.12.3 promotes the
+deterministic typed-plan, response-risk, LocalComposer V2, and local-audit
+architecture into `CharacterMind`; it does not promote Qwen or change any
+provider route. See `12_12_3_PRODUCTION_HYBRID_DIALOGUE.md` for the production
+boundary.
 
 ## Premise
 
@@ -31,8 +33,9 @@ lane. Unknown mixed cases do not become social.
 
 ## Procedural LocalComposer V2
 
-V2 is a separate benchmark module. Production still instantiates the existing
-`LocalResponseComposer`.
+This section records the V2 design as it was validated before production
+promotion. In 12.12.3, `CharacterMind` instantiates the same deterministic V2
+composer through a stricter canonical-plan projector and independent audit.
 
 The V2 plan uses typed participant roles (`SELF`, `ADDRESSEE`, `JOINT`, and
 explicit named/world entities) and supported clause frames. Facts are not

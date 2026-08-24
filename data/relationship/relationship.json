@@ -12,7 +12,8 @@
     },
     "interests": [
       "creating stories",
-      "rainy nights when I'm working on creative projects"
+      "rainy nights when I'm working on creative projects",
+      "so many things but thats why youre special you build off my creativity"
     ],
     "values": [],
     "goals": [
@@ -119,10 +120,24 @@
         "observation_id": "observation_d79e783388ea",
         "created_at": "2026-08-19T07:22:42.658561+00:00",
         "updated_at": "2026-08-19T07:22:42.658561+00:00"
+      },
+      {
+        "id": "profile_8",
+        "category": "interest",
+        "key": "so_many_things_but_thats_why_youre_special_you_build_off_my_creativity",
+        "value": "so many things but thats why youre special you build off my creativity",
+        "status": "current",
+        "source": "creator_natural",
+        "confidence": 1.0,
+        "explicitly_shared": true,
+        "evidence_id": "episode_01945108d5644cb6a92872daff2121aa",
+        "observation_id": "observation_66b406fe470b",
+        "created_at": "2026-08-24T06:42:29.285719+00:00",
+        "updated_at": "2026-08-24T06:42:29.285719+00:00"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790107+00:00",
-    "updated_at": "2026-08-19T07:22:42.658592+00:00"
+    "updated_at": "2026-08-24T06:42:29.285749+00:00"
   },
   "history": {
     "creator_id": "creator",
@@ -2058,10 +2073,25 @@
           "source": "creator_natural_shared_work"
         },
         "created_at": "2026-08-21T04:02:09.518006"
+      },
+      {
+        "id": "relationship_b4e62e631198",
+        "creator_id": "creator",
+        "type": "creator_information_shared",
+        "description": "Unbe explicitly shared interest: so many things but thats why youre special you build off my creativity",
+        "importance": 0.7,
+        "source": "relationship_understanding",
+        "metadata": {
+          "category": "interest",
+          "key": "so_many_things_but_thats_why_youre_special_you_build_off_my_creativity",
+          "profile_record_id": "profile_8",
+          "evidence_id": "episode_01945108d5644cb6a92872daff2121aa"
+        },
+        "created_at": "2026-08-23T23:42:29.285765"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-21T04:02:09.518078"
+    "updated_at": "2026-08-23T23:42:29.285769"
   },
   "understanding": {
     "observations": [
@@ -3198,11 +3228,20 @@
         "confidence": 1.0,
         "evidence": "episode_211fd0c530c549aa9092564f46d3d4a9",
         "created_at": "2026-08-19T00:22:42.658538"
+      },
+      {
+        "id": "observation_66b406fe470b",
+        "observation": "i like so many things but thats why youre special you build off my creativity",
+        "category": "interest",
+        "source": "creator_natural",
+        "confidence": 1.0,
+        "evidence": "episode_01945108d5644cb6a92872daff2121aa",
+        "created_at": "2026-08-23T23:42:29.285698"
       }
     ],
     "inferences": [],
     "patterns": [],
-    "updated_at": "2026-08-19T00:22:42.658551"
+    "updated_at": "2026-08-23T23:42:29.285710"
   },
   "milestones": []
 }

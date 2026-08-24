@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from scripts import run_release_verification as release
@@ -31,7 +32,10 @@ def test_offline_environment_forcibly_disables_live_llm(monkeypatch):
     assert "OPENROUTER_API_KEY" not in environment
     assert "OPENAI_API_KEY" not in environment
     assert "MARY_LLM_FALLBACKS" not in environment
-    assert environment["MARY_ENV_FILE"] == str(release._OFFLINE_ENV_FILE)
+    assert Path(environment["MARY_ENV_FILE"]).name == "no-live-config"
+    assert not Path(environment["MARY_ENV_FILE"]).exists()
+    assert environment["MARY_RESERVOIR_STORAGE"] == "memory"
+    assert environment["PYTEST_ADDOPTS"] == "-p no:cacheprovider"
 
 
 def test_normal_pytest_run_uses_offline_environment(monkeypatch):
@@ -40,6 +44,7 @@ def test_normal_pytest_run_uses_offline_environment(monkeypatch):
     def fake_run(command, **kwargs):
         captured["command"] = command
         captured.update(kwargs)
+        captured["env_file_was_absent"] = not Path(kwargs["env"]["MARY_ENV_FILE"]).exists()
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setenv("MARY_RUN_LIVE_TESTS", "1")
@@ -60,6 +65,8 @@ def test_normal_pytest_run_uses_offline_environment(monkeypatch):
     assert "MARY_RUN_LIVE_TESTS" not in captured["env"]
     assert "MARY_RUN_OPENAI_TESTS" not in captured["env"]
     assert captured["env"]["MARY_DATA_DIR"]
+    assert captured["env_file_was_absent"] is True
+    assert captured["env"]["MARY_RESERVOIR_STORAGE"] == "memory"
 
 
 def test_live_llm_is_explicit_and_scoped_to_dedicated_test(monkeypatch):
@@ -68,13 +75,18 @@ def test_live_llm_is_explicit_and_scoped_to_dedicated_test(monkeypatch):
     def fake_run(command, **kwargs):
         captured["command"] = command
         captured.update(kwargs)
+        captured["env_file_was_absent"] = not Path(kwargs["env"]["MARY_ENV_FILE"]).exists()
         return SimpleNamespace(returncode=0)
 
+    monkeypatch.setenv("GROQ_API_KEY", "explicit-live-credential")
     monkeypatch.setattr(release.subprocess, "run", fake_run)
 
     assert release.run_live_llm() is True
     assert release.LIVE_LLM_TEST in captured["command"]
     assert captured["env"]["MARY_RUN_LIVE_TESTS"] == "1"
+    assert captured["env"]["GROQ_API_KEY"] == "explicit-live-credential"
+    assert captured["env"]["MARY_RESERVOIR_STORAGE"] == "memory"
+    assert captured["env_file_was_absent"] is True
     assert captured["command"][:3] == [release.sys.executable, "-m", "pytest"]
 
 
@@ -111,8 +123,10 @@ def test_offline_process_environment_isolates_and_restores_data_dir(monkeypatch,
         active = release.os.environ.get("MARY_DATA_DIR")
         assert active is not None
         assert active != str(original)
-        assert "maryv2_release_state_" in active
+        assert "maryv2-release-offline-" in active
         environment = release._offline_environment()
         assert environment["MARY_DATA_DIR"] == active
+        assert environment["MARY_RESERVOIR_STORAGE"] == "memory"
+        assert not Path(environment["MARY_ENV_FILE"]).exists()
 
     assert release.os.environ.get("MARY_DATA_DIR") == str(original)

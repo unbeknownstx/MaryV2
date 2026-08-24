@@ -1,9 +1,13 @@
 """Immutable boundary between Mary's decided intent and replaceable wording.
 
-This module does not call a model and is not wired into production routing.  It
-only defines the compact, provider-independent projection used by the Qwen
-Micro-Cortex benchmark.  Canonical identity, memory, relationship, preference,
-knowledge, and agency owners remain outside this object.
+The scalar/provenance contracts in this module are Mary's canonical production
+response-plan boundary.  They do not call a model, retrieve state, or create an
+authority store.  Canonical identity, memory, relationship, preference,
+knowledge, and agency owners remain outside these immutable projections.
+
+The compact model/surface payload helpers are still used by explicit Qwen
+benchmarks only.  Production local dialogue binds the same hardened boundary to
+typed deterministic semantics through :class:`CanonicalResponsePlan`.
 """
 from __future__ import annotations
 
@@ -19,6 +23,15 @@ from mary.cognition.continuity import ConversationalDrive
 from mary.expression.delivery_plan import DeliveryPlan
 
 from .dialogue_acts import DialogueAct, DialoguePlan
+from .local_composer_v2 import (
+    ClauseFrame,
+    LocalRealizationPlan,
+    ParticipantRef,
+    ParticipantRole,
+    RealizationClause,
+    ResponseForm,
+)
+from .response_risk import ResponseAuthorityContext
 
 
 GROUNDING_AUTHORITIES = frozenset({
@@ -106,6 +119,18 @@ def _bounded_text(name: str, value: Any, *, limit: int) -> str:
     return text
 
 
+def bounded_response_scalar(name: str, value: Any, *, limit: int = 280) -> str:
+    """Copy one bounded plain string for a canonical response plan.
+
+    This is intentionally narrower than generic ``str(value)`` coercion.  A
+    projector must explicitly decide how a represented numeric scalar should be
+    rendered; mappings, collections, bytes, controls, bidi/format characters,
+    and overlong text never cross the response-plan boundary accidentally.
+    """
+
+    return _bounded_text(name, value, limit=limit)
+
+
 def _bounded_unit_float(name: str, value: Any) -> float:
     if isinstance(value, bool) or not isinstance(value, Real):
         raise TypeError(f"{name} must be a real numeric scalar")
@@ -160,7 +185,13 @@ def _bounded_int(name: str, value: Any, *, minimum: int, maximum: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class GroundedFact:
-    """A scalar-only projection of one represented fact."""
+    """A scalar-only provenance projection of one represented fact.
+
+    Standalone compact benchmark plans may carry a bounded descriptive ``text``
+    for compatibility.  Inside :class:`CanonicalResponsePlan`, ``text`` must be
+    the exact deterministic description derived from ``semantic_clause``; it
+    cannot introduce or contradict the typed owner-confirmed semantics.
+    """
 
     fact_id: str
     subject: str
@@ -170,6 +201,10 @@ class GroundedFact:
     source: str
     authority: str
     confidence: float
+    semantic_clause: RealizationClause | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         # SemanticMemory deliberately preserves domain subjects/predicates such
@@ -186,6 +221,13 @@ class GroundedFact:
             raise ValueError(f"unsupported grounding authority: {authority or '<empty>'}")
         object.__setattr__(self, "authority", authority)
         object.__setattr__(self, "confidence", _bounded_unit_float("fact confidence", self.confidence))
+        if self.semantic_clause is not None:
+            if not isinstance(self.semantic_clause, RealizationClause):
+                raise TypeError("semantic_clause must be a RealizationClause or None")
+            if self.semantic_clause.source_id != self.fact_id:
+                raise ValueError("semantic clause source_id must match fact_id")
+            if self.semantic_clause.authority != self.authority:
+                raise ValueError("semantic clause authority must match fact authority")
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "GroundedFact":
@@ -238,7 +280,12 @@ class GroundedFact:
 
 @dataclass(frozen=True, slots=True)
 class RepresentedStance:
-    """A stance Mary already owns; never a model-created preference."""
+    """A bounded projection of a stance Mary already owns.
+
+    Standalone compact benchmark payloads retain their existing descriptive
+    form.  Canonical production plans require ``text``, polarity, provenance,
+    and confidence to match a typed self-owned stance clause exactly.
+    """
 
     text: str
     polarity: str
@@ -501,7 +548,13 @@ class SemanticSurfaceContract:
 
 @dataclass(frozen=True, slots=True)
 class CompactVerbalizationPlan:
-    """Everything a wording-only model may see, and nothing authoritative."""
+    """Everything a wording-only model may see, and nothing authoritative.
+
+    Standalone compact benchmark plans retain flexible evaluation hints.
+    Whenever this object is embedded in :class:`CanonicalResponsePlan`, its
+    response intent, required meanings, and fact/stance text are derived from
+    and validated against the typed realization semantics.
+    """
 
     plan_id: str
     input_text: str
@@ -637,6 +690,306 @@ class CompactVerbalizationPlan:
         payload["mary_stance"] = self.mary_stance.to_dict() if self.mary_stance else None
         payload["relationship_hints"] = [item.to_dict() for item in self.relationship_hints]
         return {"plan_id": self.plan_id, **payload}
+
+
+def canonical_clause_meaning(clause: RealizationClause) -> str:
+    """Return the one deterministic semantic description of a typed clause."""
+
+    if not isinstance(clause, RealizationClause):
+        raise TypeError("canonical clause meaning requires a RealizationClause")
+    subject = _participant_semantic_label(clause.subject)
+    if clause.frame == ClauseFrame.ATTRIBUTE:
+        meaning = f"{subject} {clause.predicate} {clause.value}"
+    elif clause.frame == ClauseFrame.POSSESSIVE_FACT:
+        meaning = f"{subject} {clause.property_name} is {clause.value}"
+    elif clause.frame == ClauseFrame.PREFERENCE:
+        meaning = f"{subject} prefers {clause.object_text} over {clause.contrast}"
+    elif clause.frame == ClauseFrame.DISAGREEMENT:
+        meaning = f"{subject} disagrees: {clause.value}"
+    elif clause.frame == ClauseFrame.UNKNOWN:
+        meaning = f"{subject} does not know whether {clause.object_text}"
+    elif clause.frame == ClauseFrame.EVENT:
+        parts = [subject, clause.predicate]
+        if clause.recipient is not None:
+            parts.append(_participant_semantic_label(clause.recipient))
+        if clause.object_text:
+            parts.append(clause.object_text)
+        if clause.dependent_event is not None:
+            dependent = clause.dependent_event
+            parts.extend((
+                dependent.connector,
+                _participant_semantic_label(dependent.subject),
+                dependent.predicate,
+            ))
+            if dependent.recipient is not None:
+                parts.append(_participant_semantic_label(dependent.recipient))
+            if dependent.object_text:
+                parts.append(dependent.object_text)
+        meaning = " ".join(parts)
+    elif clause.frame == ClauseFrame.CAPABILITY:
+        modal = "cannot" if clause.negated else "can"
+        meaning = f"{subject} {modal} {clause.predicate}"
+        if clause.condition:
+            meaning += f" when {clause.condition}"
+    elif clause.frame == ClauseFrame.SUGGESTION:
+        meaning = f"suggest {clause.predicate}"
+        if clause.object_text:
+            meaning += f" {clause.object_text}"
+    elif clause.frame == ClauseFrame.RUNTIME_VALUE:
+        meaning = f"{subject} {clause.property_name} is {clause.value}"
+    else:  # pragma: no cover - enum exhaustiveness guard
+        raise ValueError("unsupported canonical clause frame")
+    return _bounded_text("canonical clause meaning", meaning, limit=260)
+
+
+def canonical_grounded_fact_text(
+    fact: GroundedFact,
+    clause: RealizationClause,
+) -> str:
+    """Derive the only fact description allowed inside a canonical plan."""
+
+    if not isinstance(fact, GroundedFact):
+        raise TypeError("canonical fact text requires a GroundedFact")
+    meaning = canonical_clause_meaning(clause)
+    return _bounded_text(
+        "canonical grounded fact text",
+        f"{fact.subject} {fact.predicate}: {meaning}.",
+        limit=320,
+    )
+
+
+def canonical_required_meanings(
+    realization: LocalRealizationPlan,
+) -> tuple[str, ...]:
+    """Derive canonical prompt/evaluation meanings from typed semantics only."""
+
+    if not isinstance(realization, LocalRealizationPlan):
+        raise TypeError("canonical meanings require a LocalRealizationPlan")
+    if realization.clauses:
+        return tuple(
+            _bounded_text(
+                "canonical required meaning",
+                f"Preserve exactly: {canonical_clause_meaning(clause)}.",
+                limit=_MAX_REQUIRED_MEANING_LENGTH,
+            )
+            for clause in realization.clauses
+        )
+    if realization.question is not None:
+        question = realization.question
+        subject = _participant_semantic_label(question.subject)
+        alternatives = (
+            f"; alternatives: {' or '.join(question.alternatives)}"
+            if question.alternatives
+            else ""
+        )
+        return (
+            _bounded_text(
+                "canonical required meaning",
+                (
+                    f"Ask exactly one {question.kind.value} question to "
+                    f"{subject}: {question.action}{alternatives}."
+                ),
+                limit=_MAX_REQUIRED_MEANING_LENGTH,
+            ),
+        )
+    return (
+        _bounded_text(
+            "canonical required meaning",
+            f"Perform only the {realization.dialogue_act.value} dialogue act.",
+            limit=_MAX_REQUIRED_MEANING_LENGTH,
+        ),
+    )
+
+
+def canonical_response_intent(realization: LocalRealizationPlan) -> str:
+    """Derive a semantics-free intent label that cannot override typed units."""
+
+    if not isinstance(realization, LocalRealizationPlan):
+        raise TypeError("canonical response intent requires a LocalRealizationPlan")
+    return _bounded_text(
+        "canonical response intent",
+        f"Realize only the typed {realization.dialogue_act.value} response plan.",
+        limit=280,
+    )
+
+
+def _participant_semantic_label(participant: ParticipantRef) -> str:
+    if not isinstance(participant, ParticipantRef):
+        raise TypeError("canonical participant must be a ParticipantRef")
+    if participant.role == ParticipantRole.NAMED_ENTITY:
+        return _bounded_text(
+            "canonical named participant",
+            participant.surface,
+            limit=120,
+        )
+    return participant.role.value
+
+
+def _canonical_stance_text(
+    stance: RepresentedStance,
+    clause: RealizationClause,
+) -> str:
+    if (
+        clause.frame != ClauseFrame.ATTRIBUTE
+        or clause.subject.role != ParticipantRole.SELF
+    ):
+        raise ValueError("canonical Mary stance requires a typed self attribute")
+    predicates = {
+        "prefer": "like",
+        "oppose": "dislike",
+        "uncertain": "feel unsure about",
+    }
+    expected_predicate = predicates.get(stance.polarity)
+    if expected_predicate is None:
+        raise ValueError("canonical Mary stance polarity is unsupported by its typed clause")
+    if clause.predicate != expected_predicate:
+        raise ValueError("canonical Mary stance polarity must match its typed clause")
+    text = (
+        f"Mary likes {clause.value}."
+        if stance.polarity == "prefer"
+        else f"Mary dislikes {clause.value}."
+        if stance.polarity == "oppose"
+        else f"Mary is undecided about {clause.value}."
+    )
+    return _bounded_text("canonical Mary stance text", text, limit=240)
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalResponsePlan:
+    """Complete immutable local-response contract selected before wording.
+
+    ``verbalization`` owns bounded meaning, provenance, stance, form, and
+    capability constraints. ``authority_context`` is only a fail-closed
+    projection for response-risk classification. ``realization`` owns explicit
+    participant roles and procedural clause frames.  None is an authority or a
+    persistence owner.
+    """
+
+    verbalization: CompactVerbalizationPlan
+    authority_context: ResponseAuthorityContext
+    realization: LocalRealizationPlan
+    boundary_version: str = "canonical-local-response-v1"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.verbalization, CompactVerbalizationPlan):
+            raise TypeError("verbalization must be a CompactVerbalizationPlan")
+        if not isinstance(self.authority_context, ResponseAuthorityContext):
+            raise TypeError("authority_context must be a ResponseAuthorityContext")
+        if not isinstance(self.realization, LocalRealizationPlan):
+            raise TypeError("realization must be a LocalRealizationPlan")
+        object.__setattr__(
+            self,
+            "boundary_version",
+            _bounded_id("boundary_version", self.boundary_version),
+        )
+        if self.verbalization.plan_id != self.realization.plan_id:
+            raise ValueError("canonical plan IDs must match")
+        if self.verbalization.dialogue_act is not self.realization.dialogue_act:
+            raise ValueError("canonical dialogue acts must match")
+        form = self.verbalization.form_target
+        expected_form = (
+            ResponseForm.QUESTION
+            if form.response_form == "question"
+            else ResponseForm.REACTION
+            if form.response_form == "reaction"
+            else ResponseForm.STATEMENT
+        )
+        if self.realization.response_form is not expected_form:
+            raise ValueError("canonical response forms must match")
+        if form.sentence_max != self.realization.max_sentences:
+            raise ValueError("canonical sentence ceilings must match")
+        if form.max_words != self.realization.max_words:
+            raise ValueError("canonical word ceilings must match")
+        if (
+            self.verbalization.response_intent
+            != canonical_response_intent(self.realization)
+        ):
+            raise ValueError("canonical response intent must derive from typed realization")
+        if (
+            self.verbalization.required_meanings
+            != canonical_required_meanings(self.realization)
+        ):
+            raise ValueError("canonical required meanings must derive from typed realization")
+
+        facts = {item.fact_id: item for item in self.verbalization.grounded_facts}
+        consumed_fact_ids: set[str] = set()
+        for clause in self.realization.clauses:
+            if not clause.source_id:
+                raise ValueError("every canonical realization clause requires source_id")
+            fact = facts.get(clause.source_id)
+            if fact is None:
+                raise ValueError("realization clause source_id must name a grounded fact")
+            if clause.authority != fact.authority:
+                raise ValueError("realization clause authority must match its grounded fact")
+            if fact.semantic_clause is None:
+                raise ValueError("canonical grounded facts require typed clause semantics")
+            if fact.semantic_clause != clause:
+                raise ValueError("grounded fact semantics must exactly match realization clause")
+            if fact.text != canonical_grounded_fact_text(fact, clause):
+                raise ValueError("canonical fact text must derive from typed realization")
+            consumed_fact_ids.add(fact.fact_id)
+        if consumed_fact_ids != set(facts):
+            raise ValueError("canonical grounded facts must be consumed exactly once")
+
+        stance = self.verbalization.mary_stance
+        if stance is not None:
+            stance_facts = tuple(
+                fact
+                for fact in facts.values()
+                if fact.subject.casefold() == "mary"
+                and fact.source == stance.source
+                and fact.authority == stance.authority
+                and fact.confidence == stance.confidence
+                and fact.semantic_clause is not None
+                and fact.semantic_clause.subject.role == ParticipantRole.SELF
+            )
+            if len(stance_facts) != 1:
+                raise ValueError("canonical Mary stance requires one matching grounded owner fact")
+            stance_clause = stance_facts[0].semantic_clause
+            assert stance_clause is not None
+            if stance.text != _canonical_stance_text(stance, stance_clause):
+                raise ValueError("canonical Mary stance text must derive from typed realization")
+
+    @property
+    def plan_id(self) -> str:
+        return self.verbalization.plan_id
+
+    @property
+    def dialogue_act(self) -> DialogueAct:
+        return self.verbalization.dialogue_act
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a fresh, bounded audit view with no raw turn or source state."""
+
+        return {
+            "boundary_version": self.boundary_version,
+            "plan_id": self.verbalization.plan_id,
+            "dialogue_act": self.verbalization.dialogue_act.value,
+            "conversational_drive": self.verbalization.conversational_drive.value,
+            "response_intent": self.verbalization.response_intent,
+            "required_meanings": list(self.verbalization.required_meanings),
+            "grounded_facts": [
+                item.to_dict() for item in self.verbalization.grounded_facts
+            ],
+            "mary_stance": (
+                self.verbalization.mary_stance.to_dict()
+                if self.verbalization.mary_stance
+                else None
+            ),
+            "relationship_hints": [
+                item.to_dict() for item in self.verbalization.relationship_hints
+            ],
+            "delivery_target": self.verbalization.delivery_target.to_dict(),
+            "form_target": self.verbalization.form_target.to_dict(),
+            "capability_constraints": list(
+                self.verbalization.capability_constraints
+            ),
+            "provenance_constraint": self.verbalization.provenance_constraint,
+            "authority_context": self.authority_context.to_dict(),
+            "realization": self.realization.to_dict(),
+            "authoritative_state_owner": None,
+            "persistence": "none",
+        }
 
 
 def project_semantic_surface_contract(

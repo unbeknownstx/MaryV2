@@ -1,20 +1,25 @@
-"""Typed procedural dialogue renderer used only by hybrid shadow benchmarks.
+"""Typed procedural dialogue renderer for Mary's local response path.
 
-The production :class:`mary.mind.local_composer.LocalResponseComposer` is not
-replaced or imported here.  V2 consumes an immutable, already-authorized
-semantic plan with explicit participant roles.  It never parses reservoir
-prose, retrieves state, calls a model, or writes phrase history.
+V2 consumes an immutable, already-authorized semantic plan with explicit
+participant roles.  It never parses reservoir prose, retrieves state, calls a
+model, owns authority, or writes phrase history.  The hybrid benchmark also
+exercises this deterministic engine, while all Qwen candidates remain
+invisible benchmark-only shadows.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
+import math
+from numbers import Real
 import random
 import re
 from time import perf_counter_ns
 from typing import Any
+import unicodedata
 
 from .dialogue_acts import DialogueAct
 
@@ -64,11 +69,11 @@ class ParticipantRef:
     surface: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.role, ParticipantRole):
+            raise TypeError("participant role must be a ParticipantRole")
         if self.role == ParticipantRole.NAMED_ENTITY:
-            entity_id = " ".join(str(self.entity_id or "").split()).strip()
-            surface = " ".join(str(self.surface or "").split()).strip()
-            if not entity_id or not surface:
-                raise ValueError("named participants require entity_id and surface")
+            entity_id = _piece(self.entity_id, "participant entity_id", limit=160)
+            surface = _piece(self.surface, "participant surface", limit=120)
             object.__setattr__(self, "entity_id", entity_id)
             object.__setattr__(self, "surface", surface)
         elif self.entity_id is not None or self.surface is not None:
@@ -97,13 +102,21 @@ class DependentEvent:
     recipient: ParticipantRef | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.subject, ParticipantRef):
+            raise TypeError("dependent-event subject must be a ParticipantRef")
+        if self.recipient is not None and not isinstance(self.recipient, ParticipantRef):
+            raise TypeError("dependent-event recipient must be a ParticipantRef or None")
         connector = _piece(self.connector, "dependent connector")
         predicate = _piece(self.predicate, "dependent predicate")
         if connector not in {"after", "before", "while", "when"}:
             raise ValueError("unsupported dependent-event connector")
         object.__setattr__(self, "connector", connector.lower())
         object.__setattr__(self, "predicate", predicate)
-        object.__setattr__(self, "object_text", _optional_piece(self.object_text))
+        object.__setattr__(
+            self,
+            "object_text",
+            _optional_piece(self.object_text, "dependent object_text", limit=240),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -134,7 +147,22 @@ class RealizationClause:
     source_id: str = ""
 
     def __post_init__(self) -> None:
-        clause_id = _piece(self.clause_id, "clause_id")
+        if not isinstance(self.frame, ClauseFrame):
+            raise TypeError("clause frame must be a ClauseFrame")
+        if not isinstance(self.subject, ParticipantRef):
+            raise TypeError("clause subject must be a ParticipantRef")
+        if self.recipient is not None and not isinstance(self.recipient, ParticipantRef):
+            raise TypeError("clause recipient must be a ParticipantRef or None")
+        if self.dependent_event is not None and not isinstance(
+            self.dependent_event,
+            DependentEvent,
+        ):
+            raise TypeError("dependent_event must be a DependentEvent or None")
+        if not isinstance(self.certainty, Certainty):
+            raise TypeError("clause certainty must be a Certainty")
+        if not isinstance(self.negated, bool):
+            raise TypeError("clause negated must be a bool")
+        clause_id = _piece(self.clause_id, "clause_id", limit=160)
         object.__setattr__(self, "clause_id", clause_id)
         for field_name in (
             "predicate",
@@ -146,7 +174,15 @@ class RealizationClause:
             "authority",
             "source_id",
         ):
-            object.__setattr__(self, field_name, _optional_piece(getattr(self, field_name)))
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_piece(
+                    getattr(self, field_name),
+                    f"clause {field_name}",
+                    limit=240,
+                ),
+            )
         self._validate_frame()
 
     def _validate_frame(self) -> None:
@@ -222,8 +258,17 @@ class SemanticQuestion:
     alternatives: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.kind, QuestionKind):
+            raise TypeError("question kind must be a QuestionKind")
+        if not isinstance(self.subject, ParticipantRef):
+            raise TypeError("question subject must be a ParticipantRef")
         object.__setattr__(self, "action", _piece(self.action, "question action"))
-        alternatives = tuple(_piece(item, "question alternative") for item in self.alternatives)
+        alternatives = _text_tuple(
+            self.alternatives,
+            "question alternatives",
+            max_items=2,
+            item_limit=160,
+        )
         if self.kind == QuestionKind.ALTERNATIVE and len(alternatives) != 2:
             raise ValueError("alternative questions require exactly two alternatives")
         if self.kind != QuestionKind.ALTERNATIVE and alternatives:
@@ -254,13 +299,32 @@ class LocalRealizationPlan:
     question: SemanticQuestion | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "plan_id", _piece(self.plan_id, "plan_id"))
+        if not isinstance(self.dialogue_act, DialogueAct):
+            raise TypeError("dialogue_act must be a DialogueAct")
+        if not isinstance(self.response_form, ResponseForm):
+            raise TypeError("response_form must be a ResponseForm")
+        if isinstance(self.clauses, Mapping) or isinstance(
+            self.clauses,
+            (str, bytes, bytearray),
+        ) or not isinstance(self.clauses, Sequence):
+            raise TypeError("clauses must be a sequence of RealizationClause values")
         clauses = tuple(self.clauses)
+        if any(not isinstance(item, RealizationClause) for item in clauses):
+            raise TypeError("clauses must contain RealizationClause values")
+        if not isinstance(self.max_sentences, int) or isinstance(self.max_sentences, bool):
+            raise TypeError("max_sentences must be an integer")
+        if not isinstance(self.max_words, int) or isinstance(self.max_words, bool):
+            raise TypeError("max_words must be an integer")
+        if not isinstance(self.allow_acknowledgement, bool):
+            raise TypeError("allow_acknowledgement must be a bool")
+        if self.question is not None and not isinstance(self.question, SemanticQuestion):
+            raise TypeError("question must be a SemanticQuestion or None")
+        object.__setattr__(self, "plan_id", _piece(self.plan_id, "plan_id", limit=160))
         if len({item.clause_id for item in clauses}) != len(clauses):
             raise ValueError("clause IDs must be unique")
-        if not 1 <= int(self.max_sentences) <= 3:
+        if not 1 <= self.max_sentences <= 3:
             raise ValueError("max_sentences must be between 1 and 3")
-        if not 1 <= int(self.max_words) <= 80:
+        if not 1 <= self.max_words <= 80:
             raise ValueError("max_words must be between 1 and 80")
         for field_name in ("tone", "familiarity", "disposition"):
             object.__setattr__(self, field_name, _piece(getattr(self, field_name), field_name))
@@ -309,6 +373,74 @@ class RealizationResult:
     accepted: bool = True
     verifier_issues: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", _piece(self.text, "result text", limit=2_000))
+        fingerprint = _piece(
+            self.semantic_fingerprint,
+            "semantic fingerprint",
+            limit=64,
+        ).casefold()
+        if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+            raise ValueError("semantic fingerprint must be a SHA-256 hex digest")
+        object.__setattr__(self, "semantic_fingerprint", fingerprint)
+        object.__setattr__(
+            self,
+            "candidate_id",
+            _piece(self.candidate_id, "candidate_id", limit=64),
+        )
+        object.__setattr__(
+            self,
+            "selected_components",
+            _text_tuple(
+                self.selected_components,
+                "selected_components",
+                max_items=24,
+                item_limit=160,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "realized_clause_ids",
+            _text_tuple(
+                self.realized_clause_ids,
+                "realized_clause_ids",
+                max_items=3,
+                item_limit=160,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "verifier_issues",
+            _text_tuple(
+                self.verifier_issues,
+                "verifier_issues",
+                max_items=12,
+                item_limit=200,
+            ),
+        )
+        if not isinstance(self.accepted, bool):
+            raise TypeError("accepted must be a bool")
+        object.__setattr__(
+            self,
+            "repetition_score",
+            _bounded_real(
+                self.repetition_score,
+                "repetition_score",
+                minimum=0.0,
+                maximum=10_000.0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "generation_ms",
+            _bounded_real(
+                self.generation_ms,
+                "generation_ms",
+                minimum=0.0,
+                maximum=60_000.0,
+            ),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "text": self.text,
@@ -340,7 +472,20 @@ class ProceduralLocalComposerV2:
     ) -> RealizationResult:
         if not isinstance(plan, LocalRealizationPlan):
             raise TypeError("plan must be a LocalRealizationPlan")
-        history = tuple(_optional_piece(item) for item in recent_phrase_history if str(item).strip())
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise TypeError("seed must be an integer")
+        if not -(2**127) <= seed < 2**127:
+            raise ValueError("seed must fit in a signed 128-bit integer")
+        if not isinstance(variation_ordinal, int) or isinstance(variation_ordinal, bool):
+            raise TypeError("variation_ordinal must be an integer")
+        if not 0 <= variation_ordinal <= 1_000_000:
+            raise ValueError("variation_ordinal must be between 0 and 1000000")
+        history = _text_tuple(
+            recent_phrase_history,
+            "recent_phrase_history",
+            max_items=8,
+            item_limit=320,
+        )
         started_ns = perf_counter_ns()
         fingerprint = _semantic_fingerprint(plan)
         candidates: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
@@ -495,7 +640,25 @@ def _render_clause(
     subject = _subject(clause.subject, capital=True)
     if clause.frame == ClauseFrame.ATTRIBUTE:
         predicate = _conjugate_link(clause.predicate, clause.subject)
-        return f"{subject} {predicate} {clause.value}", "clause:attribute"
+        variants = [(f"{subject} {predicate} {clause.value}", "clause:attribute")]
+        if clause.predicate == "be":
+            contraction = {
+                ParticipantRole.SELF: "I'm",
+                ParticipantRole.ADDRESSEE: "You're",
+                ParticipantRole.JOINT: "We're",
+                ParticipantRole.WORLD: "It's",
+            }.get(clause.subject.role)
+            if contraction:
+                variants.append((
+                    f"{contraction} {clause.value}",
+                    "clause:attribute-contracted",
+                ))
+        elif clause.subject.role == ParticipantRole.SELF:
+            variants.append((
+                f"I do {clause.predicate} {clause.value}",
+                "clause:attribute-emphatic",
+            ))
+        return rng.choice(variants)
     if clause.frame == ClauseFrame.POSSESSIVE_FACT:
         possessive = _possessive(clause.subject, capital=True)
         if rng.randrange(2) == 0:
@@ -694,17 +857,74 @@ def _repetition_score(text: str, history: tuple[str, ...]) -> float:
     return score
 
 
-def _piece(value: Any, label: str) -> str:
-    text = _optional_piece(value)
+_UNSAFE_TEXT_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+
+
+def _piece(value: Any, label: str, *, limit: int = 240) -> str:
+    text = _optional_piece(value, label, limit=limit)
     if not text:
         raise ValueError(f"{label} is required")
-    if "\n" in str(value) or "\r" in str(value):
-        raise ValueError(f"{label} must be one line")
     return text
 
 
-def _optional_piece(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip()
+def _optional_piece(
+    value: Any,
+    label: str = "text",
+    *,
+    limit: int = 240,
+) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, Mapping):
+        raise TypeError(f"{label} must be scalar text, not a mapping")
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        raise TypeError(f"{label} must be scalar text, not a sequence")
+    if isinstance(value, (bytes, bytearray)) or not isinstance(value, str):
+        raise TypeError(f"{label} must be scalar text")
+    if any(
+        unicodedata.category(character) in _UNSAFE_TEXT_CATEGORIES
+        for character in value
+    ):
+        raise ValueError(f"{label} must not contain control or formatting characters")
+    text = " ".join(value.split()).strip()
+    if len(text) > limit:
+        raise ValueError(f"{label} exceeds {limit} characters")
+    return text
+
+
+def _text_tuple(
+    value: Any,
+    label: str,
+    *,
+    max_items: int,
+    item_limit: int,
+) -> tuple[str, ...]:
+    if isinstance(value, Mapping) or isinstance(value, (str, bytes, bytearray)):
+        raise TypeError(f"{label} must be a sequence of strings")
+    if not isinstance(value, Sequence):
+        raise TypeError(f"{label} must be a sequence of strings")
+    items = tuple(
+        _piece(item, f"{label} item", limit=item_limit)
+        for item in value
+    )
+    if len(items) > max_items:
+        raise ValueError(f"{label} may contain at most {max_items} items")
+    return items
+
+
+def _bounded_real(
+    value: Any,
+    label: str,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise TypeError(f"{label} must be a real numeric scalar")
+    number = float(value)
+    if not math.isfinite(number) or not minimum <= number <= maximum:
+        raise ValueError(f"{label} must be between {minimum} and {maximum}")
+    return number
 
 
 def _require(condition: bool, message: str) -> None:

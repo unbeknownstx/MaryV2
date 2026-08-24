@@ -1,9 +1,11 @@
-"""Deterministic response-risk classification for dialogue experiments.
+"""Deterministic response-risk classification for local dialogue.
 
-This module projects decisions already made by Mary's intent, dialogue,
-authority, and conversation-lane systems.  It does not call a model, retrieve
-state, or select a production provider.  The hybrid dialogue benchmark uses
-the projection to decide which *shadow* comparison is eligible.
+This production-capable module projects decisions already made by Mary's
+intent, dialogue, authority, and conversation-lane systems.  It does not call a
+model, retrieve state, own authority, or select a provider.  Production uses
+the fail-closed response class before procedural realization.  The separate
+``qwen_shadow_eligible`` helper remains benchmark-only and grants no production
+route permission.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ from .dialogue_acts import DialogueAct, DialoguePlan
 
 
 class ResponseRiskClass(str, Enum):
-    """Bounded response classes used by the benchmark-only hybrid runtime."""
+    """Bounded response classes shared by production and hybrid benchmarks."""
 
     PRECISION_LOCAL = "precision_local"
     SOCIAL_LOW_RISK = "social_low_risk"
