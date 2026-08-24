@@ -1,20 +1,98 @@
-Mary♡
-PERSONAL COMPANION SYSTEM
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#050611" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Mary" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./assets/mary-icon.png" />
+  <link rel="stylesheet" href="./style.css" />
+  <title>Mary</title>
+</head>
+<body>
+  <main id="app" data-screen="chat" data-connection="offline">
+    <section id="boot" class="boot" aria-live="polite">
+      <img src="./assets/mary-sigil.svg" alt="" />
+      <div class="mary-script">Mary<span>♡</span></div>
+      <p>PERSONAL COMPANION SYSTEM</p>
+      <div class="boot-line"><i></i></div>
+      <small id="boot-status">Connecting to Mary…</small>
+    </section>
 
-Connecting to Mary…
-⊞
-Mary♡MOBILE
-Offline
-MARYYour AI Companion
-LIVE
-Mary Cosma
-IDLENeutral
-Marynow
-I'm here.
+    <header class="topbar glass">
+      <button id="workspace-button" class="top-button" type="button" aria-label="Open workspaces">⊞</button>
+      <div class="brand"><span class="mary-script small">Mary<span>♡</span></span><em>MOBILE</em></div>
+      <button id="connection-button" class="connection-pill" type="button"><i id="status-dot"></i><span id="status-label">Offline</span></button>
+    </header>
 
-Mary is thinking
-MARY SYSTEM
-Workspace
+    <section id="screen-stack" class="screen-stack">
+      <section class="screen active" data-panel="chat">
+        <div class="chat-stage">
+          <div class="stage-grid"></div>
+          <div class="stage-header"><div><strong>MARY</strong><span>Your AI Companion</span></div><div id="live-badge" class="live-badge"><i></i>LIVE</div></div>
+          <div class="portrait-zone" id="portrait-zone">
+            <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
+            <img class="portrait" src="./assets/mary-reference.jpeg" alt="Mary Cosma" />
+            <div class="avatar-state"><span id="avatar-state-label">IDLE</span><strong id="avatar-mood">Neutral</strong></div>
+          </div>
+          <div class="chat-glass glass">
+            <div id="messages" class="messages" aria-live="polite"><article class="message mary"><header><strong>Mary</strong><time>now</time></header><p>I'm here.</p></article></div>
+            <div id="thinking" class="thinking hidden"><i></i><i></i><i></i><span>Mary is thinking</span></div>
+          </div>
+        </div>
+      </section>
 
-  ◉  ➤
-⌂Home  ▣Chat  ✓Command  ◎Focus  ⊞More
+      <section class="screen" data-panel="home"><div class="scroll-page"><div id="home-content"></div></div></section>
+      <section class="screen" data-panel="command"><div class="scroll-page"><div id="command-content"></div></div></section>
+      <section class="screen" data-panel="focus"><div class="scroll-page"><div id="focus-content"></div></div></section>
+      <section class="screen" data-panel="workspace"><div class="scroll-page"><header class="page-head"><span id="workspace-eyebrow">MARY SYSTEM</span><h1 id="workspace-title">Workspace</h1><p id="workspace-description"></p></header><div id="workspace-content"></div></div></section>
+    </section>
+
+    <section id="composer-deck" class="composer-deck glass">
+      <form id="composer" class="composer">
+        <textarea id="message-input" rows="1" placeholder="Message Mary…" autocomplete="off" autocapitalize="sentences"></textarea>
+        <button id="mic-button" type="button" class="circle mic" aria-label="Talk to Mary">◉</button>
+        <button id="send-button" type="submit" class="circle send" aria-label="Send">➤</button>
+      </form>
+    </section>
+
+    <nav class="bottom-nav glass" aria-label="Mary navigation">
+      <button data-nav="home" type="button"><span>⌂</span><small>Home</small></button>
+      <button data-nav="chat" class="active" type="button"><span>▣</span><small>Chat</small></button>
+      <button data-nav="command" type="button"><span>✓</span><small>Command</small></button>
+      <button data-nav="focus" type="button"><span>◎</span><small>Focus</small></button>
+      <button data-nav="more" type="button"><span>⊞</span><small>More</small></button>
+    </nav>
+
+    <dialog id="workspace-sheet" class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><div><span>MARY SYSTEM</span><strong>Choose a workspace</strong></div><button id="workspace-close" type="button">×</button></div>
+      <div class="workspace-grid">
+        <section><h3>COMPANION</h3><button data-open="memories"><b>◫</b><span>Memories<small>Continuity + recall</small></span></button><button data-open="personality"><b>✦</b><span>Personality<small>Mary's developed self</small></span></button><button data-open="mind"><b>⌬</b><span>Mind<small>Local cognitive reservoir</small></span></button><button data-open="stream"><b>◉</b><span>Presence<small>Notices + current context</small></span></button></section>
+        <section><h3>WORK</h3><button data-open="study"><b>◈</b><span>Study<small>Projects + review</small></span></button><button data-open="search"><b>⌕</b><span>Search<small>Your configured roots</small></span></button><button data-open="research"><b>⌘</b><span>Research<small>Persistent threads</small></span></button><button data-open="arcade"><b>◇</b><span>Arcade<small>Small local games</small></span></button></section>
+        <section><h3>CREATE / MEDIA</h3><button data-open="studio"><b>✎</b><span>Studio<small>Unbeknownst + creative files</small></span></button><button data-open="gallery"><b>▧</b><span>Gallery<small>Mary + project art</small></span></button><button data-open="media"><b>♫</b><span>Media<small>YouTube + research</small></span></button><button data-open="voice"><b>◉</b><span>Voice & Avatar<small>Speech + presentation</small></span></button></section>
+        <section><h3>SYSTEM</h3><button data-open="runtime"><b>⌁</b><span>Runtime<small>Routing + latency</small></span></button><button data-open="settings"><b>⚙</b><span>Settings<small>Connection + device</small></span></button></section>
+      </div>
+    </dialog>
+
+    <dialog id="connection-sheet" class="sheet connection-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><div><span>MARY LINK</span><strong>Connect this device</strong></div><button id="connection-close" type="button">×</button></div>
+      <form id="connection-form" class="form-stack">
+        <label><span>Mary server</span><input id="server-url" type="url" inputmode="url" placeholder="https://your-mary-server.example" /></label>
+        <label><span>Access token</span><input id="access-token" type="password" autocomplete="off" placeholder="Mary mobile token" /></label>
+        <p class="hint" id="connection-hint">The app stores these only on this device. Provider API keys stay on Mary's server.</p>
+        <button class="primary wide" type="submit">Connect to Mary</button>
+        <button id="use-current-origin" class="ghost wide" type="button">Use this browser address</button>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+  </main>
+  <script src="./app.js" defer></script>
+</body>
+</html>

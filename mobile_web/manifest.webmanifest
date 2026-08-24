@@ -8,12 +8,5 @@
   "orientation": "portrait-primary",
   "background_color": "#050611",
   "theme_color": "#080914",
-  "icons": [
-    {
-      "src": "/assets/mary-icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
+  "icons": [{"src":"/assets/mary-icon.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]
 }
