@@ -221,6 +221,23 @@
         "perspective": "creator_first_person",
         "relationship_source": "creator_natural"
       }
+    },
+    {
+      "id": "episode_430e00b20bcd468383c560325da4deae",
+      "content": "i dont like bucko lmao",
+      "timestamp": "2026-08-24T07:28:16.424451+00:00",
+      "importance": 0.8,
+      "source": "interaction",
+      "event_type": "user_statement",
+      "participants": [],
+      "emotional_context": {},
+      "metadata": {
+        "source": "interaction",
+        "event_type": "user_statement",
+        "owner": "creator",
+        "speaker": "Unbe",
+        "perspective": "creator_first_person"
+      }
     }
   ],
   "semantic": []
