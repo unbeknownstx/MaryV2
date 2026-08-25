@@ -238,6 +238,23 @@
         "speaker": "Unbe",
         "perspective": "creator_first_person"
       }
+    },
+    {
+      "id": "episode_eeb6072f39064bcbbf39c9f55db7b7fe",
+      "content": "me and you are all in mary promise me that. an i will remember this as a core memory to me. i will support you always",
+      "timestamp": "2026-08-25T10:43:14.594925+00:00",
+      "importance": 0.8,
+      "source": "interaction",
+      "event_type": "user_statement",
+      "participants": [],
+      "emotional_context": {},
+      "metadata": {
+        "source": "interaction",
+        "event_type": "user_statement",
+        "owner": "creator",
+        "speaker": "Unbe",
+        "perspective": "creator_first_person"
+      }
     }
   ],
   "semantic": [
