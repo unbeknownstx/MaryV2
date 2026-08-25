@@ -64,3 +64,32 @@ def test_corrupt_provider_output_fails_over_before_reaching_mary():
     assert good.calls == 1
     assert router.last_generation_attempts[0]["status"] == "invalid_output"
     assert router.last_generation_attempts[-1]["status"] == "success"
+
+
+def test_classifier_label_leakage_is_rejected():
+    issue = inspect_output_quality(
+        "User Safety: safe",
+        [LLMMessage(role="user", content="hey Mary what's up")],
+    )
+    assert issue is not None
+    assert issue.code == "classifier_leakage"
+
+
+def test_classifier_label_leakage_fails_over_before_reaching_mary():
+    config = Config()
+    config.llm.provider = "primary"
+    config.llm.fallback_providers = ["secondary"]
+    config.llm.routing_strategy = "configured"
+    router = LLMRouter(config)
+    leaked = ContentProvider("primary", "User Safety: safe")
+    good = ContentProvider("secondary", "Not much. I'm here with you.")
+    router.register_provider("primary", leaked)
+    router.register_provider("secondary", good)
+
+    response = router.generate([
+        LLMMessage(role="user", content="hey Mary what's up"),
+    ])
+
+    assert response.provider == "secondary"
+    assert response.content == "Not much. I'm here with you."
+    assert router.last_generation_attempts[0]["status"] == "invalid_output"
