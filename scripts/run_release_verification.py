@@ -115,6 +115,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("fast_dialogue_connected_presence_12_11", "scripts.verify_connected_companion_12_11"),
     ("cognitive_character_runtime_12_12", "scripts.verify_character_runtime_12_12"),
     ("natural_conversation_12_12_2", "scripts.verify_natural_conversation_12_12_2"),
+    ("mobile_12_13", "scripts.verify_mobile_12_13"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
