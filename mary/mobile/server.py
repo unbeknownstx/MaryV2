@@ -38,9 +38,10 @@ from mary.ecosystem import MaryEcosystem
 from mary.presence import PresenceEventType
 from mary.runtime.application import MaryApplication, create_application
 from mary.mobile.audio import MobileSpeechService
+from mary.mobile.voice_lab import VoiceLabStore, BASELINE as VOICE_BASELINE
 
 
-MOBILE_PROTOCOL_VERSION = "2"
+MOBILE_PROTOCOL_VERSION = "4"
 MAX_REQUEST_BYTES = 256_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
 
@@ -120,9 +121,13 @@ class MaryMobileRuntime:
         self.ecosystem = MaryEcosystem(self.application.mary)
         self.creative_workspace = CreativeWorkspaceManager()
         self.speech = MobileSpeechService()
+        data_root = Path(self.application.mary.config.paths.data)
+        self.voice_lab = VoiceLabStore(data_root / "voice" / "voice_lab.json")
+        self.speech.apply_voice_profile(self.voice_lab.selected())
         self._lock = RLock()
         self._busy = False
         self._last_trace: dict[str, Any] = {}
+        self._last_feedback_context: dict[str, Any] = {}
         try:
             self.application.mary.avatar.ready()
         except Exception:
@@ -158,6 +163,13 @@ class MaryMobileRuntime:
                         "host_type": environment.get("host_type", "unknown"),
                         "effective_conversation_route": environment.get("effective_conversation_route", []),
                     },
+                    "engagement": self.application.mary.engagement.status(),
+                    "growth": self.application.mary.growth.status(),
+                    "realtime": self.application.mary.realtime.status(),
+                    "nodes": self.application.mary.node_registry.snapshot(),
+                    "retrieval": self.application.mary.mind.retrieval.status(),
+                    "perception": self.application.mary.perception_director.snapshot(),
+                    "training_feedback": self.application.mary.training_feedback.status(),
                 }
             )
 
@@ -194,6 +206,14 @@ class MaryMobileRuntime:
                 "protocol": MOBILE_PROTOCOL_VERSION,
                 "surface": "pwa",
             }
+            payload["engagement"] = self.application.mary.engagement.status()
+            payload["growth"] = self.application.mary.growth.status()
+            payload["voice_lab"] = self.voice_lab.public_state()
+            payload["realtime"] = self.application.mary.realtime.status()
+            payload["nodes"] = self.application.mary.node_registry.snapshot()
+            payload["retrieval"] = self.application.mary.mind.retrieval.status()
+            payload["perception"] = self.application.mary.perception_director.snapshot()
+            payload["training_feedback"] = self.application.mary.training_feedback.status()
             return _json_safe(payload)
 
     def ecosystem_state(self) -> dict[str, Any]:
@@ -274,6 +294,16 @@ class MaryMobileRuntime:
 
             with self._lock:
                 self._last_trace = trace
+                engagement_status = mary.engagement.status()
+                active_session = dict(engagement_status.get("active_session", {}) or {})
+                self._last_feedback_context = {
+                    "user_text": value,
+                    "assistant_text": response_text,
+                    "provider": str(trace.get("provider") or "unknown"),
+                    "model": str(trace.get("model") or "unknown"),
+                    "conversation_mode": str(active_session.get("mode") or engagement_status.get("mode") or "adaptive"),
+                    "turn_id": str(result.turn_id or ""),
+                }
 
             return _json_safe(
                 {
@@ -296,6 +326,9 @@ class MaryMobileRuntime:
                         "conversation_lane": getattr(lane.lane, "value", str(lane.lane)),
                     },
                     "character": self.character_state(runtime_status="idle"),
+                    "engagement": mary.engagement.status(),
+                    "growth": mary.growth.status(),
+                    "realtime": mary.realtime.status(),
                     "dashboard": self.dashboard_state(runtime_status="idle"),
                 }
             )
@@ -328,11 +361,23 @@ class MaryMobileRuntime:
         filename: str | None = None,
         content_type: str | None = None,
     ) -> dict[str, Any]:
-        return self.speech.transcribe(
-            audio,
-            filename=filename,
-            content_type=content_type,
-        )
+        mary = self.application.mary
+        if not mary.realtime.should_accept_audio_input(source="mobile_microphone"):
+            return {
+                "ok": False,
+                "text": "",
+                "suppressed": True,
+                "reason": "anti_echo_while_mary_speaking",
+            }
+        mary.realtime.mark_transcribing(True, source="mobile_stt")
+        try:
+            return self.speech.transcribe(
+                audio,
+                filename=filename,
+                content_type=content_type,
+            )
+        finally:
+            mary.realtime.mark_transcribing(False, source="mobile_stt")
 
     def _publish(self, event_type: PresenceEventType, summary: str, **metadata: Any) -> None:
         try:
@@ -367,6 +412,88 @@ class MaryMobileRuntime:
                 return self.last_turn_trace()
             if name == "getMobileVoiceStatus":
                 return self.voice_status()
+            if name == "getConversationEngagement":
+                return self.application.mary.engagement.status()
+            if name == "setConversationMode":
+                return self.application.mary.engagement.set_mode(str(values[0] if values else "adaptive"))
+            if name == "beginConversationSession":
+                mode = str(values[0] if values else "engaged")
+                turns = int(values[1] if len(values) > 1 else 8)
+                self.application.mary.engagement.begin_session(mode, turns=turns, reason="mobile_control")
+                return self.application.mary.engagement.status()
+            if name == "endConversationSession":
+                self.application.mary.engagement.end_session()
+                return self.application.mary.engagement.status()
+            if name == "getGrowthState":
+                return self.application.mary.growth.status()
+            if name == "getRealtimeState":
+                return self.application.mary.realtime.status()
+            if name == "getAttentionState":
+                return self.application.mary.realtime.attention.snapshot()
+            if name == "getNodeState":
+                return self.application.mary.node_registry.snapshot()
+            if name == "getRetrievalState":
+                return self.application.mary.mind.retrieval.status()
+            if name == "reportSpeechStarted":
+                turn_id = str(values[0] if values else "") or None
+                self.application.mary.realtime.speech_started(turn_id=turn_id, source="mobile_client")
+                return self.application.mary.realtime.status()
+            if name == "reportSpeechEnded":
+                reason = str(values[0] if values else "speech_finished")
+                self.application.mary.realtime.speech_ended(reason=reason)
+                return self.application.mary.realtime.status()
+            if name == "reportSpeechInterrupted":
+                reason = str(values[0] if values else "client_barge_in")
+                self.application.mary.realtime.interrupt(reason=reason, by_source="mobile_client")
+                self.application.mary.realtime.speech_ended(reason="interrupted")
+                return self.application.mary.realtime.status()
+            if name == "rebuildSemanticVectors":
+                limit = int(values[0]) if values else None
+                return self.application.mary.mind.rebuild_vectors(limit=limit)
+            if name == "getTrainingFeedbackState":
+                return self.application.mary.training_feedback.status()
+            if name == "recordResponseFeedback":
+                rating = str(values[0] if values else "neutral")
+                tags = list(values[1] if len(values) > 1 and isinstance(values[1], list) else [])
+                note = str(values[2] if len(values) > 2 else "")
+                with self._lock:
+                    context = dict(self._last_feedback_context)
+                if not context:
+                    raise ValueError("No completed mobile turn is available to rate.")
+                record = self.application.mary.training_feedback.record(
+                    rating=rating,
+                    tags=tags,
+                    note=note,
+                    **context,
+                )
+                return {
+                    "ok": True,
+                    "id": record.id,
+                    "status": self.application.mary.training_feedback.status(),
+                }
+            if name == "getVoiceLab":
+                return self.voice_lab.public_state()
+            if name == "saveVoiceProfile":
+                label = str(values[0] if values else "Mary Voice")
+                voice_id = str(values[1] if len(values) > 1 else "")
+                settings = dict(values[2] if len(values) > 2 and isinstance(values[2], dict) else VOICE_BASELINE)
+                item = self.voice_lab.save_profile(label, voice_id, settings=settings, select=True)
+                self.speech.apply_voice_profile(item)
+                return self.voice_lab.public_state()
+            if name == "selectVoiceProfile":
+                item = self.voice_lab.select(str(values[0]))
+                self.speech.apply_voice_profile(item)
+                return self.voice_lab.public_state()
+            if name == "deleteVoiceProfile":
+                self.voice_lab.delete(str(values[0]))
+                self.speech.apply_voice_profile(self.voice_lab.selected())
+                return self.voice_lab.public_state()
+            if name == "resetVoiceBaseline":
+                item = self.voice_lab.selected()
+                if item is not None:
+                    item = self.voice_lab.save_profile(str(item.get("label") or "Mary Voice"), str(item.get("voice_id") or ""), settings=dict(VOICE_BASELINE), profile_id=str(item.get("id") or ""), select=True)
+                    self.speech.apply_voice_profile(item)
+                return self.voice_lab.public_state()
             if name == "rebuildCognitiveReservoir":
                 try:
                     count = int(self.application.mary.mind.rebuild_reservoir())

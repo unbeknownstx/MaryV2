@@ -8,6 +8,6 @@ Mary is or mutating her persistent personal state.
 from __future__ import annotations
 
 APP_NAME = "MaryV2"
-APP_VERSION = "12.12.2"
+APP_VERSION = "13.1.1"
 RELEASE_CHANNEL = "private-v2"
-DESKTOP_PHASE = "cognitive-reservoir-character-runtime"
+DESKTOP_PHASE = "realtime-cognitive-infrastructure"

@@ -51,3 +51,17 @@ button.primary,button.ghost,button.action,.action{min-height:46px;border-radius:
 @media (prefers-reduced-motion: reduce) {
   .circle.transcribing { animation: none; }
 }
+
+/* ============================================================
+   MARYV2 13.1 · REALTIME COGNITIVE INFRASTRUCTURE
+   Intentional conversation, growth visibility, and Voice Lab.
+   ============================================================ */
+.conversation-mode-bar{position:absolute;z-index:12;top:47px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;border-color:rgba(74,223,255,.14);background:rgba(6,7,20,.72);backdrop-filter:blur(18px);max-width:calc(100% - 28px)}
+.conversation-mode-bar button{border:0;background:transparent;color:var(--muted);font-size:7px;letter-spacing:.11em;padding:6px 9px;border-radius:999px;font-weight:800}.conversation-mode-bar button.active{color:#fff;background:linear-gradient(135deg,rgba(255,79,166,.28),rgba(141,104,255,.28));box-shadow:inset 0 0 0 1px rgba(255,157,204,.2),0 0 14px rgba(141,104,255,.12)}.conversation-mode-bar span{font-size:7px;color:var(--cyan);padding:0 7px 0 4px;white-space:nowrap}
+.growth-callout{margin-top:10px;padding:12px;border:1px solid rgba(74,223,255,.15);border-radius:14px;background:linear-gradient(145deg,rgba(74,223,255,.05),rgba(141,104,255,.06))}.growth-callout span{display:block;font-size:7px;letter-spacing:.14em;color:var(--cyan)}.growth-callout strong{display:block;font-size:13px;margin:5px 0}.growth-callout small{display:block;font-size:9px;line-height:1.45;color:var(--muted)}
+.voice-profile-list{display:grid;gap:7px;margin-bottom:12px}.voice-profile{width:100%;text-align:left;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);border-radius:13px;padding:11px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px}.voice-profile strong{font-size:11px}.voice-profile small{font-size:8px;color:var(--dim);text-align:right}.voice-profile.selected{border-color:rgba(74,223,255,.3);box-shadow:0 0 18px rgba(74,223,255,.07);background:rgba(74,223,255,.045)}.voice-profile.selected strong{color:var(--cyan)}
+.voice-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.voice-grid input{width:100%;min-height:42px}
+.tag.ready{border-color:rgba(75,231,165,.3);color:var(--green)}
+#workspace-content .panel{position:relative;overflow:hidden}#workspace-content .panel:after{content:"";position:absolute;pointer-events:none;inset:0;background:linear-gradient(115deg,transparent 0 78%,rgba(74,223,255,.018));}
+@media(max-width:380px){.conversation-mode-bar{top:45px}.conversation-mode-bar button{padding:5px 7px}.conversation-mode-bar span{display:none}.voice-grid{grid-template-columns:1fr 1fr}}
+.message-feedback{display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,.06)}.message-feedback span{font-size:6px;letter-spacing:.1em;color:var(--dim);margin-right:auto}.message-feedback button{width:25px;height:22px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px}.message-feedback button:active{transform:scale(.94);color:var(--cyan)}

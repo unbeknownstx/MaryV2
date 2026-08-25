@@ -25,8 +25,8 @@ def main() -> int:
     print("MARYV2 12.10 PRESENCE + PRESENTATION")
     print("=" * 72)
 
-    check("12.10 presentation remains installed under current release", APP_VERSION in {"12.10.0", "12.11.0", "12.12.0", "12.12.2"})
-    check("presence presentation remains installed under current phase", DESKTOP_PHASE in {"presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime"})
+    check("12.10 presentation remains installed under current release", APP_VERSION in {"12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1"})
+    check("presence presentation remains installed under current phase", DESKTOP_PHASE in {"presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime", "connected-development-evolution", "realtime-cognitive-infrastructure"})
 
     required = (
         "mary/ecosystem/companion.py",
@@ -80,7 +80,7 @@ def main() -> int:
             os.environ["MARY_DATA_DIR"] = old_data
 
     package = json.loads((ROOT / "PACKAGE_INFO.json").read_text(encoding="utf-8"))
-    check("package metadata is 12.10 or later", package.get("version") in {"12.10.0", "12.11.0", "12.12.0", "12.12.2"} and package.get("desktop_phase") in {"presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime"})
+    check("package metadata is 12.10 or later", package.get("version") in {"12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1"} and package.get("desktop_phase") in {"presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime", "connected-development-evolution", "realtime-cognitive-infrastructure"})
 
     print("=" * 72)
     print("MARYV2 12.10 PRESENCE + PRESENTATION VERIFIED")

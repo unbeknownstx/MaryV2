@@ -87,7 +87,7 @@ def test_completed_turn_becomes_context_for_next_turn():
     conversation = second.context.conversation
 
     assert {"role": "user", "content": "Hello Mary"} in conversation
-    assert {"role": "assistant", "content": "Hey. I'm here."} in conversation
+    assert {"role": "assistant", "content": first.final_response} in conversation
     assert all(item["content"] != "That was interesting." for item in conversation)
 
 
@@ -125,8 +125,11 @@ def test_natural_reply_does_not_spend_second_reflection_call():
 
     result = mary.process("Hello Mary")
 
-    assert result.reflection.metadata["mode"] == "local_character_audit"
-    assert len(router.calls) == 1
+    # Production Hybrid V2 promotes low-risk greetings to the deterministic
+    # local mind. The stronger contract is zero model calls, including
+    # reflection, rather than one generation plus a local audit.
+    assert result.reflection.metadata["mode"] == "local_mind_no_model"
+    assert len(router.calls) == 0
 
 
 def test_explicit_creator_communication_preference_shapes_disposition():

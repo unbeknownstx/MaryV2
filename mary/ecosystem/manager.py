@@ -28,7 +28,10 @@ class MaryEcosystem:
         self.arcade = MaryArcade()
         self.metrics = RuntimeMetrics()
         self.skills = SkillRegistry()
-        self.presence = PresenceManager(self.root / "presence")
+        self.presence = PresenceManager(
+            self.root / "presence",
+            attention=getattr(getattr(mary, "realtime", None), "attention", None),
+        )
         self.youtube = YouTubeSearch()
         # Creator-selected workspace gets priority over the repository itself.
         roots: list[Path] = []

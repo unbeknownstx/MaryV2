@@ -43,11 +43,11 @@ def test_frontend_marks_mary_speaking_during_audio_playback() -> None:
 
 def test_desktop_voice_uses_calibrated_mary_settings_from_environment() -> None:
     source = (_root() / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8")
-    assert 'MARY_TTS_STABILITY", 0.42' in source
-    assert 'MARY_TTS_SIMILARITY", 0.82' in source
-    assert 'MARY_TTS_STYLE", 0.11' in source
-    assert 'MARY_TTS_SPEED", 0.97' in source
-    assert 'MARY_TTS_SPEAKER_BOOST", True' in source
+    assert 'MARY_TTS_STABILITY", 0.50' in source
+    assert 'MARY_TTS_SIMILARITY", 0.75' in source
+    assert 'MARY_TTS_STYLE", 0.0' in source
+    assert 'MARY_TTS_SPEED", 1.0' in source
+    assert 'MARY_TTS_SPEAKER_BOOST", False' in source
 
 
 def test_desktop_voice_always_renders_spoken_text_for_transcript_sync() -> None:

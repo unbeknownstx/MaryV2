@@ -45,6 +45,7 @@ from mary.agency.agency import Agency
 from mary.autonomy.runtime import AutonomyRuntime
 
 from mary.conversation.service import ConversationService
+from mary.conversation.engagement import ConversationEngagement
 
 from mary.expression.dialogue import DialogueManager
 from mary.expression.emotion import EmotionManager
@@ -121,8 +122,18 @@ from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.environment import RuntimeEnvironment
+from mary.realtime import RealtimeInteractionCoordinator
+from mary.distributed import NodeRegistry
+from mary.perception import PerceptionDirector
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 from mary.mind import CharacterMind
+from mary.mind.production_bridge import (
+    apply_local_cycle_metadata,
+    merge_escalated_cycle_metadata,
+    safe_local_metadata,
+)
+from mary.development import GrowthEngine
+from mary.training import ResponseFeedbackStore
 
 
 class Mary:
@@ -284,6 +295,26 @@ class Mary:
         self.runtime_environment = RuntimeEnvironment(config=self.config, router=self.llm)
         self.runtime_introspection = RuntimeIntrospection()
 
+        # ============================================================
+        # REALTIME / DISTRIBUTED CAPABILITY FOUNDATION (13.1)
+        # ============================================================
+
+        # Realtime coordination is ephemeral process state. It gives text,
+        # speech, future streaming audio, perception, and background events one
+        # interruption/attention vocabulary without becoming another memory or
+        # identity owner.
+        self.realtime = RealtimeInteractionCoordinator()
+
+        # Compute nodes are replaceable resources. 13.1 registers the current
+        # host only; the same registry is ready for a later secure cloud/home
+        # node transport without moving Mary's identity into a machine record.
+        self.node_registry = NodeRegistry.with_local_runtime(self.runtime_environment)
+
+        # Perception providers must describe before Mary interprets. Raw frames
+        # are never stored by this boundary and observations enter the same
+        # bounded attention bus as other realtime context.
+        self.perception_director = PerceptionDirector(self.realtime.attention)
+
         # Ephemeral runtime metadata only. This is intentionally not persisted:
         # it records which provider/model generated the most recent successful
         # model-backed turn in this process so Mary can answer runtime questions
@@ -336,6 +367,10 @@ class Mary:
         self.conversation = ConversationService(
             router=self.llm,
         )
+
+        # Conversation engagement governs how much room a thread receives.
+        # It is deterministic and separate from identity/memory authority.
+        self.engagement = ConversationEngagement()
 
         # ============================================================
         # EXPRESSION
@@ -582,6 +617,17 @@ class Mary:
         # share one router/emotion/authority layout after integration changes.
         self.system_contract = MarySystemContract()
 
+        # Post-turn development closes the loop from grounded experience to
+        # safe memory consolidation, milestones, and strictly evidenced self
+        # development. It never treats model dialogue as durable self evidence.
+        self.growth = GrowthEngine(self)
+
+        # Explicit creator ratings are kept in a separate private evaluation
+        # dataset for future Mary-specific model evaluation/training. Merely
+        # talking to Mary never creates a training record, and feedback is not
+        # identity/memory/development authority.
+        self.training_feedback = ResponseFeedbackStore()
+
     # ================================================================
     # PRIMARY ENTRY POINT
     # ================================================================
@@ -606,6 +652,11 @@ class Mary:
 
         intent = self._detect_intent(
             input_text
+        )
+
+        engagement_plan = self.engagement.begin_turn(
+            input_text,
+            intent_name=intent.intent_type.value,
         )
 
         # Learn only clear, naturally volunteered creator facts before context
@@ -669,12 +720,57 @@ class Mary:
         ):
             incoming_emotion_payload = incoming_emotion_appraisal.to_dict()
 
+        # Realtime sources (perception, presence, tools, future node events) may
+        # have meaningful pending context. Claim only a tiny high-value window
+        # for this turn. These events remain explicitly context-only and never
+        # gain creator/memory authority by entering the prompt.
+        try:
+            attention_events = self.realtime.attention.claim_context(
+                limit=2,
+                minimum_importance=0.6,
+            )
+        except Exception:
+            attention_events = []
+
         context = self._build_context(
             input_text,
             intent=intent,
             recent_conversation=session_history,
             incoming_emotion_appraisal=incoming_emotion_payload,
         )
+        mind_state = context.setdefault("mind_state", {})
+        mind_state["conversation_engagement"] = engagement_plan.to_dict()
+        if attention_events:
+            runtime_context = mind_state.setdefault("runtime_context", {})
+            if isinstance(runtime_context, dict):
+                runtime_context["attention_context"] = [
+                    {
+                        "source": event.source.value,
+                        "summary": event.summary[:280],
+                        "importance": round(float(event.importance), 3),
+                        "authority": "context_only",
+                    }
+                    for event in attention_events
+                ]
+        if engagement_plan.effective_mode in {"engaged", "deep"}:
+            try:
+                unresolved = list(self.relationship_curiosity.unresolved_gaps())
+            except Exception:
+                unresolved = []
+            if unresolved:
+                gap = dict(unresolved[0])
+                mind_state["conversation_initiative"] = {
+                    "permission": "proactive_within_current_thread",
+                    "grounded_gap": {
+                        key: gap.get(key)
+                        for key in ("category", "description", "question", "status", "source")
+                        if gap.get(key) not in (None, "", [], {})
+                    },
+                    "guidance": (
+                        "Mary may ask one specific question that advances this represented gap when it fits the flow; "
+                        "react to the creator's answer first and do not conduct an interview."
+                    ),
+                }
         # From this point forward, "recent_conversation" means the bounded
         # LLM-facing window selected by the context lifecycle, not the entire
         # in-session transcript.
@@ -921,6 +1017,7 @@ class Mary:
             local_mind_error = None
 
         if local_mind_result is not None and local_mind_result.handled:
+            safe_local = safe_local_metadata(local_mind_result.metadata)
             cycle = self._build_system_cycle_result(
                 input_text=input_text,
                 intent=intent,
@@ -928,24 +1025,12 @@ class Mary:
                 context=context,
                 metadata={
                     "handled_by": "mary_local_mind",
-                    "local_mind": dict(local_mind_result.metadata),
+                    "local_mind": safe_local,
                     "llm_calls_after_action": 0,
                 },
             )
-            plan = dict(local_mind_result.metadata.get("plan", {}) or {})
             cycle.reasoning.reasoning_type = "local_character_mind"
-            cycle.reasoning.metadata.update({
-                "provider": "local/mind",
-                "model": "procedural-reservoir",
-                "generation_purpose": "local_dialogue",
-                "routing_purpose": "local_dialogue",
-                "conversation_lane": {
-                    "lane": "social_instant" if plan.get("target_length", "micro") == "micro" else "conversation",
-                    "rationale": plan.get("rationale", "local mind"),
-                    "latency_target_ms": 200,
-                    "allow_model_revision": False,
-                },
-            })
+            apply_local_cycle_metadata(cycle, local_mind_result.metadata)
             cycle.reflection.metadata.update({
                 "mode": "local_mind_no_model",
                 "llm_calls": 0,
@@ -954,6 +1039,12 @@ class Mary:
 
         if local_mind_error:
             context.setdefault("mind_state", {}).setdefault("local_mind", {})["error"] = local_mind_error
+        elif local_mind_result is not None:
+            # Only bounded control-plane fields enter cognition.  Canonical plan
+            # semantics and selected fact values remain inside the local mind.
+            context.setdefault("mind_state", {})["local_mind"] = safe_local_metadata(
+                local_mind_result.metadata
+            )
 
         result = self.cognition.process(
             input_text=input_text,
@@ -971,6 +1062,9 @@ class Mary:
             ).get("active_goals", []),
             mind_state=context.get("mind_state", {}),
         )
+
+        if local_mind_result is not None and not local_mind_result.handled:
+            merge_escalated_cycle_metadata(result, local_mind_result.metadata)
 
         if natural_relationship_learning is not None:
             result.metadata["natural_relationship_learning"] = dict(
@@ -1132,6 +1226,20 @@ class Mary:
             self.mind.observe_completed_turn(result)
         except Exception as exc:
             result.metadata["local_mind_observe_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            self.engagement.complete_turn(result.final_response)
+            result.metadata["conversation_engagement"] = self.engagement.status()
+        except Exception as exc:
+            result.metadata["conversation_engagement_error"] = f"{type(exc).__name__}: {exc}"
+
+        try:
+            result.metadata["growth"] = self.growth.observe_turn(
+                input_text=input_text,
+                result=result,
+            )
+        except Exception as exc:
+            result.metadata["growth_error"] = f"{type(exc).__name__}: {exc}"
 
         return result
 
@@ -1817,7 +1925,7 @@ class Mary:
         return value
 
     @staticmethod
-    def _shared_work_evidence(text: str) -> str | None:
+    def _shared_work_evidence(text: str, *, allow_test_probe: bool = False) -> str | None:
         """Return a conservative creator-authored shared-work statement.
 
         Questions about shared work are retrieval requests, not new evidence. A
@@ -1826,7 +1934,7 @@ class Mary:
         """
 
         raw = " ".join(str(text or "").split()).strip()
-        if not raw or text_has_test_probe_marker(raw):
+        if not raw or (text_has_test_probe_marker(raw) and not allow_test_probe):
             return None
 
         normalized = normalize_for_matching(raw)
@@ -1872,6 +1980,7 @@ class Mary:
         input_text: str,
         *,
         intent: Intent,
+        allow_test_probe: bool = False,
     ) -> dict[str, Any] | None:
         """Persist only clear creator-authored shared project/work milestones.
 
@@ -1884,7 +1993,7 @@ class Mary:
         if intent_name not in {"conversation", "question", "request", "feedback"}:
             return None
 
-        evidence = self._shared_work_evidence(input_text)
+        evidence = self._shared_work_evidence(input_text, allow_test_probe=allow_test_probe)
         if evidence is None:
             return None
 
@@ -1910,7 +2019,11 @@ class Mary:
             metadata={
                 "kind": "shared_work",
                 "owner": "creator",
-                "source": "creator_natural_shared_work",
+                "source": (
+                    "production_benchmark_fixture"
+                    if allow_test_probe
+                    else "creator_natural_shared_work"
+                ),
             },
         )
         self.relationship.save()
@@ -2118,11 +2231,12 @@ class Mary:
             source: str,
             score: int,
             creator_owned: bool = False,
+            allow_test_probe: bool = False,
         ) -> None:
             value = " ".join(str(text or "").split()).strip()
             if creator_owned:
                 value = self._render_creator_owned_shared_work(value)
-            if not value or text_has_test_probe_marker(value):
+            if not value or (text_has_test_probe_marker(value) and not allow_test_probe):
                 return
             key = normalize_for_matching(value)
             if not key or key in seen:
@@ -2152,6 +2266,7 @@ class Mary:
                     source="shared_work_history",
                     score=94,
                     creator_owned=metadata.get("owner") == "creator",
+                    allow_test_probe=metadata.get("source") == "production_benchmark_fixture",
                 )
 
         # Current-session evidence keeps a brand-new milestone available before

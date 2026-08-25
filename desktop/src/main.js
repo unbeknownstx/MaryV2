@@ -819,6 +819,7 @@ function applyDashboardState(raw) {
 const SCREEN_META = {
   home: ['MARY HOME', 'Companion Pulse', 'A read-only live view across Mary, your workspaces, quiet notices, focus, and represented curiosity.'],
   memories: ['MEMORY ARCHIVE', 'Memories', 'Structured creator knowledge, shared history, and continuity.'],
+  growth: ['INNER LIFE', 'Growth', 'Grounded experience, learning, milestones, and Mary’s developing self.'],
   personality: ['MARY PROFILE', 'Personality', 'Mary’s authored and developed character state, separated from provider behavior.'],
   mind: ['LOCAL MIND', 'Cognitive Reservoir', 'Mary’s fast rebuildable local mind: hot state, structured retrieval, dialogue policy, escalation, and model roles.'],
   studio: ['CREATIVE MODE', 'Studio · Unbeknownst', 'A persistent creative workspace for chapters, lore, storyboards, and approved creative tools.'],
@@ -918,6 +919,24 @@ function renderMemories() {
       </div>
     </div>
   `;
+}
+
+function renderGrowth() {
+  const growth = dashboardState.growth || {};
+  const journal = growth.journal || {};
+  const engagement = dashboardState.engagement || {};
+  const session = engagement.active_session || {};
+  const candidates = growth.preference_candidates || [];
+  const milestones = growth.recent_milestones || [];
+  return `
+    <div class="workspace-grid three">
+      <div class="workspace-panel accent"><h3>Experience</h3><div class="data-row"><span>Retained</span><strong>${journal.records ?? 0}</strong></div><div class="data-row"><span>Meaningful</span><strong>${journal.meaningful_records ?? 0}</strong></div><p>Observable turn outcomes only. No hidden chain-of-thought is stored.</p></div>
+      <div class="workspace-panel accent"><h3>Development</h3><div class="data-row"><span>Semantic promotions</span><strong>${growth.semantic_promotions ?? 0}</strong></div><div class="data-row"><span>Developed preferences</span><strong>${growth.preference_promotions ?? 0}</strong></div><div class="data-row"><span>Milestones</span><strong>${growth.milestones_created ?? 0}</strong></div></div>
+      <div class="workspace-panel"><h3>Conversation</h3><div class="data-row"><span>Mode</span><strong>${escapeHtml(titleCase(session.mode || engagement.mode || 'adaptive'))}</strong></div><div class="data-row"><span>Thread turns</span><strong>${session.turns_remaining ?? 0}</strong></div><p>Intentional Talk/Deep sessions trade some latency for continuity, initiative, and room to think.</p></div>
+    </div>
+    <div class="section-title">DEVELOPING</div><div class="workspace-panel"><div class="command-list">${listOrEmpty(candidates,(item)=>`<div class="command-row"><span class="kind">↟</span><div><strong>${escapeHtml(titleCase(item.name))}</strong><small>${item.observations || 0} grounded observations · confidence ${Math.round(Number(item.confidence || 0)*100)}%</small></div><span class="status-chip">${item.eligible?'ELIGIBLE':'WATCH'}</span></div>`,'No development candidates yet.')}</div></div>
+    <div class="section-title">MILESTONES</div><div class="workspace-panel timeline">${listOrEmpty(milestones,(item)=>`<div class="timeline-row"><span></span><div><strong>${escapeHtml(item.title || 'Milestone')}</strong><small>${escapeHtml(item.description || '')}</small></div></div>`,'No development milestones yet.')}</div>
+    <div class="workspace-panel"><h3>Protected growth boundary</h3><p>Model dialogue cannot become durable self-evidence. Canonical values/personality stay protected while repeated grounded experience can produce safe semantic learning and strict preference development.</p></div>`;
 }
 
 function renderPersonality() {
@@ -1105,6 +1124,16 @@ function renderDiagnostics() {
   const rows = Object.entries(metrics);
   const trace = normalizeTurnTrace(ecosystemState.last_turn || lastTurnTrace);
   const timings = trace.timings || {};
+  const realtime = dashboardState.realtime || runtimeStatus.realtime || {};
+  const realtimeStats = realtime.stats || {};
+  const attention = realtime.attention || {};
+  const nextAttention = attention.next || {};
+  const nodes = dashboardState.nodes || runtimeStatus.nodes || {};
+  const nodeItems = nodes.nodes || [];
+  const retrieval = dashboardState.retrieval || runtimeStatus.retrieval || {};
+  const vectorIndex = retrieval.vector_index || {};
+  const perception = dashboardState.perception || runtimeStatus.perception || {};
+  const feedback = dashboardState.training_feedback || runtimeStatus.training_feedback || {};
   const timeline = [
     ['Provider call', timingValue(trace, 'provider_call_ms')],
     ['Reasoning', timingValue(trace, 'reasoning_ms')],
@@ -1122,8 +1151,19 @@ function renderDiagnostics() {
     <div class="workspace-panel hero-panel"><h3>Last Turn Trace</h3><p>Measured from the real runtime: provider, cognition, reflection, speech, and perceived response timing. This telemetry is ephemeral and never becomes Mary memory.</p>
       <div class="trace-stack">${timeline.length ? timeline.map(([label,value]) => `<div class="trace-row"><span>${escapeHtml(label)}</span><i style="width:${Math.max(2,(value/max)*100)}%"></i><strong>${escapeHtml(formatMilliseconds(value))}</strong></div>`).join('') : '<div class="workspace-empty">Complete one desktop turn to populate the trace.</div>'}</div>
     </div>
-    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
+    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Response class</span><strong>${escapeHtml(titleCase(trace.response_class || trace.local_mind?.response_class || '—'))}</strong></div><div class="data-row"><span>Engine</span><strong>${escapeHtml(trace.response_engine || trace.local_mind?.response_engine || '—')}</strong></div><div class="data-row"><span>Escalation</span><strong>${escapeHtml(trace.escalation_reason || trace.local_mind?.escalation_reason || '—')}</strong></div><div class="data-row"><span>Shadow</span><strong>${trace.local_mind?.shadow_enabled ? 'ON' : 'OFF'}</strong></div><div class="data-row"><span>Shadow latency</span><strong>${escapeHtml(formatMilliseconds(timings.shadow_ms))}</strong></div><div class="data-row"><span>Classification</span><strong>${escapeHtml(formatMilliseconds(timings.classification_ms))}</strong></div><div class="data-row"><span>Local composer</span><strong>${escapeHtml(formatMilliseconds(timings.local_composer_ms))}</strong></div><div class="data-row"><span>Local audit</span><strong>${escapeHtml(formatMilliseconds(timings.local_audit_ms))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
   </div>
+  <div class="section-title">REALTIME COGNITIVE INFRASTRUCTURE</div>
+  <div class="workspace-grid three">
+    <div class="workspace-panel accent"><h3>Interaction</h3><div class="data-row"><span>Phase</span><strong>${escapeHtml(titleCase(realtime.phase || 'idle'))}</strong></div><div class="data-row"><span>Anti-echo</span><strong>${realtime.anti_echo === false ? 'OFF' : 'ON'}</strong></div><div class="data-row"><span>Interruptions</span><strong>${realtimeStats.interruptions ?? 0}</strong></div><div class="data-row"><span>Echo suppressions</span><strong>${realtimeStats.suppressed_echo_inputs ?? 0}</strong></div><p>One shared lifecycle coordinates text, speech, interruption and future streaming clients without owning character state.</p></div>
+    <div class="workspace-panel"><h3>Attention Bus</h3><div class="data-row"><span>Pending</span><strong>${attention.pending ?? 0}</strong></div><div class="data-row"><span>Published / claimed</span><strong>${attention.published ?? 0} / ${attention.claimed ?? 0}</strong></div><div class="data-row"><span>Dropped</span><strong>${attention.dropped ?? 0}</strong></div><div class="data-row"><span>Next</span><strong>${escapeHtml(titleCase(nextAttention.source || 'none'))}</strong></div><p>Urgency controls what Mary should consider first; provenance and truth remain separate.</p></div>
+    <div class="workspace-panel"><h3>Perception Boundary</h3><div class="data-row"><span>Recent observations</span><strong>${(perception.recent || []).length}</strong></div><p>Perception providers describe objective observations. Mary interprets them through her own represented state; raw media is not stored here.</p></div>
+  </div>
+  <div class="workspace-grid">
+    <div class="workspace-panel"><h3>Hybrid Memory Retrieval</h3><div class="data-row"><span>Mode</span><strong>${escapeHtml(retrieval.mode || 'auto')}</strong></div><div class="data-row"><span>Embedding model</span><strong>${escapeHtml(retrieval.embedding_model || '—')}</strong></div><div class="data-row"><span>Vector records</span><strong>${vectorIndex.records ?? vectorIndex.count ?? 0}</strong></div><div class="data-row"><span>Last query used vectors</span><strong>${retrieval.last_query_used_vectors ? 'YES' : 'NO'}</strong></div><p>Lexical and semantic similarity retrieve candidates. Existing canonical memory/provenance still decides what is true.</p></div>
+    <div class="workspace-panel"><h3>Compute Nodes</h3>${nodeItems.length ? nodeItems.map((node) => `<div class="data-row"><span>${escapeHtml(node.node_id || 'node')}</span><strong>${node.connected ? 'ONLINE' : 'OFFLINE'}</strong></div><small>${escapeHtml(Object.entries(node.capabilities || {}).filter(([,info]) => info?.available).map(([name]) => name).slice(0,8).join(' · ') || 'No active capabilities')}</small>`).join('') : '<div class="workspace-empty">No compute nodes registered.</div>'}<p>13.1 starts with the current host; future cloud/home agents can register through the same capability model.</p></div>
+  </div>
+  <div class="workspace-panel"><h3>Mary Evaluation Set</h3><div class="data-row"><span>Explicit ratings</span><strong>${feedback.records ?? 0}</strong></div><div class="data-row"><span>Positive / negative</span><strong>${feedback.ratings?.positive ?? 0} / ${feedback.ratings?.negative ?? 0}</strong></div><p>Only explicit creator feedback belongs here. It is private future evaluation/training data and never character-state authority.</p></div>
   <div class="section-title">ROLLING METRICS</div>
   <div class="workspace-panel"><div class="metric-grid">${rows.length ? rows.map(([k,v])=>`<div class="metric-card"><span>${escapeHtml(titleCase(k))}</span><strong>${escapeHtml(v.last_ms)} ms</strong><small>avg ${escapeHtml(v.avg_ms)} · max ${escapeHtml(v.max_ms)}</small></div>`).join('') : '<div class="workspace-empty">Metrics appear after live turns.</div>'}</div></div>`;
 }
@@ -1244,6 +1284,7 @@ function renderWorkspace(screen) {
   const renderers = {
     home: renderHome,
     memories: renderMemories,
+    growth: renderGrowth,
     personality: renderPersonality,
     mind: renderMind,
     studio: renderStudio,

@@ -905,12 +905,6 @@ class CanonicalResponsePlan:
             != canonical_response_intent(self.realization)
         ):
             raise ValueError("canonical response intent must derive from typed realization")
-        if (
-            self.verbalization.required_meanings
-            != canonical_required_meanings(self.realization)
-        ):
-            raise ValueError("canonical required meanings must derive from typed realization")
-
         facts = {item.fact_id: item for item in self.verbalization.grounded_facts}
         consumed_fact_ids: set[str] = set()
         for clause in self.realization.clauses:
@@ -930,6 +924,12 @@ class CanonicalResponsePlan:
             consumed_fact_ids.add(fact.fact_id)
         if consumed_fact_ids != set(facts):
             raise ValueError("canonical grounded facts must be consumed exactly once")
+
+        if (
+            self.verbalization.required_meanings
+            != canonical_required_meanings(self.realization)
+        ):
+            raise ValueError("canonical required meanings must derive from typed realization")
 
         stance = self.verbalization.mary_stance
         if stance is not None:

@@ -466,6 +466,7 @@ def _seed_isolated_authority(mary: Any) -> None:
     learned = mary._learn_shared_work_statement(
         shared_work,
         intent=mary.cognition.detect_intent(shared_work),
+        allow_test_probe=True,
     )
     if not learned or not learned.get("recorded"):
         raise RuntimeError("isolated shared-work authority fixture was not recorded")

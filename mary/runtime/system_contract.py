@@ -11,7 +11,7 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-12.10-presence-presentation"
+    VERSION = "v2-breakthrough-13.1-realtime-cognitive-infrastructure"
 
     AUTHORITY = {
         "character_canon": "mary.character + identity/biography/personality authored state",
@@ -20,9 +20,16 @@ class MarySystemContract:
         "emotion": "EmotionManager",
         "agency": "Agency",
         "conversation_continuity": "TurnMindState/ConversationContinuity",
+        "conversation_engagement": "ConversationEngagement (depth/initiative policy only; no identity ownership)",
         "relationship_question_continuity": "ConversationLearningBridge (process-local pending question; durable learning remains RelationshipManager)",
+        "experience_development": "GrowthEngine + ExperienceJournal (grounded post-turn development; model dialogue is not durable self-evidence)",
         "provider_routing": "LLMRouter",
         "host_capabilities": "RuntimeEnvironment (process-local; no identity ownership)",
+        "realtime_attention": "RealtimeInteractionCoordinator + AttentionBus (ephemeral priority/interruption state only)",
+        "perception_boundary": "PerceptionDirector (objective environment context; no creator or memory authority)",
+        "distributed_compute": "NodeRegistry (replaceable capability resources; never identity/state ownership)",
+        "semantic_retrieval": "HybridReservoirRetriever + SemanticVectorIndex (derived candidate retrieval only)",
+        "response_feedback": "ResponseFeedbackStore (explicit private evaluation/training data; never character-state authority)",
         "turn_routing_policy": "TurnPolicyEngine",
         "task_orchestration": "TaskOrchestrator + OrchestrationExecutor",
         "tools": "ToolManager",

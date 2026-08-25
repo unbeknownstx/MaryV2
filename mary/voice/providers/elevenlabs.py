@@ -136,18 +136,18 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
             f"?output_format={quote(self.output_format, safe='')}"
         )
         voice_settings = {
-            "stability": _setting_float(active.metadata, "stability", 0.42, 0.0, 1.0),
+            "stability": _setting_float(active.metadata, "stability", 0.50, 0.0, 1.0),
             "similarity_boost": _setting_float(
                 active.metadata,
                 "similarity_boost",
-                0.82,
+                0.75,
                 0.0,
                 1.0,
             ),
-            "style": _setting_float(active.metadata, "style", 0.11, 0.0, 1.0),
+            "style": _setting_float(active.metadata, "style", 0.0, 0.0, 1.0),
             "speed": max(0.7, min(1.2, float(active.speed))),
             "use_speaker_boost": bool(
-                active.metadata.get("use_speaker_boost", True)
+                active.metadata.get("use_speaker_boost", False)
             ),
         }
 

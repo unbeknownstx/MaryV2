@@ -5,23 +5,38 @@
       "label": "Mary: Fast Check",
       "type": "shell",
       "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\test_fast.ps1"],
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".\\scripts\\test_fast.ps1"
+      ],
       "group": "test",
       "problemMatcher": []
     },
     {
       "label": "Mary: Full Tests",
       "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "pytest", "tests", "-q"],
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".\\scripts\\test_full.ps1"
+      ],
       "group": "test",
       "problemMatcher": []
     },
     {
       "label": "Mary: Release Gate",
       "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "scripts.run_release_verification", "--offline"],
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".\\scripts\\test_release.ps1"
+      ],
       "group": "test",
       "problemMatcher": []
     },
@@ -29,14 +44,24 @@
       "label": "Mary: Launch Desktop",
       "type": "shell",
       "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\launch_windows.ps1"],
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".\\scripts\\launch_windows.ps1"
+      ],
       "problemMatcher": []
     },
     {
       "label": "Mary: Local Model Lab",
       "type": "shell",
       "command": "powershell",
-      "args": ["-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\benchmark_local_models_windows.ps1"],
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".\\scripts\\benchmark_local_models_windows.ps1"
+      ],
       "problemMatcher": []
     }
   ]

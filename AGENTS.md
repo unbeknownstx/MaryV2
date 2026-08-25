@@ -54,3 +54,19 @@ The creator has Codex installed in VS Code. Work directly against the canonical 
 - Prefer complete coherent changes over scattered manual instructions.
 - Run the `Mary: Fast Check` VS Code task while iterating and `Mary: Release Gate` before declaring a build ready.
 - The canonical committed source remains the source of truth; temporary model output, runtime reports, `desktop/dist`, and model downloads are not source state.
+
+## 13.1.1 consolidated baseline
+- Treat Production Hybrid Dialogue 12.12.3 as a required foundation under 13.1.1, not an obsolete branch.
+- Response-risk may refine a generic character turn, but it must not erase a stronger `personal_conversation` or `task_general` classification.
+- Cache/index hits are never authority by themselves. Authority-bearing local speech must confirm against the current canonical owner.
+- Realtime AttentionBus events are context/attention signals only. Priority is not permission or truth authority.
+- Perception providers describe observations; Mary interprets them. Raw frames/audio/base64 are not durable character state.
+- Compute nodes advertise capabilities and execute work; they do not own identity, relationship, memory, personality, or developed self.
+- Explicit response-feedback records are evaluation/training data only and cannot directly mutate Mary.
+- Mobile/native clients are surfaces over the same canonical Mary runtime; do not create a second identity/memory store on a device.
+
+## Skills and task-scoped agents
+- `mary/skills` is the capability/workspace registry. Evolve it toward explicit manifests (requirements, permissions, cost/privacy class, node capability, handler) instead of turning each skill into a new persona.
+- `mary/orchestration` is the current agent-like execution substrate: task workspace -> deterministic plan -> specialist/tool/model execution -> evidence -> Mary evaluation.
+- Future specialist agents must be ephemeral task roles assembled by the orchestrator. They may reason or use skills, but their output is advisory evidence until Mary/creator authority accepts it.
+- Never allow an agent, provider, skill, plugin, or compute node to silently become a second Mary or a durable state authority.

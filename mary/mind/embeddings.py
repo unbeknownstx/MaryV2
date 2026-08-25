@@ -35,10 +35,38 @@ class OllamaEmbeddingClient:
             return []
         return [float(value) for value in embeddings[0]]
 
+    def list_models(self) -> list[str]:
+        """Return installed Ollama model names without raising on offline hosts."""
+        try:
+            request = urllib.request.Request(f"{self.base_url}/api/tags", headers={"Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=1.0) as response:
+                payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
+            output: list[str] = []
+            for item in list(payload.get("models") or []):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or item.get("model") or "").strip()
+                if name:
+                    output.append(name)
+            return output
+        except Exception:
+            return []
+
     def available(self) -> bool:
+        """Return whether the Ollama service itself is reachable."""
         try:
             request = urllib.request.Request(f"{self.base_url}/api/tags", headers={"Accept": "application/json"})
             with urllib.request.urlopen(request, timeout=1.0) as response:
                 return 200 <= int(response.status) < 300
         except Exception:
             return False
+
+    def model_available(self) -> bool:
+        """Return whether the configured embedding model is installed locally."""
+        target = self.model.strip().lower()
+        target_base = target.split(":", 1)[0]
+        for name in self.list_models():
+            normalized = name.strip().lower()
+            if normalized == target or normalized.split(":", 1)[0] == target_base:
+                return True
+        return False

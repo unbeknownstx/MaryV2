@@ -236,6 +236,50 @@ class CognitiveReservoir:
             ).fetchone()
             return self._row_to_hit(row, score=1.0) if row else None
 
+    def get(self, record_id: str) -> ReservoirHit | None:
+        """Return one derived record by id for hybrid/vector validation."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM reservoir_records WHERE record_id=? LIMIT 1",
+                (str(record_id),),
+            ).fetchone()
+            return self._row_to_hit(row, score=0.0) if row else None
+
+    def records(self, *, limit: int | None = None) -> list[ReservoirRecord]:
+        """Return bounded records for explicit maintenance/index rebuild jobs."""
+        resolved = self.max_records if limit is None else max(1, min(self.max_records, int(limit)))
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM reservoir_records
+                ORDER BY confidence DESC, updated_at DESC
+                LIMIT ?
+                """,
+                (resolved,),
+            ).fetchall()
+        output: list[ReservoirRecord] = []
+        for row in rows:
+            try:
+                metadata = json.loads(row["metadata_json"] or "{}")
+            except Exception:
+                metadata = {}
+            output.append(
+                ReservoirRecord(
+                    record_id=str(row["record_id"]),
+                    kind=str(row["kind"]),
+                    subject=str(row["subject"]),
+                    predicate=str(row["predicate"]),
+                    content=str(row["content"]),
+                    source=str(row["source"]),
+                    authority=str(row["authority"]),
+                    confidence=float(row["confidence"]),
+                    tags=tuple(str(row["tags"] or "").split()),
+                    metadata=dict(metadata) if isinstance(metadata, dict) else {},
+                    updated_at=float(row["updated_at"]),
+                )
+            )
+        return output
+
     def search(self, query: str, *, limit: int = 8, minimum_confidence: float = 0.0) -> list[ReservoirHit]:
         with self._lock:
             text = " ".join(str(query or "").split()).strip()

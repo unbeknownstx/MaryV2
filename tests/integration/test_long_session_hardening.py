@@ -213,7 +213,7 @@ def test_runtime_architecture_reports_previous_generation_metadata():
     router = SequenceRouter(["A normal generated response."])
     mary = _mary(router)
 
-    first = mary.process("Hello Mary")
+    first = mary.process("Explain why continuity matters in a persistent AI character.")
     assert first.reasoning.metadata.get("provider") == "test"
     calls_before = len(router.calls)
 

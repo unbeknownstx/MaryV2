@@ -26,7 +26,8 @@ from time import monotonic
 from typing import Any
 
 from mary.desktop.stt import DesktopSpeechToText
-from mary.desktop.voice import DesktopVoiceEngine
+from mary.desktop.voice import DesktopVoiceEngine, DesktopVoiceStatus
+from mary.voice import SpeechAudioFormat, VoiceSettings
 
 
 DEFAULT_TTS_MAX_CHARS = 4_000
@@ -137,6 +138,49 @@ class MobileSpeechService:
         self._cache_size = 0
         self._last_tts: dict[str, Any] = {}
         self._last_stt: dict[str, Any] = {}
+
+    # ------------------------------------------------------------------
+    # Voice Lab
+    # ------------------------------------------------------------------
+
+    def apply_voice_profile(self, profile: dict[str, Any] | None) -> bool:
+        """Apply one private ElevenLabs profile to subsequent synthesis calls."""
+        if not profile or getattr(self.voice_engine.status, "provider", "") != "elevenlabs":
+            return False
+        voice_id = str(profile.get("voice_id") or "").strip()
+        if not voice_id:
+            return False
+        settings = dict(profile.get("settings", {}) or {})
+        base = self.voice_engine.base_settings
+        self.voice_engine.base_settings = VoiceSettings(
+            voice=voice_id,
+            language=base.language,
+            speed=max(0.7, min(1.2, float(settings.get("speed", 1.0) or 1.0))),
+            pitch=base.pitch,
+            volume=base.volume,
+            style=base.style,
+            emotion=base.emotion,
+            emotion_intensity=base.emotion_intensity,
+            output_format=base.output_format or SpeechAudioFormat.MP3,
+            sample_rate=base.sample_rate,
+            metadata={
+                **dict(base.metadata),
+                "stability": max(0.0, min(1.0, float(settings.get("stability", 0.50) or 0.50))),
+                "similarity_boost": max(0.0, min(1.0, float(settings.get("similarity", 0.75) or 0.75))),
+                "style": max(0.0, min(1.0, float(settings.get("style", 0.0) or 0.0))),
+                "use_speaker_boost": bool(settings.get("speaker_boost", False)),
+                "voice_lab_profile": str(profile.get("id") or ""),
+            },
+        )
+        old = self.voice_engine.status
+        self.voice_engine.status = DesktopVoiceStatus(
+            enabled=old.enabled, provider=old.provider, voice_id=voice_id,
+            model=old.model, local=old.local, premium=old.premium,
+        )
+        with self._lock:
+            self._cache.clear()
+            self._cache_size = 0
+        return True
 
     # ------------------------------------------------------------------
     # Status

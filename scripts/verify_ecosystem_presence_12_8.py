@@ -18,7 +18,7 @@ def check(label,condition):
 
 def main()->int:
     print("="*72); print("MARYV2 12.8 ECOSYSTEM + PRESENCE"); print("="*72)
-    check("12.8 ecosystem remains present under current release",APP_VERSION in {"12.8.0", "12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2"} and DESKTOP_PHASE in {"ecosystem-presence-beta", "desktop-uplift-runtime", "presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime"})
+    check("12.8 ecosystem remains present under current release",APP_VERSION in {"12.8.0", "12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1"} and DESKTOP_PHASE in {"ecosystem-presence-beta", "desktop-uplift-runtime", "presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime", "connected-development-evolution", "realtime-cognitive-infrastructure"})
     required=(
         "mary/ecosystem/manager.py","mary/productivity/command_center.py","mary/productivity/focus.py","mary/productivity/search.py",
         "mary/study/manager.py","mary/presence/manager.py","mary/presence/initiative.py","mary/skills/registry.py",

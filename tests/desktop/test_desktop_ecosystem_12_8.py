@@ -9,11 +9,13 @@ def text(path: str) -> str:
 
 def test_release_metadata_preserves_12_8_foundation_under_12_9():
     source = text("mary/runtime/release.py")
-    assert ('APP_VERSION = "12.11.0"' in source or ('APP_VERSION = "12.12.0"' in source or 'APP_VERSION = "12.12.2"' in source))
+    assert ('APP_VERSION = "12.11.0"' in source or ('APP_VERSION = "12.12.0"' in source or ('APP_VERSION = "12.12.2"' in source or (('APP_VERSION = "13.0.0"' in source or 'APP_VERSION = "13.1.1"' in source) or 'APP_VERSION = "13.1.1"' in source))))
     assert any(phase in source for phase in (
         'DESKTOP_PHASE = "presence-presentation"',
         'DESKTOP_PHASE = "fast-dialogue-connected-presence"',
         'DESKTOP_PHASE = "cognitive-reservoir-character-runtime"',
+        'DESKTOP_PHASE = "connected-development-evolution"',
+        'DESKTOP_PHASE = "realtime-cognitive-infrastructure"',
     ))
 
 

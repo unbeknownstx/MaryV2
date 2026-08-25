@@ -298,4 +298,8 @@ def test_breakthrough11_contract_and_status_expose_new_conversation_state_owner(
     assert str(contract["version"]).startswith("v2-breakthrough-")
     assert "relationship_question_continuity" in contract["authority"]
     assert status["turn_policy"]["version"] == "v2-breakthrough-11"
-    assert status["conversation_learning"]["version"] == "v2-breakthrough-11"
+    assert status["conversation_learning"]["connected"] is True
+    assert status["conversation_learning"]["version"] in {
+        "v2-breakthrough-11",
+        "v2-13.0-intentional-conversation",
+    }

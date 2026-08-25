@@ -9,8 +9,60 @@ Set-Location $Root
 function Step($n, $label) { Write-Host "[$n/11] $label" -ForegroundColor Cyan }
 function Pass($label) { Write-Host "  PASS: $label" -ForegroundColor Green }
 
+function Remove-BoundedTemporaryDirectory {
+    param([Parameter(Mandatory=$true)][string]$Target, [Parameter(Mandatory=$true)][string]$ExpectedLeafPrefix)
+    if (-not (Test-Path -LiteralPath $Target)) { return }
+    $ResolvedSystemTempRoot = [System.IO.Path]::GetTempPath().TrimEnd('\','/')
+    $ResolvedTarget = (Resolve-Path -LiteralPath $Target).Path
+    $ResolvedTargetParent = Split-Path -Parent $ResolvedTarget
+    $TargetLeaf = Split-Path -Leaf $ResolvedTarget
+    $Attributes = [System.IO.File]::GetAttributes($ResolvedTarget)
+    if (-not $ResolvedTargetParent.Equals($ResolvedSystemTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Refusing cleanup outside system temp." }
+    if (-not $TargetLeaf.StartsWith($ExpectedLeafPrefix, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Refusing cleanup with unexpected prefix." }
+    if (($Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Refusing cleanup of a reparse point." }
+    Remove-Item -LiteralPath $ResolvedTarget -Recurse -Force
+}
+
+function Invoke-IsolatedPythonStage {
+    param(
+        [Parameter(Mandatory=$true)][string]$StageName,
+        [Parameter(Mandatory=$true)][string[]]$Arguments
+    )
+    $SafeStageName = ($StageName -replace '[^A-Za-z0-9_-]', '-')
+    $PreviousMaryDataDirectory = $env:MARY_DATA_DIR
+    $PreviousMaryEnvironmentFile = $env:MARY_ENV_FILE
+    $PreviousMaryReservoirStorage = $env:MARY_RESERVOIR_STORAGE
+    $PreviousPytestTempRoot = $env:PYTEST_DEBUG_TEMPROOT
+    $PreviousPytestAddopts = $env:PYTEST_ADDOPTS
+    $SystemTempRoot = [System.IO.Path]::GetTempPath().TrimEnd('\','/')
+    $IsolationRoot = Join-Path $SystemTempRoot ("maryv2-setup-$SafeStageName-" + [guid]::NewGuid().ToString("N"))
+    $IsolatedDataDirectory = Join-Path $IsolationRoot "state"
+    $IsolatedPytestTempRoot = Join-Path $IsolationRoot "pytest"
+    $IsolatedEnvironmentFile = Join-Path $IsolationRoot "no-live-config"
+    New-Item -ItemType Directory -Path $IsolatedDataDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $IsolatedPytestTempRoot -Force | Out-Null
+    if (Test-Path -LiteralPath $IsolatedEnvironmentFile) { throw "Isolation env file must not exist." }
+    try {
+        $env:MARY_DATA_DIR = $IsolatedDataDirectory
+        $env:MARY_ENV_FILE = $IsolatedEnvironmentFile
+        $env:MARY_RESERVOIR_STORAGE = "memory"
+        $env:PYTEST_DEBUG_TEMPROOT = $IsolatedPytestTempRoot
+        $env:PYTEST_ADDOPTS = "-p no:cacheprovider"
+        & $Python @Arguments
+        if ($LASTEXITCODE -ne 0) { throw "Isolated stage failed: $StageName" }
+    }
+    finally {
+        if ($null -eq $PreviousMaryDataDirectory) { Remove-Item Env:MARY_DATA_DIR -ErrorAction SilentlyContinue } else { $env:MARY_DATA_DIR = $PreviousMaryDataDirectory }
+        if ($null -eq $PreviousMaryEnvironmentFile) { Remove-Item Env:MARY_ENV_FILE -ErrorAction SilentlyContinue } else { $env:MARY_ENV_FILE = $PreviousMaryEnvironmentFile }
+        if ($null -eq $PreviousMaryReservoirStorage) { Remove-Item Env:MARY_RESERVOIR_STORAGE -ErrorAction SilentlyContinue } else { $env:MARY_RESERVOIR_STORAGE = $PreviousMaryReservoirStorage }
+        if ($null -eq $PreviousPytestTempRoot) { Remove-Item Env:PYTEST_DEBUG_TEMPROOT -ErrorAction SilentlyContinue } else { $env:PYTEST_DEBUG_TEMPROOT = $PreviousPytestTempRoot }
+        if ($null -eq $PreviousPytestAddopts) { Remove-Item Env:PYTEST_ADDOPTS -ErrorAction SilentlyContinue } else { $env:PYTEST_ADDOPTS = $PreviousPytestAddopts }
+        Remove-BoundedTemporaryDirectory -Target $IsolationRoot -ExpectedLeafPrefix "maryv2-setup-$SafeStageName-"
+    }
+}
+
 Write-Host "============================================================" -ForegroundColor Magenta
-Write-Host "MARYV2 12.12.2 WINDOWS SETUP + VERIFICATION" -ForegroundColor Magenta
+Write-Host "MARYV2 13.1.1 WINDOWS SETUP + VERIFICATION" -ForegroundColor Magenta
 Write-Host "============================================================" -ForegroundColor Magenta
 Write-Host "Root: $Root"
 
@@ -25,13 +77,11 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
     if ($PyLauncher) { & py -3.11 -m venv .venv; if ($LASTEXITCODE -ne 0) { & python -m venv .venv } }
     else { & python -m venv .venv }
     if ($LASTEXITCODE -ne 0) { throw "Virtual environment creation failed." }
-} else { Write-Host "  Existing .venv found - reusing it" }
+}
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 Pass "virtual environment"
 
 Step 2 "Python dependencies"
-& $Python -m pip install --upgrade pip
-if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed." }
 & $Python -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "core dependency installation failed." }
 & $Python -m pip install -r requirements-desktop.txt
@@ -47,78 +97,41 @@ try {
 } finally { Pop-Location }
 Pass "frontend production build"
 
-Step 4 "12.12.2 character / voice / latency regressions"
-& $Python -m pytest `
-    tests/mind/test_reservoir_12_12.py `
-    tests/mind/test_reservoir_thread_safety_12_12.py `
-    tests/mind/test_reservoir_lifecycle_12_12_1.py `
-    tests/mind/test_local_dialogue_12_12.py `
-    tests/mind/test_character_behavior_12_12.py `
-    tests/expression/test_expression_director_12_12.py `
-    tests/voice/test_expression_delivery_12_12.py `
-    tests/llm/test_local_model_roles_12_12.py `
-    tests/runtime/test_cognitive_reservoir_persistence_12_12.py `
-    tests/desktop/test_cognitive_mind_ui_12_12.py `
-    tests/expression/test_natural_conversation_12_12_2.py `
-    tests/desktop/test_audio_transport_12_12_2.py `
-    tests/llm/test_local_model_lab_12_12_2.py `
-    tests/voice/test_voice_lab_12_12_2.py -q
-if ($LASTEXITCODE -ne 0) { throw "12.12.2 targeted regression suite failed." }
-Pass "12.12.2 regressions"
+Step 4 "Character / hybrid dialogue regressions"
+Invoke-IsolatedPythonStage -StageName "step-4-character-regressions" -Arguments @("-m","pytest","tests/mind/test_production_local_mind_v2.py","tests/core/test_production_hybrid_core_12_12_3.py","-q")
 
-Step 5 "12.12 + 12.12.2 deterministic verifiers"
-& $Python -m scripts.verify_character_runtime_12_12
-if ($LASTEXITCODE -ne 0) { throw "12.12 verifier failed." }
-& $Python -m scripts.verify_natural_conversation_12_12_2
-if ($LASTEXITCODE -ne 0) { throw "12.12.2 verifier failed." }
-Pass "12.12 + 12.12.2 verifiers"
+Step 5 "Character runtime + natural conversation"
+Invoke-IsolatedPythonStage -StageName "step-5-character-runtime" -Arguments @("-m","scripts.verify_character_runtime_12_12")
+Invoke-IsolatedPythonStage -StageName "step-5-natural-conversation" -Arguments @("-m","scripts.verify_natural_conversation_12_12_2")
 
-Step 6 "12.11 compatibility verifier"
-& $Python -m scripts.verify_connected_companion_12_11
-if ($LASTEXITCODE -ne 0) { throw "12.11 compatibility verifier failed." }
-Pass "12.11 compatibility"
+Step 6 "Connected companion"
+Invoke-IsolatedPythonStage -StageName "step-6-connected-companion" -Arguments @("-m","scripts.verify_connected_companion_12_11")
 
-Step 7 "12.10 / 12.9 compatibility verifiers"
-& $Python -m scripts.verify_presence_presentation_12_10
-if ($LASTEXITCODE -ne 0) { throw "12.10 compatibility verifier failed." }
-& $Python -m scripts.verify_uplift_12_9
-if ($LASTEXITCODE -ne 0) { throw "12.9 compatibility verifier failed." }
-Pass "12.10 + 12.9 compatibility"
+Step 7 "Presence / presentation / uplift"
+Invoke-IsolatedPythonStage -StageName "step-7-presence-presentation" -Arguments @("-m","scripts.verify_presence_presentation_12_10")
+Invoke-IsolatedPythonStage -StageName "step-7-uplift" -Arguments @("-m","scripts.verify_uplift_12_9")
 
 Step 8 "Full canonical repository suite"
 if (-not $SkipFullSuite) {
-    & $Python -m pytest tests test_breakthrough_11.py test_breakthrough_12.py -q
-    if ($LASTEXITCODE -ne 0) { throw "Full canonical pytest suite failed." }
-    Pass "full canonical suite"
+    Invoke-IsolatedPythonStage -StageName "step-8-full-suite" -Arguments @("-m","pytest","tests","test_breakthrough_11.py","test_breakthrough_12.py","-q")
 } else { Write-Host "  SKIPPED by request" -ForegroundColor Yellow }
 
 Step 9 "Deterministic/offline release gate"
 if (-not $SkipReleaseGate) {
-    & $Python -m scripts.run_release_verification --offline
-    if ($LASTEXITCODE -ne 0) { throw "Offline release verification failed." }
-    Pass "offline release gate"
+    Invoke-IsolatedPythonStage -StageName "step-9-release-gate" -Arguments @("-m","scripts.run_release_verification","--offline")
 } else { Write-Host "  SKIPPED by request" -ForegroundColor Yellow }
 
 Step 10 "Persistent state integrity"
-if (Test-Path "data") {
-    & $Python -m scripts.verify_state_integrity
+$RepoLocalDataDirectory = Join-Path $Root "data"
+if (Test-Path $RepoLocalDataDirectory) {
+    & $Python -m scripts.verify_state_integrity --data-dir $RepoLocalDataDirectory
     if ($LASTEXITCODE -ne 0) { throw "Persistent state integrity verification failed." }
     Pass "repo-local state integrity"
-} else { Write-Host "  Repo-local data/ absent; Desktop/frozen state may live in LocalAppData by design." }
+}
 
-Step 11 "Local model lab availability (no downloads, no model calls)"
-& $Python -m scripts.mind_status
-if ($LASTEXITCODE -ne 0) { throw "Mind status failed." }
-Pass "local mind/model lab status"
+Step 11 "Local mind/model lab status"
+Invoke-IsolatedPythonStage -StageName "step-11-mind-status" -Arguments @("-m","scripts.mind_status")
 
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host "MARYV2 12.12.2 READY" -ForegroundColor Green
-Write-Host "============================================================" -ForegroundColor Green
+Write-Host "MARYV2 13.1.1 READY" -ForegroundColor Green
 Write-Host "Launch: powershell -ExecutionPolicy Bypass -File .\scripts\launch_windows.ps1"
 Write-Host "Fast: powershell -ExecutionPolicy Bypass -File .\scripts\test_fast.ps1"
-Write-Host "Character: powershell -ExecutionPolicy Bypass -File .\scripts\test_character.ps1"
-Write-Host "Local model benchmark: powershell -ExecutionPolicy Bypass -File .\scripts\benchmark_local_models_windows.ps1"
-
-Write-Host "Small local model pull: powershell -ExecutionPolicy Bypass -File .\scripts\pull_local_model_candidates.ps1"
-Write-Host "Voice lab plan: powershell -ExecutionPolicy Bypass -File .\scripts\run_voice_lab_windows.ps1"

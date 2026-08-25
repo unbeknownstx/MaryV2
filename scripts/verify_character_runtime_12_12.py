@@ -23,8 +23,8 @@ def main() -> int:
     print("MARYV2 12.12 COGNITIVE RESERVOIR + CHARACTER RUNTIME")
     print("=" * 76)
     checks: list[bool] = []
-    checks.append(check(APP_VERSION.startswith("12.12."), f"software version preserves 12.12 line ({APP_VERSION})"))
-    checks.append(check(DESKTOP_PHASE == "cognitive-reservoir-character-runtime", "desktop phase is cognitive character runtime"))
+    checks.append(check((APP_VERSION.startswith("12.12.") or APP_VERSION.startswith("13.")), f"software version preserves 12.12 line ({APP_VERSION})"))
+    checks.append(check(DESKTOP_PHASE in {"cognitive-reservoir-character-runtime", "connected-development-evolution", "realtime-cognitive-infrastructure"}, "desktop phase is cognitive character runtime"))
 
     required = [
         "mary/mind/character_mind.py",
@@ -79,7 +79,7 @@ def main() -> int:
     checks.append(check("currentDeliveryPlan" in js and "gesture_energy" in js, "voice delivery plan also drives avatar motion"))
 
     package = json.loads((ROOT / "PACKAGE_INFO.json").read_text(encoding="utf-8"))
-    checks.append(check(str(package.get("version") or "").startswith("12.12."), "package metadata matches 12.12"))
+    checks.append(check((str(package.get("version") or "").startswith("12.12.") or str(package.get("version") or "").startswith("13.")), "package metadata matches 12.12"))
 
     ok = all(checks)
     print("=" * 76)

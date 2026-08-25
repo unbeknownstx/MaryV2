@@ -101,7 +101,10 @@ def _run_isolated_checks() -> int:
     print("MARYV2 12.12.3 PRODUCTION HYBRID DIALOGUE")
     print("=" * 76)
     checks: list[bool] = []
-    checks.append(check(APP_VERSION == "12.12.3", "software version is 12.12.3"))
+    checks.append(check(
+        APP_VERSION in {"12.12.3", "13.0.0", "13.1.1"},
+        "12.12.3 production-hybrid foundation remains installed",
+    ))
 
     for relative in (
         "mary/mind/local_response_projector.py",

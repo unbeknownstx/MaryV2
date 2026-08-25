@@ -1,4 +1,4 @@
-const CACHE='maryv2-mobile-shell-v3';
+const CACHE='maryv2-mobile-shell-v13-1';
 const SHELL=[
   '/',
   '/index.html',

@@ -1,0 +1,64 @@
+MARYV2 13.0 CONNECTED DEVELOPMENT EVOLUTION — FINAL VERIFICATION
+================================================================
+
+Release: 13.0.0
+Base: MaryV2 12.13 Mobile Companion + TLS/iOS playback + 12.13.2 Replit LLM fixes
+
+FINAL DETERMINISTIC RESULTS
+---------------------------
+Python test suite:
+  768 passed, 1 skipped
+
+System diagnostics:
+  56/56 PASS
+  Warnings: 0
+  Failed: 0
+  Healthy: True
+
+Dedicated 13.0 verifier:
+  PASS release version 13.0.0
+  PASS mobile protocol 3
+  PASS neutral ElevenLabs baseline
+  PASS intentional conversation cue opens engaged mode
+  PASS intentional conversation thread survives restart
+  PASS learning invitation uses a real grounded conversational question
+  PASS meaningful turn enters ExperienceJournal
+  PASS model dialogue is not durable self-development evidence
+  PASS mobile Talk/Deep controls
+  PASS Growth workspace
+  PASS dislikes/aversions separated in Personality UI
+  PASS private Voice Lab controls
+  PASS native iPhone web bundle synchronized with mobile_web
+
+Offline release gate:
+  PASS compile
+  PASS full pytest
+  PASS diagnostics
+  PASS every retained 12.x milestone verifier
+  PASS connected_development_13_0
+  PASS release hygiene
+  PASS standalone readiness
+  PASS local tool safety
+  RESULT: PASSED
+
+Frontend checks:
+  PASS node --check mobile_web/app.js
+  PASS desktop npm run check (JavaScript syntax)
+  NOTE desktop Vite production build was not rerun in the packaging sandbox because
+       Vite dependencies were not locally cached and external npm installation timed out.
+       The normal Windows/macOS setup/build path performs npm ci + npm run check + npm run build.
+
+SECURITY / STATE
+----------------
+Release archives exclude:
+  .env
+  data/
+  .venv / venv
+  .git
+  node_modules
+  desktop/dist
+  caches / pyc
+  local runtime logs
+
+No provider API keys or mobile access tokens are intentionally included.
+The existing project data directory remains the authoritative private Mary state after overlay.

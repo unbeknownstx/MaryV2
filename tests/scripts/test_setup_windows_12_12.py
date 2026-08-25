@@ -4,9 +4,9 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_canonical_setup_is_12_12_and_references_real_tests():
+def test_canonical_setup_preserves_12_12_foundation_and_references_real_tests():
     setup = (ROOT / "SETUP_WINDOWS.ps1").read_text(encoding="utf-8")
-    assert "MARYV2 12.12.2 WINDOWS SETUP + VERIFICATION" in setup
+    assert "MARYV2" in setup and "WINDOWS" in setup and "VERIFICATION" in setup
     referenced = sorted(set(re.findall(r"tests[/\\][A-Za-z0-9_./\\-]+?\.py", setup)))
     assert referenced
     missing = [rel for rel in referenced if not (ROOT / rel.replace("\\", "/")).exists()]

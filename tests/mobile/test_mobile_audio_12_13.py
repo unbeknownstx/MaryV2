@@ -218,7 +218,7 @@ def test_mobile_web_uses_server_voice_and_server_stt_routes():
     assert "/api/tts" in js
     assert "/api/stt" in js
     assert "server_preferred_with_device_fallback" in (root / "mary" / "mobile" / "server.py").read_text(encoding="utf-8")
-    assert "maryv2-mobile-shell-v3" in sw
+    assert ("maryv2-mobile-shell-v3" in sw or "maryv2-mobile-shell-v13" in sw)
     assert "ensureMediaElement" in js
     assert "URL.createObjectURL" in js
     assert "audio.play()" in js

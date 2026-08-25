@@ -1,25 +1,39 @@
-# MaryV2 current state — 12.12.2
+# MaryV2 current state — 13.1.1 Consolidated Production Hybrid + Realtime Cognitive Infrastructure
 
-MaryV2 12.12.2 keeps the 12.12 Cognitive Reservoir/Character Runtime and calibrates the part users feel most immediately: ordinary back-and-forth.
+13.1.1 is the first clean consolidation of the newest Windows/Codex Production Hybrid Dialogue line, the Replit/mobile work, and the 13.0/13.1 development/realtime work into one source tree.
 
-## Proven architecture
+## Canonical architecture now present
 
-- Local Mind/Reservoir can answer represented reflex/state turns in single-digit to low-double-digit milliseconds before TTS on the live Windows host.
-- Open language can escalate to the fast Groq conversation route; hard tasks still retain thinking/tool/expert routes.
-- ElevenLabs Flash is fast enough to remain the current premium/reference voice while local voice alternatives are evaluated separately.
-- The VRM, TTS and GUI are presentation containers over the same canonical Mary runtime.
+- One MaryApplication / one Mary identity-state authority.
+- Production Local Mind V2 with deterministic local composition, response-risk classification, canonical-owner confirmation, independent response audit, bounded phrase history, and fail-closed escalation.
+- Local-first personal/relational conversation; cloud-first factual/technical/task work; Ollama remains optional/private fallback; paid OpenAI remains explicit expert-only.
+- Intentional Conversation Engine: adaptive / quick / engaged / deep.
+- Continuous Development: ExperienceJournal + GrowthEngine + strict preference maturation + grounded milestones.
+- Memory remains canonical and provenance-bearing; Cognitive Reservoir and vector index are derived/rebuildable retrieval layers only.
+- Realtime Interaction Coordinator + AttentionBus + anti-echo/interruption state.
+- Objective PerceptionDirector boundary; perception is context, not identity truth.
+- NodeRegistry/capability model for future cloud-core/home-node execution without giving compute nodes identity ownership.
+- Explicit private response-feedback dataset for future Mary-specific evaluation/LoRA work; ratings are not memory or development evidence.
+- Desktop + PWA + native iPhone client source remain clients/surfaces over the same canonical Mary runtime.
+- Mobile protocol 4 includes Growth, Voice Lab, realtime state, attention, hybrid retrieval, node status, and explicit Mary-fit feedback.
 
-## 12.12.2 changes
+## Consolidation truth
 
-- **Natural Conversation Director** — ordinary speech now anchors to a restrained baseline. Emotion is blended in with low gain instead of swapping Mary into a theatrical profile each turn.
-- **Dialogue direction** — model prompts explicitly say Mary should simply talk rather than perform; normal conversation is usually 1–4 sentences and token budgets are ceilings.
-- **TTS text calibration** — stacked punctuation/long ellipses are reduced before speech because they are strong performance cues.
-- **Fast Audio Transport** — synthesized audio is staged into a bounded temporary file cache so the browser can receive a file URL instead of a large base64 blob through QWebChannel.
-- **Playback trace** — text-ready, UI-payload, audio-ready, play-request and perceived-start timings are separately measurable.
-- **Local Model Lab v2** — compares qwen3:1.7b, llama3.2:1b, gemma3:1b, smollm2:1.7b, llama3.2:3b, phi4-mini and the existing qwen3:4b baseline by latency, basic character hygiene and restraint.
-- **Voice Lab** — explicit A/B pack generation for the current/alternate ElevenLabs voices; zero network calls unless `--synthesize` is requested.
-- **Codex/VS Code workflow** — repository instructions plus VS Code tasks for fast/full/release/model-lab work against the canonical workspace.
+The creator's uploaded Windows project contained a newer 12.12.3 Production Hybrid Dialogue line than the earlier 13.0/13.1 packaging baseline. 13.1.1 preserves the newer production-hybrid safety/runtime contracts and layers 13.x systems on top instead of reverting them.
 
-## Safety / state
+Legacy tests that encoded superseded behavior were migrated only where the newer production contract is intentionally stronger. Examples: trivial greetings now remain zero-provider local turns; derived cache records cannot impersonate canonical authority; response-risk refines rather than erases stronger personal/task routing classifications.
 
-The Cognitive Reservoir remains derived and rebuildable. The audio cache and runtime reports are ephemeral presentation/developer artifacts. None of them are Mary memory. `.env` and real persistent data remain outside test/release payloads.
+## Verification baseline
+
+- Full combined repository suite: 1131 passed, 1 skipped.
+- Canonical release-gate pytest stage: 1106 passed, 1 skipped.
+- Diagnostics: 61 / 61 PASS, Healthy True.
+- Production Hybrid 12.12.3 verifier: PASS under 13.1.1.
+- Mary 13.1 realtime cognitive infrastructure verifier: PASS.
+- Complete deterministic/offline release gate: PASS through every historical milestone + local tool safety.
+- Desktop/mobile/native JavaScript syntax checks: PASS.
+- Production Vite build still needs to be run on the connected Windows/macOS host because this packaging environment does not have the Vite executable available.
+
+## State and privacy
+
+Release packages must never contain `.env`, `data/`, API keys/tokens, real memories, relationship state, developed-self state, private Voice Lab IDs, response-feedback data, `.git`, `.venv`, `node_modules`, caches, or runtime reports. Existing private state is preserved when the code overlay is applied to the canonical Windows project.

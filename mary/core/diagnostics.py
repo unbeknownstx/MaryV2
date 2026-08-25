@@ -73,6 +73,7 @@ class MaryDiagnostics:
         results.extend(self._check_expression())
         results.extend(self._check_avatar())
         results.extend(self._check_audio())
+        results.extend(self._check_realtime_infrastructure())
         results.extend(self._check_llm())
 
         return results
@@ -687,6 +688,14 @@ class MaryDiagnostics:
                 "conversation",
             ),
             self._check_attribute(
+                "Conversation Engagement",
+                "engagement",
+            ),
+            self._check_attribute(
+                "Growth Engine",
+                "growth",
+            ),
+            self._check_attribute(
                 "System Contract",
                 "system_contract",
             ),
@@ -738,6 +747,50 @@ class MaryDiagnostics:
                 "audio",
             )
         ]
+
+    # ============================================================
+    # REALTIME / RETRIEVAL / DISTRIBUTED INFRASTRUCTURE (13.1)
+    # ============================================================
+
+    def _check_realtime_infrastructure(self) -> List[DiagnosticResult]:
+        results = [
+            self._check_attribute(
+                "Realtime Interaction",
+                "realtime",
+            ),
+            self._check_attribute(
+                "Distributed Node Registry",
+                "node_registry",
+            ),
+            self._check_attribute(
+                "Perception Boundary",
+                "perception_director",
+            ),
+            self._check_attribute(
+                "Training Feedback Store",
+                "training_feedback",
+            ),
+        ]
+        mind = getattr(self.mary, "mind", None)
+        retrieval = getattr(mind, "retrieval", None) if mind is not None else None
+        if retrieval is None:
+            results.append(
+                DiagnosticResult(
+                    name="Hybrid Semantic Retrieval",
+                    status="FAIL",
+                    message="mind.retrieval is not connected",
+                )
+            )
+        else:
+            results.append(
+                DiagnosticResult(
+                    name="Hybrid Semantic Retrieval",
+                    status="PASS",
+                    message="connected",
+                    details={"type": type(retrieval).__name__},
+                )
+            )
+        return results
 
     # ============================================================
     # LLM

@@ -1,0 +1,5 @@
+MARYV2 13.1 historical verification
+================================
+The first 13.1 source verification was performed against an older pre-Production-Hybrid baseline.
+It is superseded by MaryV2 13.1.1, which rebases 13.1 onto the creator's newer Windows/Codex source.
+See MARYV2_13_1_1_VERIFICATION.txt for the authoritative consolidated result.

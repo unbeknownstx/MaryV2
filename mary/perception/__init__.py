@@ -8,6 +8,7 @@ objects that the cognition system can understand.
 from .events import Event, EventType
 from .entities import Entity, EntityType
 from .input import Input, InputSource, InputType
+from .director import PerceptionDirector, PerceptionObservation
 
 __all__ = [
     "Event",
@@ -17,4 +18,6 @@ __all__ = [
     "Input",
     "InputSource",
     "InputType",
+    "PerceptionDirector",
+    "PerceptionObservation",
 ]

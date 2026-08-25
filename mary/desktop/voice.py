@@ -84,6 +84,10 @@ def _piper_paths() -> tuple[Path | None, Path | None]:
 
 
 def _apply_delivery_plan(settings: VoiceSettings, plan: DeliveryPlan | dict[str, Any] | None) -> VoiceSettings:
+    # Keep this helper pure: when a caller explicitly applies a delivery plan,
+    # it performs that transformation. Mary 13.0 gates whether the live voice
+    # pipeline calls it via MARY_TTS_DYNAMIC_DELIVERY so the default remains the
+    # natural Voice Lab baseline.
     if plan is None:
         return settings
     values = plan.to_dict() if hasattr(plan, "to_dict") else dict(plan)
@@ -143,11 +147,11 @@ class DesktopVoiceEngine:
         if not api_key or not voice_id:
             return cls(status=DesktopVoiceStatus(False, "elevenlabs", voice_id or None, model_id or None, False, True))
 
-        stability = _env_float("MARY_TTS_STABILITY", 0.42, minimum=0.0, maximum=1.0)
-        similarity = _env_float("MARY_TTS_SIMILARITY", 0.82, minimum=0.0, maximum=1.0)
-        style = _env_float("MARY_TTS_STYLE", 0.11, minimum=0.0, maximum=1.0)
-        speed = _env_float("MARY_TTS_SPEED", 0.97, minimum=0.7, maximum=1.2)
-        speaker_boost = _env_bool("MARY_TTS_SPEAKER_BOOST", True)
+        stability = _env_float("MARY_TTS_STABILITY", 0.50, minimum=0.0, maximum=1.0)
+        similarity = _env_float("MARY_TTS_SIMILARITY", 0.75, minimum=0.0, maximum=1.0)
+        style = _env_float("MARY_TTS_STYLE", 0.0, minimum=0.0, maximum=1.0)
+        speed = _env_float("MARY_TTS_SPEED", 1.0, minimum=0.7, maximum=1.2)
+        speaker_boost = _env_bool("MARY_TTS_SPEAKER_BOOST", False)
         provider = ElevenLabsTextToSpeechProvider(api_key=api_key, voice_id=voice_id, model_id=model_id or "eleven_flash_v2_5", timeout=20.0)
         settings = VoiceSettings(voice=voice_id, speed=speed, output_format=SpeechAudioFormat.MP3,
             metadata={"stability": stability, "similarity_boost": similarity, "style": style, "use_speaker_boost": speaker_boost})
@@ -232,7 +236,7 @@ class DesktopVoiceEngine:
             "if($Voice){ try{$s.SelectVoice($Voice)}catch{} }; $s.Rate=$Rate; "
             "$s.SetOutputToWaveFile($Out); $s.Speak($Text); $s.Dispose();"
         )
-        speed = _env_float("MARY_TTS_SPEED", 0.97, minimum=0.7, maximum=1.2)
+        speed = _env_float("MARY_TTS_SPEED", 1.0, minimum=0.7, maximum=1.2)
         rate = int(round((speed - 1.0) * 10))
         try:
             result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script,
@@ -307,8 +311,10 @@ class DesktopVoiceEngine:
         if self.service is None or not self.status.enabled:
             return finish({**self.status.to_dict(), "status": "disabled", "spoken_text": spoken_text})
 
-        active_settings = resolve_emotion_voice_settings(self.base_settings, emotional_state)
-        active_settings = _apply_delivery_plan(active_settings, delivery_plan)
+        active_settings = self.base_settings
+        if _env_bool("MARY_TTS_DYNAMIC_DELIVERY", False):
+            active_settings = resolve_emotion_voice_settings(self.base_settings, emotional_state)
+            active_settings = _apply_delivery_plan(active_settings, delivery_plan)
         synth_started = monotonic()
         speech = self.service.synthesize(spoken_text, settings=active_settings)
         if not speech.is_successful:

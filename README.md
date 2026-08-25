@@ -2,6 +2,13 @@
 
 MaryV2 is a private persistent character runtime for **Mary**. Mary existed as a character before this software; the runtime is the machinery that lets the same character converse, remember selectively, learn through controlled paths, use tools/models, speak through the desktop, survive restarts, and remain independent from any one LLM provider.
 
+## Current consolidated baseline — 13.1.1
+
+The current canonical source line is **MaryV2 13.1.1 — Consolidated Production Hybrid + Realtime Cognitive Infrastructure**. It merges the newest Windows/Codex Production Hybrid Dialogue / Local Mind V2 work, the Replit/mobile/native-iPhone work, 13.0 Intentional Conversation + Continuous Development, and 13.1 realtime/attention/vector/perception/node infrastructure into one baseline.
+
+Start with `START_HERE_13_1_1.md`. The architectural consolidation is documented in `MARYV2_13_1_1_ARCHITECTURE.md`; skills/task-agent direction is documented in `SKILLS_AGENTS_13_1_1.md`. Older `START_HERE_*` and release documents are retained as implementation history, not as competing current baselines.
+
+
 ## V2 invariants
 
 - Mary is not the provider. Groq, Gemini, OpenRouter, Ollama, and optional paid OpenAI are replaceable capabilities.

@@ -422,6 +422,8 @@ class MaryDesktopBridge(QObject):
                 "voice": self.voice.status.to_dict(),
                 "speech_to_text": self.stt.status.to_dict(),
                 "presence_socket": self.presence_socket.status(),
+                "realtime": mary.realtime.status(),
+                "nodes": mary.node_registry.snapshot(),
             }
         )
 
@@ -448,6 +450,10 @@ class MaryDesktopBridge(QObject):
             payload["mind"] = self.application.mary.mind.status()
         except Exception as exc:
             payload["mind"] = {"enabled": False, "error": f"{type(exc).__name__}: {exc}"}
+        payload["realtime"] = self.application.mary.realtime.status()
+        payload["nodes"] = self.application.mary.node_registry.snapshot()
+        payload["retrieval"] = self.application.mary.mind.retrieval.status()
+        payload["perception"] = self.application.mary.perception_director.snapshot()
         return _json(payload)
 
     @Slot(result=str)
@@ -943,6 +949,28 @@ class MaryDesktopBridge(QObject):
         except ValueError as exc:
             print(f"[MaryDesktop] conversation-state warning: {exc}", flush=True)
             return
+        # Keep the cross-client 13.1 realtime coordinator synchronized with
+        # the already-proven desktop state machine. This remains presentation
+        # coordination only and never mutates identity/memory.
+        try:
+            realtime = self.application.mary.realtime
+            if snapshot.state == DesktopConversationState.SPEAKING:
+                realtime.speech_started(source="desktop_playback")
+            elif snapshot.state == DesktopConversationState.LISTENING:
+                realtime.mark_listening(True, source="desktop_microphone")
+            elif snapshot.state == DesktopConversationState.TRANSCRIBING:
+                realtime.mark_transcribing(True, source="desktop_stt")
+            elif snapshot.state == DesktopConversationState.INTERRUPTED:
+                realtime.interrupt(reason=snapshot.reason, by_source="desktop")
+            elif snapshot.state == DesktopConversationState.IDLE:
+                if realtime.status().get("phase") == "speaking":
+                    realtime.speech_ended(reason=snapshot.reason)
+                else:
+                    realtime.mark_listening(False, source="desktop_microphone")
+                    realtime.mark_transcribing(False, source="desktop_stt")
+        except Exception:
+            pass
+
         print(
             f"[MaryDesktop] conversation state: "
             f"{snapshot.previous.value} -> {snapshot.state.value} "

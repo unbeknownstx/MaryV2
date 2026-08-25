@@ -372,6 +372,13 @@ def build_desktop_dashboard_state(
         "recent_activities": _recent_activities(mary),
         "curiosities": _curiosities(mary),
         "personality": _personality(mary),
+        "growth": mary.growth.status() if hasattr(mary, "growth") else {},
+        "engagement": mary.engagement.status() if hasattr(mary, "engagement") else {},
+        "realtime": mary.realtime.status() if hasattr(mary, "realtime") else {},
+        "nodes": mary.node_registry.snapshot() if hasattr(mary, "node_registry") else {},
+        "retrieval": (mary.mind.retrieval.status() if hasattr(getattr(mary, "mind", None), "retriever") else {}),
+        "perception": mary.perception_director.snapshot() if hasattr(mary, "perception_director") else {},
+        "training_feedback": mary.training_feedback.status() if hasattr(mary, "training_feedback") else {},
         "providers": _provider_state(mary),
         "agency": {
             "active_goals": int(mary.agency.goals.count_active()),

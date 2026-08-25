@@ -203,7 +203,7 @@ class LLMRouter:
                 conversation_specific
                 or provider_specific
                 or legacy_primary
-                or "llama-3.1-8b-instant"
+                or "openai/gpt-oss-20b"
             )
 
         return (

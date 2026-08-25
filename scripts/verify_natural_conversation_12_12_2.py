@@ -22,7 +22,7 @@ def main() -> int:
     print("MARYV2 12.12.2 NATURAL CONVERSATION + LOCAL LAB")
     print("=" * 76)
     checks: list[bool] = []
-    checks.append(check(APP_VERSION == "12.12.2", "software version is 12.12.2"))
+    checks.append(check(APP_VERSION in {"12.12.2", "13.0.0", "13.1.1"}, "natural-conversation foundation remains installed in current release"))
     for relative in (
         "mary/desktop/audio_cache.py",
         "scripts/voice_lab.py",

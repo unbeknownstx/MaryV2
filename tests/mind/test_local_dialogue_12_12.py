@@ -60,20 +60,17 @@ def test_known_creator_fact_can_be_retrieved_and_spoken_locally():
 
 def test_represented_mary_preference_can_answer_locally():
     from mary.cognition.intent import Intent, IntentType
-    from mary.mind.reservoir import ReservoirRecord
 
     mary = Mary()
-    mary.mind.reservoir.upsert(ReservoirRecord(
-        record_id="pref:blue-neon",
-        kind="mary_preference",
-        subject="mary",
-        predicate="blue_neon",
-        content="Mary likes blue neon.",
+    mary.preferences.set_preference(
+        name="blue_neon",
+        category="aesthetic",
+        strength=0.95,
+        polarity=0.95,
+        confidence=0.95,
         source="preferences",
-        authority="mary_developed",
-        confidence=.95,
-        tags=("mary", "preference", "blue neon"),
-    ))
+    )
+    mary.mind.rebuild_reservoir()
     local = mary.mind.try_respond(
         "do you like blue neon?",
         intent=Intent(intent_type=IntentType.UNKNOWN, confidence=1.0),
@@ -85,20 +82,19 @@ def test_represented_mary_preference_can_answer_locally():
 
 def test_high_confidence_local_knowledge_can_answer_without_model():
     from mary.cognition.intent import Intent, IntentType
-    from mary.mind.reservoir import ReservoirRecord
 
     mary = Mary()
-    mary.mind.reservoir.upsert(ReservoirRecord(
-        record_id="knowledge:reservoir",
-        kind="knowledge_concept",
-        subject="world",
-        predicate="cognitive_reservoir",
-        content="A cognitive reservoir is a rebuildable local retrieval layer over authoritative Mary state.",
-        source="knowledge_manager",
-        authority="knowledge_verified",
-        confidence=.95,
-        tags=("knowledge", "cognitive reservoir"),
-    ))
+    # Production Hybrid V2 local answers require confirmation against a
+    # canonical owner. Semantic memory is the authority-bearing owner for this
+    # bounded local knowledge surface; the reservoir is only its derived index.
+    mary.memory.semantic.add(
+        subject="cognitive reservoir",
+        predicate="definition",
+        value="a rebuildable local retrieval layer over authoritative Mary state",
+        confidence=0.95,
+        source="semantic_memory",
+    )
+    mary.mind.rebuild_reservoir()
     local = mary.mind.try_respond(
         "what do you know about cognitive reservoir?",
         intent=Intent(intent_type=IntentType.UNKNOWN, confidence=1.0),

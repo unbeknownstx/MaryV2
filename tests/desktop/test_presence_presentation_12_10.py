@@ -12,8 +12,8 @@ def text(relative: str) -> str:
 def test_release_and_companion_home_are_packaged():
     release = text("mary/runtime/release.py")
     html = text("desktop/index.html")
-    assert ('APP_VERSION = "12.10.0"' in release or ('APP_VERSION = "12.11.0"' in release or ('APP_VERSION = "12.12.0"' in release or 'APP_VERSION = "12.12.2"' in release)))
-    assert ('DESKTOP_PHASE = "presence-presentation"' in release or 'DESKTOP_PHASE = "fast-dialogue-connected-presence"' in release or 'DESKTOP_PHASE = "cognitive-reservoir-character-runtime"' in release)
+    assert ('APP_VERSION = "12.10.0"' in release or ('APP_VERSION = "12.11.0"' in release or ('APP_VERSION = "12.12.0"' in release or ('APP_VERSION = "12.12.2"' in release or (('APP_VERSION = "13.0.0"' in release or 'APP_VERSION = "13.1.1"' in release) or 'APP_VERSION = "13.1.1"' in release)))))
+    assert ('DESKTOP_PHASE = "presence-presentation"' in release or 'DESKTOP_PHASE = "fast-dialogue-connected-presence"' in release or ('DESKTOP_PHASE = "cognitive-reservoir-character-runtime"' in release or (('DESKTOP_PHASE = "connected-development-evolution"' in release or 'DESKTOP_PHASE = "realtime-cognitive-infrastructure"' in release) or 'DESKTOP_PHASE = "realtime-cognitive-infrastructure"' in release)))
     assert 'data-screen="home"' in html
     assert 'id="companion-pulse-card"' in html
     assert (ROOT / "mary/ecosystem/companion.py").is_file()
@@ -79,8 +79,8 @@ def test_presence_css_has_laptop_and_low_height_breakpoints():
 
 def test_package_metadata_retains_12_10_foundations_in_current_release():
     package = text("PACKAGE_INFO.json")
-    assert ('"version": "12.10.0"' in package or ('"version": "12.11.0"' in package or ('"version": "12.12.0"' in package or '"version": "12.12.2"' in package)))
-    assert ('"desktop_phase": "presence-presentation"' in package or '"desktop_phase": "fast-dialogue-connected-presence"' in package or '"desktop_phase": "cognitive-reservoir-character-runtime"' in package)
+    assert ('"version": "12.10.0"' in package or ('"version": "12.11.0"' in package or ('"version": "12.12.0"' in package or ('"version": "12.12.2"' in package or '"version": "13.0.0"' in package or '"version": "13.1.1"' in package))))
+    assert ('"desktop_phase": "presence-presentation"' in package or '"desktop_phase": "fast-dialogue-connected-presence"' in package or ('"desktop_phase": "cognitive-reservoir-character-runtime"' in package or '"desktop_phase": "connected-development-evolution"' in package or '"desktop_phase": "realtime-cognitive-infrastructure"' in package))
 
 
 def test_windows_setup_references_existing_regression_files_only():

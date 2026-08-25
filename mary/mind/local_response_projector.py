@@ -990,7 +990,14 @@ def _semantic_text(value: Any, name: str, *, limit: int) -> str:
 def _atomic_semantic_text(value: Any, name: str, *, limit: int) -> str:
     """Accept one bounded scalar phrase, never an embedded response clause."""
 
+    # Numeric owner values are already finite typed scalars.  Their decimal
+    # point is data, not sentence punctuation, so do not reject it as an
+    # embedded clause boundary.
+    if isinstance(value, Real) and not isinstance(value, bool):
+        return _semantic_text(value, name, limit=limit)
     text = _semantic_text(value, name, limit=limit)
+    if re.fullmatch(r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)", text):
+        return text
     code = name.replace(" ", "_")
     if re.search(r"[.!?;:\r\n\u2028\u2029]", text):
         raise _UnsupportedProjection(f"{code}_not_atomic")

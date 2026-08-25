@@ -22,8 +22,8 @@ def main() -> int:
     voice = _text("mary/desktop/voice.py")
 
     checks += [
-        (('APP_VERSION = "12.11.0"' in release or ('APP_VERSION = "12.12.0"' in release or 'APP_VERSION = "12.12.2"' in release)), "software version preserves 12.11+ foundation"),
-        (('DESKTOP_PHASE = "fast-dialogue-connected-presence"' in release or 'DESKTOP_PHASE = "cognitive-reservoir-character-runtime"' in release), "desktop phase preserves fast-dialogue connected presence"),
+        (('APP_VERSION = "12.11.0"' in release or ('APP_VERSION = "12.12.0"' in release or ('APP_VERSION = "12.12.2"' in release or ('APP_VERSION = "13.0.0"' in release or 'APP_VERSION = "13.1.1"' in release)))), "software version preserves 12.11+ foundation"),
+        (('DESKTOP_PHASE = "fast-dialogue-connected-presence"' in release or 'DESKTOP_PHASE = "cognitive-reservoir-character-runtime"' in release or ('DESKTOP_PHASE = "connected-development-evolution"' in release or 'DESKTOP_PHASE = "realtime-cognitive-infrastructure"' in release)), "desktop phase preserves fast-dialogue connected presence"),
         ((ROOT / "mary/conversation/lanes.py").is_file(), "conversation lane classifier exists"),
         ((ROOT / "mary/conversation/reflection_policy.py").is_file(), "latency-aware reflection policy exists"),
         ("MARY_GROQ_CONVERSATION_MODEL" in router and "conversation_fast" in router, "purpose-specific fast Groq conversation model is wired"),

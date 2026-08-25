@@ -263,6 +263,113 @@ def format_memory_status(application: "MaryApplication") -> str:
     return "\n".join(lines)
 
 
+def format_conversation_state(application: "MaryApplication") -> str:
+    """Show Mary 13.0 intentional-conversation state."""
+
+    state = application.mary.engagement.status()
+    active = dict(state.get("active_session", {}) or {})
+    last = dict(state.get("last_plan", {}) or {})
+    lines = [
+        "MARYV2 CONVERSATION ENGINE",
+        "────────────────────────────────",
+        f"Configured mode: {state.get('mode', 'adaptive')}",
+        f"Active thread: {active.get('mode') or 'none'}",
+        f"Turns remaining: {active.get('turns_remaining', 0)}",
+        f"Last effective mode: {last.get('effective_mode', 'n/a')}",
+        f"Initiative: {last.get('initiative', 'n/a')}",
+        f"Reasoning depth: {last.get('reasoning_depth', 'n/a')}",
+        "Natural cues such as ‘let’s talk’, ‘ask me questions’, and ‘go deeper’ can open a thread.",
+    ]
+    return "\n".join(lines)
+
+
+def format_growth_state(application: "MaryApplication") -> str:
+    """Show display-safe continuous-development counters and policy."""
+
+    state = application.mary.growth.status()
+    journal = dict(state.get("journal", {}) or {})
+    candidates = list(state.get("preference_candidates", []) or [])
+    milestones = list(state.get("recent_milestones", []) or [])
+    lines = [
+        "MARYV2 DEVELOPMENT ENGINE",
+        "────────────────────────────────",
+        f"Experience records: {journal.get('records', 0)}",
+        f"Meaningful experiences: {journal.get('meaningful_records', 0)}",
+        f"Semantic promotions this runtime: {state.get('semantic_promotions', 0)}",
+        f"Developed preferences this runtime: {state.get('preference_promotions', 0)}",
+        f"Development candidates: {len(candidates)}",
+        f"Milestones: {len(milestones)}",
+        "Policy: grounded experience may develop represented state; model dialogue alone cannot rewrite Mary.",
+    ]
+    return "\n".join(lines)
+
+
+def format_realtime_state(application: "MaryApplication") -> str:
+    """Show Mary 13.1 realtime interaction/attention coordination state."""
+
+    state = application.mary.realtime.status()
+    stats = dict(state.get("stats", {}) or {})
+    attention = dict(state.get("attention", {}) or {})
+    next_event = dict(attention.get("next", {}) or {})
+    lines = [
+        "MARYV2 REALTIME INTERACTION",
+        "────────────────────────────────",
+        f"Phase: {state.get('phase', 'idle')}",
+        f"Anti-echo: {'ON' if state.get('anti_echo') else 'OFF'}",
+        f"Turns: {stats.get('turns', 0)}",
+        f"Speech starts: {stats.get('speech_starts', 0)}",
+        f"Interruptions: {stats.get('interruptions', 0)}",
+        f"Suppressed echo inputs: {stats.get('suppressed_echo_inputs', 0)}",
+        f"Attention pending: {attention.get('pending', 0)}",
+        f"Attention published/claimed/dropped: {attention.get('published', 0)}/{attention.get('claimed', 0)}/{attention.get('dropped', 0)}",
+        f"Next attention source: {next_event.get('source', 'none')}",
+        "Policy: attention priority coordinates realtime work; it never changes memory or identity authority.",
+    ]
+    return "\n".join(lines)
+
+
+def format_nodes_state(application: "MaryApplication") -> str:
+    """Show registered compute nodes and their bounded capabilities."""
+
+    state = application.mary.node_registry.snapshot()
+    nodes = list(state.get("nodes", []) or [])
+    lines = [
+        "MARYV2 COMPUTE NODES",
+        "────────────────────────────────",
+        f"Registered: {len(nodes)}",
+    ]
+    for node in nodes:
+        caps = [name for name, info in dict(node.get("capabilities", {}) or {}).items() if info.get("available")]
+        lines.append(
+            f"- {node.get('node_id', 'unknown')}: {'ONLINE' if node.get('connected') else 'OFFLINE'} "
+            f"({node.get('role', 'node')}) · {', '.join(caps[:12]) or 'no advertised capabilities'}"
+        )
+    lines.append("Policy: nodes provide replaceable compute/capabilities; canonical Mary state is not node-owned.")
+    return "\n".join(lines)
+
+
+def format_retrieval_state(application: "MaryApplication") -> str:
+    """Show hybrid lexical/vector retrieval status without triggering embeddings."""
+
+    retriever = getattr(application.mary.mind, "retrieval", None)
+    state = retriever.status() if retriever is not None else {}
+    vector = dict(state.get("vector_index", {}) or {})
+    weights = dict(state.get("weights", {}) or {})
+    lines = [
+        "MARYV2 HYBRID MEMORY RETRIEVAL",
+        "────────────────────────────────",
+        f"Mode: {state.get('mode', 'unavailable')}",
+        f"Embedding model: {state.get('embedding_model', 'n/a')}",
+        f"Vector index records: {vector.get('vectors', 0)}",
+        f"Vectors requested now: {'YES' if state.get('vector_requested') else 'NO'}",
+        f"Last query used vectors: {'YES' if state.get('last_query_used_vectors') else 'NO'}",
+        f"Weights lexical/vector: {weights.get('lexical', 'n/a')} / {weights.get('vector', 'n/a')}",
+        f"Last vector error: {state.get('last_vector_error') or 'none'}",
+        "Policy: vector similarity retrieves candidates only; canonical memory/provenance still decides truth.",
+    ]
+    return "\n".join(lines)
+
+
 def format_route_state(application: "MaryApplication") -> str:
     """Show preferred policy, host availability, and effective routes truthfully."""
 
@@ -388,13 +495,54 @@ class MaryApplication:
         turn_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> PipelineResult:
-        """Process one input through the canonical Mary pipeline."""
+        """Process one input through the canonical Mary pipeline.
 
-        return self.pipeline.run(
-            input_text,
-            turn_id=turn_id,
-            metadata=metadata,
-        )
+        13.1 wraps the existing pipeline with ephemeral realtime lifecycle
+        bookkeeping. This does not change cognition or persistence; it simply
+        gives every client one interruption/attention state model.
+        """
+
+        meta = dict(metadata or {})
+        surface = str(meta.get("surface") or "runtime")
+        transport = str(meta.get("transport") or "direct")
+        voice = bool(meta.get("voice_input", False))
+        interaction = None
+        try:
+            interaction = self.mary.realtime.begin_turn(
+                input_text,
+                surface=surface,
+                transport=transport,
+                voice=voice,
+            )
+        except Exception:
+            interaction = None
+
+        try:
+            result = self.pipeline.run(
+                input_text,
+                turn_id=turn_id,
+                metadata=meta,
+            )
+        except Exception as exc:
+            try:
+                self.mary.realtime.fail_turn(f"{type(exc).__name__}: {exc}")
+            except Exception:
+                pass
+            raise
+
+        try:
+            response_text = str(getattr(result, "output", "") or "")
+            if bool(getattr(result, "success", False)):
+                self.mary.realtime.mark_responding(response_text=response_text)
+                self.mary.realtime.finish_turn(response_text=response_text)
+            else:
+                self.mary.realtime.fail_turn(str(getattr(result, "error", "pipeline_failed") or "pipeline_failed"))
+            result.metadata.setdefault("realtime", self.mary.realtime.status())
+            if interaction is not None:
+                result.metadata.setdefault("interaction_turn_id", interaction.id)
+        except Exception:
+            pass
+        return result
 
     def save(self) -> bool:
         """Persist Mary's durable memory and explicitly developed self-state."""
@@ -402,7 +550,32 @@ class MaryApplication:
         memory_saved = self.mary.memory.save()
         developed_saved = self.mary.save_developed_self_state()
         promotion_saved = self.mary.save_preference_promotion_state()
-        return bool(memory_saved and developed_saved and promotion_saved)
+        engagement_saved = True
+        growth_saved = True
+        feedback_saved = True
+        try:
+            engagement_saved = bool(self.mary.engagement.save())
+        except Exception:
+            engagement_saved = False
+        try:
+            growth_saved = bool(self.mary.growth.journal.save())
+        except Exception:
+            growth_saved = False
+        try:
+            # A path may be configured even when there are no explicit ratings.
+            # Avoid creating an empty private dataset solely because Mary exits.
+            if self.mary.training_feedback.status().get("records", 0):
+                feedback_saved = bool(self.mary.training_feedback.save())
+        except Exception:
+            feedback_saved = False
+        return bool(
+            memory_saved
+            and developed_saved
+            and promotion_saved
+            and engagement_saved
+            and growth_saved
+            and feedback_saved
+        )
 
     def close(self) -> bool:
         """Persist state needed when the application exits."""
@@ -532,6 +705,34 @@ def create_application(
     if callable(sync_relationship):
         sync_relationship()
 
+    # Configure Mary 13.0 conversation engagement + development beside the
+    # same data root as memory. Custom/test memory paths remain isolated.
+    data_root = resolved_memory_path.parent.parent
+    try:
+        mary.engagement.configure(
+            data_root / "runtime" / "conversation_engagement.json",
+            auto_save=auto_save,
+            load=True,
+        )
+    except Exception as exc:
+        mary._engagement_startup_error = f"{type(exc).__name__}: {exc}"
+    try:
+        mary.growth.configure(
+            data_root / "development",
+            auto_save=auto_save,
+            load=True,
+        )
+    except Exception as exc:
+        mary._growth_startup_error = f"{type(exc).__name__}: {exc}"
+
+    try:
+        mary.training_feedback.configure(
+            data_root / "training" / "response_feedback.json",
+            load=True,
+        )
+    except Exception as exc:
+        mary._training_feedback_startup_error = f"{type(exc).__name__}: {exc}"
+
     # Configure Mary's rebuildable local cognitive reservoir beside the same
     # data root as canonical memory. Custom/test memory paths therefore keep
     # reservoir files isolated automatically instead of touching real state.
@@ -649,7 +850,7 @@ def run_interactive(
         print()
     print("Mary is ready.")
     print("At 'You:' type requests for Mary, not PowerShell commands.")
-    print("Type '/help', '/state', '/resources', '/memory-status', '/route', '/environment', '/contract', '/audit', '/pending', '/last', or 'exit'.")
+    print("Type '/help', '/state', '/resources', '/memory-status', '/route', '/conversation', '/growth', '/realtime', '/nodes', '/retrieval', '/environment', '/contract', '/audit', '/pending', '/last', or 'exit'.")
     print("=" * 60)
     print()
 
@@ -707,6 +908,42 @@ def run_interactive(
 
             if command in {"/route", "/model", "route", "model route"}:
                 print(format_route_state(app))
+                continue
+
+            if command in {"/conversation", "/talk-status", "conversation mode", "talk status"}:
+                print(format_conversation_state(app))
+                continue
+
+            if command in {"/talk", "talk mode"}:
+                app.mary.engagement.begin_session("engaged", turns=8, reason="terminal command")
+                print("Mary: Intentional conversation mode is active for the next 8 turns.")
+                continue
+
+            if command in {"/deep", "deep mode"}:
+                app.mary.engagement.begin_session("deep", turns=10, reason="terminal command")
+                print("Mary: Deep conversation mode is active for the next 10 turns.")
+                continue
+
+            if command in {"/auto", "/adaptive", "adaptive mode"}:
+                app.mary.engagement.set_mode("adaptive")
+                app.mary.engagement.end_session()
+                print("Mary: Conversation mode is back to adaptive.")
+                continue
+
+            if command in {"/growth", "/development", "growth status", "development status"}:
+                print(format_growth_state(app))
+                continue
+
+            if command in {"/realtime", "/attention", "realtime status", "attention status"}:
+                print(format_realtime_state(app))
+                continue
+
+            if command in {"/nodes", "/node", "nodes", "compute nodes"}:
+                print(format_nodes_state(app))
+                continue
+
+            if command in {"/retrieval", "/vectors", "retrieval status", "vector status"}:
+                print(format_retrieval_state(app))
                 continue
 
             if command in {"/environment", "/env", "/capabilities", "environment", "capabilities"}:

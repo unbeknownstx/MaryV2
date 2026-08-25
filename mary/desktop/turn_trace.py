@@ -36,6 +36,34 @@ def _safe_attempts(raw: Any, timing_raw: Any = None) -> list[dict[str, Any]]:
     return result
 
 
+
+
+def _safe_local_mind(raw: Any) -> dict[str, Any]:
+    source = raw if isinstance(raw, Mapping) else {}
+    allowed = (
+        "response_class", "response_engine", "escalation_reason",
+        "classification_ms", "local_composer_ms", "local_audit_ms",
+        "shadow_enabled", "shadow_model", "shadow_ms", "elapsed_ms",
+        "local_only",
+    )
+    result = {key: source.get(key) for key in allowed if key in source}
+    lane = source.get("conversation_lane")
+    if isinstance(lane, Mapping):
+        result["conversation_lane"] = {
+            key: lane.get(key)
+            for key in ("lane", "latency_target_ms", "allow_model_revision")
+            if key in lane
+        }
+    plan = source.get("plan")
+    if isinstance(plan, Mapping):
+        result["plan"] = {
+            key: plan.get(key)
+            for key in ("act", "local", "target_length")
+            if key in plan
+        }
+    return result
+
+
 def build_turn_trace(
     result: Any,
     *,
@@ -87,7 +115,10 @@ def build_turn_trace(
         "generation_purpose": str(reasoning_meta.get("generation_purpose") or "default/task"),
         "conversation_lane": str((reasoning_meta.get("conversation_lane") or {}).get("lane") or "n/a"),
         "reflection_mode": str(reflection_meta.get("mode") or "n/a"),
-        "local_mind": dict(cycle_meta.get("local_mind", {}) or {}),
+        "response_class": reasoning_meta.get("response_class"),
+        "response_engine": reasoning_meta.get("response_engine"),
+        "escalation_reason": reasoning_meta.get("escalation_reason"),
+        "local_mind": _safe_local_mind(cycle_meta.get("local_mind", {})),
         "delivery_plan": dict(cycle_meta.get("delivery_plan", {}) or {}),
         "finish_reason": str(reasoning_meta.get("finish_reason") or "n/a"),
         "attempts": attempts,

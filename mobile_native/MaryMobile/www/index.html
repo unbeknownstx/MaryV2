@@ -36,6 +36,12 @@
         <div class="chat-stage">
           <div class="stage-grid"></div>
           <div class="stage-header"><div><strong>MARY</strong><span>Your AI Companion</span></div><div id="live-badge" class="live-badge"><i></i>LIVE</div></div>
+          <div id="conversation-mode-bar" class="conversation-mode-bar glass">
+            <button data-conversation-mode="adaptive" class="active">AUTO</button>
+            <button data-conversation-mode="engaged">TALK</button>
+            <button data-conversation-mode="deep">DEEP</button>
+            <span id="conversation-thread-label">adaptive</span>
+          </div>
           <div class="portrait-zone" id="portrait-zone">
             <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
             <img class="portrait" src="./assets/mary-reference.jpeg" alt="Mary Cosma" />
@@ -74,7 +80,7 @@
       <div class="sheet-handle"></div>
       <div class="sheet-head"><div><span>MARY SYSTEM</span><strong>Choose a workspace</strong></div><button id="workspace-close" type="button">×</button></div>
       <div class="workspace-grid">
-        <section><h3>COMPANION</h3><button data-open="memories"><b>◫</b><span>Memories<small>Continuity + recall</small></span></button><button data-open="personality"><b>✦</b><span>Personality<small>Mary's developed self</small></span></button><button data-open="mind"><b>⌬</b><span>Mind<small>Local cognitive reservoir</small></span></button><button data-open="stream"><b>◉</b><span>Presence<small>Notices + current context</small></span></button></section>
+        <section><h3>COMPANION</h3><button data-open="memories"><b>◫</b><span>Memories<small>Continuity + recall</small></span></button><button data-open="growth"><b>↟</b><span>Growth<small>Experience + development</small></span></button><button data-open="personality"><b>✦</b><span>Personality<small>Mary's developed self</small></span></button><button data-open="mind"><b>⌬</b><span>Mind<small>Local cognitive reservoir</small></span></button><button data-open="stream"><b>◉</b><span>Presence<small>Notices + current context</small></span></button></section>
         <section><h3>WORK</h3><button data-open="study"><b>◈</b><span>Study<small>Projects + review</small></span></button><button data-open="search"><b>⌕</b><span>Search<small>Your configured roots</small></span></button><button data-open="research"><b>⌘</b><span>Research<small>Persistent threads</small></span></button><button data-open="arcade"><b>◇</b><span>Arcade<small>Small local games</small></span></button></section>
         <section><h3>CREATE / MEDIA</h3><button data-open="studio"><b>✎</b><span>Studio<small>Unbeknownst + creative files</small></span></button><button data-open="gallery"><b>▧</b><span>Gallery<small>Mary + project art</small></span></button><button data-open="media"><b>♫</b><span>Media<small>YouTube + research</small></span></button><button data-open="voice"><b>◉</b><span>Voice & Avatar<small>Speech + presentation</small></span></button></section>
         <section><h3>SYSTEM</h3><button data-open="runtime"><b>⌁</b><span>Runtime<small>Routing + latency</small></span></button><button data-open="settings"><b>⚙</b><span>Settings<small>Connection + device</small></span></button></section>

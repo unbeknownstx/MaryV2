@@ -1,12 +1,14 @@
-# MaryV2 development plan after 12.12.2
+# MaryV2 development plan after 13.1.1 consolidation
 
-1. Install 12.12.2 on the canonical Windows host and run the normal conversation set again.
-2. Compare the new trace stages. The key question is whether the old ~1.05 second fixed gap lived in QWebChannel payload transfer, browser audio readiness, or playback scheduling.
-3. Listen specifically for restraint: Mary should sound conversational most of the time, with stronger acting reserved for real excitement, concern, conflict, amusement, etc.
-4. Pull the minimal local model tier (`qwen3:1.7b`, `llama3.2:1b`, `gemma3:1b`) and run the Local Model Lab. Do not promote anything automatically.
-5. If useful, run the extended tier (`smollm2:1.7b`, `llama3.2:3b`) and reasoning specialist (`phi4-mini`). Keep `qwen3:4b` as the known Mary-like quality baseline.
-6. Use the explicit Voice Lab to compare the current ElevenLabs voice with alternate voice IDs under the same restrained settings before deciding the voice itself is wrong.
-7. Once local/model/voice measurements are stable, prototype sentence/chunk streaming behind the same provenance/reflection boundary so speech can begin before a long generated response is complete.
-8. Continue character-performance work with subtle gaze, body timing, emotional inertia and idle behavior. Expression should support dialogue rather than advertise itself.
-9. Use Codex directly in the canonical VS Code workspace for iterative code work, with `AGENTS.md` boundaries and the VS Code test tasks.
-10. When the RTX 3090 arrives, benchmark larger local language, TTS, STT and vision engines behind the same interfaces instead of redesigning Mary around the GPU.
+1. Install the 13.1.1 full overlay on the canonical Windows repo while preserving `.env` and `data/`.
+2. Run `python -m scripts.check_mary_13_1`, then the fast/full/release tiers on the real PC. Do not rebuild vectors until canonical state and routing are verified.
+3. Run the desktop frontend host build (`npm ci`, `npm run check`, `npm run build`) and live desktop conversation/voice tests.
+4. Test the merged mobile protocol 4 surface from the Windows host, then pull the same committed code on the MacBook and run parity checks.
+5. Build/sign the native iPhone project in Xcode and point it at the same canonical Mary host.
+6. Explicitly build the semantic vector index only after Ollama `nomic-embed-text` is available; keep lexical/FTS as the safe baseline and vectors as derived retrieval.
+7. Continue realtime conversation work: true streaming STT/VAD, barge-in, token/sentence TTS pipelining, and interruption-safe audio transport.
+8. Add perception providers behind `PerceptionDirector` (screen/image/camera snapshots first, no always-on capture by default).
+9. Evolve Skills into explicit capability manifests and use the existing Task Orchestrator/Executor as the basis for task-scoped specialist agents. Agents must remain temporary workers for Mary, never separate owners of Mary's identity/memory.
+10. Build the cloud-core/home-node transport on top of NodeRegistry: centralized state/control, distributed compute, outbound private node connections, no duplicate Mary data roots.
+11. Continue collecting only explicit Mary-fit feedback so future GPU/LoRA work starts with a clean evaluation/training corpus.
+12. When the 24 GB GPU arrives, benchmark larger local dialogue/VLM/STT/TTS/embedding/reranker models behind existing interfaces instead of redesigning Mary's identity architecture around one GPU.

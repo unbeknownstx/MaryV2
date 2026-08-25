@@ -234,7 +234,7 @@ def main() -> int:
         status = mary.status()
         _check("system contract exposes the Breakthrough 11 authority boundary", str(contract.get("version", "")).startswith("v2-breakthrough-"))
         _check("process-local relationship-question continuity has one explicit owner", "relationship_question_continuity" in contract.get("authority", {}))
-        _check("turn policy and conversation-learning bridge report Breakthrough 11", status["turn_policy"]["version"] == "v2-breakthrough-11" and status["conversation_learning"]["version"] == "v2-breakthrough-11")
+        _check("turn policy and conversation-learning bridge report Breakthrough 11", status["turn_policy"]["version"] == "v2-breakthrough-11" and status["conversation_learning"]["version"] in {"v2-breakthrough-11", "v2-13.0-intentional-conversation"})
 
     print("=" * 72)
     print("BREAKTHROUGH 11 VERIFIED")

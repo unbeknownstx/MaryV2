@@ -5,7 +5,11 @@ from pathlib import Path
 from mary.runtime.application import create_application
 
 
-def test_persistent_application_keeps_reservoir_beside_isolated_state(tmp_path: Path):
+def test_persistent_application_keeps_reservoir_beside_isolated_state(tmp_path: Path, monkeypatch):
+    # The session-wide test harness defaults derived reservoirs to memory so
+    # tests can never touch live state. This test explicitly exercises the
+    # persistent mode inside its own temporary root.
+    monkeypatch.setenv("MARY_RESERVOIR_STORAGE", "persistent")
     app = create_application(
         memory_path=tmp_path / "memory" / "memory.json",
         developed_self_path=tmp_path / "personality" / "developed.json",

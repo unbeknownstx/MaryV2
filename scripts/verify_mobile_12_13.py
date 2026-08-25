@@ -48,12 +48,12 @@ def main() -> None:
     worker = (ROOT / "mobile_web/sw.js").read_text(encoding="utf-8")
     env = (ROOT / ".env.example").read_text(encoding="utf-8")
 
-    check('MOBILE_PROTOCOL_VERSION = "2"' in server, "mobile protocol 2")
+    check(('MOBILE_PROTOCOL_VERSION = "2"' in server or 'MOBILE_PROTOCOL_VERSION = "3"' in server or 'MOBILE_PROTOCOL_VERSION = "4"' in server), "mobile protocol preserves 12.13+ contract")
     check('path == "/api/tts"' in server, "server TTS endpoint")
     check('path == "/api/stt"' in server, "server STT endpoint")
     check("/api/tts" in app and "/api/stt" in app, "phone uses server audio routes")
     check("server" in app and "device" in app and "voiceMode" in app, "voice routing controls")
-    check("maryv2-mobile-shell-v2" in worker and "networkFirst" in worker, "PWA update-safe cache")
+    check(("maryv2-mobile-shell-v2" in worker or "maryv2-mobile-shell-v13" in worker or "maryv2-mobile-shell-v13-1" in worker) and "networkFirst" in worker, "PWA update-safe cache")
     check("MARY_MOBILE_TTS_MAX_CHARS" in env, "mobile voice tuning documented in env template")
 
     native = ROOT / "mobile_native/MaryMobile/www"

@@ -1,24 +1,24 @@
 {
   "application": "MaryV2",
-  "version": "12.12.2",
-  "release": "Natural Conversation Calibration + Fast Audio Transport + Local Model/Voice Lab",
+  "version": "13.1.1",
+  "release": "Consolidated Production Hybrid + Realtime Cognitive Infrastructure",
   "channel": "private-v2",
-  "desktop_phase": "cognitive-reservoir-character-runtime",
-  "base_release": "MaryV2 12.10 Presence Fabric + Companion Home + Presentation Polish",
+  "desktop_phase": "realtime-cognitive-infrastructure",
+  "base_release": "Creator Windows/Codex Production Hybrid 12.12.3 + Replit/Mobile + MaryV2 13.0/13.1",
   "private_runtime_state_included": false,
   "environment_secrets_included": false,
   "avatar_model_assets_included": true,
-  "canonical_test_result": "772 passed, 1 skipped",
-  "diagnostics": "54/54 PASS; Healthy True",
-  "offline_release_gate": "PASS; deterministic/offline release verification",
-  "ecosystem_presence_verifier": "PASS; milestone verifiers through 12.12.2 retained",
-  "frontend_source_check": "PASS (npm run check / Node syntax). Production Vite build is intentionally performed on target Windows by SETUP_WINDOWS.ps1.",
-  "frontend_host_build_note": "This build environment has no desktop/node_modules Vite binary. Canonical Windows setup runs npm ci + npm run check + npm run build and stops on failure.",
-  "start_here": "START_HERE_12_12_2.md",
+  "canonical_test_result": "1131 passed, 1 skipped",
+  "diagnostics": "61/61 PASS; Healthy True",
+  "offline_release_gate": "PASS; full deterministic/offline registry through production_hybrid_dialogue_12_12_3 + realtime_cognitive_infrastructure_13_1",
+  "ecosystem_presence_verifier": "Legacy milestone verifiers through 13.0 retained; 13.1 verifier added",
+  "frontend_source_check": "PASS desktop npm run check; PASS mobile_web app.js Node syntax; PASS native iPhone web app.js Node syntax. Production Vite build is target-host work.",
+  "frontend_host_build_note": "Run npm ci + npm run check + npm run build in desktop/ on the target development host before desktop packaging.",
+  "start_here": "START_HERE_13_1_1.md",
   "first_boot_helper": "SETUP_WINDOWS.ps1",
   "asset_policy": "project-created/procedural assets; no third-party asset download required for first boot",
   "mobile_surface": {
-    "version": "12.12.2-mobile-native-1",
+    "version": "13.1.1-consolidated-production-hybrid-realtime",
     "type": "native_ios_app_plus_pwa",
     "native_stack": "Swift + SwiftUI host + WKWebView + Speech + AVFoundation + UIKit; no third-party mobile framework",
     "transport": "standard_library_http_json",
@@ -42,7 +42,15 @@
       "media",
       "voice",
       "runtime",
-      "settings"
+      "settings",
+      "growth",
+      "conversation_modes",
+      "voice_lab",
+      "realtime_interaction",
+      "attention_bus",
+      "hybrid_retrieval",
+      "compute_nodes",
+      "explicit_response_feedback"
     ],
     "native_features": [
       "speech_recognition",
@@ -52,6 +60,24 @@
       "launch_screen",
       "persistent_connection_settings"
     ],
-    "ios_project": "mobile_native/MaryMobile.xcodeproj"
-  }
+    "ios_project": "mobile_native/MaryMobile.xcodeproj",
+    "voice_lab_private_ids": true,
+    "protocol": "4"
+  },
+  "migration_guide": "MIGRATION_13_1_1.md",
+  "verification_report": "MARYV2_13_1_1_VERIFICATION.txt",
+  "environment_parity_tool": "python -m scripts.check_environment_parity",
+  "reference_matrix": "NEURO_REFERENCE_MATRIX_13_1.md",
+  "semantic_vector_rebuild": "python -m scripts.rebuild_semantic_vectors",
+  "system_doctor": "python -m scripts.check_mary_13_1",
+  "13_1_systems": [
+    "RealtimeInteractionCoordinator",
+    "AttentionBus",
+    "PerceptionDirector",
+    "HybridReservoirRetriever",
+    "SemanticVectorIndex",
+    "NodeRegistry",
+    "ResponseFeedbackStore"
+  ],
+  "skills_agents_direction": "SKILLS_AGENTS_13_1_1.md"
 }

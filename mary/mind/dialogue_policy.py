@@ -13,7 +13,8 @@ _GREETING_RE = re.compile(r"^\s*(?:hey+|hi+|hello+|yo+|hiya|sup)(?:\s+mary)?[!.?
 _THANKS_RE = re.compile(r"^\s*(?:thanks|thank you|thx|appreciate it|ty)[!.?\s]*$", re.I)
 _GOODBYE_RE = re.compile(r"^\s*(?:bye|goodbye|good night|night mary|later|see ya|see you)[!.?\s]*$", re.I)
 _LAUGH_RE = re.compile(r"^\s*(?:lol+|lmao+|haha+|hehe+|😂+|😭+)[!.?\s]*$", re.I)
-_ACK_RE = re.compile(r"^\s*(?:ok|okay|yeah|yep|yup|nah|nope|nice|cool|damn|wow|wild|got it)[!.?\s]*$", re.I)
+_ACK_RE = re.compile(r"^\s*(?:ok|okay|yeah|yep|yup|nah|nope|nice|cool|got it)[!.?\s]*$", re.I)
+_REACT_RE = re.compile(r"^\s*(?:damn|wow|wild)[!.?\s]*$", re.I)
 _HOW_ARE_YOU_RE = re.compile(r"\b(?:how are you|how're you|how you doing|how you feel|you good)\b", re.I)
 _WHAT_UP_RE = re.compile(r"\b(?:what are you up to|what're you up to|what are you doing|whats up with you|what's up with you)\b", re.I)
 _CREATOR_FACT_RE = re.compile(r"\bwhat(?:'s| is) my (?P<field>[a-z0-9 _-]{2,50})\??$", re.I)
@@ -57,6 +58,8 @@ class LocalDialoguePolicy:
         if _LAUGH_RE.search(value):
             return DialoguePlan(DialogueAct.LAUGH, 0.98, "laughter/reaction", local=True)
         if _ACK_RE.search(value):
+            return DialoguePlan(DialogueAct.ACKNOWLEDGE, 0.94, "short acknowledgement", local=True)
+        if _REACT_RE.search(value):
             return DialoguePlan(DialogueAct.REACT, 0.94, "short reaction", local=True)
         if _HOW_ARE_YOU_RE.search(value):
             return DialoguePlan(DialogueAct.STATUS, 0.97, "represented Mary-state question", local=True, slots={"status_kind": "emotion"})

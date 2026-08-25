@@ -1,0 +1,50 @@
+MARYV2 13.1.1 — CONSOLIDATED PRODUCTION HYBRID + REALTIME COGNITIVE INFRASTRUCTURE
+================================================================================
+
+Source baseline
+---------------
+Rebased onto the creator's newest uploaded Windows/Codex project and merged with
+Replit/mobile + 13.0/13.1 development/realtime work.
+
+Python regression suite
+-----------------------
+PASS  1131 passed, 1 skipped
+
+Canonical release-gate pytest stage
+-----------------------------------
+PASS  1106 passed, 1 skipped
+
+Diagnostics
+-----------
+PASS  61 / 61
+PASS  Healthy: True
+
+Required milestone foundations
+------------------------------
+PASS  Production Hybrid Dialogue 12.12.3 under 13.1.1
+PASS  Connected Development 13.0
+PASS  Realtime Cognitive Infrastructure 13.1
+PASS  Mobile 12.13 / protocol 4 source integration
+PASS  provider routing / local safety / persistence recovery / state integrity
+
+Deterministic/offline release gate
+----------------------------------
+PASS  complete historical verifier registry
+PASS  local tool safety smoke
+PASS  Release verification PASSED (deterministic/offline gate)
+
+Frontend source
+---------------
+PASS  desktop npm run check
+PASS  mobile_web/app.js syntax
+PASS  native iPhone web app.js syntax
+NOTE  production Vite build was not completed in this container because the
+      packaged node_modules tree does not contain the Vite executable. Run
+      npm ci + npm run build on the Windows/macOS host before executable build.
+
+Release hygiene
+---------------
+The distributed overlay excludes .env, data/, credentials/tokens, real memories,
+relationship/developed-self state, Voice Lab private state, response-feedback
+training data, .git, .venv, node_modules, caches, runtime reports, and temp files.
+================================================================================

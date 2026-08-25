@@ -24,12 +24,15 @@ from mary.cognition.natural_input import normalize_for_matching
 
 
 class ConversationLearningBridge:
-    VERSION = "v2-breakthrough-11"
+    VERSION = "v2-13.0-intentional-conversation"
 
     _INVITATION_PATTERNS: tuple[str, ...] = (
         r"\bask me anything\b",
         r"\bask anything of me\b",
         r"\bask me (?:something|whatever you want)\b",
+        r"\bask (?:me )?(?:some |a few )?questions?\b",
+        r"\bget to know me\b",
+        r"\blearn (?:more )?about me\b",
         r"\bwhat (?:do|would) (?:u|you) want to know about me\b",
         r"\bif (?:u|you) could ask me (?:anything|something)\b",
         r"\bwhat would (?:u|you) actually want to know\b",

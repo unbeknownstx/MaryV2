@@ -33,7 +33,3 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -m scripts.check_mobile_voice"
-
-[[ports]]
-localPort = 8080
-externalPort = 80

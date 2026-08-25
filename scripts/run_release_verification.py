@@ -35,12 +35,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-from mary.core.diagnostics import MaryDiagnostics
-from mary.core.mary import Mary
-from mary.runtime.application import create_application
-from mary.tools.manager import ToolManager
-
-
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_LLM_TEST = "tests/conversation/test_live_pipeline.py"
 
@@ -115,7 +109,10 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("fast_dialogue_connected_presence_12_11", "scripts.verify_connected_companion_12_11"),
     ("cognitive_character_runtime_12_12", "scripts.verify_character_runtime_12_12"),
     ("natural_conversation_12_12_2", "scripts.verify_natural_conversation_12_12_2"),
+    ("production_hybrid_dialogue_12_12_3", "scripts.verify_production_hybrid_dialogue_12_12_3"),
     ("mobile_12_13", "scripts.verify_mobile_12_13"),
+    ("connected_development_13_0", "scripts.verify_mary_13"),
+    ("realtime_cognitive_infrastructure_13_1", "scripts.verify_mary_13_1"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
     ("preference_promotion", "scripts.verify_preference_promotion"),
     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
@@ -158,34 +155,31 @@ def _offline_environment(*, data_dir: str | Path | None = None) -> dict[str, str
 def _offline_process_environment():
     """Isolate one in-process deterministic check from providers and real state."""
 
-    saved = {name: os.environ.get(name) for name in _OFFLINE_STRIP_ENV}
-    saved_env_file = os.environ.get("MARY_ENV_FILE")
-    saved_data_dir = os.environ.get("MARY_DATA_DIR")
-
-    with tempfile.TemporaryDirectory(prefix="maryv2_release_state_") as directory:
-        try:
-            for name in _OFFLINE_STRIP_ENV:
+    tracked = tuple(dict.fromkeys((*_OFFLINE_STRIP_ENV, "MARY_ENV_FILE", "MARY_DATA_DIR")))
+    saved = {name: os.environ.get(name) for name in tracked}
+    root = Path(tempfile.mkdtemp(prefix="maryv2_release_state_")).resolve()
+    data_dir = root / "data"
+    env_file = root / "no-live-config"
+    data_dir.mkdir(parents=True, exist_ok=False)
+    try:
+        for name in _OFFLINE_STRIP_ENV:
+            os.environ.pop(name, None)
+        os.environ["MARY_ENV_FILE"] = str(env_file)
+        os.environ["MARY_DATA_DIR"] = str(data_dir)
+        os.environ["MARY_RESERVOIR_STORAGE"] = "memory"
+        yield {"root": root, "data": data_dir, "env_file": env_file}
+    finally:
+        for name, value in saved.items():
+            if value is None:
                 os.environ.pop(name, None)
-            os.environ["MARY_ENV_FILE"] = str(_OFFLINE_ENV_FILE)
-            os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
-            os.environ["MARY_RESERVOIR_STORAGE"] = "memory"
-            yield
-        finally:
-            for name, value in saved.items():
-                if value is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = value
-
-            if saved_env_file is None:
-                os.environ.pop("MARY_ENV_FILE", None)
             else:
-                os.environ["MARY_ENV_FILE"] = saved_env_file
-
-            if saved_data_dir is None:
-                os.environ.pop("MARY_DATA_DIR", None)
-            else:
-                os.environ["MARY_DATA_DIR"] = saved_data_dir
+                os.environ[name] = value
+        # TemporaryDirectory semantics without retaining an object across yield;
+        # this root was created directly under system temp with our prefix.
+        import shutil
+        system_temp = Path(tempfile.gettempdir()).resolve()
+        if root.parent == system_temp and root.name.startswith("maryv2_release_state_"):
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def discover_verifier_modules() -> tuple[str, ...]:
@@ -239,6 +233,8 @@ def run_pytest() -> bool:
 
 def run_diagnostics() -> bool:
     _heading("SYSTEM DIAGNOSTICS")
+    from mary.core.diagnostics import MaryDiagnostics
+    from mary.core.mary import Mary
     with _offline_process_environment():
         mary = Mary()
         diagnostics = MaryDiagnostics(mary)
@@ -280,6 +276,7 @@ def run_verifier(name: str, module: str) -> bool:
 
 def run_local_safety_smoke() -> bool:
     _heading("LOCAL TOOL SAFETY SMOKE")
+    from mary.tools.manager import ToolManager
 
     with tempfile.TemporaryDirectory(prefix="maryv2_verify_") as directory:
         root = Path(directory)
@@ -377,6 +374,7 @@ def run_live_llm() -> bool:
 
 
 def run_live_web() -> bool:
+    from mary.runtime.application import create_application
     _heading("EXPLICIT LIVE WEB + GROUNDED RESPONSE")
     print(
         "This check is running because --live-web was supplied. "

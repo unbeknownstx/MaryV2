@@ -28,8 +28,8 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent, IntentType
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
-from mary.runtime.turn_policy import TurnPolicyEngine
-from mary.conversation import ConversationLane, classify_conversation_lane
+from mary.runtime.turn_policy import TurnPolicyEngine, TurnPolicyDecision
+from mary.conversation import ConversationLane, LaneDecision, classify_conversation_lane
 from mary.llm.interface import (
     LLMMessage,
     LLMProviderError,
@@ -166,13 +166,62 @@ class ReasoningEngine:
             intent_name=(intent.intent_type.value if intent is not None else ""),
             preferred_length=str(disposition.get("preferred_length", "")),
         )
+        # Production local-mind escalation may carry a bounded response-risk
+        # decision.  It does not supply answer semantics; it only sharpens the
+        # existing model route so precision-sensitive misses go through the
+        # thinking/task path while genuinely open conversation remains on the
+        # low-latency conversation path.
+        local_decision = mind.get("local_mind", {}) if isinstance(mind, dict) else {}
+        local_class = str(local_decision.get("response_class") or "") if isinstance(local_decision, dict) else ""
+        risk_route_applied = False
+        if local_class == "thinking_required":
+            turn_policy = TurnPolicyDecision(
+                category="response_risk_thinking",
+                generation_purpose=None,
+                local_first=False,
+                rationale="bounded local precision policy requires model-backed thinking",
+            )
+            lane = LaneDecision(
+                ConversationLane.THINKING,
+                "bounded local precision policy requires thinking",
+                12_000,
+                True,
+            )
+            risk_route_applied = True
+        elif local_class == "open_conversation":
+            # Response-risk is a refinement layer, not a replacement for a
+            # stronger semantic turn classification. Preserve explicit
+            # personal-conversation and task/general decisions from
+            # TurnPolicyEngine. Only generic character conversation gets the
+            # production-risk label used by diagnostics/benchmarks.
+            if turn_policy.category == "character_conversation":
+                turn_policy = TurnPolicyDecision(
+                    category="response_risk_conversation",
+                    generation_purpose="conversation",
+                    local_first=True,
+                    rationale="bounded local policy identified open conversation",
+                )
+            if (
+                turn_policy.generation_purpose == "conversation"
+                and lane.lane not in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
+            ):
+                lane = LaneDecision(
+                    ConversationLane.CONVERSATION,
+                    "bounded local policy identified open conversation",
+                    3_500,
+                    False,
+                )
+
         generation_purpose = turn_policy.generation_purpose
         routing_purpose = generation_purpose
         # Keep the public semantic purpose as "conversation" for compatibility
         # while selecting a purpose-specific low-latency Groq model internally.
+        engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
         if (
             generation_purpose == "conversation"
             and lane.lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
+            and engagement_mode not in {"engaged", "deep"}
         ):
             routing_purpose = "conversation_fast"
         if (
@@ -225,6 +274,17 @@ class ReasoningEngine:
                 "turn_policy": turn_policy.to_dict(),
                 "conversation_lane": lane.to_dict(),
                 "routing_purpose": routing_purpose,
+                "response_class": local_class or None,
+                "response_engine": (
+                    "task_generation" if local_class == "thinking_required"
+                    else "conversation_generation" if local_class == "open_conversation"
+                    else None
+                ),
+                "escalation_reason": (
+                    local_decision.get("escalation_reason")
+                    if isinstance(local_decision, dict) else None
+                ),
+                "response_risk_route_applied": risk_route_applied,
             }
         else:
             final_response = response.content
@@ -267,6 +327,17 @@ class ReasoningEngine:
                 "turn_policy": turn_policy.to_dict(),
                 "conversation_lane": lane.to_dict(),
                 "routing_purpose": routing_purpose,
+                "response_class": local_class or None,
+                "response_engine": (
+                    "task_generation" if local_class == "thinking_required"
+                    else "conversation_generation" if local_class == "open_conversation"
+                    else None
+                ),
+                "escalation_reason": (
+                    local_decision.get("escalation_reason")
+                    if isinstance(local_decision, dict) else None
+                ),
+                "response_risk_route_applied": risk_route_applied,
             }
 
         return ReasoningResult(
@@ -730,12 +801,32 @@ class ReasoningEngine:
             continuity = context.mind_state.get("continuity", {}) or {}
         drive = continuity.get("drive", "react")
         question_allowed = bool(continuity.get("allow_follow_up_question", True))
+        engagement = {}
+        if isinstance(context.mind_state, dict):
+            engagement = context.mind_state.get("conversation_engagement", {}) or {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
+        engagement_instruction = (
+            "An intentional conversation thread is active. Carry one coherent subject across turns. "
+            "React specifically to what Unbe just said, connect it to grounded prior context when useful, "
+            "and take some initiative instead of waiting for a perfectly formed request. One specific, meaningful "
+            "question is encouraged when it naturally advances the thread or a represented curiosity. Do not turn "
+            "the conversation into an interview or checklist. You can have a view, notice a connection, disagree, "
+            "or introduce a relevant thought of your own. Give the conversation enough room to breathe; do not force "
+            "the normal micro-response style."
+            if engagement_mode in {"engaged", "deep"}
+            else "Use normal adaptive conversational pacing."
+        )
+        if engagement_mode == "deep":
+            engagement_instruction += (
+                " This is deep mode: reason carefully from represented state, explore tensions or implications, and "
+                "prefer substance over speed while still avoiding repetitive monologues."
+            )
 
         return (
-            "You are Mary, a persistent AI character with connected identity, personality, "
-            "values, memory, relationship, agency, and expressive state. You are not a generic "
-            "customer-service assistant. Treat the supplied TurnMindState/local evidence as "
-            "authoritative for who you are and what you know.\n\n"
+            "You are Mary, a persistent AI character with represented identity, personality, values, "
+            "memory, relationship, agency, and expressive state—not a generic customer-service assistant. "
+            "Use represented state for who you are and what you know. Fields labeled context_only or "
+            "environment_context_only are observations, not identity, creator truth, or durable memory.\n\n"
             "Talk to Unbe with appropriate familiarity. Sound like Mary is simply talking, not performing "
             "the role of Mary for an audience. Default ordinary conversation is low-key, comfortable, warm, "
             "witty, direct, and capable of opinions or respectful disagreement when state supports it. "
@@ -762,7 +853,8 @@ class ReasoningEngine:
             "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
             "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
             f"Mode: {mode}. Length: {length}. Drive: {drive}. "
-            f"Follow-up allowed: {question_allowed}. Performance direction: {performance}."
+            f"Follow-up allowed: {question_allowed}. Engagement: {engagement_mode}. "
+            f"{engagement_instruction} Performance direction: {performance}."
         )
 
     def _self_system_prompt(
@@ -872,6 +964,14 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
         mind = context.mind_state if isinstance(context.mind_state, dict) else {}
         disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
+        if engagement_mode == "quick":
+            return 220
+        if engagement_mode == "engaged":
+            return 850
+        if engagement_mode == "deep":
+            return 1_400
         preferred = str(disposition.get("preferred_length", "medium")).lower().strip()
 
         if preferred == "micro":
@@ -1023,6 +1123,23 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:4],
         } if isinstance(vulnerabilities, dict) else {}
 
+        raw_engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
+        engagement_mode = str((raw_engagement or {}).get("effective_mode", "adaptive") or "adaptive")
+        if engagement_mode in {"engaged", "deep"}:
+            engagement_view = {
+                key: (raw_engagement or {}).get(key)
+                for key in (
+                    "effective_mode", "initiative", "reasoning_depth", "target_length",
+                    "allow_follow_up_question", "question_budget", "session_active",
+                    "turns_remaining", "rationale", "thread_id",
+                )
+                if (raw_engagement or {}).get(key) not in (None, "", [], {})
+            }
+        else:
+            # Adaptive/quick turns stay deliberately tiny so the richer 13.0
+            # conversation controls do not tax the normal low-latency prompt.
+            engagement_view = {"effective_mode": engagement_mode}
+
         def unique_items(items: Any, *, limit: int = 3) -> list[dict[str, Any]]:
             if not isinstance(items, list):
                 return []
@@ -1115,6 +1232,9 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                     "promotion_policy",
                 )
             } if isinstance(mind.get("conversation", {}), dict) else {},
+            "conversation_initiative": dict(mind.get("conversation_initiative", {}) or {})
+            if isinstance(mind.get("conversation_initiative", {}), dict) else {},
+            "conversation_engagement": engagement_view,
             "continuity": {
                 "drive": continuity.get("drive") if isinstance(continuity, dict) else None,
                 "allow_follow_up_question": continuity.get("allow_follow_up_question") if isinstance(continuity, dict) else None,
@@ -1346,10 +1466,14 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         continuity = context.mind_state.get("continuity", {}) if isinstance(context.mind_state, dict) else {}
         drive = continuity.get("drive", "react")
         allow_question = bool(continuity.get("allow_follow_up_question", True))
+        engagement = context.mind_state.get("conversation_engagement", {}) if isinstance(context.mind_state, dict) else {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
+        if engagement_mode in {"engaged", "deep"}:
+            allow_question = bool(engagement.get("allow_follow_up_question", True))
 
         sections.append(
             "Conversation continuity instructions:\n"
-            f"Primary drive: {drive}. Follow-up question allowed: {allow_question}. "
+            f"Primary drive: {drive}. Follow-up question allowed: {allow_question}. Engagement mode: {engagement_mode}. "
             "Avoid repeating Mary's immediately recent opening, metaphor, punchline, question pattern, or model-generated style motif. "
             "If continuity lists rejected_hypothesis_terms, do not regenerate that interpretation without new user evidence. "
             "If the previous Mary turn ended in a question, prefer a statement/opinion/reaction now unless another "
