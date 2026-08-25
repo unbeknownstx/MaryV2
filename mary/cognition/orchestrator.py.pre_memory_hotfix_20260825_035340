@@ -1994,10 +1994,17 @@ class CognitiveOrchestrator:
         text: str,
         lowered: str,
     ) -> Intent | None:
-        # Detect explicit requests to store information in memory.
-        # Mary only stores automatically when the creator clearly
-        # authorizes persistence.
+        """
+        Detect explicit requests to store information in memory.
 
+        V2 remains deterministic: Mary only stores information
+        automatically when the user clearly asks her to remember it.
+        """
+
+        # Natural explicit-memory forms can include a conversational lead-in,
+        # e.g. "want to know something about me, remember this: ...".
+        # Only the payload after an explicit remember-this/following marker is
+        # stored; ordinary mentions of memory are not treated as authorization.
         explicit_payload_patterns = (
             r"\bremember\s+this\s*:\s*(.+)$",
             r"\bremember\s+the\s+following\s*:\s*(.+)$",
@@ -2025,9 +2032,13 @@ class CognitiveOrchestrator:
                     "Input explicitly requests that the following payload "
                     "be remembered."
                 ),
-                parameters={"content": content},
+                parameters={
+                    "content": content
+                },
                 source="basic_detector",
             )
+
+        # More specific phrases must appear before generic phrases.
 
         prefixes = (
             "remember that ",
@@ -2047,23 +2058,37 @@ class CognitiveOrchestrator:
         )
 
         for prefix in prefixes:
-            if not lowered.startswith(prefix):
-                continue
 
-            content = text[len(prefix):].strip()
-            if not content:
-                continue
+            if lowered.startswith(
+                prefix
+            ):
 
-            return Intent(
-                intent_type=IntentType.MEMORY_STORE,
-                confidence=0.95,
-                description=(
-                    "Input explicitly requests that information be remembered."
-                ),
-                parameters={"content": content},
-                source="basic_detector",
-            )
+                content = text[
+                    len(prefix):
+                ].strip()
 
+                if not content:
+                    continue
+
+                return Intent(
+                    intent_type=IntentType.MEMORY_STORE,
+                    confidence=0.95,
+                    description=(
+                        "Input explicitly requests "
+                        "that information be remembered."
+                    ),
+                    parameters={
+                        "content": content
+                    },
+                    source="basic_detector",
+                )
+
+
+        # Natural embedded authorization.
+        #
+        # These forms allow an explicit memory request to appear inside a
+        # conversational turn without treating ordinary mentions or recall
+        # questions as permission to persist something.
         embedded_authorization_patterns = (
             r"\byou\s+can\s+remember\s+this\b",
             r"\bi\s+(?:want|need)\s+you\s+to\s+remember\s+this\b",
@@ -2083,21 +2108,42 @@ class CognitiveOrchestrator:
                 text,
                 flags=re.IGNORECASE | re.DOTALL,
             )
+
             if match is None:
                 continue
 
-            left = text[:match.start()].rstrip()
-            right = text[match.end():].lstrip(" \t\r\n.,;:-")
+            # For an embedded authorization, the creator's surrounding turn
+            # is the memory payload. Remove only the authorization phrase
+            # rather than throwing away the relational context around it.
+            content = (
+                text[:match.start()]
+                + " "
+                + text[match.end():]
+            )
 
-            if left and right:
-                content = f"{left} {right}"
-            else:
-                content = left or right
+            content = re.sub(
+                r"\s+",
+                " ",
+                content,
+            ).strip()
 
-            content = re.sub(r"\s+", " ", content).strip()
-            content = re.sub(r"\s+([,;:!?])", r"\1", content)
-            content = re.sub(r"\.\s*\.", ".", content)
-            content = content.strip(" \t\r\n,;:-")
+            content = re.sub(
+                r"\s+([,;:!?])",
+                r"\1",
+                content,
+            )
+
+            content = re.sub(
+                r"\.\s*\.",
+                ".",
+                content,
+            )
+
+            content = content.lstrip(
+                " \t\r\n.,;:-"
+            ).rstrip(
+                " \t\r\n,;:-"
+            )
 
             if not content:
                 continue
@@ -2109,11 +2155,18 @@ class CognitiveOrchestrator:
                     "Input contains an explicit natural-language "
                     "authorization to remember the surrounding content."
                 ),
-                parameters={"content": content},
+                parameters={
+                    "content": content
+                },
                 source="basic_detector",
             )
 
+
         return None
+
+    # ============================================================
+    # RESPONSE SELECTION
+    # ============================================================
 
     def _select_response(
         self,
