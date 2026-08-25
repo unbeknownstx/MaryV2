@@ -1,0 +1,486 @@
+--- base/mary/llm/router.py	2026-08-23 00:44:28.000000000 +0000
++++ stage/mary/llm/router.py	2026-08-25 00:29:01.370695685 +0000
+@@ -103,20 +103,9 @@
+         if name == "groq":
+             from .providers.groq import GroqProvider
+ 
+-            if purpose_name in {"conversation_fast", "social_instant"}:
+-                model = os.getenv(
+-                    "MARY_GROQ_CONVERSATION_MODEL",
+-                    "llama-3.1-8b-instant",
+-                ).strip() or "llama-3.1-8b-instant"
+-            else:
+-                model = (
+-                    self.config.llm.model
+-                    if self.config.llm.provider == "groq"
+-                    else os.getenv(
+-                        "MARY_GROQ_MODEL",
+-                        "openai/gpt-oss-20b",
+-                    )
+-                )
++            model = self._groq_model_for_purpose(
++                purpose_name,
++            )
+             return GroqProvider(model=model)
+ 
+         if name == "gemini":
+@@ -176,6 +165,53 @@
+ 
+         raise ValueError(f"Unknown LLM provider: {name}")
+ 
++    def _groq_model_for_purpose(
++        self,
++        purpose: str | None = None,
++    ) -> str:
++        """Resolve Groq model overrides consistently across every route.
++
++        ``MARY_GROQ_MODEL`` is the provider-specific source of truth. The
++        older ``MARY_LLM_MODEL``/``config.llm.model`` remains a compatibility
++        fallback when Groq is the configured primary provider.
++
++        Fast/social conversation may still use its own explicit
++        ``MARY_GROQ_CONVERSATION_MODEL``. When that override is absent, an
++        explicit ``MARY_GROQ_MODEL`` now carries through to conversation too
++        instead of being silently ignored.
++        """
++
++        purpose_name = str(purpose or "").lower().strip()
++        provider_specific = os.getenv(
++            "MARY_GROQ_MODEL",
++            "",
++        ).strip()
++
++        legacy_primary = ""
++        if str(self.config.llm.provider).lower().strip() == "groq":
++            legacy_primary = str(
++                self.config.llm.model
++                or ""
++            ).strip()
++
++        if purpose_name in {"conversation_fast", "social_instant"}:
++            conversation_specific = os.getenv(
++                "MARY_GROQ_CONVERSATION_MODEL",
++                "",
++            ).strip()
++            return (
++                conversation_specific
++                or provider_specific
++                or legacy_primary
++                or "llama-3.1-8b-instant"
++            )
++
++        return (
++            provider_specific
++            or legacy_primary
++            or "openai/gpt-oss-20b"
++        )
++
+     def register_provider(
+         self,
+         name: str,
+@@ -903,14 +939,7 @@
+         provider_name = self.provider_name(provider)
+ 
+         if provider_name == "groq":
+-            return (
+-                self.config.llm.model
+-                if self.config.llm.provider == "groq"
+-                else os.getenv(
+-                    "MARY_GROQ_MODEL",
+-                    "openai/gpt-oss-20b",
+-                )
+-            )
++            return self._groq_model_for_purpose()
+         if provider_name == "gemini":
+             return self.get_provider("gemini").model_name()
+         if provider_name == "openrouter":
+--- base/mary/llm/output_quality.py	2026-08-22 10:48:16.000000000 +0000
++++ stage/mary/llm/output_quality.py	2026-08-25 00:29:08.994751340 +0000
+@@ -36,6 +36,18 @@
+     "DEVANAGARI",
+ )
+ 
++_CLASSIFIER_LEAK_PATTERNS = (
++    re.compile(
++        r"^\s*(?:user|assistant|response|content)\s+safety\s*:\s*"
++        r"(?:safe|unsafe|allowed|blocked)\s*[.!]?\s*$",
++        re.IGNORECASE,
++    ),
++    re.compile(
++        r"^\s*safety\s*:\s*(?:safe|unsafe|allowed|blocked)\s*[.!]?\s*$",
++        re.IGNORECASE,
++    ),
++)
++
+ 
+ @dataclass(frozen=True)
+ class OutputQualityIssue:
+@@ -79,6 +91,16 @@
+             "Provider output contains replacement/null characters.",
+         )
+ 
++    stripped = text.strip()
++    if len(stripped) <= 120 and any(
++        pattern.fullmatch(stripped)
++        for pattern in _CLASSIFIER_LEAK_PATTERNS
++    ):
++        return OutputQualityIssue(
++            "classifier_leakage",
++            "Provider returned an internal safety/classifier label instead of dialogue.",
++        )
++
+     prompt_text = _message_text(messages)
+     lowered_prompt = prompt_text.lower()
+     if any(marker in lowered_prompt for marker in _LANGUAGE_REQUEST_MARKERS):
+--- base/scripts/check_llm_routes.py	2026-08-22 10:48:16.000000000 +0000
++++ stage/scripts/check_llm_routes.py	2026-08-25 00:29:32.264742441 +0000
+@@ -1,31 +1,177 @@
+-"""Print Mary's configured LLM routes without revealing API keys."""
++"""Inspect Mary's LLM routes without revealing API keys.
++
++Default mode is configuration-only and makes no provider requests.
++Use ``--live`` to make one tiny request to each configured free cloud provider
++and print a sanitized failure reason when a provider cannot generate.
++"""
+ 
+ from __future__ import annotations
+ 
++import argparse
++import os
++import re
++import time
++
+ from dotenv import load_dotenv
+ 
+ from mary.core.config import Config
++from mary.llm.interface import LLMMessage
++from mary.llm.output_quality import inspect_output_quality
+ from mary.llm.router import LLMRouter
+ 
+ 
++_SECRET_ENV_NAMES = (
++    "GROQ_API_KEY",
++    "GEMINI_API_KEY",
++    "GOOGLE_API_KEY",
++    "OPENROUTER_API_KEY",
++    "OPENAI_API_KEY",
++)
++
++_SECRET_SHAPES = (
++    re.compile(r"sk-[A-Za-z0-9_\-]{12,}"),
++    re.compile(r"AIza[A-Za-z0-9_\-]{20,}"),
++)
++
++
++def _sanitize(value: object, *, limit: int = 700) -> str:
++    """Return diagnostic text with known credential material removed."""
++
++    text = str(value or "").replace("\n", " ").replace("\r", " ")
++    for name in _SECRET_ENV_NAMES:
++        secret = os.getenv(name, "")
++        if secret:
++            text = text.replace(secret, "<redacted>")
++    for pattern in _SECRET_SHAPES:
++        text = pattern.sub("<redacted>", text)
++    text = " ".join(text.split())
++    if len(text) > limit:
++        text = text[: limit - 3] + "..."
++    return text
++
++
++def _exception_status(exc: Exception) -> str:
++    status = getattr(exc, "status_code", None)
++    if status is None:
++        response = getattr(exc, "response", None)
++        status = getattr(response, "status_code", None)
++    return str(status) if status is not None else "n/a"
++
++
++def _provider_for_live_probe(
++    router: LLMRouter,
++    name: str,
++):
++    # Match Mary's real short-conversation Groq lane. Other providers do not
++    # currently have a purpose-specific model instance.
++    if name == "groq":
++        return router._get_provider_for_purpose(
++            "groq",
++            "social_instant",
++        )
++    return router.get_provider(name)
++
++
++def _live_probe(router: LLMRouter, name: str) -> None:
++    try:
++        provider = _provider_for_live_probe(router, name)
++    except Exception as exc:
++        print(
++            f"{name:10} LIVE FAIL       create "
++            f"{type(exc).__name__} status={_exception_status(exc)} "
++            f"{_sanitize(exc)}"
++        )
++        return
++
++    try:
++        available = bool(provider.is_available())
++    except Exception as exc:
++        print(
++            f"{name:10} LIVE FAIL       availability "
++            f"{type(exc).__name__} status={_exception_status(exc)} "
++            f"{_sanitize(exc)}"
++        )
++        return
++
++    if not available:
++        print(f"{name:10} LIVE SKIP       not configured")
++        return
++
++    messages = [
++        LLMMessage(
++            role="user",
++            content=(
++                "Reply with one short natural sentence confirming that this "
++                "language-model route is working."
++            ),
++        )
++    ]
++    started = time.perf_counter()
++    try:
++        response = provider.generate(
++            messages,
++            temperature=0.2,
++            max_tokens=48,
++        )
++    except Exception as exc:
++        elapsed_ms = (time.perf_counter() - started) * 1000.0
++        print(
++            f"{name:10} LIVE FAIL       {elapsed_ms:8.0f} ms  "
++            f"{provider.model_name()}  {type(exc).__name__} "
++            f"status={_exception_status(exc)}  {_sanitize(exc)}"
++        )
++        return
++
++    elapsed_ms = (time.perf_counter() - started) * 1000.0
++    issue = inspect_output_quality(response.content, messages)
++    if issue is not None:
++        print(
++            f"{name:10} LIVE INVALID    {elapsed_ms:8.0f} ms  "
++            f"{response.model}  {issue.code}: {issue.description}"
++        )
++        return
++
++    print(
++        f"{name:10} LIVE OK         {elapsed_ms:8.0f} ms  "
++        f"{response.model}"
++    )
++
++
+ def main() -> None:
++    parser = argparse.ArgumentParser(
++        description="Show MaryV2 LLM route configuration and optional live health.",
++    )
++    parser.add_argument(
++        "--live",
++        action="store_true",
++        help=(
++            "make one small request to each configured free cloud provider; "
++            "this can consume provider quota"
++        ),
++    )
++    args = parser.parse_args()
++
+     load_dotenv()
+ 
+     config = Config.from_environment()
+     router = LLMRouter(config)
+ 
++    task_order = router._provider_order(None)
++    conversation_order = router.conversation_provider_order()
++
+     print("MARY V2 LLM ROUTES")
+     print("=" * 72)
+     print(f"Strategy: {router.routing_strategy()}")
+-    print(
+-        "Order:    "
+-        + " -> ".join(
+-            router._provider_order(None)
+-        )
+-    )
++    print("Task:     " + " -> ".join(task_order))
++    print("Chat:     " + " -> ".join(conversation_order))
+     print()
+ 
+-    for name in router._provider_order(None):
++    names: list[str] = []
++    for name in task_order + conversation_order:
++        if name not in names:
++            names.append(name)
++
++    for name in names:
+         try:
+             provider = router.get_provider(name)
+             available = bool(provider.is_available())
+@@ -37,6 +183,18 @@
+         status = "READY" if available else "NOT CONFIGURED"
+         print(f"{name:10} {status:15} {model}")
+ 
++        if name == "groq":
++            try:
++                chat_provider = router._get_provider_for_purpose(
++                    "groq",
++                    "social_instant",
++                )
++                chat_model = chat_provider.model_name()
++            except Exception as exc:
++                chat_model = f"unavailable ({type(exc).__name__})"
++            if chat_model != model:
++                print(f"{'':10} {'CHAT MODEL':15} {chat_model}")
++
+     print()
+     print("Private/offline route: ollama only")
+     expert_order = router._provider_order(None, route="expert")
+@@ -55,6 +213,19 @@
+     )
+     print("Paid OpenAI route: excluded from free_first")
+ 
++    if not args.live:
++        print()
++        print("Configuration check only; no LLM requests were made.")
++        print("Use --live for sanitized provider-by-provider network diagnostics.")
++        return
++
++    print()
++    print("LIVE FREE-PROVIDER CHECK")
++    print("=" * 72)
++    print("One small generation request is made per configured free cloud provider.")
++    for name in ("groq", "gemini", "openrouter"):
++        _live_probe(router, name)
++
+ 
+ if __name__ == "__main__":
+     main()
+--- base/scripts/run_release_verification.py	2026-08-23 07:12:54.000000000 +0000
++++ stage/scripts/run_release_verification.py	2026-08-25 00:30:30.273638102 +0000
+@@ -115,6 +115,7 @@
+     ("fast_dialogue_connected_presence_12_11", "scripts.verify_connected_companion_12_11"),
+     ("cognitive_character_runtime_12_12", "scripts.verify_character_runtime_12_12"),
+     ("natural_conversation_12_12_2", "scripts.verify_natural_conversation_12_12_2"),
++    ("mobile_12_13", "scripts.verify_mobile_12_13"),
+     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
+     ("preference_promotion", "scripts.verify_preference_promotion"),
+     ("natural_relationship_learning", "scripts.verify_natural_relationship_learning"),
+--- /dev/null	2026-08-25 00:26:05.020775923 +0000
++++ stage/tests/llm/test_replit_provider_config_hotfix.py	2026-08-25 00:29:42.296430048 +0000
+@@ -0,0 +1,77 @@
++from __future__ import annotations
++
++import sys
++import types
++
++from mary.core.config import Config
++from mary.llm.router import LLMRouter
++
++
++def _fake_groq(monkeypatch):
++    module = types.ModuleType("mary.llm.providers.groq")
++
++    class FakeGroqProvider:
++        def __init__(self, model):
++            self.model = model
++
++        def model_name(self):
++            return self.model
++
++        def is_available(self):
++            return True
++
++    module.GroqProvider = FakeGroqProvider
++    monkeypatch.setitem(sys.modules, "mary.llm.providers.groq", module)
++
++
++def test_provider_specific_groq_model_wins_over_legacy_primary(monkeypatch):
++    _fake_groq(monkeypatch)
++    monkeypatch.setenv("MARY_LLM_PROVIDER", "groq")
++    monkeypatch.setenv("MARY_LLM_MODEL", "openai/gpt-oss-20b")
++    monkeypatch.setenv("MARY_GROQ_MODEL", "llama-3.1-8b-instant")
++    monkeypatch.delenv("MARY_GROQ_CONVERSATION_MODEL", raising=False)
++
++    router = LLMRouter(Config.from_environment())
++
++    assert router.get_provider("groq").model_name() == "llama-3.1-8b-instant"
++    assert router.model_name("groq") == "llama-3.1-8b-instant"
++
++
++def test_social_groq_inherits_provider_specific_model_when_no_chat_override(monkeypatch):
++    _fake_groq(monkeypatch)
++    monkeypatch.setenv("MARY_LLM_PROVIDER", "groq")
++    monkeypatch.setenv("MARY_LLM_MODEL", "openai/gpt-oss-20b")
++    monkeypatch.setenv("MARY_GROQ_MODEL", "llama-3.1-8b-instant")
++    monkeypatch.delenv("MARY_GROQ_CONVERSATION_MODEL", raising=False)
++
++    router = LLMRouter(Config.from_environment())
++    provider = router._get_provider_for_purpose("groq", "social_instant")
++
++    assert provider.model_name() == "llama-3.1-8b-instant"
++
++
++def test_explicit_social_groq_model_still_wins(monkeypatch):
++    _fake_groq(monkeypatch)
++    monkeypatch.setenv("MARY_GROQ_MODEL", "openai/gpt-oss-20b")
++    monkeypatch.setenv("MARY_GROQ_CONVERSATION_MODEL", "llama-3.1-8b-instant")
++
++    router = LLMRouter(Config.from_environment())
++    provider = router._get_provider_for_purpose("groq", "social_instant")
++
++    assert provider.model_name() == "llama-3.1-8b-instant"
++
++
++def test_legacy_llm_model_remains_fallback_for_groq(monkeypatch):
++    _fake_groq(monkeypatch)
++    monkeypatch.setenv("MARY_LLM_PROVIDER", "groq")
++    monkeypatch.setenv("MARY_LLM_MODEL", "legacy-groq-model")
++    monkeypatch.delenv("MARY_GROQ_MODEL", raising=False)
++    monkeypatch.delenv("MARY_GROQ_CONVERSATION_MODEL", raising=False)
++
++    router = LLMRouter(Config.from_environment())
++
++    assert router.get_provider("groq").model_name() == "legacy-groq-model"
++    assert (
++        router._get_provider_for_purpose("groq", "social_instant").model_name()
++        == "legacy-groq-model"
++    )
+--- base/tests/llm/test_output_quality.py	2026-08-22 10:48:16.000000000 +0000
++++ stage/tests/llm/test_output_quality.py	2026-08-25 00:29:46.320392808 +0000
+@@ -64,3 +64,32 @@
+     assert good.calls == 1
+     assert router.last_generation_attempts[0]["status"] == "invalid_output"
+     assert router.last_generation_attempts[-1]["status"] == "success"
++
++
++def test_classifier_label_leakage_is_rejected():
++    issue = inspect_output_quality(
++        "User Safety: safe",
++        [LLMMessage(role="user", content="hey Mary what's up")],
++    )
++    assert issue is not None
++    assert issue.code == "classifier_leakage"
++
++
++def test_classifier_label_leakage_fails_over_before_reaching_mary():
++    config = Config()
++    config.llm.provider = "primary"
++    config.llm.fallback_providers = ["secondary"]
++    config.llm.routing_strategy = "configured"
++    router = LLMRouter(config)
++    leaked = ContentProvider("primary", "User Safety: safe")
++    good = ContentProvider("secondary", "Not much. I'm here with you.")
++    router.register_provider("primary", leaked)
++    router.register_provider("secondary", good)
++
++    response = router.generate([
++        LLMMessage(role="user", content="hey Mary what's up"),
++    ])
++
++    assert response.provider == "secondary"
++    assert response.content == "Not much. I'm here with you."
++    assert router.last_generation_attempts[0]["status"] == "invalid_output"
