@@ -1965,7 +1965,7 @@ class Mary:
 
         plural_signal = re.search(r"\b(?:we|we're|weve|we've|we have|our|us)\b", candidate_normalized)
         work_signal = re.search(
-            r"\b(?:work(?:ing|ed)?|(?:build|building|built)|develop(?:ing|ed)?|fix(?:ing|ed)?|"
+            r"\b(?:work(?:ing|ed)?|build(?:ing|built)?|develop(?:ing|ed)?|fix(?:ing|ed)?|"
             r"test(?:ing|ed)?|run(?:ning)?|port(?:ing|ed)?|install(?:ing|ed)?|set up|"
             r"finish(?:ing|ed)?|complete(?:d|ing)?|ship(?:ping|ped)?|package(?:d|ing)?|"
             r"deploy(?:ing|ed)?|integrat(?:e|ing|ed)|debug(?:ging|ged)?)\b",

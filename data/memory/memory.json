@@ -240,5 +240,46 @@
       }
     }
   ],
-  "semantic": []
+  "semantic": [
+    {
+      "id": "semantic_1",
+      "subject": "creator",
+      "predicate": "likes",
+      "value": "creating stories",
+      "confidence": 0.8,
+      "source": "memory_consolidation",
+      "created_at": "2026-08-25T02:07:21.665429",
+      "updated_at": "2026-08-25T02:07:21.665429"
+    },
+    {
+      "id": "semantic_2",
+      "subject": "creator",
+      "predicate": "likes",
+      "value": "you to be direct and concise",
+      "confidence": 0.8,
+      "source": "memory_consolidation",
+      "created_at": "2026-08-25T02:07:21.665459",
+      "updated_at": "2026-08-25T02:07:21.665459"
+    },
+    {
+      "id": "semantic_3",
+      "subject": "creator",
+      "predicate": "likes",
+      "value": "rainy nights when I'm working on creative projects.",
+      "confidence": 0.8,
+      "source": "memory_consolidation",
+      "created_at": "2026-08-25T02:07:21.665489",
+      "updated_at": "2026-08-25T02:07:21.665489"
+    },
+    {
+      "id": "semantic_4",
+      "subject": "creator",
+      "predicate": "likes",
+      "value": "so many things but thats why youre special you build off my creativity",
+      "confidence": 0.8,
+      "source": "memory_consolidation",
+      "created_at": "2026-08-25T02:07:21.665509",
+      "updated_at": "2026-08-25T02:07:21.665509"
+    }
+  ]
 }

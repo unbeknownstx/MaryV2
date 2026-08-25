@@ -2139,9 +2139,7 @@ class CognitiveOrchestrator:
                 content,
             )
 
-            content = content.lstrip(
-                " \t\r\n.,;:-"
-            ).rstrip(
+            content = content.strip(
                 " \t\r\n,;:-"
             )
 
@@ -2160,7 +2158,6 @@ class CognitiveOrchestrator:
                 },
                 source="basic_detector",
             )
-
 
         return None
 

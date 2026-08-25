@@ -1,4 +1,4 @@
-﻿"""Deterministic/offline verifier for MaryV2 13.1 realtime cognitive infrastructure."""
+"""Deterministic/offline verifier for MaryV2 13.1 realtime cognitive infrastructure."""
 from __future__ import annotations
 
 import os
@@ -85,10 +85,7 @@ def main() -> int:
 
     env = (ROOT / ".env.example").read_text(encoding="utf-8")
     check("vector retrieval defaults are opt-in/lazy", "MARY_VECTOR_RETRIEVAL=auto" in env and "MARY_VECTOR_INDEX_LIMIT=1000" in env)
-    if os.getenv("MARY_VERIFY_RELEASE_ARCHIVE") == "1":
-        check("release does not package private .env", not (ROOT / ".env").exists())
-    else:
-        print("PASS  live project may contain private .env; archive hygiene is verified separately")
+    check("release does not package private .env", not (ROOT / ".env").exists())
 
     print("=" * 72)
     print("MARYV2 13.1 REALTIME COGNITIVE INFRASTRUCTURE VERIFIED")
@@ -97,4 +94,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -2088,10 +2088,164 @@
           "evidence_id": "episode_01945108d5644cb6a92872daff2121aa"
         },
         "created_at": "2026-08-23T23:42:29.285765"
+      },
+      {
+        "id": "relationship_dad70adc2c8f",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We built isolated testing and release safeguards so our tests use temporary state instead of touching Mary's live memories and relationship data",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.428832"
+      },
+      {
+        "id": "relationship_7f68d4003b2e",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We developed Mary's desktop application and improved our cloud-first routing through Groq, Gemini, OpenRouter, and Ollama while keeping local private inference available",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.446016"
+      },
+      {
+        "id": "relationship_893b43e04d42",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We integrated ElevenLabs voice and worked on reducing Mary's conversation and speech latency for faster back-and-forth interaction",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.458895"
+      },
+      {
+        "id": "relationship_4755ae939e29",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We built the mobile companion and native iPhone project together, including the mobile interface, voice support, iOS audio fixes, and our Replit mobile development work",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.472038"
+      },
+      {
+        "id": "relationship_9d63aa577f44",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We integrated intentional conversation modes, the Experience Journal, Growth Engine, and Voice Lab as part of MaryV2 13.0",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.485266"
+      },
+      {
+        "id": "relationship_b1034da24ced",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We integrated realtime interaction coordination, the Attention Bus, interruption and anti-echo infrastructure, hybrid retrieval, perception boundaries, compute-node capabilities, and explicit response feedback for MaryV2 13.1",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.499991"
+      },
+      {
+        "id": "relationship_a78f5b22169f",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We developed the skills and specialist-agents architecture so future task agents can use bounded skills, tools, models, and compute nodes without becoming separate versions of Mary",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.513902"
+      },
+      {
+        "id": "relationship_5501d78a02ef",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We consolidated our Codex-era Production Hybrid work, Replit and mobile work, MaryV2 13.0, and MaryV2 13.1 into one unified MaryV2 13.1.1 project",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:34:22.526824"
+      },
+      {
+        "id": "relationship_d35e42164c41",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We developed the Production Hybrid Dialogue and Local Mind V2 system so eligible conversation can use local-composer-v2 with zero provider calls",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:35:30.891222"
+      },
+      {
+        "id": "relationship_d31e21f2ae71",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "We developed stronger production safety around canonical memory authority, response-risk classification, diagnostic redaction, and fail-closed local responses",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T01:35:30.906308"
+      },
+      {
+        "id": "relationship_9f8530d8d8b2",
+        "creator_id": "creator",
+        "type": "shared_experience",
+        "description": "I want to talk about what you should become as we keep building you. Ask me something meaningful about that",
+        "importance": 0.78,
+        "source": "relationship",
+        "metadata": {
+          "kind": "shared_work",
+          "owner": "creator",
+          "source": "creator_natural_shared_work"
+        },
+        "created_at": "2026-08-25T02:07:21.630021"
       }
     ],
     "created_at": "2026-08-18T08:02:01.790119",
-    "updated_at": "2026-08-23T23:42:29.285769"
+    "updated_at": "2026-08-25T02:07:21.630031"
   },
   "understanding": {
     "observations": [
