@@ -440,32 +440,3 @@ def test_simple_memory_confirmation_still_uses_second_person(
     assert result.success is True
     assert provider.calls == 0
     assert "your favorite color is blue" in result.output.lower()
-
-
-
-def test_memory_store_repairs_legacy_memoryto_boundary_artifact(
-    tmp_path,
-    monkeypatch,
-):
-    mary, provider, app = _rate_limited_app(
-        tmp_path,
-        monkeypatch,
-    )
-
-    text = (
-        "me and you are all in mary promise me that. "
-        "an i will remember this as a core memoryto me. "
-        "you can have this core memory remember this. "
-        "i will support you always"
-    )
-
-    before = len(mary.memory.episodic.all())
-    result = app.run(text)
-    memories = mary.memory.episodic.all()
-
-    assert result.success is True
-    assert provider.calls == 0
-    assert len(memories) == before + 1
-    assert "memoryto" not in memories[-1].content
-    assert "core memory to me" in memories[-1].content
-    assert result.output == "Got it. I'll remember this."

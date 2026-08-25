@@ -3844,16 +3844,6 @@ class Mary:
                 "What would you like me to remember?"
             )
 
-        # 13.1.1 memory-integrity guard.
-        # Repair the known legacy boundary-collapse artifact at the final
-        # canonical write boundary so it can never persist again.
-        content = re.sub(
-            r"\bmemoryto\b",
-            "memory to",
-            content,
-            flags=re.IGNORECASE,
-        )
-
         memory = self.remember(
             content,
             memory_type="episodic",

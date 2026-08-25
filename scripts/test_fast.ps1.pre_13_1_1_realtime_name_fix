@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Python = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
@@ -30,7 +30,7 @@ try {
       tests/conversation/test_fast_path_12_11.py `
       tests/expression/test_natural_conversation_12_12_2.py `
       tests/development/test_mary_13_growth.py `
-      tests/realtime/test_attention_13_1.py -q
+      tests/realtime/test_attention_bus_13_1.py -q
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & $Python -m scripts.verify_character_runtime_12_12
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -61,4 +61,3 @@ finally {
         Remove-Item -LiteralPath $ResolvedFastCheckRoot -Recurse -Force
     }
 }
-
