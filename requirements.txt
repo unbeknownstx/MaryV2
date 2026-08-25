@@ -6,3 +6,7 @@ openai
 
 # Environment configuration
 python-dotenv
+
+# MaryV2 13.2 unified core transport
+fastapi>=0.115,<1
+uvicorn>=0.30,<1

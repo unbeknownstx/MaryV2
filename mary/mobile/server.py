@@ -39,6 +39,7 @@ from mary.presence import PresenceEventType
 from mary.runtime.application import MaryApplication, create_application
 from mary.mobile.audio import MobileSpeechService
 from mary.mobile.voice_lab import VoiceLabStore, BASELINE as VOICE_BASELINE
+from mary.protocol.client import MaryClient
 
 
 MOBILE_PROTOCOL_VERSION = "4"
@@ -111,6 +112,158 @@ def _resolve_auth(*, host: str, data_root: Path) -> MobileAuth:
     except OSError:
         pass
     return MobileAuth(token, "generated", token_path)
+
+
+class MaryRemoteMobileRuntime:
+    """Compatibility facade that makes the existing mobile UI a Mary Core client.
+
+    When ``MARY_CORE_URL`` is configured this class deliberately does *not*
+    construct ``Mary`` or ``MaryApplication``.  Replit/mobile becomes a thin
+    interface/proxy while identity and canonical state remain owned by the one
+    remote Mary Core deployment.
+    """
+
+    def __init__(self, core_url: str, *, token: str, device_id: str = "replit-mobile") -> None:
+        self.client = MaryClient(core_url, token=token, device_id=device_id)
+        self.speech = MobileSpeechService()
+        self._lock = RLock()
+        self._busy = False
+        self._last_trace: dict[str, Any] = {}
+        self._conversation_id = os.getenv("MARY_CONVERSATION_ID", "creator-primary").strip() or "creator-primary"
+        configured = os.getenv("MARY_MOBILE_PROXY_DATA_DIR", "").strip()
+        self.data_root = Path(configured).expanduser().resolve() if configured else _project_root() / "data" / "mobile_proxy"
+        self.data_root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def busy(self) -> bool:
+        with self._lock:
+            return self._busy
+
+    def status(self) -> dict[str, Any]:
+        state = self.client.state()
+        conversation = self.client.conversation_status()
+        mary_state = dict(state.get("mary", {}) or {})
+        return _json_safe({
+            "name": mary_state.get("name", "Mary"),
+            "provider": "mary-core",
+            "model": "MaryV2",
+            "busy": self.busy,
+            "conversation": {"state": "thinking" if self.busy else "idle"},
+            "voice": {**dict(self.speech.status().get("tts", {}) or {}), "mode": "server_preferred_with_device_fallback"},
+            "speech_to_text": {**dict(self.speech.status().get("stt", {}) or {}), "mode": "server_upload_with_browser_fallback"},
+            "mobile": {"protocol": MOBILE_PROTOCOL_VERSION, "authority": "remote_mary_core"},
+            "engagement": conversation.get("engagement", {}),
+            "realtime": conversation.get("realtime", {}),
+            "nodes": state.get("nodes", {}),
+        })
+
+    def character_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
+        state = self.client.state()
+        character = dict(state.get("mary", {}) or {})
+        if runtime_status:
+            character["runtime_status"] = runtime_status
+        return _json_safe(character)
+
+    def dashboard_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
+        state = self.client.state()
+        conversation = self.client.conversation_status()
+        return _json_safe({
+            "character": self.character_state(runtime_status=runtime_status),
+            "engagement": conversation.get("engagement", {}),
+            "realtime": conversation.get("realtime", {}),
+            "growth": self.client.growth_status(),
+            "nodes": state.get("nodes", {}),
+            "mobile": {"protocol": MOBILE_PROTOCOL_VERSION, "surface": "pwa", "authority": "remote_mary_core"},
+            "core": state.get("core", {}),
+        })
+
+    def last_turn_trace(self) -> dict[str, Any]:
+        with self._lock:
+            return _json_safe(self._last_trace)
+
+    def chat(self, text: str) -> dict[str, Any]:
+        value = str(text or "").strip()
+        if not value:
+            raise ValueError("Message text cannot be empty.")
+        with self._lock:
+            if self._busy:
+                raise RuntimeError("Mary is already processing a message.")
+            self._busy = True
+        started = monotonic()
+        try:
+            response = self.client.turn(value, conversation_id=self._conversation_id)
+            elapsed = monotonic() - started
+            trace = {
+                "turn_id": response.turn_id,
+                "elapsed": elapsed,
+                **dict(response.provenance or {}),
+                "authority": "remote_mary_core",
+                "device_id": self.client.device_id,
+            }
+            with self._lock:
+                self._last_trace = trace
+            conversation = dict(response.conversation_state or {})
+            voice_status = dict(self.speech.status().get("tts", {}) or {})
+            return _json_safe({
+                "text": response.response,
+                "canonical_text": response.response,
+                "avatar": {},
+                "voice": {
+                    **voice_status,
+                    "enabled": True,
+                    "status": "ready",
+                    "spoken_text": response.response,
+                    "delivery_plan": dict(response.display_hints.get("delivery_plan", {}) or {}),
+                    "device_fallback": True,
+                },
+                "runtime": {"turn_id": response.turn_id, "elapsed": elapsed, "success": True, "trace": trace},
+                "character": self.character_state(runtime_status="idle"),
+                "engagement": conversation.get("engagement", {}),
+                "growth": self.client.growth_status(),
+                "realtime": conversation.get("realtime", {}),
+                "dashboard": self.dashboard_state(runtime_status="idle"),
+                "state_changes": response.state_changes,
+            })
+        finally:
+            with self._lock:
+                self._busy = False
+
+    def voice_status(self) -> dict[str, Any]:
+        return _json_safe(self.speech.status())
+
+    def synthesize_speech(self, text: str, *, user_text: str | None = None, delivery_plan: dict[str, Any] | None = None):
+        return self.speech.synthesize(text, user_text=user_text, delivery_plan=delivery_plan)
+
+    def transcribe_audio(self, audio: bytes, *, filename: str | None = None, content_type: str | None = None) -> dict[str, Any]:
+        return self.speech.transcribe(audio, filename=filename, content_type=content_type)
+
+    def bridge_call(self, method: str, args: list[Any] | None = None) -> Any:
+        name = str(method or "").strip()
+        if name == "getStatus":
+            return self.status()
+        if name in {"getAvatarState", "getCharacterState"}:
+            return self.character_state()
+        if name == "getDashboardState":
+            return self.dashboard_state()
+        if name == "getLastTurnTrace":
+            return self.last_turn_trace()
+        if name == "getMobileVoiceStatus":
+            return self.voice_status()
+        if name == "getConversationEngagement":
+            return self.client.conversation_status().get("engagement", {})
+        if name == "getGrowthState":
+            return self.client.growth_status()
+        if name == "getRealtimeState":
+            return self.client.conversation_status().get("realtime", {})
+        if name == "getNodeState":
+            return self.client.nodes()
+        if name in {"reportSpeechStarted", "reportSpeechFinished"}:
+            return {"ok": True, "authority": "client_presentation_only"}
+        raise KeyError(f"Bridge method is not available in remote-core mobile mode: {name}")
+
+    def close(self) -> bool:
+        # A frontend disconnect must never shut down the authoritative Core.
+        return True
 
 
 class MaryMobileRuntime:
@@ -877,9 +1030,24 @@ def run_mobile_server(
     root = _project_root()
     resolved_host = host or _default_host()
     resolved_port = int(port or _default_port())
-    runtime = MaryMobileRuntime(application)
+    core_url = os.getenv("MARY_CORE_URL", "").strip()
+    if core_url:
+        if application is not None:
+            raise RuntimeError("application= cannot be combined with MARY_CORE_URL remote-client mode.")
+        core_token = os.getenv("MARY_CORE_TOKEN", "").strip()
+        if not core_token:
+            raise RuntimeError("MARY_CORE_TOKEN is required when MARY_CORE_URL enables remote-client mode.")
+        runtime = MaryRemoteMobileRuntime(
+            core_url,
+            token=core_token,
+            device_id=os.getenv("MARY_DEVICE_ID", "replit-mobile").strip() or "replit-mobile",
+        )
+        auth_data_root = runtime.data_root
+    else:
+        runtime = MaryMobileRuntime(application)
+        auth_data_root = Path(runtime.application.mary.config.paths.data)
     static_root = _static_root(root)
-    auth = _resolve_auth(host=resolved_host, data_root=Path(runtime.application.mary.config.paths.data))
+    auth = _resolve_auth(host=resolved_host, data_root=auth_data_root)
 
     if not (static_root / "index.html").exists():
         runtime.close()
