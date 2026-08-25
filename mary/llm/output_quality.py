@@ -36,6 +36,18 @@ _UNEXPECTED_SCRIPT_NAMES = (
     "DEVANAGARI",
 )
 
+_CLASSIFIER_LEAK_PATTERNS = (
+    re.compile(
+        r"^\s*(?:user|assistant|response|content)\s+safety\s*:\s*"
+        r"(?:safe|unsafe|allowed|blocked)\s*[.!]?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*safety\s*:\s*(?:safe|unsafe|allowed|blocked)\s*[.!]?\s*$",
+        re.IGNORECASE,
+    ),
+)
+
 
 @dataclass(frozen=True)
 class OutputQualityIssue:
@@ -77,6 +89,16 @@ def inspect_output_quality(
         return OutputQualityIssue(
             "encoding_corruption",
             "Provider output contains replacement/null characters.",
+        )
+
+    stripped = text.strip()
+    if len(stripped) <= 120 and any(
+        pattern.fullmatch(stripped)
+        for pattern in _CLASSIFIER_LEAK_PATTERNS
+    ):
+        return OutputQualityIssue(
+            "classifier_leakage",
+            "Provider returned an internal safety/classifier label instead of dialogue.",
         )
 
     prompt_text = _message_text(messages)

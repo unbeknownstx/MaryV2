@@ -103,20 +103,9 @@ class LLMRouter:
         if name == "groq":
             from .providers.groq import GroqProvider
 
-            if purpose_name in {"conversation_fast", "social_instant"}:
-                model = os.getenv(
-                    "MARY_GROQ_CONVERSATION_MODEL",
-                    "llama-3.1-8b-instant",
-                ).strip() or "llama-3.1-8b-instant"
-            else:
-                model = (
-                    self.config.llm.model
-                    if self.config.llm.provider == "groq"
-                    else os.getenv(
-                        "MARY_GROQ_MODEL",
-                        "openai/gpt-oss-20b",
-                    )
-                )
+            model = self._groq_model_for_purpose(
+                purpose_name,
+            )
             return GroqProvider(model=model)
 
         if name == "gemini":
@@ -175,6 +164,53 @@ class LLMRouter:
             )
 
         raise ValueError(f"Unknown LLM provider: {name}")
+
+    def _groq_model_for_purpose(
+        self,
+        purpose: str | None = None,
+    ) -> str:
+        """Resolve Groq model overrides consistently across every route.
+
+        ``MARY_GROQ_MODEL`` is the provider-specific source of truth. The
+        older ``MARY_LLM_MODEL``/``config.llm.model`` remains a compatibility
+        fallback when Groq is the configured primary provider.
+
+        Fast/social conversation may still use its own explicit
+        ``MARY_GROQ_CONVERSATION_MODEL``. When that override is absent, an
+        explicit ``MARY_GROQ_MODEL`` now carries through to conversation too
+        instead of being silently ignored.
+        """
+
+        purpose_name = str(purpose or "").lower().strip()
+        provider_specific = os.getenv(
+            "MARY_GROQ_MODEL",
+            "",
+        ).strip()
+
+        legacy_primary = ""
+        if str(self.config.llm.provider).lower().strip() == "groq":
+            legacy_primary = str(
+                self.config.llm.model
+                or ""
+            ).strip()
+
+        if purpose_name in {"conversation_fast", "social_instant"}:
+            conversation_specific = os.getenv(
+                "MARY_GROQ_CONVERSATION_MODEL",
+                "",
+            ).strip()
+            return (
+                conversation_specific
+                or provider_specific
+                or legacy_primary
+                or "llama-3.1-8b-instant"
+            )
+
+        return (
+            provider_specific
+            or legacy_primary
+            or "openai/gpt-oss-20b"
+        )
 
     def register_provider(
         self,
@@ -903,14 +939,7 @@ class LLMRouter:
         provider_name = self.provider_name(provider)
 
         if provider_name == "groq":
-            return (
-                self.config.llm.model
-                if self.config.llm.provider == "groq"
-                else os.getenv(
-                    "MARY_GROQ_MODEL",
-                    "openai/gpt-oss-20b",
-                )
-            )
+            return self._groq_model_for_purpose()
         if provider_name == "gemini":
             return self.get_provider("gemini").model_name()
         if provider_name == "openrouter":
