@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from mary.governance.limits import RuntimeLimits
@@ -61,6 +62,11 @@ class MemoryManager:
         self.last_load_source: str | None = None
         self.recovered_from_backup = False
         self.stale_temps_removed = 0
+        # Revision of the primary persistence file last loaded or written by
+        # this MemoryManager. This prevents a stale long-lived process from
+        # overwriting a newer canonical file installed by another authority
+        # during deployment/migration.
+        self._storage_revision: tuple[int, int, str] | None = None
         self.last_lifecycle_event: Dict[str, Any] = {
             "operation": "startup",
             "stored": False,
@@ -248,21 +254,49 @@ class MemoryManager:
             return self.load()
         return True
 
+    @staticmethod
+    def _file_revision(path: Path) -> tuple[int, int, str] | None:
+        try:
+            data = path.read_bytes()
+            stat = path.stat()
+        except OSError:
+            return None
+        return (
+            int(stat.st_mtime_ns),
+            len(data),
+            hashlib.sha256(data).hexdigest(),
+        )
+
     def save(self) -> bool:
         if self.storage_path is None:
             return False
+
+        current_revision = self._file_revision(self.storage_path)
+
+        # If this process loaded/wrote a specific primary file and another
+        # authority has replaced that file since, this process is stale.
+        # Never destroy newer canonical state during autosave or shutdown.
+        if (
+            self._storage_revision is not None
+            and current_revision != self._storage_revision
+        ):
+            return False
+
         payload = {
             "version": 2,
             "policy": "bounded_selective_persistence",
             "episodic": self.episodic.export(),
             "semantic": [dict(memory) for memory in self.semantic.all()],
         }
-        return atomic_write_json(
+        saved = atomic_write_json(
             self.storage_path,
             payload,
             backup_generations=self.limits.backup_generations,
             indent=2,
         )
+        if saved:
+            self._storage_revision = self._file_revision(self.storage_path)
+        return saved
 
     def load(self) -> bool:
         if self.storage_path is None:
@@ -305,6 +339,11 @@ class MemoryManager:
 
         self.last_load_source = str(source)
         self.recovered_from_backup = source != self.storage_path
+
+        # Track the primary file itself, even when recovery loaded a backup.
+        # A subsequent unchanged shutdown may safely persist recovered state,
+        # while an externally replaced primary is protected from stale writes.
+        self._storage_revision = self._file_revision(self.storage_path)
         return True
 
     def restore_recovered_primary(self) -> bool:
