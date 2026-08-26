@@ -50,9 +50,19 @@ class RuntimeEnvironment:
             return "codespaces"
         if os.getenv("REPL_ID") or os.getenv("REPL_SLUG") or os.getenv("REPLIT_DB_URL"):
             return "replit"
+        if (
+            os.getenv("RAILWAY_PROJECT_ID")
+            or os.getenv("RAILWAY_ENVIRONMENT_ID")
+            or os.getenv("RAILWAY_SERVICE_ID")
+        ):
+            return "railway"
         if getattr(sys, "frozen", False):
             return "packaged"
         return "local_development"
+
+    def runtime_role(self) -> str:
+        """Return this process's architectural role, independent of host."""
+        return os.getenv("MARY_RUNTIME_ROLE", "").strip().lower() or "application"
 
     def platform_name(self) -> str:
         value = platform.system().strip().lower()
@@ -114,7 +124,11 @@ class RuntimeEnvironment:
 
     def capabilities(self) -> dict[str, bool]:
         host = self.host_type()
-        desktop_host = host in {"local_development", "packaged"}
+        role = self.runtime_role()
+        desktop_host = (
+            role != "core"
+            and host in {"local_development", "packaged"}
+        )
         return {
             "filesystem": True,
             "persistent_local_storage": True,
@@ -133,6 +147,7 @@ class RuntimeEnvironment:
             "version": self.VERSION,
             "host_type": self.host_type(),
             "platform": self.platform_name(),
+            "runtime_role": self.runtime_role(),
             "runtime_mode": str(getattr(self.config.runtime, "environment", "development")),
             "providers": self.provider_snapshot(),
             "conversation_policy": conversation_policy,

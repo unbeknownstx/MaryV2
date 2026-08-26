@@ -122,6 +122,13 @@ class NodeRegistry:
     def with_local_runtime(cls, environment: Any) -> "NodeRegistry":
         registry = cls()
         snapshot = dict(environment.snapshot() or {})
+
+        # 13.2: the authoritative Mary Core owns state and orchestration;
+        # it is not itself a replaceable compute node. Optional Windows,
+        # macOS, Linux, or future worker hosts register separately.
+        if str(snapshot.get("runtime_role") or "").strip().lower() == "core":
+            return registry
+
         explicit = os.getenv("MARY_NODE_ID", "").strip()
         node_id = explicit or f"local-{snapshot.get('host_type', 'runtime')}-{snapshot.get('platform', 'unknown')}"
         capabilities = capabilities_from_environment(environment)

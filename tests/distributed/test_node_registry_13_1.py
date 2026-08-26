@@ -25,3 +25,21 @@ def test_snapshot_is_display_safe_mapping():
     assert "llm.chat" in capabilities
     assert "api_key" not in capabilities["llm.chat"]["metadata"]
     assert "secret" not in repr(snap)
+
+
+
+def test_authoritative_core_is_not_registered_as_compute_node():
+    class CoreEnvironment:
+        def snapshot(self):
+            return {
+                "runtime_role": "core",
+                "host_type": "railway",
+                "platform": "linux",
+            }
+
+    registry = NodeRegistry.with_local_runtime(CoreEnvironment())
+    snap = registry.snapshot()
+
+    assert snap["registered"] == 0
+    assert snap["connected"] == 0
+    assert snap["nodes"] == []

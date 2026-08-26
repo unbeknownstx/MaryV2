@@ -66,6 +66,8 @@ def _clear_host_env(monkeypatch) -> None:
     for name in (
         "REPL_ID", "REPL_SLUG", "REPL_OWNER", "REPLIT_DB_URL",
         "CODESPACES", "CODESPACE_NAME",
+        "RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_ID", "RAILWAY_SERVICE_ID",
+        "MARY_RUNTIME_ROLE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -252,6 +254,22 @@ def test_portability_matrix_replit_has_no_desktop_hardware_capabilities(monkeypa
     assert snap["capabilities"]["native_microphone"] is False
     assert snap["capabilities"]["avatar"] is False
 
+
+
+def test_portability_matrix_railway_core_has_no_desktop_hardware_capabilities(monkeypatch):
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("RAILWAY_SERVICE_ID", "mary-core-test")
+    monkeypatch.setenv("MARY_RUNTIME_ROLE", "core")
+    config, router, _ = _router(ollama=False)
+
+    snap = RuntimeEnvironment(config=config, router=router).snapshot()
+
+    assert snap["host_type"] == "railway"
+    assert snap["runtime_role"] == "core"
+    assert snap["capabilities"]["desktop_ui"] is False
+    assert snap["capabilities"]["native_microphone"] is False
+    assert snap["capabilities"]["native_audio"] is False
+    assert snap["capabilities"]["avatar"] is False
 
 def test_runtime_introspection_and_environment_versions_are_current():
     assert RuntimeEnvironment.VERSION == "v2-breakthrough-12.2"

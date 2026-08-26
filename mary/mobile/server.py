@@ -1082,8 +1082,18 @@ def run_mobile_server(
     else:
         print("Mobile API protection: loopback-only (no token required)", flush=True)
     print("", flush=True)
-    print("The mobile surface is a client of the canonical MaryApplication.", flush=True)
-    print("It does not create a second Mary identity or memory store.", flush=True)
+    if core_url:
+        device_id = os.getenv("MARY_DEVICE_ID", "replit-mobile").strip() or "replit-mobile"
+        print("Mode: remote-core client", flush=True)
+        print("Mobile authority: remote_mary_core", flush=True)
+        print(f"Core URL: {core_url.rstrip('/')}", flush=True)
+        print(f"Device ID: {device_id}", flush=True)
+        print("Canonical state authority: Mary Core", flush=True)
+        print("This mobile surface does not create a second Mary.", flush=True)
+    else:
+        print("Mode: local MaryApplication", flush=True)
+        print("Mobile authority: local development runtime", flush=True)
+        print("Canonical state authority: local MaryApplication", flush=True)
     print("=" * 68, flush=True)
 
     try:
