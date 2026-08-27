@@ -8,9 +8,12 @@ from urllib.request import Request, urlopen
 
 from .models import (
     CapabilityRouteRequest,
+    CapabilityTaskDispatchRequest,
     CapabilityTaskPreviewRequest,
     NodeHeartbeatRequest,
     NodeRegistrationRequest,
+    NodeTaskCompletionRequest,
+    NodeTaskPollRequest,
     RuntimeActionRequest,
     TurnRequest,
     TurnResponse,
@@ -102,6 +105,47 @@ class MaryClient:
             "device_id": self.device_id,
         })
         return self._request("POST", "/v1/nodes/task/preview", model.to_dict(), timeout=min(self.timeout, 3.0))
+
+    def dispatch_capability_task(
+        self,
+        capability: str,
+        intent: str,
+        args: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        model = CapabilityTaskDispatchRequest.from_dict({
+            "capability": capability,
+            "intent": intent,
+            "args": dict(args or {}),
+            "device_id": self.device_id,
+        })
+        return self._request("POST", "/v1/nodes/task/dispatch", model.to_dict(), timeout=min(self.timeout, 5.0))
+
+    def poll_capability_task(self) -> dict[str, Any]:
+        model = NodeTaskPollRequest.from_dict({"node_id": self.device_id})
+        return self._request("POST", "/v1/nodes/task/poll", model.to_dict(), timeout=min(self.timeout, 3.0))
+
+    def complete_capability_task(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str = "",
+    ) -> dict[str, Any]:
+        model = NodeTaskCompletionRequest.from_dict({
+            "node_id": self.device_id,
+            "task_id": task_id,
+            "status": status,
+            "result": dict(result or {}),
+            "error": error,
+        })
+        return self._request("POST", "/v1/nodes/task/complete", model.to_dict(), timeout=min(self.timeout, 5.0))
+
+    def capability_task_status(self, task_id: str) -> dict[str, Any]:
+        clean = str(task_id or "").strip()
+        if not clean.startswith("capability_task_") or len(clean) > 96:
+            raise ValueError("task_id is invalid.")
+        return self._request("GET", f"/v1/nodes/task/{clean}", timeout=min(self.timeout, 3.0))
 
     def workspace(self) -> dict[str, Any]:
         return self._request("GET", "/v1/workspace")

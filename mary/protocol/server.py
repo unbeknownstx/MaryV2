@@ -15,9 +15,12 @@ except ImportError:  # pragma: no cover - handled by create_app/run_server
 from mary.core.service import MaryCoreService
 from mary.protocol.models import (
     CapabilityRouteRequest,
+    CapabilityTaskDispatchRequest,
     CapabilityTaskPreviewRequest,
     NodeHeartbeatRequest,
     NodeRegistrationRequest,
+    NodeTaskCompletionRequest,
+    NodeTaskPollRequest,
     RuntimeActionRequest,
     TurnRequest,
     WorkspaceActionRequest,
@@ -151,6 +154,47 @@ def create_app(service: MaryCoreService | None = None):
             return await asyncio.to_thread(core.preview_capability_task, model)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/task/dispatch")
+    async def dispatch_capability_task(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CapabilityTaskDispatchRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.dispatch_capability_task, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (LookupError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/task/poll")
+    async def poll_capability_task(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = NodeTaskPollRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.poll_capability_task, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (KeyError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/task/complete")
+    async def complete_capability_task(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = NodeTaskCompletionRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.complete_capability_task, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (KeyError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/v1/nodes/task/{task_id}")
+    async def capability_task_status(task_id: str, request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            return await asyncio.to_thread(core.capability_task_status, task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/v1/dashboard")
     async def dashboard(request: Request) -> dict[str, Any]:

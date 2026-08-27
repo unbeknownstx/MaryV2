@@ -16,12 +16,15 @@ from time import monotonic
 from typing import Any
 from uuid import uuid4
 
-from mary.distributed import CapabilityDescriptor, NodeDescriptor, preview_capability_task
+from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, preview_capability_task
 from mary.protocol.models import (
     CapabilityRouteRequest,
+    CapabilityTaskDispatchRequest,
     CapabilityTaskPreviewRequest,
     NodeHeartbeatRequest,
     NodeRegistrationRequest,
+    NodeTaskCompletionRequest,
+    NodeTaskPollRequest,
     RuntimeActionRequest,
     TurnRequest,
     TurnResponse,
@@ -62,6 +65,7 @@ class MaryCoreService:
         self.instance_id = str(instance_id or uuid4())
         self.started_monotonic = monotonic()
         self._turn_lock = RLock()
+        self.device_tasks = DeviceTaskBroker()
         self._closed = False
 
     def process_turn(self, request: TurnRequest | dict[str, Any]) -> TurnResponse:
@@ -329,6 +333,87 @@ class MaryCoreService:
                     "policy": "preview only; no device task was executed",
                 },
             })
+
+    def dispatch_capability_task(
+        self,
+        request: CapabilityTaskDispatchRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Queue one narrowly typed task for a selected device node.
+
+        Core chooses the node, but the device still decides whether local
+        permission authorizes execution. No shell or arbitrary command payload
+        exists in this contract.
+        """
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        model = (
+            request
+            if isinstance(request, CapabilityTaskDispatchRequest)
+            else CapabilityTaskDispatchRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            task = self.device_tasks.enqueue(
+                self.mary.node_registry,
+                capability=model.capability,
+                intent=model.intent,
+                args=model.args,
+                requester_device_id=model.device_id,
+            )
+            return _json_safe({
+                "ok": True,
+                "task": task.to_dict(),
+                "execution": {
+                    "authorized_by_core": False,
+                    "device_permission_required": True,
+                    "policy": "typed task queued; selected device controls local execution permission",
+                },
+            })
+
+    def poll_capability_task(
+        self,
+        request: NodeTaskPollRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        model = (
+            request
+            if isinstance(request, NodeTaskPollRequest)
+            else NodeTaskPollRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            node = self.mary.node_registry.get(model.node_id)
+            if node is None:
+                raise KeyError(f"Unknown capability node: {model.node_id}")
+            task = self.device_tasks.poll(model.node_id)
+            return _json_safe({
+                "ok": True,
+                "task": task.to_dict() if task is not None else None,
+            })
+
+    def complete_capability_task(
+        self,
+        request: NodeTaskCompletionRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        model = (
+            request
+            if isinstance(request, NodeTaskCompletionRequest)
+            else NodeTaskCompletionRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            task = self.device_tasks.complete(
+                node_id=model.node_id,
+                task_id=model.task_id,
+                status=model.status,
+                result=model.result,
+                error=model.error,
+            )
+            return _json_safe({"ok": True, "task": task.to_dict()})
+
+    def capability_task_status(self, task_id: str) -> dict[str, Any]:
+        with self._turn_lock:
+            task = self.device_tasks.get(task_id)
+            if task is None:
+                raise KeyError(f"Unknown capability task: {task_id}")
+            return _json_safe({"ok": True, "task": task.to_dict()})
 
     def workspace_status(self) -> dict[str, Any]:
         """Return the canonical remote-safe Mary workspace snapshot."""

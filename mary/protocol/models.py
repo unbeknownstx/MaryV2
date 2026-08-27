@@ -279,3 +279,92 @@ class CapabilityTaskPreviewRequest:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class CapabilityTaskDispatchRequest:
+    capability: str
+    intent: str
+    args: dict[str, Any] = field(default_factory=dict)
+    device_id: str = "unknown-device"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CapabilityTaskDispatchRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Capability task dispatch must be a JSON object.")
+        intent = " ".join(str(payload.get("intent") or "").split())
+        if not intent:
+            raise ValueError("intent is required.")
+        if len(intent) > 500:
+            raise ValueError("intent exceeds the 500 character dispatch limit.")
+        args = payload.get("args") or {}
+        if not isinstance(args, dict):
+            raise ValueError("Capability task args must be a JSON object.")
+        if len(args) > 8:
+            raise ValueError("Capability task args exceed the 8-field limit.")
+        return cls(
+            capability=_capability_name(payload.get("capability")),
+            intent=intent,
+            args=dict(args),
+            device_id=str(payload.get("device_id") or "unknown-device").strip()[:160],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class NodeTaskPollRequest:
+    node_id: str
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NodeTaskPollRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Node task poll must be a JSON object.")
+        return cls(node_id=_node_id(payload.get("node_id")))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class NodeTaskCompletionRequest:
+    node_id: str
+    task_id: str
+    status: str
+    result: dict[str, Any] = field(default_factory=dict)
+    error: str = ""
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NodeTaskCompletionRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Node task completion must be a JSON object.")
+        task_id = str(payload.get("task_id") or "").strip()
+        if not task_id.startswith("capability_task_") or len(task_id) > 96:
+            raise ValueError("task_id is invalid.")
+        status = str(payload.get("status") or "").strip().lower()
+        if status not in {"completed", "rejected", "failed"}:
+            raise ValueError("status must be completed, rejected, or failed.")
+        result = payload.get("result") or {}
+        if not isinstance(result, dict):
+            raise ValueError("result must be a JSON object.")
+        if len(result) > 8:
+            raise ValueError("result exceeds the 8-field limit.")
+        items = result.get("items")
+        if items is not None:
+            if not isinstance(items, list) or len(items) > 12:
+                raise ValueError("result items must be an array with at most 12 entries.")
+            for item in items:
+                if not isinstance(item, dict) or len(item) > 8:
+                    raise ValueError("Each result item must be a small JSON object.")
+        error = " ".join(str(payload.get("error") or "").split())[:500]
+        return cls(
+            node_id=_node_id(payload.get("node_id")),
+            task_id=task_id,
+            status=status,
+            result=dict(result),
+            error=error,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

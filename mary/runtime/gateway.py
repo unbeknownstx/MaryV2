@@ -84,6 +84,10 @@ class MaryRuntimeGateway(Protocol):
         prefer_local: bool = True,
     ) -> dict[str, Any]: ...
     def preview_capability_task(self, capability: str, intent: str) -> dict[str, Any]: ...
+    def dispatch_capability_task(self, capability: str, intent: str, args: dict[str, Any] | None = None) -> dict[str, Any]: ...
+    def poll_capability_task(self) -> dict[str, Any]: ...
+    def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]: ...
+    def capability_task_status(self, task_id: str) -> dict[str, Any]: ...
 
 
 class LocalMaryGateway:
@@ -342,6 +346,18 @@ class LocalMaryGateway:
             },
         }
 
+    def dispatch_capability_task(self, capability: str, intent: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+        raise RuntimeError("Device task dispatch is a remote-Core capability; standalone mode has no device broker.")
+
+    def poll_capability_task(self) -> dict[str, Any]:
+        raise RuntimeError("Device task polling is a remote-Core capability; standalone mode has no device broker.")
+
+    def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]:
+        raise RuntimeError("Device task completion is a remote-Core capability; standalone mode has no device broker.")
+
+    def capability_task_status(self, task_id: str) -> dict[str, Any]:
+        raise RuntimeError("Device task status is a remote-Core capability; standalone mode has no device broker.")
+
 
 class RemoteMaryGateway:
     """Gateway backed only by Mary Protocol; it owns no MaryApplication."""
@@ -455,6 +471,18 @@ class RemoteMaryGateway:
 
     def preview_capability_task(self, capability: str, intent: str) -> dict[str, Any]:
         return self.client.preview_capability_task(capability, intent)
+
+    def dispatch_capability_task(self, capability: str, intent: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.client.dispatch_capability_task(capability, intent, args)
+
+    def poll_capability_task(self) -> dict[str, Any]:
+        return self.client.poll_capability_task()
+
+    def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]:
+        return self.client.complete_capability_task(task_id, status=status, result=result, error=error)
+
+    def capability_task_status(self, task_id: str) -> dict[str, Any]:
+        return self.client.capability_task_status(task_id)
 
 
 def gateway_from_environment(
