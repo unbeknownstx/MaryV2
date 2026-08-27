@@ -120,8 +120,24 @@ class MaryCoreService:
         return _json_safe(self.mary.memory.status())
 
     def conversation_status(self) -> dict[str, Any]:
+        dialogue = getattr(
+            self.mary,
+            "dialogue",
+            None,
+        )
+        session_status = getattr(
+            dialogue,
+            "session_status",
+            None,
+        )
+
         return _json_safe({
             "engagement": self.mary.engagement.status(),
+            "dialogue": (
+                session_status()
+                if callable(session_status)
+                else {}
+            ),
             "realtime": self.mary.realtime.status(),
         })
 

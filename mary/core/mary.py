@@ -671,8 +671,26 @@ class Mary:
             input_text
         )
 
-        # Capture the conversation that existed *before* this turn so the
-        # current user message is not duplicated in LLM context.
+        conversation_id = str(
+            (
+                turn_context
+                or {}
+            ).get(
+                "conversation_id"
+            )
+            or self.dialogue.DEFAULT_SESSION_ID
+        ).strip()
+
+        self.dialogue.select_session(
+            conversation_id
+        )
+        conversation_id = (
+            self.dialogue.active_session_id
+        )
+
+        # Capture only the selected short-term conversation that existed before
+        # this turn. Mary's durable identity, relationship, memory, projects,
+        # growth, and other canonical state remain shared across every session.
         session_history = self.dialogue.messages_for_llm(
             limit=None
         )
@@ -917,6 +935,7 @@ class Mary:
             input_text,
             metadata={
                 "intent": intent.intent_type.value,
+                "conversation_id": conversation_id,
             },
         )
         self.dialogue.begin_thinking()
@@ -1269,6 +1288,13 @@ class Mary:
     ) -> CognitiveCycleResult:
         """Apply expression state and commit the completed turn to dialogue."""
 
+        conversation_id = (
+            self.dialogue.active_session_id
+        )
+        result.metadata[
+            "conversation_id"
+        ] = conversation_id
+
         result = self._apply_conversation_emotion(
             input_text=input_text,
             result=result,
@@ -1317,6 +1343,8 @@ class Mary:
             self.expression.record_response(response)
             self.dialogue.finish_turn()
             result.metadata["dialogue_turn"] = self.dialogue.state.turn_number
+            result.metadata["conversation_id"] = conversation_id
+            result.metadata["dialogue_session_count"] = self.dialogue.session_count
             result.metadata["dialogue_recorded"] = True
         except Exception as exc:
             # Dialogue continuity should enrich cognition, never prevent a valid
@@ -4541,6 +4569,7 @@ class Mary:
             "architecture_contract": self.system_contract.snapshot(self),
             "runtime_environment": self.runtime_environment.snapshot(),
             "conversation_learning": self.conversation_learning.status(),
+            "conversation_sessions": self.dialogue.session_status(),
             "turn_policy": self.turn_policy.status(),
             "orchestration": {
                 "task_workspace": self.task_workspace.status(),

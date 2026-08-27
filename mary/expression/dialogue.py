@@ -545,26 +545,302 @@ class DialogueManager:
     """
     Coordinates Mary's conversational state.
 
-    The manager does not generate responses.
+    Dialogue history is short-term/session state, not identity or long-term
+    memory. One DialogueManager may therefore host multiple bounded
+    conversation sessions while still belonging to the same Mary.
 
-    It receives generated Response objects and records them as
-    dialogue events.
+    Selecting a different conversation never creates another Mary and never
+    duplicates relationship, memory, personality, agency, growth, or workspace
+    state.
     """
+
+    DEFAULT_SESSION_ID = "creator-primary"
 
     def __init__(
         self,
         *,
         max_history: int = 50,
         initial_state: DialogueState | None = None,
+        max_sessions: int = 32,
     ) -> None:
+        if max_history < 1:
+            raise ValueError(
+                "max_history must be at least 1."
+            )
 
-        self.state = (
+        if max_sessions < 1:
+            raise ValueError(
+                "max_sessions must be at least 1."
+            )
+
+        initial = (
             initial_state
             if initial_state is not None
             else DialogueState(
                 max_history=max_history
             )
         )
+
+        self._max_history = int(
+            initial.max_history
+        )
+        self.max_sessions = int(
+            max_sessions
+        )
+
+        initial_session_id = self._normalize_session_id(
+            initial.metadata.get(
+                "conversation_id"
+            )
+            or self.DEFAULT_SESSION_ID
+        )
+
+        initial.metadata[
+            "conversation_id"
+        ] = initial_session_id
+
+        self._sessions: dict[
+            str,
+            DialogueState,
+        ] = {
+            initial_session_id: initial
+        }
+
+        self._active_session_id = (
+            initial_session_id
+        )
+
+    # ============================================================
+    # SESSION OWNERSHIP
+    # ============================================================
+
+    @staticmethod
+    def _normalize_session_id(
+        value: Any,
+    ) -> str:
+        text = str(
+            value
+            or DialogueManager.DEFAULT_SESSION_ID
+        ).strip()
+
+        if not text:
+            text = DialogueManager.DEFAULT_SESSION_ID
+
+        # The protocol already sanitizes conversation IDs before they reach
+        # Mary. This final guard keeps direct/local callers bounded too.
+        safe = "".join(
+            character
+            if (
+                character.isalnum()
+                or character
+                in "._:/-"
+            )
+            else "_"
+            for character in text
+        ).strip("_")
+
+        return (
+            safe[:160]
+            or DialogueManager.DEFAULT_SESSION_ID
+        )
+
+    @property
+    def active_session_id(
+        self,
+    ) -> str:
+        return self._active_session_id
+
+    @property
+    def session_count(
+        self,
+    ) -> int:
+        return len(
+            self._sessions
+        )
+
+    @property
+    def state(
+        self,
+    ) -> DialogueState:
+        return self._sessions[
+            self._active_session_id
+        ]
+
+    @state.setter
+    def state(
+        self,
+        value: DialogueState,
+    ) -> None:
+        if not isinstance(
+            value,
+            DialogueState,
+        ):
+            raise TypeError(
+                "DialogueManager.state must be a DialogueState."
+            )
+
+        value.metadata[
+            "conversation_id"
+        ] = self._active_session_id
+
+        self._sessions[
+            self._active_session_id
+        ] = value
+
+    def select_session(
+        self,
+        conversation_id: str | None,
+    ) -> DialogueState:
+        """
+        Select/create one bounded short-term conversation session.
+
+        Mary Core serializes creator turns, so switching sessions occurs only
+        between turns. Direct callers receive the same protection here.
+        """
+
+        session_id = self._normalize_session_id(
+            conversation_id
+        )
+
+        if (
+            session_id
+            != self._active_session_id
+            and self.state.active_turn is not None
+            and not self.state.active_turn.completed
+        ):
+            raise RuntimeError(
+                "Cannot switch dialogue sessions while a turn is active."
+            )
+
+        existing = self._sessions.get(
+            session_id
+        )
+
+        if existing is None:
+            # Avoid keeping a phantom default session when the very first real
+            # protocol/local conversation uses another explicit ID.
+            if (
+                len(self._sessions) == 1
+                and self._active_session_id == self.DEFAULT_SESSION_ID
+                and self._state_is_pristine(
+                    self.state
+                )
+            ):
+                initial = self._sessions.pop(
+                    self.DEFAULT_SESSION_ID
+                )
+                initial.metadata[
+                    "conversation_id"
+                ] = session_id
+                self._sessions[
+                    session_id
+                ] = initial
+                existing = initial
+            else:
+                self._ensure_session_capacity()
+
+                existing = DialogueState(
+                    max_history=self._max_history,
+                    metadata={
+                        "conversation_id": session_id,
+                    },
+                )
+
+                self._sessions[
+                    session_id
+                ] = existing
+
+        self._active_session_id = session_id
+
+        return existing
+
+    @staticmethod
+    def _state_is_pristine(
+        state: DialogueState,
+    ) -> bool:
+        return (
+            state.turn_number == 0
+            and state.active_turn is None
+            and not state.history
+        )
+
+    def _ensure_session_capacity(
+        self,
+    ) -> None:
+        if len(
+            self._sessions
+        ) < self.max_sessions:
+            return
+
+        candidates = [
+            (
+                session_id,
+                state,
+            )
+            for session_id, state
+            in self._sessions.items()
+            if session_id
+            != self._active_session_id
+            and (
+                state.active_turn is None
+                or state.active_turn.completed
+            )
+        ]
+
+        if not candidates:
+            raise RuntimeError(
+                "Dialogue session capacity reached."
+            )
+
+        oldest_session_id, _ = min(
+            candidates,
+            key=lambda item: (
+                item[1].last_activity
+            ),
+        )
+
+        del self._sessions[
+            oldest_session_id
+        ]
+
+    def session_ids(
+        self,
+    ) -> tuple[str, ...]:
+        return tuple(
+            self._sessions.keys()
+        )
+
+    def session_status(
+        self,
+    ) -> dict[str, Any]:
+        return {
+            "active_conversation_id": (
+                self.active_session_id
+            ),
+            "session_count": (
+                self.session_count
+            ),
+            "max_sessions": (
+                self.max_sessions
+            ),
+            "sessions": {
+                session_id: {
+                    "turn_number": state.turn_number,
+                    "message_count": len(
+                        state.history
+                    ),
+                    "mode": state.mode.value,
+                    "last_activity": state.last_activity,
+                }
+                for session_id, state
+                in self._sessions.items()
+            },
+            "semantics": (
+                "bounded short-term dialogue sessions around one Mary; "
+                "identity, relationship, memory, growth and workspace state "
+                "remain shared canonical character state"
+            ),
+        }
 
     # ============================================================
     # TURN MANAGEMENT
@@ -577,7 +853,7 @@ class DialogueManager:
         metadata: dict[str, Any] | None = None,
     ) -> DialogueTurn:
         """
-        Begin a new conversational turn.
+        Begin a new conversational turn in the active session.
         """
 
         if self.state.active_turn is not None:
@@ -592,15 +868,20 @@ class DialogueManager:
             number=self.state.turn_number
         )
 
+        message_metadata = dict(
+            metadata
+            or {}
+        )
+        message_metadata.setdefault(
+            "conversation_id",
+            self.active_session_id,
+        )
+
         message = DialogueMessage(
             role=SpeakerRole.USER,
             content=user_text,
             turn=turn.number,
-            metadata=(
-                metadata
-                if metadata is not None
-                else {}
-            ),
+            metadata=message_metadata,
         )
 
         turn.user_message = message
@@ -625,7 +906,7 @@ class DialogueManager:
         self,
     ) -> None:
         """
-        Mark the dialogue as being processed.
+        Mark the active dialogue session as being processed.
         """
 
         self.state.set_mode(
@@ -641,7 +922,7 @@ class DialogueManager:
         response: Response,
     ) -> DialogueMessage:
         """
-        Add Mary's generated response to the active turn.
+        Add Mary's generated response to the active session.
         """
 
         if self.state.active_turn is None:
@@ -658,6 +939,9 @@ class DialogueManager:
             response_id=response.response_id,
             emotion=response.emotion,
             metadata={
+                "conversation_id": (
+                    self.active_session_id
+                ),
                 "response_type": (
                     response.response_type.value
                 ),
@@ -708,8 +992,7 @@ class DialogueManager:
         response: Response,
     ) -> DialogueMode:
         """
-        Determine the conversational mode resulting from a
-        response.
+        Determine the conversational mode resulting from a response.
         """
 
         mapping = {
@@ -740,7 +1023,7 @@ class DialogueManager:
         self,
     ) -> None:
         """
-        Return dialogue to an idle state after delivery.
+        Return the active dialogue session to idle after delivery.
         """
 
         if self.state.active_turn is not None:
@@ -760,7 +1043,7 @@ class DialogueManager:
         limit: int = 10,
     ) -> list[DialogueMessage]:
         """
-        Return recent dialogue messages.
+        Return recent dialogue messages from the active session.
         """
 
         if limit <= 0:
@@ -775,7 +1058,7 @@ class DialogueManager:
         limit: int = 10,
     ) -> list[str]:
         """
-        Return recent message text.
+        Return recent message text from the active session.
         """
 
         return [
@@ -790,10 +1073,9 @@ class DialogueManager:
         limit: int | None = None,
     ) -> list[dict[str, str]]:
         """
-        Produce a simple role/content representation suitable
-        for an LLM adapter.
+        Produce role/content history for only the active session.
 
-        This method does not call an LLM.
+        This method does not call an LLM and does not access long-term memory.
         """
 
         messages = (
@@ -839,11 +1121,41 @@ class DialogueManager:
         self,
     ) -> None:
         """
-        Clear active conversational state and history.
+        Clear only the active conversation session.
+
+        Other session histories remain available to the same Mary.
         """
 
         self.state = DialogueState(
-            max_history=self.state.max_history
+            max_history=self._max_history,
+            metadata={
+                "conversation_id": (
+                    self.active_session_id
+                ),
+            },
+        )
+
+    def clear_all_sessions(
+        self,
+    ) -> None:
+        """
+        Clear all short-term dialogue sessions without touching Mary memory.
+        """
+
+        self._sessions = {
+            self.DEFAULT_SESSION_ID: (
+                DialogueState(
+                    max_history=self._max_history,
+                    metadata={
+                        "conversation_id": (
+                            self.DEFAULT_SESSION_ID
+                        ),
+                    },
+                )
+            )
+        }
+        self._active_session_id = (
+            self.DEFAULT_SESSION_ID
         )
 
     # ============================================================
@@ -854,11 +1166,38 @@ class DialogueManager:
         self,
     ) -> dict[str, Any]:
         """
-        Return a serializable dialogue snapshot.
+        Return a serializable snapshot for the active dialogue session.
         """
 
-        return self.state.to_dict()
+        snapshot = self.state.to_dict()
+        snapshot[
+            "conversation_id"
+        ] = self.active_session_id
+        snapshot[
+            "session_count"
+        ] = self.session_count
+        return snapshot
 
+    def snapshot_all(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Return bounded metadata plus state for every process-local session.
+        """
+
+        return {
+            "active_conversation_id": (
+                self.active_session_id
+            ),
+            "max_sessions": (
+                self.max_sessions
+            ),
+            "sessions": {
+                session_id: state.to_dict()
+                for session_id, state
+                in self._sessions.items()
+            },
+        }
 
 # ================================================================
 # FACTORY
@@ -904,3 +1243,4 @@ def messages_to_text(
     return "\n".join(
         lines
     )
+
