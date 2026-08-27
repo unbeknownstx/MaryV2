@@ -106,13 +106,60 @@ class MaryCoreService:
         }
 
     def state(self) -> dict[str, Any]:
+        mind = getattr(self.mary, "mind", None)
+        retrieval = getattr(mind, "retrieval", None)
+        perception = getattr(self.mary, "perception_director", None)
+
         return _json_safe({
             "core": self.health(),
             "mary": self.mary.live_state(runtime_status="idle"),
             "runtime": self.application.state.to_dict(),
             "environment": self.mary.runtime_environment.snapshot(),
             "nodes": self.mary.node_registry.snapshot(),
+            "mind": (
+                mind.status()
+                if callable(getattr(mind, "status", None))
+                else {"enabled": False}
+            ),
+            "retrieval": (
+                retrieval.status()
+                if callable(getattr(retrieval, "status", None))
+                else {"enabled": False}
+            ),
+            "perception": (
+                perception.snapshot()
+                if callable(getattr(perception, "snapshot", None))
+                else {"enabled": False}
+            ),
         })
+
+    def dashboard_status(self) -> dict[str, Any]:
+        """Return the existing display-safe dashboard from canonical Mary."""
+
+        from mary.desktop.dashboard import build_desktop_dashboard_state
+
+        try:
+            payload = build_desktop_dashboard_state(
+                self.mary,
+                runtime_status="idle",
+            )
+        except Exception:
+            payload = {"live": self.mary.live_state(runtime_status="idle")}
+
+        ecosystem = getattr(self.application, "ecosystem", None)
+        workspace_snapshot = getattr(ecosystem, "workspace_snapshot", None)
+        payload["ecosystem"] = (
+            workspace_snapshot()
+            if callable(workspace_snapshot)
+            else {}
+        )
+        state = self.state()
+        payload["mind"] = state.get("mind", {})
+        payload["realtime"] = self.conversation_status().get("realtime", {})
+        payload["nodes"] = state.get("nodes", {})
+        payload["retrieval"] = state.get("retrieval", {})
+        payload["perception"] = state.get("perception", {})
+        return _json_safe(payload)
 
     def memory_status(self) -> dict[str, Any]:
         lifecycle = getattr(self.mary, "memory_lifecycle_status", None)
@@ -243,6 +290,38 @@ class MaryCoreService:
                 self.mary.realtime.speech_ended(reason="interrupted")
                 return _json_safe(self.mary.realtime.status())
 
+            if action.action == "realtime.listening":
+                self.mary.realtime.mark_listening(
+                    bool(values.get("active", False)),
+                    source=f"protocol:{action.device_id}",
+                )
+                return _json_safe(self.mary.realtime.status())
+
+            if action.action == "realtime.transcribing":
+                self.mary.realtime.mark_transcribing(
+                    bool(values.get("active", False)),
+                    source=f"protocol:{action.device_id}",
+                )
+                return _json_safe(self.mary.realtime.status())
+
+            if action.action == "mind.rebuild_reservoir":
+                records = int(self.mary.mind.rebuild_reservoir())
+                return _json_safe({
+                    "ok": True,
+                    "records": records,
+                    "status": self.mary.mind.status(),
+                })
+
+            if action.action == "mind.maintenance":
+                return _json_safe(self.mary.mind.maintenance())
+
+            if action.action == "presence.idle_tick":
+                return _json_safe(
+                    self.application.ecosystem.presence.idle_tick(
+                        focus_active=bool(values.get("focus_active", False))
+                    )
+                )
+
         raise ValueError(f"Unsupported runtime action: {action.action}")
 
     def save(self) -> bool:
@@ -287,12 +366,21 @@ class MaryCoreService:
             "usage": metadata.get("usage", {}),
         })
 
-    @staticmethod
-    def _display_hints(result: Any) -> dict[str, Any]:
+    def _display_hints(self, result: Any) -> dict[str, Any]:
         values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
         cycle = values.get("cognitive_cycle")
         cycle_metadata = dict(getattr(cycle, "metadata", {}) or {})
+        try:
+            emotion = self.mary.emotion.snapshot()
+        except Exception:
+            emotion = {}
+        try:
+            avatar = self.mary.avatar.state.to_dict()
+        except Exception:
+            avatar = {}
         return _json_safe({
             "delivery_plan": cycle_metadata.get("delivery_plan", {}),
             "realtime": getattr(result, "metadata", {}).get("realtime", {}),
+            "emotion": emotion,
+            "avatar": avatar,
         })

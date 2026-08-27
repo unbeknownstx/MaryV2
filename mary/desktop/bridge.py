@@ -18,6 +18,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
 from mary.runtime.application import MaryApplication
+from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.desktop.voice import DesktopVoiceEngine
 from mary.desktop.audio_cache import DesktopAudioCache
 from mary.desktop.microphone import DesktopMicrophoneRecorder
@@ -69,7 +70,7 @@ class _ConversationWorker(QObject):
 
     def __init__(
         self,
-        application: MaryApplication,
+        application: MaryApplication | RemoteMaryApplicationView,
         text: str,
         voice: DesktopVoiceEngine,
         audio_cache: DesktopAudioCache | None = None,
@@ -87,7 +88,28 @@ class _ConversationWorker(QObject):
 
         try:
             pipeline_started = monotonic()
-            result = self.application.run(self.text)
+            result = self.application.run(
+                self.text,
+                metadata={
+                    "surface": "desktop",
+                    "transport": (
+                        "core"
+                        if getattr(self.application, "authority", "") == "remote_mary_core"
+                        else "in_process"
+                    ),
+                    "conversation_id": getattr(
+                        self.application,
+                        "conversation_id",
+                        "creator-primary",
+                    ),
+                    "device_id": getattr(
+                        self.application,
+                        "device_id",
+                        "desktop",
+                    ),
+                    "voice_input": False,
+                },
+            )
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
 
             if not result.success:
@@ -275,7 +297,7 @@ class MaryDesktopBridge(QObject):
 
     def __init__(
         self,
-        application: MaryApplication,
+        application: MaryApplication | RemoteMaryApplicationView,
     ) -> None:
         super().__init__()
 
@@ -604,6 +626,17 @@ class MaryDesktopBridge(QObject):
     def getDashboardState(
         self,
     ) -> str:  # noqa: N802 - JS-facing API
+        if getattr(
+            self.application,
+            "authority",
+            "",
+        ) == "remote_mary_core":
+            return _json(
+                self.application.dashboard_state(
+                    runtime_status=self.conversation_runtime.state.value,
+                )
+            )
+
         payload = build_desktop_dashboard_state(
             self.application.mary,
             runtime_status=self.conversation_runtime.state.value,
@@ -1565,6 +1598,17 @@ class MaryDesktopBridge(QObject):
     def openDataFolder(
         self,
     ) -> bool:  # noqa: N802 - JS-facing API
+        if getattr(
+            self.application,
+            "authority",
+            "",
+        ) == "remote_mary_core":
+            self.errorOccurred.emit(
+                "Canonical Mary data is owned by the remote Core; "
+                "Desktop does not keep a second authoritative data folder."
+            )
+            return False
+
         path = self.application.mary.config.paths.data
 
         path.mkdir(

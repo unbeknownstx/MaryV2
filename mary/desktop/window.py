@@ -14,6 +14,8 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from mary.desktop.bridge import MaryDesktopBridge
+from mary.desktop.remote_application import RemoteMaryApplicationView
+from mary.desktop.authority import resolve_desktop_application
 from mary.runtime.application import MaryApplication, create_application
 
 
@@ -38,7 +40,7 @@ class MaryWebEnginePage(QWebEnginePage):
 class MaryDesktopWindow(QMainWindow):
     def __init__(
         self,
-        application: MaryApplication,
+        application: MaryApplication | RemoteMaryApplicationView,
         *,
         frontend_path: Path,
     ) -> None:
@@ -175,8 +177,7 @@ def _default_frontend_path(root: Path) -> Path:
 
 
 def run_desktop(application: MaryApplication | None = None) -> int:
-    mary_app = application or create_application(name="mary-desktop")
-    project_root = mary_app.mary.config.paths.root
+    mary_app, project_root = resolve_desktop_application(application)
     frontend_path = _default_frontend_path(project_root)
 
     if not frontend_path.exists():

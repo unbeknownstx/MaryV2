@@ -51,6 +51,7 @@ class MaryRuntimeGateway(Protocol):
     def state(self) -> dict[str, Any]: ...
     def conversation(self) -> dict[str, Any]: ...
     def workspace(self) -> dict[str, Any]: ...
+    def dashboard(self) -> dict[str, Any]: ...
     def workspace_action(
         self,
         action: str,
@@ -167,6 +168,24 @@ class LocalMaryGateway:
     def workspace(self) -> dict[str, Any]:
         return self.application.ecosystem.workspace_snapshot()
 
+    def dashboard(self) -> dict[str, Any]:
+        from mary.desktop.dashboard import build_desktop_dashboard_state
+
+        payload = build_desktop_dashboard_state(
+            self.mary,
+            runtime_status="idle",
+        )
+        payload["ecosystem"] = self.application.ecosystem.snapshot()
+        try:
+            payload["mind"] = self.mary.mind.status()
+        except Exception:
+            payload["mind"] = {"enabled": False}
+        payload["realtime"] = self.mary.realtime.status()
+        payload["nodes"] = self.mary.node_registry.snapshot()
+        payload["retrieval"] = self.mary.mind.retrieval.status()
+        payload["perception"] = self.mary.perception_director.snapshot()
+        return payload
+
     def workspace_action(
         self,
         action: str,
@@ -276,6 +295,9 @@ class RemoteMaryGateway:
 
     def workspace(self) -> dict[str, Any]:
         return self.client.workspace()
+
+    def dashboard(self) -> dict[str, Any]:
+        return self.client.dashboard()
 
     def workspace_action(
         self,

@@ -93,6 +93,11 @@ def create_app(service: MaryCoreService | None = None):
         await require_creator(request)
         return core.node_status()
 
+    @app.get("/v1/dashboard")
+    async def dashboard(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        return core.dashboard_status()
+
     @app.get("/v1/workspace")
     async def workspace(request: Request) -> dict[str, Any]:
         await require_creator(request)

@@ -42,6 +42,9 @@ class MaryClient:
     def workspace(self) -> dict[str, Any]:
         return self._request("GET", "/v1/workspace")
 
+    def dashboard(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/dashboard")
+
     def workspace_action(
         self,
         action: str,
