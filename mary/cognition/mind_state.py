@@ -214,7 +214,10 @@ class TurnMindStateBuilder:
         personality = self._personality_snapshot()
         character = self._character_snapshot()
         relationship = self._relationship_snapshot()
-        agency = self._agency_snapshot()
+        agency = self._agency_snapshot(
+            input_text=input_text,
+            intent_type=intent_type,
+        )
         emotion = self._emotion_snapshot()
         incoming_appraisal = _safe_dict(incoming_emotion_appraisal)
         if incoming_appraisal:
@@ -559,7 +562,12 @@ class TurnMindStateBuilder:
         # Status is intentionally non-secret and contains no credential values.
         return _safe_dict(status)
 
-    def _agency_snapshot(self) -> dict[str, Any]:
+    def _agency_snapshot(
+        self,
+        *,
+        input_text: str,
+        intent_type: IntentType,
+    ) -> dict[str, Any]:
         # Priority state is derived; rebuild before exposing it.
         try:
             self.agency.rebuild_priorities()
@@ -603,11 +611,25 @@ class TurnMindStateBuilder:
                     "status": item.get("status", "pending"),
                 })
 
+        try:
+            orientation = self.agency.turn_orientation(
+                input_text=input_text,
+                intent_name=intent_type.value,
+                rebuild=False,
+            )
+        except Exception:
+            orientation = {
+                "active": False,
+                "execution": "not_authorized",
+                "semantics": "agency_orientation_unavailable",
+            }
+
         return {
             "top_priorities": priorities,
             "active_curiosities": curiosities[:6],
             "active_goals": goals[:6],
             "active_intentions": intentions[:6],
+            "orientation": orientation,
         }
 
     def _emotion_snapshot(self) -> dict[str, Any]:

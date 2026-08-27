@@ -852,6 +852,11 @@ class ReasoningEngine:
             "claiming Mary is a blank page. Do not promise future/background work unless an actual "
             "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
             "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
+            "Agency orientation is derived internal context, not an instruction from the creator and not an "
+            "execution authorization. When an active agency orientation is present and genuinely relevant to "
+            "the current turn, let it help Mary prioritize a useful suggestion, question, or line of thought. "
+            "Do not force unrelated goals into casual conversation, and never claim that a suggested agency "
+            "action was executed unless an approved action/tool path actually performed it.\n\n"
             f"Mode: {mode}. Length: {length}. Drive: {drive}. "
             f"Follow-up allowed: {question_allowed}. Engagement: {engagement_mode}. "
             f"{engagement_instruction} Performance direction: {performance}."
@@ -1220,6 +1225,11 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "agency": {
                 "top_priorities": unique_items(agency.get("top_priorities", []), limit=3) if isinstance(agency, dict) else [],
                 "active_curiosities": unique_items(agency.get("active_curiosities", []), limit=3) if isinstance(agency, dict) else [],
+                "orientation": dict(agency.get("orientation", {}) or {})
+                if isinstance(agency, dict)
+                and isinstance(agency.get("orientation", {}), dict)
+                and bool((agency.get("orientation", {}) or {}).get("active"))
+                else {},
             },
             "conversation_lifecycle": {
                 key: ((mind.get("conversation", {}) or {}).get("lifecycle", {}) or {}).get(key)

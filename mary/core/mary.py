@@ -807,6 +807,107 @@ class Mary:
                         "react to the creator's answer first and do not conduct an interview."
                     ),
                 }
+
+            # Agency may also contribute initiative, but only when its derived
+            # turn orientation is directly relevant. Relationship curiosity
+            # keeps precedence when it already supplied a specific grounded gap.
+            agency_view = mind_state.get(
+                "agency",
+                {},
+            )
+            agency_orientation = (
+                agency_view.get(
+                    "orientation",
+                    {},
+                )
+                if isinstance(
+                    agency_view,
+                    dict,
+                )
+                else {}
+            )
+            if (
+                "conversation_initiative" not in mind_state
+                and isinstance(
+                    agency_orientation,
+                    dict,
+                )
+                and bool(
+                    agency_orientation.get(
+                        "active"
+                    )
+                )
+            ):
+                priority = agency_orientation.get(
+                    "priority",
+                    {},
+                )
+                decision = agency_orientation.get(
+                    "decision",
+                    {},
+                )
+                mind_state[
+                    "conversation_initiative"
+                ] = {
+                    "permission": "agency_relevant_thought_within_current_thread",
+                    "agency_orientation": {
+                        "priority": {
+                            key: priority.get(
+                                key
+                            )
+                            for key in (
+                                "type",
+                                "description",
+                                "score",
+                                "turn_relevance",
+                            )
+                            if isinstance(
+                                priority,
+                                dict,
+                            )
+                            and priority.get(
+                                key
+                            )
+                            not in (
+                                None,
+                                "",
+                                [],
+                                {},
+                            )
+                        },
+                        "decision": {
+                            key: decision.get(
+                                key
+                            )
+                            for key in (
+                                "decision_type",
+                                "description",
+                                "confidence",
+                                "suggested_action",
+                            )
+                            if isinstance(
+                                decision,
+                                dict,
+                            )
+                            and decision.get(
+                                key
+                            )
+                            not in (
+                                None,
+                                "",
+                                [],
+                                {},
+                            )
+                        },
+                    },
+                    "guidance": (
+                        "Mary may contribute one relevant suggestion, question, "
+                        "or observation informed by this represented priority. "
+                        "This is internal orientation only: do not claim the "
+                        "suggested action was executed and do not hijack the "
+                        "creator's current topic."
+                    ),
+                }
         # From this point forward, "recent_conversation" means the bounded
         # LLM-facing window selected by the context lifecycle, not the entire
         # in-session transcript.

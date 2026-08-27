@@ -124,55 +124,91 @@ class DecisionSystem:
         context: dict[str, Any] | None = None,
     ) -> Decision | None:
         """
-        Evaluate the highest-priority item and create a decision.
+        Evaluate the highest-priority item and create a stored decision.
 
-        The decision is returned as a proposal. Nothing is executed.
+        The decision remains a proposal. Nothing is executed.
+        """
+
+        decision = self.preview(
+            priorities=priorities,
+            context=context,
+        )
+
+        if decision is None:
+            return None
+
+        return self.create_decision(
+            decision_type=decision.decision_type,
+            description=decision.description,
+            priority_score=decision.priority_score,
+            confidence=decision.confidence,
+            reason=decision.reason,
+            source_item_id=decision.source_item_id,
+            source_item_type=decision.source_item_type,
+            action=decision.action,
+            metadata=dict(
+                decision.metadata
+            ),
+        )
+
+    def preview(
+        self,
+        priorities: Iterable[PriorityItem] | None = None,
+        *,
+        context: dict[str, Any] | None = None,
+    ) -> Decision | None:
+        """
+        Build one ephemeral decision proposal without storing it.
+
+        TurnMind uses this path to let Agency inform cognition without creating
+        a new decision-history entry every time Mary assembles a prompt.
         """
 
         if priorities is None:
             priorities = self.priority_system.rank()
 
-        priorities = list(priorities)
+        priorities = list(
+            priorities
+        )
 
         if not priorities:
             return None
 
         item = priorities[0]
-
-        context = context or {}
-
-        confidence = self._calculate_confidence(
-            item,
-            context,
+        context = dict(
+            context
+            or {}
         )
 
-        reason = self._build_reason(
-            item,
-            context,
-        )
-
-        action = self._suggest_action(
-            item
-        )
-
-        decision = self.create_decision(
+        return Decision(
+            id="preview",
             decision_type=self._decision_type(
                 item
             ),
             description=item.description,
             priority_score=item.score,
-            confidence=confidence,
-            reason=reason,
+            confidence=self._calculate_confidence(
+                item,
+                context,
+            ),
+            reason=self._build_reason(
+                item,
+                context,
+            ),
             source_item_id=item.item_id,
             source_item_type=item.item_type,
-            action=action,
+            action=self._suggest_action(
+                item
+            ),
             metadata={
-                "priority_item": item.metadata,
+                "priority_item": dict(
+                    item.metadata
+                    or {}
+                ),
                 "context": context,
+                "ephemeral": True,
             },
         )
-
-        return decision
 
     # ============================================================
     # CREATE

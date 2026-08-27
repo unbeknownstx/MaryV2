@@ -161,6 +161,132 @@ class Agency:
 
         return self.decisions.choose()
 
+    def turn_orientation(
+        self,
+        *,
+        input_text: str,
+        intent_name: str = "",
+        rebuild: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Return Agency's bounded, non-executing orientation for one turn.
+
+        This connects Mary's durable goals/intentions/curiosities to cognition
+        without turning every TurnMind build into a stored decision and without
+        authorizing Autonomy or tools to act.
+
+        Unrelated priorities remain represented in ``top_priorities`` elsewhere
+        in TurnMind, but they do not become an active turn orientation merely
+        because they are globally important.
+        """
+
+        if rebuild:
+            self.rebuild_priorities()
+
+        ranked = self.priorities.rank_for_context(
+            input_text
+        )
+
+        if not ranked:
+            return {
+                "active": False,
+                "explicit_request": False,
+                "turn_relevance": 0.0,
+                "priority": None,
+                "decision": None,
+                "execution": "not_authorized",
+                "semantics": "derived_ephemeral_agency_orientation",
+            }
+
+        item, turn_relevance = ranked[0]
+
+        explicit_request = _explicit_agency_request(
+            input_text
+        )
+
+        active = bool(
+            explicit_request
+            or turn_relevance >= 0.20
+        )
+
+        priority_view = {
+            "item_id": item.item_id,
+            "type": item.item_type,
+            "description": item.description,
+            "score": round(
+                float(
+                    item.score
+                ),
+                3,
+            ),
+            "turn_relevance": round(
+                float(
+                    turn_relevance
+                ),
+                3,
+            ),
+        }
+
+        decision_view: dict[str, Any] | None = None
+
+        if active:
+            preview = self.decisions.preview(
+                priorities=[
+                    item
+                ],
+                context={
+                    "intent": str(
+                        intent_name
+                        or ""
+                    ),
+                    "turn_relevance": round(
+                        float(
+                            turn_relevance
+                        ),
+                        3,
+                    ),
+                    "explicit_agency_request": explicit_request,
+                },
+            )
+
+            if preview is not None:
+                decision_view = {
+                    "decision_type": preview.decision_type,
+                    "description": preview.description,
+                    "priority_score": round(
+                        float(
+                            preview.priority_score
+                        ),
+                        3,
+                    ),
+                    "confidence": round(
+                        float(
+                            preview.confidence
+                        ),
+                        3,
+                    ),
+                    "reason": preview.reason,
+                    "source_item_id": preview.source_item_id,
+                    "source_item_type": preview.source_item_type,
+                    "suggested_action": preview.action,
+                    "status": "preview",
+                }
+
+        return {
+            "active": active,
+            "explicit_request": explicit_request,
+            "turn_relevance": round(
+                float(
+                    turn_relevance
+                ),
+                3,
+            ),
+            "priority": priority_view,
+            "decision": decision_view,
+            "execution": "not_authorized",
+            "semantics": "derived_ephemeral_agency_orientation",
+        }
+
     # ================================================================
     # STATUS
     # ================================================================
@@ -200,3 +326,45 @@ class Agency:
                 self.decisions.get_all()
             ),
         }
+
+def _explicit_agency_request(
+    input_text: str,
+) -> bool:
+    text = " ".join(
+        str(
+            input_text
+            or ""
+        ).lower().split()
+    )
+
+    if not text:
+        return False
+
+    phrases = (
+        "what should we do",
+        "what should i do",
+        "what should we work on",
+        "what do we work on",
+        "what next",
+        "what should be next",
+        "what is next",
+        "our priority",
+        "my priority",
+        "your priority",
+        "prioritize",
+        "priority",
+        "focus on next",
+        "work on next",
+        "next step",
+        "next thing",
+        "which goal",
+        "our goals",
+        "my goals",
+        "your goals",
+    )
+
+    return any(
+        phrase in text
+        for phrase in phrases
+    )
+

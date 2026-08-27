@@ -11,6 +11,7 @@ It provides priority information to the decision system.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 
@@ -188,6 +189,103 @@ class PrioritySystem:
             return []
 
         return self.rank()[:count]
+
+    def context_relevance(
+        self,
+        item: PriorityItem,
+        context_text: str,
+    ) -> float:
+        """
+        Estimate how directly one priority relates to the current turn.
+
+        This score is derived and ephemeral. It never mutates the stored
+        goal/intention/curiosity or the item's base priority score.
+        """
+
+        context_tokens = _context_tokens(
+            context_text
+        )
+        item_tokens = _context_tokens(
+            item.description
+        )
+
+        if not context_tokens or not item_tokens:
+            return 0.0
+
+        overlap = context_tokens.intersection(
+            item_tokens
+        )
+
+        if not overlap:
+            return 0.0
+
+        denominator = max(
+            1,
+            min(
+                len(context_tokens),
+                len(item_tokens),
+            ),
+        )
+
+        score = len(overlap) / denominator
+
+        return _clamp(
+            score
+        )
+
+    def rank_for_context(
+        self,
+        context_text: str,
+    ) -> list[tuple[PriorityItem, float]]:
+        """
+        Rank priorities for one turn without changing canonical priority state.
+
+        Persistent importance/urgency/relevance still determine the base rank;
+        direct lexical relevance to this turn acts only as a temporary bias.
+        """
+
+        ranked: list[
+            tuple[
+                PriorityItem,
+                float,
+                float,
+            ]
+        ] = []
+
+        for item in self.rank():
+            turn_relevance = self.context_relevance(
+                item,
+                context_text,
+            )
+
+            contextual_score = (
+                (float(item.score) * 0.65)
+                + (turn_relevance * 0.35)
+            )
+
+            ranked.append(
+                (
+                    item,
+                    turn_relevance,
+                    contextual_score,
+                )
+            )
+
+        ranked.sort(
+            key=lambda entry: (
+                entry[2],
+                entry[0].score,
+            ),
+            reverse=True,
+        )
+
+        return [
+            (
+                item,
+                relevance,
+            )
+            for item, relevance, _ in ranked
+        ]
 
     # ============================================================
     # TYPE FILTERING
@@ -389,6 +487,60 @@ class PrioritySystem:
 # ================================================================
 # HELPERS
 # ================================================================
+
+
+_CONTEXT_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "but",
+    "by",
+    "do",
+    "for",
+    "from",
+    "have",
+    "i",
+    "in",
+    "is",
+    "it",
+    "me",
+    "my",
+    "of",
+    "on",
+    "or",
+    "our",
+    "that",
+    "the",
+    "this",
+    "to",
+    "we",
+    "what",
+    "with",
+    "you",
+}
+
+
+def _context_tokens(
+    value: str,
+) -> set[str]:
+    return {
+        token
+        for token in re.findall(
+            r"[a-z0-9]+",
+            str(
+                value
+                or ""
+            ).lower(),
+        )
+        if len(token) >= 2
+        and token not in _CONTEXT_STOPWORDS
+    }
+
 
 def _clamp(
     value: float,

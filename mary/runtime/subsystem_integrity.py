@@ -182,6 +182,30 @@ def subsystem_integrity_report(
             "agency",
             getattr(mary, "agency", None),
         ),
+        "agency.decisions_share_priorities": (
+            getattr(
+                getattr(
+                    getattr(
+                        mary,
+                        "agency",
+                        None,
+                    ),
+                    "decisions",
+                    None,
+                ),
+                "priority_system",
+                None,
+            )
+            is getattr(
+                getattr(
+                    mary,
+                    "agency",
+                    None,
+                ),
+                "priorities",
+                None,
+            )
+        ),
         "turn_mind.autonomy": _same(
             turn_mind,
             "autonomy",
@@ -432,6 +456,11 @@ def subsystem_integrity_report(
             for name in checks
             if name.startswith("relationship_curiosity.")
             or name.startswith("conversation_learning.")
+        ],
+        "agency": [
+            name
+            for name in checks
+            if name.startswith("agency.")
         ],
         "self_introspection": [
             name
