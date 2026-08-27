@@ -16,7 +16,7 @@ from time import monotonic
 from typing import Any
 from uuid import uuid4
 
-from mary.protocol.models import TurnRequest, TurnResponse
+from mary.protocol.models import RuntimeActionRequest, TurnRequest, TurnResponse, WorkspaceActionRequest
 from mary.runtime.application import MaryApplication, create_application
 
 
@@ -67,11 +67,12 @@ class MaryCoreService:
             result = self.application.run(
                 turn.text,
                 metadata={
-                    "surface": "mary_protocol",
+                    "surface": turn.surface or "client",
                     "transport": "core",
                     "conversation_id": turn.conversation_id,
                     "device_id": turn.device_id,
                     "requested_mode": turn.requested_mode,
+                    "voice_input": bool(turn.voice_input),
                 },
             )
             if not result.success:
@@ -146,6 +147,103 @@ class MaryCoreService:
 
     def node_status(self) -> dict[str, Any]:
         return _json_safe(self.mary.node_registry.snapshot())
+
+    def workspace_status(self) -> dict[str, Any]:
+        """Return the canonical remote-safe Mary workspace snapshot."""
+
+        with self._turn_lock:
+            return _json_safe(
+                self.application.ecosystem.workspace_snapshot()
+            )
+
+    def workspace_action(
+        self,
+        request: WorkspaceActionRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply one bounded canonical workspace mutation.
+
+        Workspace writes share the same lock as conversation turns so the Core
+        remains the single writer for canonical state. Device-local abilities
+        are deliberately not exposed here.
+        """
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+
+        action = (
+            request
+            if isinstance(request, WorkspaceActionRequest)
+            else WorkspaceActionRequest.from_dict(request)
+        )
+
+        with self._turn_lock:
+            result = self.application.ecosystem.apply_workspace_action(
+                action.action,
+                action.args,
+                source=f"mary_protocol:{action.device_id}",
+            )
+            return _json_safe({
+                **dict(result or {}),
+                "workspace": self.application.ecosystem.workspace_snapshot(),
+            })
+
+    def runtime_action(
+        self,
+        request: RuntimeActionRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply bounded conversation/realtime control on canonical Mary."""
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        action = (
+            request
+            if isinstance(request, RuntimeActionRequest)
+            else RuntimeActionRequest.from_dict(request)
+        )
+        values = dict(action.args or {})
+
+        with self._turn_lock:
+            if action.action == "conversation.set_mode":
+                mode = str(values.get("mode") or "adaptive")
+                return _json_safe(self.mary.engagement.set_mode(mode))
+
+            if action.action == "conversation.begin_session":
+                mode = str(values.get("mode") or "engaged")
+                turns = max(1, min(100, int(values.get("turns", 8))))
+                self.mary.engagement.begin_session(
+                    mode,
+                    turns=turns,
+                    reason=f"protocol:{action.device_id}",
+                )
+                return _json_safe(self.mary.engagement.status())
+
+            if action.action == "conversation.end_session":
+                self.mary.engagement.end_session()
+                return _json_safe(self.mary.engagement.status())
+
+            if action.action == "realtime.speech_started":
+                self.mary.realtime.speech_started(
+                    turn_id=str(values.get("turn_id") or "") or None,
+                    source=f"protocol:{action.device_id}",
+                )
+                return _json_safe(self.mary.realtime.status())
+
+            if action.action == "realtime.speech_ended":
+                self.mary.realtime.speech_ended(
+                    reason=str(values.get("reason") or "speech_finished")
+                )
+                return _json_safe(self.mary.realtime.status())
+
+            if action.action == "realtime.interrupt":
+                reason = str(values.get("reason") or "client_barge_in")
+                self.mary.realtime.interrupt(
+                    reason=reason,
+                    by_source=f"protocol:{action.device_id}",
+                )
+                self.mary.realtime.speech_ended(reason="interrupted")
+                return _json_safe(self.mary.realtime.status())
+
+        raise ValueError(f"Unsupported runtime action: {action.action}")
 
     def save(self) -> bool:
         with self._turn_lock:

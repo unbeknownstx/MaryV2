@@ -79,6 +79,232 @@ class MaryEcosystem:
             presence=self.presence,
         )
 
+    def workspace_snapshot(self) -> dict[str, Any]:
+        """Return only canonical/shared workspace state.
+
+        This is the remote-safe ecosystem view. It deliberately excludes
+        machine-local capabilities such as PersonalSearch roots, foreground
+        windows, host paths, and local integration availability.
+        """
+
+        return {
+            "command": {
+                **self.command.summary(),
+                "items": self.command.list(limit=60),
+            },
+            "focus": self.focus.snapshot(),
+            "inbox": {
+                **self.inbox.summary(),
+                "items": self.inbox.list(limit=50),
+            },
+            "study": {
+                **self.study.summary(),
+                "due_cards": self.study.due_cards(limit=20),
+            },
+            "research": {
+                **self.research.summary(),
+                "threads": self.research.list(30),
+            },
+            "companion": self.companion_snapshot(),
+            "presence": self.presence.snapshot(),
+            "semantics": {
+                "authority": "canonical_workspace",
+                "identity_owner": False,
+                "device_local_capabilities_included": False,
+            },
+        }
+
+    def apply_workspace_action(
+        self,
+        action: str,
+        args: dict[str, Any] | None = None,
+        *,
+        source: str = "mary_protocol",
+    ) -> dict[str, Any]:
+        """Apply one bounded canonical workspace mutation.
+
+        The action vocabulary is intentionally small. Device-local operations
+        (filesystem search, foreground window, OBS, microphone, Ollama, etc.)
+        are not valid workspace actions and belong to capability nodes.
+        """
+
+        name = str(action or "").strip().lower()
+        values = dict(args or {})
+
+        def publish(
+            event_type: PresenceEventType,
+            summary: str,
+            *,
+            importance: float = .55,
+            metadata: dict[str, Any] | None = None,
+        ) -> None:
+            try:
+                self.presence.publish(
+                    event_type,
+                    summary,
+                    source=source,
+                    importance=importance,
+                    metadata=metadata,
+                )
+            except Exception:
+                # Workspace state must never fail merely because ephemeral
+                # Presence publication failed.
+                pass
+
+        if name == "command.add":
+            item = self.command.add(
+                str(values.get("title") or ""),
+                kind=str(values.get("kind") or "task"),
+                priority=int(values.get("priority", 2)),
+                notes=str(values.get("notes") or ""),
+            )
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Command Center added {item.get('title', '')}",
+                importance=.58,
+                metadata={
+                    "item_id": item.get("id"),
+                    "status": item.get("status"),
+                },
+            )
+            return {"ok": True, "item": item}
+
+        if name == "command.update":
+            item_id = str(values.get("item_id") or "")
+            changes = {
+                key: values[key]
+                for key in ("title", "notes", "status", "priority")
+                if key in values
+            }
+            if not changes:
+                raise ValueError("command.update requires at least one change.")
+            item = self.command.update(item_id, **changes)
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Command Center updated {item.get('title', '')}",
+                importance=.54,
+                metadata={
+                    "item_id": item.get("id"),
+                    "status": item.get("status"),
+                },
+            )
+            return {"ok": True, "item": item}
+
+        if name == "focus.start":
+            minutes = int(values.get("minutes", 45))
+            task = str(values.get("task") or "")
+            state = self.focus.start(minutes, task=task)
+            publish(
+                PresenceEventType.FOCUS_CHANGED,
+                f"Focus started for {minutes} minutes" + (f" on {task}" if task else ""),
+                importance=.44,
+                metadata={"active": True, "minutes": minutes},
+            )
+            return {"ok": True, "focus": state}
+
+        if name == "focus.stop":
+            state = self.focus.stop(
+                completed=bool(values.get("completed", True))
+            )
+            publish(
+                PresenceEventType.FOCUS_CHANGED,
+                "Focus session stopped",
+                importance=.42,
+                metadata={"active": False},
+            )
+            return {"ok": True, "focus": state}
+
+        if name == "study.create_project":
+            project = self.study.create_project(
+                str(values.get("title") or ""),
+                objective=str(values.get("objective") or ""),
+            )
+            publish(
+                PresenceEventType.STUDY_CHANGED,
+                f"Study project created: {project.get('title', '')}",
+                importance=.58,
+                metadata={"project_id": project.get("id")},
+            )
+            return {"ok": True, "project": project}
+
+        if name == "study.add_card":
+            project_id = str(values.get("project_id") or "")
+            card = self.study.add_card(
+                project_id,
+                str(values.get("prompt") or ""),
+                str(values.get("answer") or ""),
+                tags=list(values.get("tags") or [])[:10],
+            )
+            publish(
+                PresenceEventType.STUDY_CHANGED,
+                "A study card was added",
+                importance=.46,
+                metadata={
+                    "project_id": project_id,
+                    "card_id": card.get("id"),
+                },
+            )
+            return {"ok": True, "card": card}
+
+        if name == "study.review_card":
+            project_id = str(values.get("project_id") or "")
+            card_id = str(values.get("card_id") or "")
+            score = int(values.get("score", 0))
+            card = self.study.review(project_id, card_id, score)
+            publish(
+                PresenceEventType.STUDY_CHANGED,
+                f"A study review was scored {max(0, min(5, score))}/5",
+                importance=.5,
+                metadata={
+                    "project_id": project_id,
+                    "card_id": card_id,
+                    "score": score,
+                },
+            )
+            return {"ok": True, "card": card}
+
+        if name == "research.create_thread":
+            thread = self.research.create(
+                str(values.get("title") or ""),
+                question=str(values.get("question") or ""),
+            )
+            publish(
+                PresenceEventType.PROJECT_CHANGED,
+                f"Research thread created: {thread.get('title', '')}",
+                importance=.54,
+                metadata={"thread_id": thread.get("id")},
+            )
+            return {"ok": True, "thread": thread}
+
+        if name == "research.add_note":
+            thread_id = str(values.get("thread_id") or "")
+            note = self.research.add_note(
+                thread_id,
+                str(values.get("text") or ""),
+                source=str(values.get("source") or ""),
+                url=str(values.get("url") or ""),
+            )
+            publish(
+                PresenceEventType.PROJECT_CHANGED,
+                "A research note was added",
+                importance=.48,
+                metadata={
+                    "thread_id": thread_id,
+                    "note_id": note.get("id"),
+                },
+            )
+            return {"ok": True, "note": note}
+
+        if name == "inbox.mark_read":
+            notice_id = str(values.get("notice_id") or "")
+            changed = self.inbox.mark_read(
+                notice_id,
+                bool(values.get("read", True)),
+            )
+            return {"ok": True, "changed": bool(changed)}
+
+        raise ValueError(f"Unsupported canonical workspace action: {name}")
+
     def publish_workspace_event(
         self,
         event_type: PresenceEventType,

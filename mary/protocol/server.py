@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover - handled by create_app/run_server
     FastAPI = HTTPException = Request = WebSocket = WebSocketDisconnect = None
 
 from mary.core.service import MaryCoreService
-from mary.protocol.models import TurnRequest
+from mary.protocol.models import RuntimeActionRequest, TurnRequest, WorkspaceActionRequest
 
 
 def _token() -> str:
@@ -92,6 +92,35 @@ def create_app(service: MaryCoreService | None = None):
     async def nodes(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.node_status()
+
+    @app.get("/v1/workspace")
+    async def workspace(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        return core.workspace_status()
+
+    @app.post("/v1/workspace/action")
+    async def workspace_action(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            payload = await request.json()
+            model = WorkspaceActionRequest.from_dict(payload)
+            return await asyncio.to_thread(core.workspace_action, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (KeyError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/runtime/action")
+    async def runtime_action(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            payload = await request.json()
+            model = RuntimeActionRequest.from_dict(payload)
+            return await asyncio.to_thread(core.runtime_action, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.websocket("/v1/realtime")
     async def realtime(websocket: WebSocket) -> None:

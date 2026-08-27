@@ -6,7 +6,7 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from .models import TurnRequest, TurnResponse
+from .models import RuntimeActionRequest, TurnRequest, TurnResponse, WorkspaceActionRequest
 
 
 class MaryProtocolError(RuntimeError):
@@ -14,10 +14,11 @@ class MaryProtocolError(RuntimeError):
 
 
 class MaryClient:
-    def __init__(self, base_url: str, *, token: str, device_id: str = "python-client", timeout: float = 120.0) -> None:
+    def __init__(self, base_url: str, *, token: str, device_id: str = "python-client", surface: str = "client", timeout: float = 120.0) -> None:
         self.base_url = str(base_url).rstrip("/")
         self.token = str(token or "")
         self.device_id = str(device_id or "python-client")
+        self.surface = str(surface or "client")
         self.timeout = float(timeout)
 
     def health(self) -> dict[str, Any]:
@@ -38,11 +39,55 @@ class MaryClient:
     def nodes(self) -> dict[str, Any]:
         return self._request("GET", "/v1/nodes")
 
-    def turn(self, text: str, *, conversation_id: str | None = None, requested_mode: str | None = None) -> TurnResponse:
+    def workspace(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/workspace")
+
+    def workspace_action(
+        self,
+        action: str,
+        args: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = WorkspaceActionRequest.from_dict({
+            "action": action,
+            "args": dict(args or {}),
+            "device_id": self.device_id,
+        })
+        return self._request(
+            "POST",
+            "/v1/workspace/action",
+            payload.to_dict(),
+        )
+
+    def runtime_action(
+        self,
+        action: str,
+        args: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = RuntimeActionRequest.from_dict({
+            "action": action,
+            "args": dict(args or {}),
+            "device_id": self.device_id,
+        })
+        return self._request(
+            "POST",
+            "/v1/runtime/action",
+            payload.to_dict(),
+        )
+
+    def turn(
+        self,
+        text: str,
+        *,
+        conversation_id: str | None = None,
+        requested_mode: str | None = None,
+        voice_input: bool = False,
+    ) -> TurnResponse:
         payload = TurnRequest.from_dict({
             "text": text,
             "conversation_id": conversation_id,
             "device_id": self.device_id,
+            "surface": self.surface,
+            "voice_input": bool(voice_input),
             "requested_mode": requested_mode,
         })
         raw = self._request("POST", "/v1/turn", payload.to_dict())

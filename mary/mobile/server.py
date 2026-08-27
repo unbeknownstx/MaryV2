@@ -213,6 +213,12 @@ class MaryRemoteMobileRuntime:
             token=token,
             device_id=device_id,
         )
+        # Keep constructor compatibility for lightweight test/fake clients while
+        # still identifying the real protocol surface when supported.
+        try:
+            self.client.surface = "mobile"
+        except Exception:
+            pass
 
         self.speech = MobileSpeechService()
 
@@ -386,8 +392,26 @@ class MaryRemoteMobileRuntime:
                     "core",
                     {},
                 ),
+                "ecosystem": self.ecosystem_state(),
             }
         )
+
+    def ecosystem_state(
+        self,
+    ) -> dict[str, Any]:
+        workspace = getattr(
+            self.client,
+            "workspace",
+            None,
+        )
+        if not callable(workspace):
+            return {}
+        try:
+            return _json_safe(
+                workspace()
+            )
+        except Exception:
+            return {}
 
     def last_turn_trace(
         self,
@@ -595,16 +619,114 @@ class MaryRemoteMobileRuntime:
         if name == "getNodeState":
             return self.client.nodes()
 
-        if name in {
-            "reportSpeechStarted",
-            "reportSpeechFinished",
-        }:
-            return {
-                "ok": True,
-                "authority": (
-                    "client_presentation_only"
-                ),
-            }
+        if name == "getEcosystemState":
+            return self.ecosystem_state()
+
+        if name == "setConversationMode":
+            return self.client.runtime_action(
+                "conversation.set_mode",
+                {"mode": str(args[0] if args else "adaptive")},
+            )
+
+        if name == "beginConversationSession":
+            values = list(args or [])
+            return self.client.runtime_action(
+                "conversation.begin_session",
+                {
+                    "mode": str(values[0] if values else "engaged"),
+                    "turns": int(values[1] if len(values) > 1 else 8),
+                },
+            )
+
+        if name == "endConversationSession":
+            return self.client.runtime_action(
+                "conversation.end_session"
+            )
+
+        workspace_actions = {
+            "addCommandItem": lambda values: (
+                "command.add",
+                {
+                    "title": str(values[0] if values else ""),
+                    "kind": str(values[1] if len(values) > 1 else "task"),
+                },
+            ),
+            "updateCommandStatus": lambda values: (
+                "command.update",
+                {
+                    "item_id": str(values[0]),
+                    "status": str(values[1]),
+                },
+            ),
+            "startFocus": lambda values: (
+                "focus.start",
+                {
+                    "minutes": int(values[0]),
+                    "task": str(values[1] if len(values) > 1 else ""),
+                },
+            ),
+            "stopFocus": lambda values: ("focus.stop", {}),
+            "createStudyProject": lambda values: (
+                "study.create_project",
+                {
+                    "title": str(values[0]),
+                    "objective": str(values[1] if len(values) > 1 else ""),
+                },
+            ),
+            "addStudyCard": lambda values: (
+                "study.add_card",
+                {
+                    "project_id": str(values[0]),
+                    "prompt": str(values[1]),
+                    "answer": str(values[2]),
+                },
+            ),
+            "reviewStudyCard": lambda values: (
+                "study.review_card",
+                {
+                    "project_id": str(values[0]),
+                    "card_id": str(values[1]),
+                    "score": int(values[2]),
+                },
+            ),
+            "markNoticeRead": lambda values: (
+                "inbox.mark_read",
+                {"notice_id": str(values[0]), "read": True},
+            ),
+            "createResearchThread": lambda values: (
+                "research.create_thread",
+                {
+                    "title": str(values[0]),
+                    "question": str(values[1] if len(values) > 1 else ""),
+                },
+            ),
+        }
+
+        if name in workspace_actions:
+            values = list(args or [])
+            action, payload = workspace_actions[name](values)
+            return self.client.workspace_action(action, payload)
+
+        if name == "reportSpeechStarted":
+            values = list(args or [])
+            return self.client.runtime_action(
+                "realtime.speech_started",
+                {"turn_id": str(values[0] if values else "")},
+            )
+
+        if name in {"reportSpeechEnded", "reportSpeechFinished"}:
+            values = list(args or [])
+            return self.client.runtime_action(
+                "realtime.speech_ended",
+                {"reason": str(values[0] if values else "speech_finished")},
+            )
+
+        if name == "reportSpeechInterrupted":
+            values = list(args or [])
+            return self.client.runtime_action(
+                "realtime.interrupt",
+                {"reason": str(values[0] if values else "client_barge_in")},
+            )
 
         raise KeyError(
             "Bridge method is not available "
