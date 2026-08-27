@@ -14,6 +14,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from mary.desktop.bridge import MaryDesktopBridge
+from mary.desktop.device_node import DesktopCapabilityNodeAgent
 from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.desktop.authority import resolve_desktop_application
 from mary.runtime.application import MaryApplication, create_application
@@ -47,6 +48,14 @@ class MaryDesktopWindow(QMainWindow):
         super().__init__()
         self.application = application
         self.bridge = MaryDesktopBridge(application)
+        self.node_agent: DesktopCapabilityNodeAgent | None = None
+        if isinstance(application, RemoteMaryApplicationView):
+            self.node_agent = DesktopCapabilityNodeAgent(
+                application.gateway,
+                application=application,
+                bridge=self.bridge,
+            )
+            self.node_agent.start()
 
         self.setWindowTitle("MaryV2 — Mary Cosma")
         self.resize(1600, 960)
@@ -164,6 +173,8 @@ class MaryDesktopWindow(QMainWindow):
                     self._settings.sync()
                 except Exception:
                     pass
+            if self.node_agent is not None:
+                self.node_agent.stop()
             self.bridge.close()
         finally:
             event.accept()

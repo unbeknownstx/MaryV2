@@ -2,10 +2,27 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import re
 from typing import Any
 from uuid import uuid4
 
 _ALLOWED_MODES = {"quick", "adaptive", "engaged", "deep"}
+_NODE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
+_CAPABILITY_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,79}$")
+
+
+def _node_id(value: Any, *, field_name: str = "node_id") -> str:
+    text = str(value or "").strip()
+    if not _NODE_ID.fullmatch(text):
+        raise ValueError(f"{field_name} contains unsupported characters or is too long.")
+    return text
+
+
+def _capability_name(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not _CAPABILITY_NAME.fullmatch(text):
+        raise ValueError("capability must use lowercase letters, numbers, '.', '_' or '-'.")
+    return text
 
 
 @dataclass(frozen=True)
@@ -120,6 +137,11 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "realtime.speech_started",
     "realtime.speech_ended",
     "realtime.interrupt",
+    "realtime.listening",
+    "realtime.transcribing",
+    "mind.rebuild_reservoir",
+    "mind.maintenance",
+    "presence.idle_tick",
 }
 
 
@@ -146,6 +168,114 @@ class RuntimeActionRequest:
             raise ValueError("Runtime action args exceed the protocol field limit.")
         device_id = str(payload.get("device_id") or "unknown-device").strip()[:160]
         return cls(action=action, args=dict(args), device_id=device_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class NodeRegistrationRequest:
+    node_id: str
+    display_name: str
+    host_type: str
+    platform: str
+    surface: str
+    capabilities: list[dict[str, Any]] = field(default_factory=list)
+    local: bool = True
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NodeRegistrationRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Node registration must be a JSON object.")
+        node_id = _node_id(payload.get("node_id"))
+        raw_capabilities = payload.get("capabilities") or []
+        if not isinstance(raw_capabilities, list):
+            raise ValueError("capabilities must be a JSON array.")
+        if len(raw_capabilities) > 64:
+            raise ValueError("capabilities exceeds the 64-item protocol limit.")
+
+        capabilities: list[dict[str, Any]] = []
+        for raw in raw_capabilities:
+            if not isinstance(raw, dict):
+                raise ValueError("Each capability must be a JSON object.")
+            item = dict(raw)
+            item["name"] = _capability_name(item.get("name"))
+            metadata = item.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                raise ValueError("Capability metadata must be a JSON object.")
+            if len(metadata) > 16:
+                raise ValueError("Capability metadata exceeds the 16-field limit.")
+            item["metadata"] = dict(metadata)
+            capabilities.append(item)
+
+        return cls(
+            node_id=node_id,
+            display_name=str(payload.get("display_name") or node_id).strip()[:120] or node_id,
+            host_type=str(payload.get("host_type") or "device").strip().lower()[:48] or "device",
+            platform=str(payload.get("platform") or "unknown").strip().lower()[:48] or "unknown",
+            surface=str(payload.get("surface") or "client").strip().lower()[:64] or "client",
+            capabilities=capabilities,
+            local=bool(payload.get("local", True)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class NodeHeartbeatRequest:
+    node_id: str
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NodeHeartbeatRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Node heartbeat must be a JSON object.")
+        return cls(node_id=_node_id(payload.get("node_id")))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class CapabilityRouteRequest:
+    capability: str
+    prefer_private: bool = True
+    prefer_local: bool = True
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CapabilityRouteRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Capability route request must be a JSON object.")
+        return cls(
+            capability=_capability_name(payload.get("capability")),
+            prefer_private=bool(payload.get("prefer_private", True)),
+            prefer_local=bool(payload.get("prefer_local", True)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class CapabilityTaskPreviewRequest:
+    capability: str
+    intent: str
+    device_id: str = "unknown-device"
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CapabilityTaskPreviewRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Capability task preview must be a JSON object.")
+        intent = " ".join(str(payload.get("intent") or "").split())
+        if not intent:
+            raise ValueError("intent is required.")
+        if len(intent) > 500:
+            raise ValueError("intent exceeds the 500 character preview limit.")
+        return cls(
+            capability=_capability_name(payload.get("capability")),
+            intent=intent,
+            device_id=str(payload.get("device_id") or "unknown-device").strip()[:160],
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

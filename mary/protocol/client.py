@@ -6,7 +6,16 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from .models import RuntimeActionRequest, TurnRequest, TurnResponse, WorkspaceActionRequest
+from .models import (
+    CapabilityRouteRequest,
+    CapabilityTaskPreviewRequest,
+    NodeHeartbeatRequest,
+    NodeRegistrationRequest,
+    RuntimeActionRequest,
+    TurnRequest,
+    TurnResponse,
+    WorkspaceActionRequest,
+)
 
 
 class MaryProtocolError(RuntimeError):
@@ -38,6 +47,61 @@ class MaryClient:
 
     def nodes(self) -> dict[str, Any]:
         return self._request("GET", "/v1/nodes")
+
+    def register_node(
+        self,
+        *,
+        display_name: str,
+        host_type: str,
+        platform: str,
+        surface: str,
+        capabilities: list[dict[str, Any]],
+        local: bool = True,
+    ) -> dict[str, Any]:
+        model = NodeRegistrationRequest.from_dict({
+            "node_id": self.device_id,
+            "display_name": display_name,
+            "host_type": host_type,
+            "platform": platform,
+            "surface": surface,
+            "capabilities": list(capabilities or []),
+            "local": bool(local),
+        })
+        return self._request("POST", "/v1/nodes/register", model.to_dict(), timeout=min(self.timeout, 3.0))
+
+    def heartbeat_node(self) -> dict[str, Any]:
+        model = NodeHeartbeatRequest.from_dict({"node_id": self.device_id})
+        return self._request("POST", "/v1/nodes/heartbeat", model.to_dict(), timeout=min(self.timeout, 3.0))
+
+    def disconnect_node(self) -> dict[str, Any]:
+        model = NodeHeartbeatRequest.from_dict({"node_id": self.device_id})
+        return self._request("POST", "/v1/nodes/disconnect", model.to_dict(), timeout=min(self.timeout, 3.0))
+
+    def route_capability(
+        self,
+        capability: str,
+        *,
+        prefer_private: bool = True,
+        prefer_local: bool = True,
+    ) -> dict[str, Any]:
+        model = CapabilityRouteRequest.from_dict({
+            "capability": capability,
+            "prefer_private": bool(prefer_private),
+            "prefer_local": bool(prefer_local),
+        })
+        return self._request("POST", "/v1/nodes/route", model.to_dict(), timeout=min(self.timeout, 3.0))
+
+    def preview_capability_task(
+        self,
+        capability: str,
+        intent: str,
+    ) -> dict[str, Any]:
+        model = CapabilityTaskPreviewRequest.from_dict({
+            "capability": capability,
+            "intent": intent,
+            "device_id": self.device_id,
+        })
+        return self._request("POST", "/v1/nodes/task/preview", model.to_dict(), timeout=min(self.timeout, 3.0))
 
     def workspace(self) -> dict[str, Any]:
         return self._request("GET", "/v1/workspace")
@@ -96,7 +160,15 @@ class MaryClient:
         raw = self._request("POST", "/v1/turn", payload.to_dict())
         return TurnResponse(**raw)
 
-    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None, *, authenticated: bool = True) -> dict[str, Any]:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        authenticated: bool = True,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
         headers = {"Accept": "application/json"}
         if body is not None:
@@ -105,7 +177,7 @@ class MaryClient:
             headers["Authorization"] = f"Bearer {self.token}"
         request = Request(self.base_url + path, data=body, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=self.timeout if timeout is None else float(timeout)) as response:
                 data = response.read()
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")

@@ -16,7 +16,17 @@ from time import monotonic
 from typing import Any
 from uuid import uuid4
 
-from mary.protocol.models import RuntimeActionRequest, TurnRequest, TurnResponse, WorkspaceActionRequest
+from mary.distributed import CapabilityDescriptor, NodeDescriptor, preview_capability_task
+from mary.protocol.models import (
+    CapabilityRouteRequest,
+    CapabilityTaskPreviewRequest,
+    NodeHeartbeatRequest,
+    NodeRegistrationRequest,
+    RuntimeActionRequest,
+    TurnRequest,
+    TurnResponse,
+    WorkspaceActionRequest,
+)
 from mary.runtime.application import MaryApplication, create_application
 
 
@@ -194,6 +204,131 @@ class MaryCoreService:
 
     def node_status(self) -> dict[str, Any]:
         return _json_safe(self.mary.node_registry.snapshot())
+
+    def register_node(
+        self,
+        request: NodeRegistrationRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Register or refresh one replaceable device capability node.
+
+        Registration is an authenticated capability advertisement. It does not
+        transfer Mary identity/state ownership and it does not authorize task
+        execution on the device.
+        """
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        model = (
+            request
+            if isinstance(request, NodeRegistrationRequest)
+            else NodeRegistrationRequest.from_dict(request)
+        )
+        capabilities = [CapabilityDescriptor.from_dict(item) for item in model.capabilities]
+        descriptor = NodeDescriptor(
+            node_id=model.node_id,
+            display_name=model.display_name,
+            role="capability_node",
+            host_type=model.host_type,
+            platform=model.platform,
+            surface=model.surface,
+            transport="mary_protocol",
+            capabilities={item.name: item for item in capabilities},
+            local=bool(model.local),
+            trusted=True,
+            execution_policy="authorization_required",
+        )
+        with self._turn_lock:
+            registered = self.mary.node_registry.register(descriptor)
+            return _json_safe({
+                "ok": True,
+                "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
+                "registry": self.mary.node_registry.snapshot(),
+            })
+
+    def heartbeat_node(
+        self,
+        request: NodeHeartbeatRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        model = (
+            request
+            if isinstance(request, NodeHeartbeatRequest)
+            else NodeHeartbeatRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            if not self.mary.node_registry.heartbeat(model.node_id):
+                raise KeyError(f"Unknown capability node: {model.node_id}")
+            node = self.mary.node_registry.get(model.node_id)
+            return _json_safe({
+                "ok": True,
+                "node": node.to_dict(stale_after=self.mary.node_registry.stale_after) if node else {},
+            })
+
+    def disconnect_node(
+        self,
+        request: NodeHeartbeatRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        model = (
+            request
+            if isinstance(request, NodeHeartbeatRequest)
+            else NodeHeartbeatRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            changed = self.mary.node_registry.disconnect(model.node_id)
+            return _json_safe({
+                "ok": changed,
+                "node_id": model.node_id,
+                "connected": False,
+            })
+
+    def route_capability(
+        self,
+        request: CapabilityRouteRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        model = (
+            request
+            if isinstance(request, CapabilityRouteRequest)
+            else CapabilityRouteRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            return _json_safe(
+                self.mary.node_registry.route_preview(
+                    model.capability,
+                    prefer_private=model.prefer_private,
+                    prefer_local=model.prefer_local,
+                )
+            )
+
+    def preview_capability_task(
+        self,
+        request: CapabilityTaskPreviewRequest | dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return a non-executing dispatch plan for a capability request."""
+
+        model = (
+            request
+            if isinstance(request, CapabilityTaskPreviewRequest)
+            else CapabilityTaskPreviewRequest.from_dict(request)
+        )
+        with self._turn_lock:
+            plan = preview_capability_task(
+                self.mary.node_registry,
+                capability=model.capability,
+                intent=model.intent,
+                requester_device_id=model.device_id,
+            )
+            return _json_safe({
+                "ok": True,
+                "plan": plan.to_dict(),
+                "execution": {
+                    "authorized": False,
+                    "endpoint": None,
+                    "policy": "preview only; no device task was executed",
+                },
+            })
 
     def workspace_status(self) -> dict[str, Any]:
         """Return the canonical remote-safe Mary workspace snapshot."""

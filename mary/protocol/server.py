@@ -13,7 +13,15 @@ except ImportError:  # pragma: no cover - handled by create_app/run_server
     FastAPI = HTTPException = Request = WebSocket = WebSocketDisconnect = None
 
 from mary.core.service import MaryCoreService
-from mary.protocol.models import RuntimeActionRequest, TurnRequest, WorkspaceActionRequest
+from mary.protocol.models import (
+    CapabilityRouteRequest,
+    CapabilityTaskPreviewRequest,
+    NodeHeartbeatRequest,
+    NodeRegistrationRequest,
+    RuntimeActionRequest,
+    TurnRequest,
+    WorkspaceActionRequest,
+)
 
 
 def _token() -> str:
@@ -92,6 +100,57 @@ def create_app(service: MaryCoreService | None = None):
     async def nodes(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.node_status()
+
+    @app.post("/v1/nodes/register")
+    async def register_node(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = NodeRegistrationRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.register_node, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/heartbeat")
+    async def heartbeat_node(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = NodeHeartbeatRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.heartbeat_node, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (KeyError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/disconnect")
+    async def disconnect_node(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = NodeHeartbeatRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.disconnect_node, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/route")
+    async def route_capability(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CapabilityRouteRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.route_capability, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/nodes/task/preview")
+    async def preview_capability_task(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CapabilityTaskPreviewRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.preview_capability_task, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/v1/dashboard")
     async def dashboard(request: Request) -> dict[str, Any]:

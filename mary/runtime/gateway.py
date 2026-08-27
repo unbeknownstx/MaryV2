@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 import os
 from typing import Any, Protocol
 
+from mary.distributed import CapabilityDescriptor, NodeDescriptor, preview_capability_task
 from mary.protocol.client import MaryClient
 from mary.runtime.application import MaryApplication
 
@@ -62,6 +63,27 @@ class MaryRuntimeGateway(Protocol):
         action: str,
         args: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
+    def nodes(self) -> dict[str, Any]: ...
+    def register_node(
+        self,
+        *,
+        display_name: str,
+        host_type: str,
+        platform: str,
+        surface: str,
+        capabilities: list[dict[str, Any]],
+        local: bool = True,
+    ) -> dict[str, Any]: ...
+    def heartbeat_node(self) -> dict[str, Any]: ...
+    def disconnect_node(self) -> dict[str, Any]: ...
+    def route_capability(
+        self,
+        capability: str,
+        *,
+        prefer_private: bool = True,
+        prefer_local: bool = True,
+    ) -> dict[str, Any]: ...
+    def preview_capability_task(self, capability: str, intent: str) -> dict[str, Any]: ...
 
 
 class LocalMaryGateway:
@@ -243,6 +265,83 @@ class LocalMaryGateway:
             return self.mary.realtime.status()
         raise ValueError(f"Unsupported runtime action: {name}")
 
+    def nodes(self) -> dict[str, Any]:
+        return self.mary.node_registry.snapshot()
+
+    def register_node(
+        self,
+        *,
+        display_name: str,
+        host_type: str,
+        platform: str,
+        surface: str,
+        capabilities: list[dict[str, Any]],
+        local: bool = True,
+    ) -> dict[str, Any]:
+        parsed = [CapabilityDescriptor.from_dict(item) for item in list(capabilities or [])]
+        descriptor = NodeDescriptor(
+            node_id=self.device_id,
+            display_name=str(display_name or self.device_id)[:120],
+            role="capability_node",
+            host_type=str(host_type or "device")[:48],
+            platform=str(platform or "unknown")[:48],
+            surface=str(surface or self.surface)[:64],
+            transport="in_process",
+            capabilities={item.name: item for item in parsed},
+            local=bool(local),
+            trusted=True,
+            execution_policy="authorization_required",
+        )
+        node = self.mary.node_registry.register(descriptor)
+        return {
+            "ok": True,
+            "node": node.to_dict(stale_after=self.mary.node_registry.stale_after),
+            "registry": self.mary.node_registry.snapshot(),
+        }
+
+    def heartbeat_node(self) -> dict[str, Any]:
+        if not self.mary.node_registry.heartbeat(self.device_id):
+            raise KeyError(f"Unknown capability node: {self.device_id}")
+        node = self.mary.node_registry.get(self.device_id)
+        return {
+            "ok": True,
+            "node": node.to_dict(stale_after=self.mary.node_registry.stale_after) if node else {},
+        }
+
+    def disconnect_node(self) -> dict[str, Any]:
+        changed = self.mary.node_registry.disconnect(self.device_id)
+        return {"ok": changed, "node_id": self.device_id, "connected": False}
+
+    def route_capability(
+        self,
+        capability: str,
+        *,
+        prefer_private: bool = True,
+        prefer_local: bool = True,
+    ) -> dict[str, Any]:
+        return self.mary.node_registry.route_preview(
+            capability,
+            prefer_private=prefer_private,
+            prefer_local=prefer_local,
+        )
+
+    def preview_capability_task(self, capability: str, intent: str) -> dict[str, Any]:
+        plan = preview_capability_task(
+            self.mary.node_registry,
+            capability=capability,
+            intent=intent,
+            requester_device_id=self.device_id,
+        )
+        return {
+            "ok": True,
+            "plan": plan.to_dict(),
+            "execution": {
+                "authorized": False,
+                "endpoint": None,
+                "policy": "preview only; no device task was executed",
+            },
+        }
+
 
 class RemoteMaryGateway:
     """Gateway backed only by Mary Protocol; it owns no MaryApplication."""
@@ -312,6 +411,50 @@ class RemoteMaryGateway:
         args: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self.client.runtime_action(action, args)
+
+    def nodes(self) -> dict[str, Any]:
+        return self.client.nodes()
+
+    def register_node(
+        self,
+        *,
+        display_name: str,
+        host_type: str,
+        platform: str,
+        surface: str,
+        capabilities: list[dict[str, Any]],
+        local: bool = True,
+    ) -> dict[str, Any]:
+        return self.client.register_node(
+            display_name=display_name,
+            host_type=host_type,
+            platform=platform,
+            surface=surface,
+            capabilities=capabilities,
+            local=local,
+        )
+
+    def heartbeat_node(self) -> dict[str, Any]:
+        return self.client.heartbeat_node()
+
+    def disconnect_node(self) -> dict[str, Any]:
+        return self.client.disconnect_node()
+
+    def route_capability(
+        self,
+        capability: str,
+        *,
+        prefer_private: bool = True,
+        prefer_local: bool = True,
+    ) -> dict[str, Any]:
+        return self.client.route_capability(
+            capability,
+            prefer_private=prefer_private,
+            prefer_local=prefer_local,
+        )
+
+    def preview_capability_task(self, capability: str, intent: str) -> dict[str, Any]:
+        return self.client.preview_capability_task(capability, intent)
 
 
 def gateway_from_environment(
