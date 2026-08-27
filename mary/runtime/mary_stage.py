@@ -18,6 +18,7 @@ from mary.runtime.pipeline import (
     StageResult,
 )
 from mary.runtime.turn_envelope import build_turn_envelope
+from mary.runtime.workspace_context import build_workspace_context
 
 
 class MaryStage(PipelineStage):
@@ -68,10 +69,16 @@ class MaryStage(PipelineStage):
         turn_context = build_turn_envelope(
             turn_metadata
         )
+        workspace_context = build_workspace_context(
+            turn_metadata.get(
+                "workspace_context"
+            )
+        )
 
         result = self.mary.process(
             context.input_data,
             turn_context=turn_context,
+            workspace_context=workspace_context,
         )
 
         intent_type = None

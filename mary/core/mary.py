@@ -638,6 +638,7 @@ class Mary:
         input_text: str,
         *,
         turn_context: dict[str, Any] | None = None,
+        workspace_context: dict[str, Any] | None = None,
     ) -> CognitiveCycleResult:
         """
         Process one complete MaryV2 interaction.
@@ -740,6 +741,7 @@ class Mary:
             intent=intent,
             recent_conversation=session_history,
             incoming_emotion_appraisal=incoming_emotion_payload,
+            workspace_context=workspace_context,
         )
 
         # Transport/session metadata is context-only. It never becomes Mary's
@@ -1316,6 +1318,7 @@ class Mary:
         intent: Intent | None = None,
         recent_conversation: list[dict[str, str]] | None = None,
         incoming_emotion_appraisal: dict[str, Any] | None = None,
+        workspace_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build one integrated cognitive context from Mary's real subsystems."""
 
@@ -1350,6 +1353,7 @@ class Mary:
             recent_conversation=conversation,
             context_lifecycle=lifecycle_context,
             incoming_emotion_appraisal=incoming_emotion_appraisal,
+            workspace_context=workspace_context,
         )
         prompt_mind_state = mind_state.prompt_view()
         relationship_view = prompt_mind_state.get("relationship")

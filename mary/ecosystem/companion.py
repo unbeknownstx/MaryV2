@@ -55,6 +55,7 @@ def build_companion_pulse(
     command,
     focus,
     study,
+    research=None,
     inbox,
     presence,
 ) -> dict[str, Any]:
@@ -67,6 +68,11 @@ def build_companion_pulse(
     command_summary = dict(command.summary() or {})
     focus_state = dict(focus.snapshot() or {})
     study_summary = dict(study.summary() or {})
+    research_summary = (
+        dict(research.summary() or {})
+        if research is not None
+        else {}
+    )
     inbox_summary = dict(inbox.summary() or {})
     presence_state = dict(presence.snapshot() or {})
 
@@ -81,6 +87,31 @@ def build_companion_pulse(
                 "title": _clip(item.get("title"), 160),
                 "priority": int(item.get("priority", 0) or 0),
                 "status": str(item.get("status") or "active"),
+            }
+        )
+
+    study_projects = []
+    for item in list(study_summary.get("project_list", []) or [])[:3]:
+        if not isinstance(item, dict):
+            continue
+        study_projects.append(
+            {
+                "id": str(item.get("id") or ""),
+                "title": _clip(item.get("title"), 160),
+                "cards": int(item.get("cards", 0) or 0),
+                "due": int(item.get("due", 0) or 0),
+            }
+        )
+
+    research_threads = []
+    for item in list(research_summary.get("recent", []) or [])[:3]:
+        if not isinstance(item, dict):
+            continue
+        research_threads.append(
+            {
+                "id": str(item.get("id") or ""),
+                "title": _clip(item.get("title"), 180),
+                "notes": int(item.get("notes", 0) or 0),
             }
         )
 
@@ -160,6 +191,7 @@ def build_companion_pulse(
             "waiting": int(command_summary.get("waiting", 0) or 0),
             "study_due": due_count,
             "study_projects": int(study_summary.get("projects", 0) or 0),
+            "research_open": int(research_summary.get("open", 0) or 0),
             "inbox_unread": unread,
             "pending_thoughts": len(thoughts),
         },
@@ -171,6 +203,8 @@ def build_companion_pulse(
             "due": bool(focus_state.get("due")),
         },
         "top_tasks": top_tasks,
+        "study_projects": study_projects,
+        "research_threads": research_threads,
         "notices": notices,
         "pending_thoughts": thoughts,
         "curiosities": _curiosity_items(mary),

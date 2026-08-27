@@ -33,6 +33,7 @@ from mary.runtime.integrity import require_application_integrity
 from mary.runtime.mary_stage import MaryStage
 from mary.runtime.pipeline import Pipeline, PipelineResult
 from mary.runtime.state import RuntimeState
+from mary.runtime.workspace_context import build_workspace_context
 
 
 # ================================================================
@@ -965,6 +966,19 @@ class MaryApplication:
         meta["surface"] = surface
         meta["transport"] = transport
         meta["voice_input"] = voice
+
+        # Workspace context is always produced by this application's own
+        # ecosystem. Client-provided values are discarded so a remote caller
+        # cannot impersonate canonical Command/Focus/Study/Research state.
+        meta.pop("workspace_context", None)
+        try:
+            workspace_context = build_workspace_context(
+                self.ecosystem.companion_snapshot()
+            )
+        except Exception:
+            workspace_context = {}
+        if workspace_context:
+            meta["workspace_context"] = workspace_context
 
         interaction = None
 

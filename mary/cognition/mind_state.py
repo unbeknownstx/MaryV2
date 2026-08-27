@@ -89,6 +89,7 @@ class TurnMindState:
     tools: dict[str, Any]
     emotion: dict[str, Any]
     conversation: dict[str, Any]
+    workspace: dict[str, Any]
     continuity: dict[str, Any]
     disposition: ResponseDisposition
     performance: dict[str, Any]
@@ -115,6 +116,7 @@ class TurnMindState:
             "tools": dict(self.tools),
             "emotion": dict(self.emotion),
             "conversation": dict(self.conversation),
+            "workspace": dict(self.workspace),
             "continuity": dict(self.continuity),
             "disposition": self.disposition.to_dict(),
             "performance": dict(self.performance),
@@ -141,6 +143,7 @@ class TurnMindState:
             "tools": self.tools,
             "emotion": self.emotion,
             "conversation": self.conversation,
+            "workspace": self.workspace,
             "continuity": self.continuity,
             "disposition": self.disposition.to_dict(),
             "performance": self.performance,
@@ -199,6 +202,7 @@ class TurnMindStateBuilder:
         recent_conversation: list[dict[str, str]] | None = None,
         context_lifecycle: dict[str, Any] | None = None,
         incoming_emotion_appraisal: dict[str, Any] | None = None,
+        workspace_context: dict[str, Any] | None = None,
     ) -> TurnMindState:
         intent_type = (
             intent.intent_type
@@ -272,6 +276,7 @@ class TurnMindStateBuilder:
             tools=self._tools_snapshot(),
             emotion=emotion,
             conversation=conversation,
+            workspace=self._workspace_snapshot(workspace_context),
             continuity=continuity,
             disposition=disposition,
             performance=performance,
@@ -292,6 +297,22 @@ class TurnMindStateBuilder:
                 "dialogue_turn": getattr(getattr(self.dialogue, "state", None), "turn_number", 0),
             },
         )
+
+    @staticmethod
+    def _workspace_snapshot(
+        workspace_context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Copy the bounded application workspace snapshot for this turn.
+
+        Mary does not own these workspaces.  MaryApplication/MaryEcosystem
+        provide the already-sanitized read-only view, and TurnMind only carries
+        that view through cognition for the current turn.
+        """
+
+        if not isinstance(workspace_context, dict):
+            return {}
+
+        return dict(workspace_context)
 
     def _identity_snapshot(self) -> dict[str, Any]:
         creator = getattr(self.identity, "creator", "Unbe")

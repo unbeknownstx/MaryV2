@@ -74,6 +74,7 @@ class MaryEcosystem:
             command=self.command,
             focus=self.focus,
             study=self.study,
+            research=self.research,
             inbox=self.inbox,
             presence=self.presence,
         )

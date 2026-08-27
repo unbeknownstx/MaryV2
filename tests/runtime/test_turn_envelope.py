@@ -90,6 +90,7 @@ class _FakeMary:
         input_text,
         *,
         turn_context=None,
+        workspace_context=None,
     ):
         self.received = {
             "input_text": input_text,
