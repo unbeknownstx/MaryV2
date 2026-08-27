@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+
 def _root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -73,10 +74,7 @@ def test_desktop_transcript_matches_the_exact_spoken_text() -> None:
 
     assert "canonical_text: str" in bridge
     assert '"canonical_text": self.canonical_text' in bridge
-    assert re.search(
-    r'spoken_text\s*=\s*str\(\s*voice_payload\.get\("spoken_text"\)\s*or\s*""\s*\)\.strip\(\)',
-    bridge,
-)
+    assert re.search(r'spoken_text\s*=\s*str\(\s*voice_payload\.get\("spoken_text"\)\s*or\s*""\s*\)\.strip\(\)', bridge)
     assert "display_text = spoken_text or response_text" in bridge
     assert "text=display_text" in bridge
     assert "canonical_text=response_text" in bridge

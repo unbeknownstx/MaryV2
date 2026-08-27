@@ -16,13 +16,13 @@ class FakeRemoteClient:
         return {"version": "13.0"}
     def nodes(self):
         return {"nodes": []}
-    def turn(self, text, *, conversation_id=None, requested_mode=None):
+    def turn(self, text, *, conversation_id=None, requested_mode=None, voice_input=False):
         return SimpleNamespace(
             response="hello from core",
             turn_id="turn-1",
             provenance={"provider": "groq"},
             conversation_state=self.conversation_status(),
-            display_hints={"delivery_plan": {}},
+            display_hints={"delivery_plan": {}, "dialogue_plan": {}},
             state_changes={},
         )
 

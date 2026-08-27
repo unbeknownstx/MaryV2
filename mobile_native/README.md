@@ -27,3 +27,16 @@ app must periodically be re-signed from Xcode.
 
 The app never embeds Groq, Gemini, OpenRouter, OpenAI, ElevenLabs, or other
 provider secrets. Those remain in MaryV2's host `.env`.
+
+## Keep the embedded web bundle synchronized
+
+`mobile_web/` is the canonical source. Before opening Xcode after web/PWA work:
+
+```bash
+python -m scripts.sync_mobile_web --check
+python -m scripts.sync_mobile_web --sync
+```
+
+or double-click `SYNC_WEB_FROM_PROJECT.command` on macOS. The repository tests also verify that `MaryMobile/www` is an exact generated copy.
+
+MaryV2 13.2 conversation IDs and Core/device-node status are client features; the iPhone app still owns presentation and local iOS speech/haptics only, never Mary identity or canonical memory.

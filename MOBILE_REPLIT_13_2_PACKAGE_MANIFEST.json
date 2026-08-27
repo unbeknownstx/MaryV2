@@ -1,0 +1,155 @@
+{
+  "package": "MaryV2 13.2 Mobile/Replit Full Convergence",
+  "base": "current integrated 13.2 Unified Core + device nodes + authorized PersonalSearch + TurnMind\u2192Dialogue",
+  "verification": {
+    "full_suite": "1190 passed, 1 skipped",
+    "affected_suite": "67 passed"
+  },
+  "privacy": {
+    "contains_env_secrets": false,
+    "contains_live_data": false,
+    "contains_node_modules": false
+  },
+  "files": [
+    {
+      "path": ".env.example",
+      "sha256": "da44d924891388c6ace5fdb397bda45931e98df3a78d1fd57ecd077f22681376",
+      "bytes": 8772
+    },
+    {
+      "path": "CURRENT_STATE.md",
+      "sha256": "d312d365b3317e341e981ab467666b57e381409a904d6499b945ab298144860d",
+      "bytes": 3023
+    },
+    {
+      "path": "MOBILE_REPLIT_13_2_CONVERGENCE.md",
+      "sha256": "e2ae3ca591f1cc832ccc13518ceeb812d68103fef3efe859798ef9c3f248ccf8",
+      "bytes": 1830
+    },
+    {
+      "path": "README.md",
+      "sha256": "198017002e311f449677d1bdc98573a805107ca628b1d2facd9e4a9d22144047",
+      "bytes": 12446
+    },
+    {
+      "path": "replit.md",
+      "sha256": "4f08ccbd0f0250bdd6f56a791257e019596ec3a5d926514ee5e2aaa321e2c8a7",
+      "bytes": 4559
+    },
+    {
+      "path": "mary/core/service.py",
+      "sha256": "26f8fe772c012effc6811cedafb580ccedf9a75136fc97ae38ced9029bc80096",
+      "bytes": 23698
+    },
+    {
+      "path": "mary/mobile/server.py",
+      "sha256": "8f0a089443f855d55e112a813378d543d35c428e070d193b3e1c382ade4fe432",
+      "bytes": 95587
+    },
+    {
+      "path": "mobile_web/app.js",
+      "sha256": "a44a308c32c3becc98cc9273a2abc6f9b02e8a962057c0e9a7d6f96d21fd99fb",
+      "bytes": 68530
+    },
+    {
+      "path": "mobile_web/index.html",
+      "sha256": "cb15fb44a77c8ccbd3ab5b0101ee619c1f7b16a7fa6353823059c4fc0f999ce5",
+      "bytes": 8833
+    },
+    {
+      "path": "mobile_web/manifest.webmanifest",
+      "sha256": "c72521ea2f52a6c1de035103f73f5495e6173f3abcf6eafcf59d28d471f93af2",
+      "bytes": 641
+    },
+    {
+      "path": "mobile_web/style.css",
+      "sha256": "8d3c59c91a8388ceea9b5a1d73b560ef88f8cf7f9927ba6dd34298466aa62abf",
+      "bytes": 28141
+    },
+    {
+      "path": "mobile_web/sw.js",
+      "sha256": "db6bd7088bfb5e3a0c44df885e8e6e13906802a7868fb3c288b0d465b0271884",
+      "bytes": 1829
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/app.js",
+      "sha256": "a44a308c32c3becc98cc9273a2abc6f9b02e8a962057c0e9a7d6f96d21fd99fb",
+      "bytes": 68530
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/index.html",
+      "sha256": "cb15fb44a77c8ccbd3ab5b0101ee619c1f7b16a7fa6353823059c4fc0f999ce5",
+      "bytes": 8833
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/manifest.webmanifest",
+      "sha256": "c72521ea2f52a6c1de035103f73f5495e6173f3abcf6eafcf59d28d471f93af2",
+      "bytes": 641
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/style.css",
+      "sha256": "8d3c59c91a8388ceea9b5a1d73b560ef88f8cf7f9927ba6dd34298466aa62abf",
+      "bytes": 28141
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/sw.js",
+      "sha256": "db6bd7088bfb5e3a0c44df885e8e6e13906802a7868fb3c288b0d465b0271884",
+      "bytes": 1829
+    },
+    {
+      "path": "mobile_native/README.md",
+      "sha256": "7350285e71d2d3ae42197c398906066bd5a688645013a27ba4a5c5c67527fa87",
+      "bytes": 1824
+    },
+    {
+      "path": "mobile_native/SYNC_WEB_FROM_PROJECT.command",
+      "sha256": "c2e57bdf883ac0938f2204997f0a083cfa53402cc2779b210c6d29363b26c530",
+      "bytes": 261
+    },
+    {
+      "path": "scripts/check_replit_client.py",
+      "sha256": "e9afa78fdea59d452d7a9794b23cf7e5d61e6c5c312ed87c667f1347dab56e26",
+      "bytes": 2259
+    },
+    {
+      "path": "scripts/sync_mobile_web.py",
+      "sha256": "f38b33f7aa73d397c0fd867edeae7d4b13fba5dd75f5996378bcd0e0ed5cd6d1",
+      "bytes": 2552
+    },
+    {
+      "path": "tests/mobile/test_mobile_13_1_realtime.py",
+      "sha256": "23894b6f8566d5c9ec99bc3831fdd19876085d4b4334a93d31ab944357df2ec2",
+      "bytes": 1132
+    },
+    {
+      "path": "tests/mobile/test_mobile_convergence_13_2.py",
+      "sha256": "b8e5686f6cd6aade740acf4f80e25b3728a0da173cfc6e674c32fd3ed7b93b3b",
+      "bytes": 7190
+    },
+    {
+      "path": "tests/mobile/test_remote_core_mode_13_2.py",
+      "sha256": "36ac41a8a69fa19cf56795abc9dc5c198ab8bd3deb2bdefb5ea4a04fd6751ab3",
+      "bytes": 1748
+    },
+    {
+      "path": "tests/desktop/test_desktop_alpha.py",
+      "sha256": "4d06e91273733f4717e6d25614e7366e23bbb2c5d95929259ff0df3d2586d7f3",
+      "bytes": 8169
+    },
+    {
+      "path": "tests/desktop/test_desktop_ecosystem_12_8.py",
+      "sha256": "3bd79986ee5fae43fe9975e01479fab6ab83f68840cf07f14174ec49b41a1fd0",
+      "bytes": 3361
+    },
+    {
+      "path": "tests/desktop/test_desktop_voice_alpha.py",
+      "sha256": "8d4bcc85f54fbd0fd70b3c28d42e82e40d9cde971dd1be3eb5340c98940e5d6b",
+      "bytes": 4217
+    },
+    {
+      "path": "tests/desktop/test_speech_input.py",
+      "sha256": "5df641d408177fe3cf5b97d679b9eaf7e067320d6e5c94732689349673ff5c68",
+      "bytes": 2451
+    }
+  ]
+}

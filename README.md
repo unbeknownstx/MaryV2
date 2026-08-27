@@ -2,11 +2,11 @@
 
 MaryV2 is a private persistent character runtime for **Mary**. Mary existed as a character before this software; the runtime is the machinery that lets the same character converse, remember selectively, learn through controlled paths, use tools/models, speak through the desktop, survive restarts, and remain independent from any one LLM provider.
 
-## Current consolidated baseline — 13.1.1
+## Current consolidated baseline — 13.2 Unified Core
 
-The current canonical source line is **MaryV2 13.1.1 — Consolidated Production Hybrid + Realtime Cognitive Infrastructure**. It merges the newest Windows/Codex Production Hybrid Dialogue / Local Mind V2 work, the Replit/mobile/native-iPhone work, 13.0 Intentional Conversation + Continuous Development, and 13.1 realtime/attention/vector/perception/node infrastructure into one baseline.
+The current source line is **MaryV2 13.2 — Unified Core + distributed clients/capability nodes**. One long-lived Mary Core owns the canonical MaryApplication and durable character/workspace state. Desktop, Mac, Replit/PWA and mobile/native surfaces are clients; Windows/Mac can additionally advertise replaceable local capabilities such as PersonalSearch and Ollama without becoming identity owners.
 
-Start with `START_HERE_13_1_1.md`. The architectural consolidation is documented in `MARYV2_13_1_1_ARCHITECTURE.md`; skills/task-agent direction is documented in `SKILLS_AGENTS_13_1_1.md`. Older `START_HERE_*` and release documents are retained as implementation history, not as competing current baselines.
+13.2 also connects the previously separate internal paths more tightly: Ecosystem/Companion Pulse → TurnMind, Research → evaluated durable knowledge → reservoir retrieval, Agency priorities → cognition, bounded conversation IDs → real short-dialogue sessions, and TurnMind → cognition/reflection → expression/dialogue continuity. See `MARYV2_13_2_UNIFIED_CORE.md` and `MOBILE_REPLIT_13_2_CONVERGENCE.md`. Older `START_HERE_*` and release documents remain implementation history, not competing authorities.
 
 
 ## V2 invariants

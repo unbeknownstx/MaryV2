@@ -1,0 +1,459 @@
+{
+  "package": "MaryV2 13.2 All Integrations Cumulative Overlay",
+  "verification": {
+    "full_suite": "1190 passed, 1 skipped"
+  },
+  "usage": "Extract into repository root, replace matching files, run tests, commit/push to GitHub/main.",
+  "privacy": {
+    "contains_env_secrets": false,
+    "contains_live_data": false,
+    "contains_node_modules": false
+  },
+  "files": [
+    {
+      "path": "mary/runtime/mary_stage.py",
+      "sha256": "181230e5a8c996dd92d1a1e7dcc4bdbdadee958cd13876f5c920cce374c338f5",
+      "bytes": 2599
+    },
+    {
+      "path": "mary/runtime/application.py",
+      "sha256": "1ab3d0cbc18950891f4b0ff19c591af469ad729bbdda006f23104de82bd07923",
+      "bytes": 51469
+    },
+    {
+      "path": "mary/runtime/turn_envelope.py",
+      "sha256": "6014cddde910831fbf309055cfc9ea6f645a93eece72b190c0153ecdca4bf3aa",
+      "bytes": 2639
+    },
+    {
+      "path": "mary/core/mary.py",
+      "sha256": "b031ece86b2bcb0a7b3de010476db9579f5656492806bd3e3e9bc6d33d887f67",
+      "bytes": 185707
+    },
+    {
+      "path": "tests/runtime/test_turn_envelope.py",
+      "sha256": "9a6e212911ee913e2345b67759bae7762f14427ffe74855774277534e35002f5",
+      "bytes": 5553
+    },
+    {
+      "path": "mary/runtime/workspace_context.py",
+      "sha256": "b07b7543041a81f077e743c54b784bcb31787d4bbb0fe8b49e33baca21ecff54",
+      "bytes": 6108
+    },
+    {
+      "path": "mary/ecosystem/manager.py",
+      "sha256": "fc42b2a4a49b4373dab390a5008d5101d35030e10a8e624cdcfd5500adb69f6b",
+      "bytes": 13017
+    },
+    {
+      "path": "mary/ecosystem/companion.py",
+      "sha256": "c379bd6f70f4dd7e1f8302fb290ef55d4249433cee8fa6f64d42330a20924be7",
+      "bytes": 8086
+    },
+    {
+      "path": "mary/cognition/mind_state.py",
+      "sha256": "410f36f31c5fe75b0ae321f59182de089c0dc86cc38df5ef1f39c03de25419e6",
+      "bytes": 35959
+    },
+    {
+      "path": "tests/runtime/test_workspace_context.py",
+      "sha256": "dfb09995728d126ecae855bb6bf9b653d6fbcafc958da5f04f87ef9e1f01fecd",
+      "bytes": 6386
+    },
+    {
+      "path": "mary/runtime/subsystem_integrity.py",
+      "sha256": "4c76f5a7637c64073098fb6645628d924a61676798743f388470eb49e07eb8f8",
+      "bytes": 14622
+    },
+    {
+      "path": "mary/mind/sources.py",
+      "sha256": "21fbf1d1cc6643b08f92cbc85088ef12dcf82db262745f328ce7a99dd3efdc32",
+      "bytes": 10001
+    },
+    {
+      "path": "mary/learning/knowledge_bridge.py",
+      "sha256": "bc754f6bf840dbb8e5cde56bf8dcb89f3160da8010834f7066e53359722ebb0c",
+      "bytes": 8283
+    },
+    {
+      "path": "mary/learning/knowledge_state.py",
+      "sha256": "a692aea03100499ab9ba1652052782a7b2d3b00b0544452b74c2d8cef920988b",
+      "bytes": 3228
+    },
+    {
+      "path": "tests/learning/test_knowledge_integration.py",
+      "sha256": "7b3eab2c6bf2a238dab438cf08e8dfb4e10d634f04eb12479fcb792f219be544",
+      "bytes": 5315
+    },
+    {
+      "path": "mary/agency/priorities.py",
+      "sha256": "280def1f825f6b784c1f6db2664c1ed096a8479ecca0077eed410428d2ce1bcc",
+      "bytes": 13475
+    },
+    {
+      "path": "mary/agency/agency.py",
+      "sha256": "bb0a4567e816231cdede55f7a51a574faeb254f0b8335f774cc455ca90d0bb48",
+      "bytes": 10750
+    },
+    {
+      "path": "mary/agency/decisions.py",
+      "sha256": "4ef1b16061d812cc3fcb1f4841ebcddc9dc9fc44b7c292680d53b734145bed74",
+      "bytes": 17396
+    },
+    {
+      "path": "mary/cognition/reasoning.py",
+      "sha256": "49fd2869e57be2905946a213c4e60f303107f26c8122b2ebdbc94b5ffae0fac1",
+      "bytes": 70817
+    },
+    {
+      "path": "tests/agency/test_agency_turn_orientation.py",
+      "sha256": "41a95c58bc22af1e6bb5efd3a80ed069c23c06a1b2bfcae03e233987fc23c0b6",
+      "bytes": 5195
+    },
+    {
+      "path": "mary/expression/dialogue.py",
+      "sha256": "73e32bf753af75caf33432b1029ebf3c13b48bebb21cbba9c9296237f2f80eb4",
+      "bytes": 30262
+    },
+    {
+      "path": "mary/core/service.py",
+      "sha256": "26f8fe772c012effc6811cedafb580ccedf9a75136fc97ae38ced9029bc80096",
+      "bytes": 23698
+    },
+    {
+      "path": "tests/conversation/test_dialogue_sessions_13_2.py",
+      "sha256": "0b9e8e34b4cc91aecf778cece8fb5e865c70399f07ec242a8512c5995e146975",
+      "bytes": 5548
+    },
+    {
+      "path": "mary/protocol/models.py",
+      "sha256": "ded15837b7d5f702bee663b98521d1437f11808db5b9edd184ecae60cda80e8c",
+      "bytes": 13415
+    },
+    {
+      "path": "mary/protocol/server.py",
+      "sha256": "547520408c3f94bffeaafa8f09f66a93207487303bf294882174e01cb69671d2",
+      "bytes": 12240
+    },
+    {
+      "path": "mary/protocol/client.py",
+      "sha256": "633d51a35f366adeee634a5c297af8a363f638f770506b9703263a13d6d31c18",
+      "bytes": 8324
+    },
+    {
+      "path": "mary/runtime/gateway.py",
+      "sha256": "5c74d381432eb8251bb6214fd9d059a533170870c9a88e6bd0b512e9994303ef",
+      "bytes": 18898
+    },
+    {
+      "path": "mary/mobile/server.py",
+      "sha256": "8f0a089443f855d55e112a813378d543d35c428e070d193b3e1c382ade4fe432",
+      "bytes": 95587
+    },
+    {
+      "path": "tests/protocol/test_workspace_contract_13_2.py",
+      "sha256": "b13fc2262732eba4b1cb6514be931b6cf963d651c0c6a742c58894bd254b09f2",
+      "bytes": 4637
+    },
+    {
+      "path": "tests/protocol/test_runtime_actions_13_2.py",
+      "sha256": "32fa4d5d007fd7cbc80cbf01d547db7066e6d30caa8b0776db1bfadaa2625a45",
+      "bytes": 4104
+    },
+    {
+      "path": "tests/runtime/test_runtime_gateway_13_2.py",
+      "sha256": "0290367d45f80de329bcdd63e6677b21b0943263f1fe2fb8514051ef17986ee2",
+      "bytes": 2503
+    },
+    {
+      "path": "mary/desktop/authority.py",
+      "sha256": "a98aa77370e1a37df4f0a1b58a19dbd8186025a2dc8543a38fdf3e7b45bf74eb",
+      "bytes": 2128
+    },
+    {
+      "path": "mary/desktop/remote_application.py",
+      "sha256": "0b5fb38fa33db3f6e6a89f9ff566d8cc837f48409ddf161f5f96194b04ad6b5c",
+      "bytes": 17285
+    },
+    {
+      "path": "mary/desktop/window.py",
+      "sha256": "177d712bbb4e12fa9c94cc970fced6cf4f51165a374c11fc0a4cdf25875cd99c",
+      "bytes": 7790
+    },
+    {
+      "path": "mary/desktop/bridge.py",
+      "sha256": "9eab204ffdcdf579c534db593e439a6d722d4629af96385e69c1488794e34e7d",
+      "bytes": 60106
+    },
+    {
+      "path": "tests/desktop/test_remote_core_desktop_13_2.py",
+      "sha256": "d54e2c458b70b1144686c36654b3dd4300a038952fea1f096a993fa75bf9fd58",
+      "bytes": 5864
+    },
+    {
+      "path": "mary/distributed/__init__.py",
+      "sha256": "fffc86d9f39dd9ce00c5534081bb2666d3815d122a3322ff19bcff428d42a875",
+      "bytes": 672
+    },
+    {
+      "path": "mary/distributed/capabilities.py",
+      "sha256": "4df9fdf427cc524ad81645c1eacd5da0f27c224c3dfd3a3484b142e61e7981b3",
+      "bytes": 3981
+    },
+    {
+      "path": "mary/distributed/nodes.py",
+      "sha256": "1491cade2fa62662d1b116367a651aa5733cbb673f8ccb7b5cc32aba34fb6e3f",
+      "bytes": 7867
+    },
+    {
+      "path": "mary/distributed/tasks.py",
+      "sha256": "e0d2a79f4db2e0bb27c8fedbbedbde2db825a85e64ec3232ca7b78c127e5a2a8",
+      "bytes": 8468
+    },
+    {
+      "path": "mary/desktop/device_node.py",
+      "sha256": "fda6e9e959514e9eae04849777b39c595de21c3294b824b1fd48ad086968b5cb",
+      "bytes": 11561
+    },
+    {
+      "path": "tests/distributed/test_device_nodes_13_2.py",
+      "sha256": "c38355c33a36430b7fc5b7b92ae71838982d3c9db793a7fcc5b32d5477ccda40",
+      "bytes": 2931
+    },
+    {
+      "path": "tests/protocol/test_device_node_contract_13_2.py",
+      "sha256": "6f5a0b018d9b48ad2dc781d1eeb2fa52c2968978ca2c68127b711f467a8b24c6",
+      "bytes": 4597
+    },
+    {
+      "path": "tests/runtime/test_device_node_gateway_13_2.py",
+      "sha256": "822dab4ced85dbd09df71422962526cef3f754f6cb2ccf85a141d40aca35975a",
+      "bytes": 2774
+    },
+    {
+      "path": "tests/desktop/test_device_node_agent_13_2.py",
+      "sha256": "5ec6226d582be006c93dcdbc378ad6052f19f9e81927fe4d21d9a8e792e75025",
+      "bytes": 2478
+    },
+    {
+      "path": "mary/distributed/permissions.py",
+      "sha256": "f70657bd8af32305881f40e8730122569f1bdc20d7c2a831faaa1e192b2ba3cb",
+      "bytes": 2590
+    },
+    {
+      "path": "scripts/node_permissions.py",
+      "sha256": "f0fabb923848bafd03a1fed4952e58e6f97f63baf1914a4d2df6ad8752878178",
+      "bytes": 1122
+    },
+    {
+      "path": "tests/distributed/test_device_task_broker_13_2.py",
+      "sha256": "30df1daa209ad0fd158d1ad588dc8f529def5159f6d9d7be769eda5296fca882",
+      "bytes": 1838
+    },
+    {
+      "path": "tests/distributed/test_device_permissions_13_2.py",
+      "sha256": "dea38725857b398c47a96377277d0ac33e3d870b9e63f3399af0b4f36f770ad3",
+      "bytes": 897
+    },
+    {
+      "path": "tests/desktop/test_personal_search_task_executor_13_2.py",
+      "sha256": "c1d900b9e8556ac49e732f3174c9e8971d927b02f44a4072f46e57e7bf9fbfc6",
+      "bytes": 3158
+    },
+    {
+      "path": "tests/protocol/test_device_task_execution_contract_13_2.py",
+      "sha256": "83e314f97c17b540c19611aaed7787990197133a8b3fd2514be07f8de7e1c47a",
+      "bytes": 3918
+    },
+    {
+      "path": "mary/cognition/reflection.py",
+      "sha256": "ec3fe72d393173baaaad777adf46d6aadf243f2c4ca95ac2210a609500bf561b",
+      "bytes": 65184
+    },
+    {
+      "path": "mary/expression/__init__.py",
+      "sha256": "c3359546a7d072bcf3bf13fbddca003c4b5d77017fe119630b30e9927f177d2d",
+      "bytes": 1966
+    },
+    {
+      "path": "mary/expression/dialogue_plan.py",
+      "sha256": "06dd0cbaf6af07ebea0cc1d11fa8edb530f0ecf9439be697bec466b302fbd227",
+      "bytes": 13740
+    },
+    {
+      "path": "mary/expression/director.py",
+      "sha256": "b0137b0175d65a4b03ba283e36162bf92d68ce7460a94507f91e655fc64ad536",
+      "bytes": 11096
+    },
+    {
+      "path": "tests/expression/test_turnmind_dialogue_bridge_13_2.py",
+      "sha256": "99437b5fb5bc02e01714cd7505b9d16e6e45381f022f5af4fb31284672412736",
+      "bytes": 6199
+    },
+    {
+      "path": "mobile_web/app.js",
+      "sha256": "a44a308c32c3becc98cc9273a2abc6f9b02e8a962057c0e9a7d6f96d21fd99fb",
+      "bytes": 68530
+    },
+    {
+      "path": "mobile_web/index.html",
+      "sha256": "cb15fb44a77c8ccbd3ab5b0101ee619c1f7b16a7fa6353823059c4fc0f999ce5",
+      "bytes": 8833
+    },
+    {
+      "path": "mobile_web/manifest.webmanifest",
+      "sha256": "c72521ea2f52a6c1de035103f73f5495e6173f3abcf6eafcf59d28d471f93af2",
+      "bytes": 641
+    },
+    {
+      "path": "mobile_web/style.css",
+      "sha256": "8d3c59c91a8388ceea9b5a1d73b560ef88f8cf7f9927ba6dd34298466aa62abf",
+      "bytes": 28141
+    },
+    {
+      "path": "mobile_web/sw.js",
+      "sha256": "db6bd7088bfb5e3a0c44df885e8e6e13906802a7868fb3c288b0d465b0271884",
+      "bytes": 1829
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/app.js",
+      "sha256": "a44a308c32c3becc98cc9273a2abc6f9b02e8a962057c0e9a7d6f96d21fd99fb",
+      "bytes": 68530
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/index.html",
+      "sha256": "cb15fb44a77c8ccbd3ab5b0101ee619c1f7b16a7fa6353823059c4fc0f999ce5",
+      "bytes": 8833
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/manifest.webmanifest",
+      "sha256": "c72521ea2f52a6c1de035103f73f5495e6173f3abcf6eafcf59d28d471f93af2",
+      "bytes": 641
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/style.css",
+      "sha256": "8d3c59c91a8388ceea9b5a1d73b560ef88f8cf7f9927ba6dd34298466aa62abf",
+      "bytes": 28141
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/sw.js",
+      "sha256": "db6bd7088bfb5e3a0c44df885e8e6e13906802a7868fb3c288b0d465b0271884",
+      "bytes": 1829
+    },
+    {
+      "path": "tests/mobile/test_mobile_13_1_realtime.py",
+      "sha256": "23894b6f8566d5c9ec99bc3831fdd19876085d4b4334a93d31ab944357df2ec2",
+      "bytes": 1132
+    },
+    {
+      "path": "tests/mobile/test_mobile_convergence_13_2.py",
+      "sha256": "b8e5686f6cd6aade740acf4f80e25b3728a0da173cfc6e674c32fd3ed7b93b3b",
+      "bytes": 7190
+    },
+    {
+      "path": "tests/mobile/test_remote_core_mode_13_2.py",
+      "sha256": "36ac41a8a69fa19cf56795abc9dc5c198ab8bd3deb2bdefb5ea4a04fd6751ab3",
+      "bytes": 1748
+    },
+    {
+      "path": "scripts/check_replit_client.py",
+      "sha256": "e9afa78fdea59d452d7a9794b23cf7e5d61e6c5c312ed87c667f1347dab56e26",
+      "bytes": 2259
+    },
+    {
+      "path": "scripts/sync_mobile_web.py",
+      "sha256": "f38b33f7aa73d397c0fd867edeae7d4b13fba5dd75f5996378bcd0e0ed5cd6d1",
+      "bytes": 2552
+    },
+    {
+      "path": "mobile_native/SYNC_WEB_FROM_PROJECT.command",
+      "sha256": "c2e57bdf883ac0938f2204997f0a083cfa53402cc2779b210c6d29363b26c530",
+      "bytes": 261
+    },
+    {
+      "path": "mobile_native/README.md",
+      "sha256": "7350285e71d2d3ae42197c398906066bd5a688645013a27ba4a5c5c67527fa87",
+      "bytes": 1824
+    },
+    {
+      "path": ".env.example",
+      "sha256": "da44d924891388c6ace5fdb397bda45931e98df3a78d1fd57ecd077f22681376",
+      "bytes": 8772
+    },
+    {
+      "path": "README.md",
+      "sha256": "198017002e311f449677d1bdc98573a805107ca628b1d2facd9e4a9d22144047",
+      "bytes": 12446
+    },
+    {
+      "path": "CURRENT_STATE.md",
+      "sha256": "d312d365b3317e341e981ab467666b57e381409a904d6499b945ab298144860d",
+      "bytes": 3023
+    },
+    {
+      "path": "replit.md",
+      "sha256": "4f08ccbd0f0250bdd6f56a791257e019596ec3a5d926514ee5e2aaa321e2c8a7",
+      "bytes": 4559
+    },
+    {
+      "path": "MOBILE_REPLIT_13_2_CONVERGENCE.md",
+      "sha256": "e2ae3ca591f1cc832ccc13518ceeb812d68103fef3efe859798ef9c3f248ccf8",
+      "bytes": 1830
+    },
+    {
+      "path": "MOBILE_REPLIT_13_2_PACKAGE_MANIFEST.json",
+      "sha256": "0ec07569d5b8f5ba05196ccb266dd4c5ad34c9f3ca361bea1b68977381e7b58e",
+      "bytes": 5029
+    },
+    {
+      "path": "tests/desktop/test_desktop_alpha.py",
+      "sha256": "4d06e91273733f4717e6d25614e7366e23bbb2c5d95929259ff0df3d2586d7f3",
+      "bytes": 8169
+    },
+    {
+      "path": "tests/desktop/test_desktop_ecosystem_12_8.py",
+      "sha256": "3bd79986ee5fae43fe9975e01479fab6ab83f68840cf07f14174ec49b41a1fd0",
+      "bytes": 3361
+    },
+    {
+      "path": "tests/desktop/test_desktop_voice_alpha.py",
+      "sha256": "8d4bcc85f54fbd0fd70b3c28d42e82e40d9cde971dd1be3eb5340c98940e5d6b",
+      "bytes": 4217
+    },
+    {
+      "path": "tests/desktop/test_speech_input.py",
+      "sha256": "5df641d408177fe3cf5b97d679b9eaf7e067320d6e5c94732689349673ff5c68",
+      "bytes": 2451
+    },
+    {
+      "path": "tests/runtime/test_application_integrity.py",
+      "sha256": "16faf53d8a6982d1540aaa91d3d31d268d20c78e657173e2ed5a0d82f2d193c5",
+      "bytes": 1550
+    },
+    {
+      "path": "MARYV2_13_2_CUMULATIVE_INTEGRATIONS.md",
+      "sha256": "58c80725f540d46e2d1182abb79043c976aaed530b6b964518e1d0422f4f9faa",
+      "bytes": 2460
+    },
+    {
+      "path": "mary/runtime/system_contract.py",
+      "sha256": "73ce9fd5f4fdd2c0f8a036186ad8bd77183e7fb009f0c5ae9de843c6763fcac6",
+      "bytes": 5586
+    },
+    {
+      "path": "mary/runtime/integrity.py",
+      "sha256": "f161d1ad1949f655af2c2e15ac67356827eaca7bac4f974a9079bf85e90fbe4c",
+      "bytes": 3294
+    },
+    {
+      "path": "tests/runtime/test_mary_application.py",
+      "sha256": "aac5e7794d8734c49e179cc9e8cda8d1e2f8fcff8c9849add5a999b9f5dfbb6c",
+      "bytes": 3403
+    },
+    {
+      "path": "tests/runtime/test_subsystem_integrity.py",
+      "sha256": "b85f23c88e2a1089f7d4f29fbe58d95574d5c7b27180f006445dbf5815762332",
+      "bytes": 1597
+    }
+  ]
+}

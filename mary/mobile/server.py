@@ -27,7 +27,7 @@ import os
 from pathlib import Path
 import secrets
 from threading import RLock
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any, Callable
 from urllib.parse import urlparse
 
@@ -45,6 +45,17 @@ from mary.protocol.client import MaryClient
 MOBILE_PROTOCOL_VERSION = "4"
 MAX_REQUEST_BYTES = 256_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
+
+
+def _clean_conversation_id(value: Any, fallback: str = "creator-primary") -> str:
+    """Return a bounded transport-safe conversation/session identifier."""
+
+    raw = str(value or "").strip() or str(fallback or "creator-primary").strip()
+    cleaned = "".join(
+        ch if (ch.isalnum() or ch in "._:-") else "-"
+        for ch in raw
+    ).strip("-._:")
+    return (cleaned or "creator-primary")[:160]
 
 
 def _json_safe(value: Any) -> Any:
@@ -317,6 +328,7 @@ class MaryRemoteMobileRuntime:
                 "mobile": {
                     "protocol": MOBILE_PROTOCOL_VERSION,
                     "authority": "remote_mary_core",
+                    "conversation_id": self._conversation_id,
                 },
                 "engagement": conversation.get(
                     "engagement",
@@ -387,6 +399,7 @@ class MaryRemoteMobileRuntime:
                     "protocol": MOBILE_PROTOCOL_VERSION,
                     "surface": "pwa",
                     "authority": "remote_mary_core",
+                    "conversation_id": self._conversation_id,
                 },
                 "core": state.get(
                     "core",
@@ -424,6 +437,9 @@ class MaryRemoteMobileRuntime:
     def chat(
         self,
         text: str,
+        *,
+        conversation_id: str | None = None,
+        voice_input: bool = False,
     ) -> dict[str, Any]:
         value = str(
             text
@@ -443,12 +459,18 @@ class MaryRemoteMobileRuntime:
 
             self._busy = True
 
+        resolved_conversation_id = _clean_conversation_id(
+            conversation_id or self._conversation_id
+        )
+        self._conversation_id = resolved_conversation_id
+
         started = monotonic()
 
         try:
             response = self.client.turn(
                 value,
-                conversation_id=self._conversation_id,
+                conversation_id=resolved_conversation_id,
+                voice_input=bool(voice_input),
             )
 
             elapsed = (
@@ -505,9 +527,24 @@ class MaryRemoteMobileRuntime:
                     },
                     "runtime": {
                         "turn_id": response.turn_id,
+                        "conversation_id": resolved_conversation_id,
                         "elapsed": elapsed,
                         "success": True,
                         "trace": trace,
+                        "turn_mind": dict(
+                            response.display_hints.get(
+                                "dialogue_plan",
+                                {},
+                            )
+                            or {}
+                        ),
+                        "delivery_plan": dict(
+                            response.display_hints.get(
+                                "delivery_plan",
+                                {},
+                            )
+                            or {}
+                        ),
                     },
                     "character": self.character_state(
                         runtime_status="idle"
@@ -621,6 +658,81 @@ class MaryRemoteMobileRuntime:
 
         if name == "getEcosystemState":
             return self.ecosystem_state()
+
+        if name == "getConversationContext":
+            return {
+                "conversation_id": self._conversation_id,
+                "authority": "remote_mary_core",
+            }
+
+        if name == "setConversationId":
+            values = list(args or [])
+            self._conversation_id = _clean_conversation_id(
+                values[0] if values else "creator-primary"
+            )
+            return {
+                "conversation_id": self._conversation_id,
+                "authority": "remote_mary_core",
+            }
+
+        if name == "personalSearch":
+            values = list(args or [])
+            query = str(values[0] if values else "").strip()
+            if not query:
+                raise ValueError("Search query cannot be empty.")
+            limit = max(1, min(12, int(values[1] if len(values) > 1 else 8)))
+            route = self.client.route_capability("personal_search")
+            if not route.get("available"):
+                return {
+                    "ok": False,
+                    "results": [],
+                    "status": "no_capable_node",
+                    "error": "No connected device currently provides PersonalSearch.",
+                    "route": route,
+                }
+            dispatched = self.client.dispatch_capability_task(
+                "personal_search",
+                f"Search approved personal files for: {query}",
+                {"query": query, "limit": limit},
+            )
+            task = dict(dispatched.get("task", {}) or {})
+            task_id = str(task.get("task_id") or "")
+            deadline = monotonic() + 12.0
+            while task_id and monotonic() < deadline:
+                current = self.client.capability_task_status(task_id)
+                task = dict(current.get("task", {}) or {})
+                status = str(task.get("status") or "").lower()
+                if status == "completed":
+                    result = dict(task.get("result", {}) or {})
+                    items = list(result.get("items", []) or [])
+                    return {
+                        "ok": True,
+                        "results": items,
+                        "count": int(result.get("count", len(items)) or len(items)),
+                        "task_id": task_id,
+                        "status": status,
+                        "privacy": result.get("privacy", "device-sanitized results"),
+                        "selected_node_id": task.get("selected_node_id"),
+                    }
+                if status in {"rejected", "failed", "expired"}:
+                    return {
+                        "ok": False,
+                        "results": [],
+                        "task_id": task_id,
+                        "status": status,
+                        "error": str(task.get("error") or "PersonalSearch did not complete."),
+                        "selected_node_id": task.get("selected_node_id"),
+                    }
+                sleep(0.25)
+            return {
+                "ok": True,
+                "results": [],
+                "task_id": task_id,
+                "status": "pending",
+                "pending": True,
+                "selected_node_id": task.get("selected_node_id"),
+                "message": "Search was queued on the selected device and is still running.",
+            }
 
         if name == "setConversationMode":
             return self.client.runtime_action(
@@ -800,6 +912,10 @@ class MaryMobileRuntime:
             Any,
         ] = {}
 
+        self._conversation_id = _clean_conversation_id(
+            os.getenv("MARY_CONVERSATION_ID", "creator-primary")
+        )
+
         try:
             self.application.mary.avatar.ready()
         except Exception:
@@ -889,6 +1005,7 @@ class MaryMobileRuntime:
                     },
                     "mobile": {
                         "protocol": MOBILE_PROTOCOL_VERSION,
+                        "conversation_id": self._conversation_id,
                         "host_type": environment.get(
                             "host_type",
                             "unknown",
@@ -1030,6 +1147,8 @@ class MaryMobileRuntime:
             ] = {
                 "protocol": MOBILE_PROTOCOL_VERSION,
                 "surface": "pwa",
+                "authority": "local_development_runtime",
+                "conversation_id": self._conversation_id,
             }
 
             payload[
@@ -1144,6 +1263,9 @@ class MaryMobileRuntime:
     def chat(
         self,
         text: str,
+        *,
+        conversation_id: str | None = None,
+        voice_input: bool = False,
     ) -> dict[str, Any]:
         value = str(
             text
@@ -1177,11 +1299,18 @@ class MaryMobileRuntime:
 
             pipeline_started = monotonic()
 
+            resolved_conversation_id = _clean_conversation_id(
+                conversation_id or self._conversation_id
+            )
+            self._conversation_id = resolved_conversation_id
+
             result = self.application.run(
                 value,
                 metadata={
                     "surface": "mobile",
                     "transport": "http",
+                    "conversation_id": resolved_conversation_id,
+                    "voice_input": bool(voice_input),
                 },
             )
 
@@ -1391,9 +1520,22 @@ class MaryMobileRuntime:
                     },
                     "runtime": {
                         "turn_id": result.turn_id,
+                        "conversation_id": resolved_conversation_id,
                         "elapsed": result.elapsed,
                         "success": True,
                         "trace": trace,
+                        "turn_mind": dict(
+                            getattr(
+                                result,
+                                "metadata",
+                                {},
+                            ).get(
+                                "dialogue_plan",
+                                {},
+                            )
+                            or {}
+                        ),
+                        "delivery_plan": dict(delivery_plan or {}),
                         "conversation_lane": getattr(
                             lane.lane,
                             "value",
@@ -1551,6 +1693,21 @@ class MaryMobileRuntime:
                     .engagement
                     .status()
                 )
+
+            if name == "getConversationContext":
+                return {
+                    "conversation_id": self._conversation_id,
+                    "authority": "local_development_runtime",
+                }
+
+            if name == "setConversationId":
+                self._conversation_id = _clean_conversation_id(
+                    values[0] if values else "creator-primary"
+                )
+                return {
+                    "conversation_id": self._conversation_id,
+                    "authority": "local_development_runtime",
+                }
 
             if name == "setConversationMode":
                 return (
@@ -2933,7 +3090,12 @@ class MaryMobileRequestHandler(
                                 "text"
                             )
                             or ""
-                        )
+                        ),
+                        conversation_id=(
+                            str(body.get("conversation_id") or "").strip()
+                            or None
+                        ),
+                        voice_input=bool(body.get("voice_input", False)),
                     )
                 )
 

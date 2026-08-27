@@ -40,7 +40,7 @@
             <button data-conversation-mode="adaptive" class="active">AUTO</button>
             <button data-conversation-mode="engaged">TALK</button>
             <button data-conversation-mode="deep">DEEP</button>
-            <span id="conversation-thread-label">adaptive</span>
+            <button id="conversation-thread-button" class="thread-pill" type="button" aria-label="Choose conversation"><span id="conversation-thread-label">Main</span><small id="conversation-thread-mode">adaptive</small></button>
           </div>
           <div class="portrait-zone" id="portrait-zone">
             <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
@@ -85,6 +85,17 @@
         <section><h3>CREATE / MEDIA</h3><button data-open="studio"><b>✎</b><span>Studio<small>Unbeknownst + creative files</small></span></button><button data-open="gallery"><b>▧</b><span>Gallery<small>Mary + project art</small></span></button><button data-open="media"><b>♫</b><span>Media<small>YouTube + research</small></span></button><button data-open="voice"><b>◉</b><span>Voice & Avatar<small>Speech + presentation</small></span></button></section>
         <section><h3>SYSTEM</h3><button data-open="runtime"><b>⌁</b><span>Runtime<small>Routing + latency</small></span></button><button data-open="settings"><b>⚙</b><span>Settings<small>Connection + device</small></span></button></section>
       </div>
+    </dialog>
+
+    <dialog id="session-sheet" class="sheet session-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head"><div><span>MARY CONTINUITY</span><strong>Choose a conversation</strong></div><button id="session-close" type="button">×</button></div>
+      <div id="session-list" class="session-list"></div>
+      <form id="session-create" class="form-stack session-create">
+        <label><span>NEW CONVERSATION</span><input id="session-name" maxlength="48" placeholder="Project or thread name" /></label>
+        <button class="primary wide" type="submit">Create + switch</button>
+      </form>
+      <p class="hint">Conversation IDs separate short-term dialogue context only. Mary’s identity, memory, relationship, growth, knowledge and workspace remain shared.</p>
     </dialog>
 
     <dialog id="connection-sheet" class="sheet connection-sheet">

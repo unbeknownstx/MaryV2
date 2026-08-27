@@ -1,65 +1,124 @@
-# MaryV1
+# MaryV2 — Replit / Web Client Guide
 
-MaryOS — a persistent AI character platform with voice, memory, tools, and avatar integration.
+MaryV2 13.2 is a distributed persistent-character runtime. Replit is a real development environment and web/PWA host, but **GitHub/main is the source-code authority** and the deployed **Mary Core is the canonical live character/state authority**.
 
-## Project overview
+## Current architecture
 
-MaryV1 is a Python CLI-based AI character named Mary. She runs as an interactive terminal conversation loop. The system is fully rule-based and requires **no external API keys or paid services** in its current form.
-
-## Architecture
-
-| Module | File | Description |
-|---|---|---|
-| Personality | `core/personality.py` | Loads Mary's name, version, and trait scores from `data/personality.json` |
-| State | `core/state.py` | Tracks awake/sleep, emotion, mood, and current task |
-| Memory | `core/memory.py` | Persistent conversation memory stored in `data/memories.json` |
-| UserModel | `core/user_model.py` | Persistent user profile stored in `data/user_profile.json` |
-| IntentDetector | `core/intents.py` | Rule-based keyword intent classifier |
-| Brain | `core/brain.py` | Routes events to the correct response strategy |
-| ResponseGenerator | `core/response.py` | Produces text responses for each intent |
-| EventManager | `core/event_manager.py` | Pub/sub event bus |
-| MemoryListener | `core/memory_listener.py` | Subscribes to events and persists conversation turns |
-| Event | `core/events.py` | Event data class with type, data, and timestamp |
-| Reflection | `core/reflection.py` | Empty stub — future self-reflection system |
-| Knowledge | `core/knowledge.py` | Empty stub — future knowledge retrieval system |
-| Speech | `core/speech.py` | Empty stub — future voice system |
-| Tools | `core/tools.py` | Empty stub — future tool-use system |
-| Avatar | `core/avatar.py` | Stub placeholder (currently mirrors Event class) |
-| Config | `core/config.py` | OpenAI key loader — not imported by main; reserved for future LLM integration |
-
-## Data files
-
-- `data/personality.json` — Mary's name, version, creator, and trait scores
-- `data/memories.json` — Persistent conversation history
-- `data/user_profile.json` — User name, goals, interests, learning style
-- `knowledge/` — Topic-specific knowledge JSON files (anime, history, math, science, etc.)
-
-## How to run
-
-```
-python main.py
+```text
+GitHub/main                         source-code authority
+    │
+    ├── Replit IDE + mobile/PWA    development + web client
+    ├── Windows / Mac IDEs         development + native/desktop clients
+    │
+    └── Mary Core                  one canonical runtime/state authority
+           │
+           ├── identity / relationship / memory / growth
+           ├── TurnMind / cognition / reflection / expression
+           ├── Command / Focus / Study / Research / Inbox
+           ├── conversation sessions
+           └── device-node registry + typed task broker
+                  │
+                  └── Windows/Mac capability nodes
+                      (files, PersonalSearch, Ollama, audio, apps, GPU later)
 ```
 
-The app starts an interactive terminal loop. Type `exit` to quit.
+Providers such as Groq, Gemini, OpenRouter, Ollama, OpenAI, ElevenLabs and STT services are replaceable capabilities. They do not own Mary's identity.
 
-## Dependencies
+## Replit mode
 
-None. The current version uses Python standard library only (`json`, `os`, `datetime`).
+For the normal distributed setup, configure these as Replit Secrets/environment variables:
 
-`requirements.txt` is intentionally empty.
+```text
+MARY_CORE_URL=https://<your-core-deployment>
+MARY_CORE_TOKEN=<private core token>
+MARY_MOBILE_TOKEN=<private browser/PWA token>
+MARY_DEVICE_ID=replit-mobile
+MARY_CONVERSATION_ID=creator-primary
+```
 
-## Future roadmap (not yet implemented)
+Never commit `.env`, tokens, provider API keys, live `data/`, device-permission files, or private runtime state.
 
-- Local or free LLM integration (replace rule-based responses)
-- Voice input/output
-- VTuber avatar
-- Streaming capabilities
-- Real-world knowledge retrieval
-- Perception system
+Start the web client/server with:
 
-## User preferences
+```bash
+python -m mary.mobile.server
+```
 
-- No paid API keys or external API dependencies for the core loop
-- Preserve all existing systems — do not remove or rewrite stubs
-- Keep the rule-based architecture intact as the foundation
-- Target: browser-accessible Python terminal app on Replit
+or:
+
+```bash
+python -m scripts.run_mobile
+```
+
+When `MARY_CORE_URL` is present, the mobile runtime is a **remote Core client** and must not construct a second `MaryApplication`.
+
+## Web/PWA capabilities in 13.2
+
+The canonical `mobile_web/` client supports:
+
+- persistent conversation/thread IDs (`Main`, `MaryV2`, `Unbeknownst`, `Study`, plus custom threads);
+- adaptive / engaged / deep conversation controls;
+- canonical Core status and runtime provenance;
+- connected device-node/capability visibility;
+- bounded TurnMind → Dialogue developer diagnostics for the latest turn;
+- remote typed `personal_search` tasks routed through Core to an authorized device node;
+- Command, Focus, Study, Research, Inbox/Presence and Companion Pulse views;
+- server TTS with device fallback, server STT with browser/native fallback, interruption reporting;
+- explicit response-quality feedback;
+- installable PWA shell and the same bundled web source inside the native iOS project.
+
+A conversation ID changes only bounded short-dialogue context. Mary's identity, relationship, durable memory, growth, knowledge, agency and ecosystem remain shared.
+
+## Mobile source-of-truth rule
+
+`mobile_web/` is the canonical browser source. `mobile_native/MaryMobile/www/` is a generated copy for Xcode.
+
+Check for drift:
+
+```bash
+python -m scripts.sync_mobile_web --check
+```
+
+Synchronize after changing the web client:
+
+```bash
+python -m scripts.sync_mobile_web --sync
+```
+
+The macOS helper `mobile_native/SYNC_WEB_FROM_PROJECT.command` now calls the same Python sync implementation.
+
+## Replit self-check
+
+Run:
+
+```bash
+python -m scripts.check_replit_client
+```
+
+The check reports configuration presence, mobile/native bundle parity, Core architecture/health and connected-node count. It never prints secret values.
+
+## Useful verification
+
+Fast mobile/Core integration check:
+
+```bash
+python -m pytest tests/mobile tests/protocol/test_core_service.py tests/protocol/test_server_contract.py tests/runtime/test_runtime_gateway_13_2.py -q
+```
+
+Full repository gate:
+
+```bash
+python -m pytest tests -q
+```
+
+Live LLM tests remain opt-in and should not be enabled merely to validate the web client.
+
+## Device tasks
+
+Core may route a typed capability task to a connected device, but routing does not grant execution. The current executable device task allow-list is intentionally narrow: `personal_search` only. The selected device must also have local permission for that capability.
+
+There is no generic remote shell task and no inbound remote-control socket opened on the Windows PC.
+
+## Development rule
+
+Preserve the existing MaryV2 architecture. Add or reconnect functionality through the canonical composition and protocol boundaries rather than creating another Mary, another memory authority, or a second ecosystem owner.

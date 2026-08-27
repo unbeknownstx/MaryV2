@@ -598,9 +598,32 @@ class MaryCoreService:
             avatar = self.mary.avatar.state.to_dict()
         except Exception:
             avatar = {}
+        result_metadata = dict(getattr(result, "metadata", {}) or {})
+        dialogue_plan = dict(result_metadata.get("dialogue_plan", {}) or {})
+        safe_dialogue_plan = {
+            key: dialogue_plan.get(key)
+            for key in (
+                "drive",
+                "stance",
+                "tone",
+                "emotional_color",
+                "opening_style",
+                "ending_style",
+                "allow_question",
+                "initiative",
+                "pacing",
+                "energy",
+                "warmth",
+                "spontaneity",
+                "intimacy",
+                "expressiveness",
+            )
+            if dialogue_plan.get(key) not in (None, "", [], {})
+        }
         return _json_safe({
-            "delivery_plan": cycle_metadata.get("delivery_plan", {}),
-            "realtime": getattr(result, "metadata", {}).get("realtime", {}),
+            "delivery_plan": cycle_metadata.get("delivery_plan", {}) or result_metadata.get("delivery_plan", {}),
+            "dialogue_plan": safe_dialogue_plan,
+            "realtime": result_metadata.get("realtime", {}),
             "emotion": emotion,
             "avatar": avatar,
         })

@@ -1,7 +1,7 @@
 {
   "name": "Mary — AI Companion",
   "short_name": "Mary",
-  "description": "Private mobile companion surface for MaryV2.",
+  "description": "Private first-class client for the canonical MaryV2 Core.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

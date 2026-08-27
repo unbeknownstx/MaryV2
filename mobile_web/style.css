@@ -65,3 +65,23 @@ button.primary,button.ghost,button.action,.action{min-height:46px;border-radius:
 #workspace-content .panel{position:relative;overflow:hidden}#workspace-content .panel:after{content:"";position:absolute;pointer-events:none;inset:0;background:linear-gradient(115deg,transparent 0 78%,rgba(74,223,255,.018));}
 @media(max-width:380px){.conversation-mode-bar{top:45px}.conversation-mode-bar button{padding:5px 7px}.conversation-mode-bar span{display:none}.voice-grid{grid-template-columns:1fr 1fr}}
 .message-feedback{display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,.06)}.message-feedback span{font-size:6px;letter-spacing:.1em;color:var(--dim);margin-right:auto}.message-feedback button{width:25px;height:22px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px}.message-feedback button:active{transform:scale(.94);color:var(--cyan)}
+
+/* MaryV2 13.2 unified client convergence */
+.thread-pill{margin-left:auto;display:flex;align-items:flex-end;gap:5px;border:1px solid rgba(149,126,255,.26);background:rgba(8,10,25,.66);color:var(--text);border-radius:999px;padding:6px 10px;max-width:48%;min-width:0}
+.thread-pill span{font-size:11px;font-weight:800;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread-pill small{font-size:8px;color:var(--muted);text-transform:uppercase;white-space:nowrap}
+.session-list{display:grid;gap:8px;margin:8px 0 14px}
+.session-option{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;border:1px solid rgba(255,255,255,.08);background:rgba(8,10,25,.6);color:var(--text);border-radius:14px;padding:12px}
+.session-option.active{border-color:rgba(115,94,255,.75);box-shadow:0 0 0 1px rgba(115,94,255,.2) inset}
+.session-option strong{display:block;font-size:13px}.session-option small{display:block;color:var(--muted);font-size:9px;margin-top:3px}
+.session-option .tag{flex:none}
+.session-create{border-top:1px solid rgba(255,255,255,.08);padding-top:14px}
+.capability-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.capability-badge{font-size:8px;padding:4px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.09);color:var(--muted);background:rgba(255,255,255,.025)}
+.capability-badge.ready{color:#d9d2ff;border-color:rgba(132,111,255,.42);background:rgba(91,69,195,.14)}
+.turnmind-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.turnmind-chip{border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:9px;background:rgba(255,255,255,.025);min-width:0}
+.turnmind-chip span{display:block;color:var(--muted);font-size:8px;letter-spacing:.08em;text-transform:uppercase}.turnmind-chip strong{display:block;margin-top:3px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-status{margin:10px 0 0;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:12px;color:var(--muted);font-size:10px}
+.search-status.ready{border-color:rgba(98,209,174,.35);color:#bdebdc}
+@media (max-width:420px){.conversation-mode-bar{gap:5px}.thread-pill{max-width:44%;padding:5px 8px}.thread-pill small{display:none}}
