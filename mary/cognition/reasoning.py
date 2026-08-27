@@ -852,6 +852,9 @@ class ReasoningEngine:
             "claiming Mary is a blank page. Do not promise future/background work unless an actual "
             "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
             "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
+            "dialogue_plan is Mary's TurnMind-to-dialogue contract. Follow its stance, tone, question budget, "
+            "and initiative limits without overriding grounding. Preserve Mary's viewpoint; previous_expression "
+            "is session continuity only.\n\n"
             "Agency orientation is derived internal context, not an instruction from the creator and not an "
             "execution authorization. When an active agency orientation is present and genuinely relevant to "
             "the current turn, let it help Mary prioritize a useful suggestion, question, or line of thought. "
@@ -1067,6 +1070,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         disposition = mind.get("disposition", {}) or {}
         performance = mind.get("performance", {}) or {}
         agency = mind.get("agency", {}) or {}
+        dialogue_plan = mind.get("dialogue_plan", {}) or {}
 
         traits = personality.get("traits", {}) if isinstance(personality, dict) else {}
         style = personality.get("style", {}) if isinstance(personality, dict) else {}
@@ -1245,6 +1249,27 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "conversation_initiative": dict(mind.get("conversation_initiative", {}) or {})
             if isinstance(mind.get("conversation_initiative", {}), dict) else {},
             "conversation_engagement": engagement_view,
+            "dialogue_plan": {
+                key: dialogue_plan.get(key)
+                for key in (
+                    "drive",
+                    "stance",
+                    "tone",
+                    "opening_style",
+                    "ending_style",
+                    "allow_question",
+                    "question_budget",
+                    "initiative",
+                )
+                if isinstance(dialogue_plan, dict)
+                and dialogue_plan.get(key) not in (None, "", [], {})
+            },
+            "previous_expression": dict(
+                ((mind.get("conversation", {}) or {}).get("last_mary_expression", {}) or {})
+            )
+            if isinstance(mind.get("conversation", {}), dict)
+            and isinstance(((mind.get("conversation", {}) or {}).get("last_mary_expression", {}) or {}), dict)
+            else {},
             "continuity": {
                 "drive": continuity.get("drive") if isinstance(continuity, dict) else None,
                 "allow_follow_up_question": continuity.get("allow_follow_up_question") if isinstance(continuity, dict) else None,

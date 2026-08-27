@@ -667,10 +667,25 @@ class TurnMindStateBuilder:
             (item["content"] for item in reversed(normalized) if item["role"] == "assistant"),
             None,
         )
+        last_expression: dict[str, Any] = {}
+        try:
+            getter = getattr(
+                self.dialogue,
+                "last_mary_expression",
+                None,
+            )
+            if callable(getter):
+                raw_expression = getter()
+                if isinstance(raw_expression, dict):
+                    last_expression = dict(raw_expression)
+        except Exception:
+            last_expression = {}
+
         return {
             "recent": normalized,
             "last_user_message": last_user,
             "last_mary_response": last_mary,
+            "last_mary_expression": last_expression,
             "turn_number": int(getattr(getattr(self.dialogue, "state", None), "turn_number", 0) or 0),
             "lifecycle": dict(context_lifecycle or {}),
         }

@@ -53,6 +53,7 @@ from mary.expression.appraisal import ConversationEmotionAppraiser
 from mary.expression.response import ResponseBuilder
 from mary.expression.expression import ExpressionSystem
 from mary.expression.director import ExpressionDirector
+from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
 
@@ -403,6 +404,7 @@ class Mary:
         # Shared deterministic performance direction for TTS + avatar.  This
         # colors delivery from Mary's represented state without requiring a
         # second model call or inferring the creator's hidden emotions.
+        self.dialogue_planner = DialoguePlanner()
         self.expression_director = ExpressionDirector()
 
         # ============================================================
@@ -926,6 +928,22 @@ class Mary:
                         "creator's current topic."
                     ),
                 }
+        # Project the completed TurnMind snapshot into one deterministic
+        # dialogue contract.  This is the bridge between Mary's represented
+        # cognition/personality state and the actual line she generates and
+        # performs.  It is derived/context-only and never becomes durable self
+        # state merely because a model follows it.
+        try:
+            dialogue_plan = self.dialogue_planner.plan(
+                mind_state,
+                input_text=input_text,
+            )
+            mind_state["dialogue_plan"] = dialogue_plan.to_dict()
+        except Exception as exc:
+            mind_state["dialogue_plan_error"] = (
+                f"{type(exc).__name__}: {exc}"
+            )
+
         # From this point forward, "recent_conversation" means the bounded
         # LLM-facing window selected by the context lifecycle, not the entire
         # in-session transcript.
@@ -1300,8 +1318,20 @@ class Mary:
             result=result,
         )
 
-        # One deterministic performance plan drives both voice and avatar so
-        # expression is coherent instead of each surface guessing separately.
+        mind_state = (
+            result.context.mind_state
+            if isinstance(result.context.mind_state, dict)
+            else {}
+        )
+        dialogue_plan = dict(
+            mind_state.get("dialogue_plan", {}) or {}
+        )
+        if dialogue_plan:
+            result.metadata["dialogue_plan"] = dict(dialogue_plan)
+
+        # One deterministic TurnMind-derived plan now drives the text-facing
+        # dialogue contract *and* voice/avatar delivery.  Expression can color
+        # cognition but cannot invent a second personality or override grounding.
         try:
             reasoning_meta = dict(getattr(result.reasoning, "metadata", {}) or {})
             lane_data = dict(reasoning_meta.get("conversation_lane", {}) or {})
@@ -1313,14 +1343,24 @@ class Mary:
                 emotional_state=self.emotion.state,
                 conversation_lane=str(lane_data.get("lane") or "conversation"),
                 dialogue_act=str(local_plan.get("act") or ""),
+                mind_state=mind_state,
             )
             result.metadata["delivery_plan"] = delivery.to_dict()
         except Exception as exc:
             result.metadata["delivery_plan_error"] = f"{type(exc).__name__}: {exc}"
 
         try:
+            delivery_view = dict(result.metadata.get("delivery_plan", {}) or {})
+            expression_trace = self.dialogue_planner.expression_trace(
+                dialogue_plan,
+                delivery_view,
+            )
             response = self.expression.build_response(
                 result.final_response,
+                response_type=self.dialogue_planner.response_type(
+                    result.final_response,
+                    dialogue_plan,
+                ),
                 emotional_state=self.emotion.state,
                 directed_to=str(
                     self.user_model.name or self.identity.creator or "Unbe"
@@ -1332,10 +1372,12 @@ class Mary:
                         else "unknown"
                     ),
                     "reflection_mode": result.reflection.metadata.get("mode"),
-                    "delivery_plan": dict(result.metadata.get("delivery_plan", {}) or {}),
+                    "delivery_plan": delivery_view,
+                    "dialogue_plan": dialogue_plan,
+                    "turn_mind_expression": expression_trace,
                     "conversational_drive": (
-                        result.context.mind_state.get("continuity", {}).get("drive")
-                        if isinstance(result.context.mind_state, dict)
+                        mind_state.get("continuity", {}).get("drive")
+                        if isinstance(mind_state.get("continuity", {}), dict)
                         else None
                     ),
                 },

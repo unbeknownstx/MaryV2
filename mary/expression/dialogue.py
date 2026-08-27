@@ -1097,6 +1097,26 @@ class DialogueManager:
             if not message.is_empty
         ]
 
+    def last_mary_expression(
+        self,
+    ) -> dict[str, Any]:
+        """Return the most recent session-only TurnMind expression trace.
+
+        The trace is dialogue context, not personality/memory authority.  It lets
+        the next TurnMind turn preserve conversational delivery continuity without
+        promoting model-generated style into durable Mary state.
+        """
+
+        for message in reversed(self.state.history):
+            if message.role != SpeakerRole.MARY:
+                continue
+            raw = message.metadata.get(
+                "turn_mind_expression"
+            )
+            if isinstance(raw, Mapping):
+                return dict(raw)
+        return {}
+
     @staticmethod
     def _llm_role(
         role: SpeakerRole,

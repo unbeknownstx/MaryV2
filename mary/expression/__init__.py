@@ -50,6 +50,7 @@ from .response import (
 
 
 from .delivery_plan import DeliveryPlan
+from .dialogue_plan import DialoguePlan, DialoguePlanner
 from .director import ExpressionDirector
 
 from .dialogue import (
@@ -86,6 +87,8 @@ __all__ = [
 
     # Performance direction
     "DeliveryPlan",
+    "DialoguePlan",
+    "DialoguePlanner",
     "ExpressionDirector",
 
     # Dialogue

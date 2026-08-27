@@ -533,6 +533,7 @@ class ReflectionEngine:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
         issues.extend(self._generic_handoff_audit(context, text))
+        issues.extend(self._dialogue_plan_audit(context, text))
         issues.extend(self._ornamental_overload_audit(context, text))
         issues.extend(self._near_duplicate_response_audit(text, recent_mary))
         issues.extend(self._semantic_style_repetition_audit(context, text, recent_mary))
@@ -559,6 +560,52 @@ class ReflectionEngine:
                 reasoning=reasoning,
             )
         )
+
+        return issues
+
+    @staticmethod
+    def _dialogue_plan_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Check the deterministic TurnMind dialogue contract cheaply.
+
+        The audit stays deliberately conservative: it catches obvious shape/
+        question violations without pretending a heuristic can judge Mary's
+        entire personality.
+        """
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        plan = mind.get("dialogue_plan", {}) if isinstance(mind, dict) else {}
+        if not isinstance(plan, dict) or not plan:
+            return []
+
+        issues: list[str] = []
+        words = len(str(text or "").split())
+        preferred = str(plan.get("preferred_length", "medium") or "medium").lower()
+        allow_question = bool(plan.get("allow_question", True))
+        ending_style = str(plan.get("ending_style", "natural_landing") or "natural_landing").lower()
+
+        if not allow_question and "?" in str(text or ""):
+            issues.append(
+                "TurnMind dialogue-plan boundary: a follow-up question is not allowed for this turn."
+            )
+
+        if ending_style == "clean_statement" and str(text or "").rstrip().endswith("?"):
+            issues.append(
+                "TurnMind dialogue-plan boundary: the response should land as a clean statement, not end as a question."
+            )
+
+        # High thresholds only. This catches provider drift into an essay, not
+        # legitimate substance when Unbe actually asked for detail.
+        if preferred == "micro" and words > 90:
+            issues.append(
+                "TurnMind dialogue-plan boundary: a micro conversational beat expanded into a long response."
+            )
+        elif preferred == "brief" and words > 240 and len(str(context.input_text or "").split()) <= 32:
+            issues.append(
+                "TurnMind dialogue-plan boundary: a brief conversational response expanded far beyond its selected shape."
+            )
 
         return issues
 
@@ -1301,6 +1348,7 @@ class ReflectionEngine:
         emotion = mind.get("emotion", {}) if isinstance(mind, dict) else {}
         continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
         performance = mind.get("performance", {}) if isinstance(mind, dict) else {}
+        dialogue_plan = mind.get("dialogue_plan", {}) if isinstance(mind, dict) else {}
         self_provenance = mind.get("self_provenance", {}) if isinstance(mind, dict) else {}
         preferences = mind.get("preferences", []) if isinstance(mind, dict) else []
 
@@ -1322,6 +1370,7 @@ class ReflectionEngine:
             f"Recent conversational state: {recent}\n\n"
             f"Continuity/drive state: {continuity}\n\n"
             f"Performance direction: {performance}\n\n"
+            f"TurnMind dialogue plan: {dialogue_plan}\n\n"
             f"Mary self-fact provenance: {self_provenance}\n\n"
             f"Mary represented preferences: {preferences}\n\n"
             f"Proposed response:\n{reasoning.response}\n\n"
@@ -1335,7 +1384,8 @@ class ReflectionEngine:
             "that Unbe is hiding/avoiding something or directly sense his private mental state merely because he disagrees or corrects Mary. "
             "If recent style motifs or rejected-hypothesis terms are listed, avoid recycling them without new user evidence. "
             "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
-            "conversational drive and Performance Director. Rewrite it like dialogue for an actor playing Mary, "
+            "conversational drive, TurnMind dialogue plan, and Performance Director. Preserve the plan's stance/tone "
+            "instead of neutralizing Mary's thought during revision. Rewrite it like dialogue for an actor playing Mary, "
             "not polished support copy. React before switching into assistance. Avoid canned "
             "service-offer closers. Do not repeat Mary's recent opening, metaphor, punchline, "
             "or question pattern. If the continuity state disallows a follow-up question, "
