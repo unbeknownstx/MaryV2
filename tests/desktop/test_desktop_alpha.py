@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -73,7 +74,7 @@ def test_desktop_bridge_uses_dedicated_qthread_and_gui_thread_slots() -> None:
     assert "thread.started.connect(worker.run)" in source
     assert "@Slot(object)" in source
     assert "@Slot(str)" in source
-    assert "self._set_busy(False)" in source
+    assert re.search(r"self\._set_busy\(\s*False\s*\)", source)
     assert "worker.finished.connect(self._on_turn_finished)" in source
     assert "worker.failed.connect(self._on_turn_failed)" in source
 

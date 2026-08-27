@@ -56,7 +56,7 @@ def test_12_8_original_assets_exist():
 
 def test_bridge_exposes_ecosystem_without_second_mary():
     bridge = text("mary/desktop/bridge.py")
-    assert "MaryEcosystem(self.application.mary)" in bridge
+    assert "self.ecosystem = self.application.ecosystem" in bridge
     assert "getEcosystemState" in bridge
     assert "personalSearch" in bridge
     assert "startFocus" in bridge

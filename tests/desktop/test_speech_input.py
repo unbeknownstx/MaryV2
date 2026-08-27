@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import mary.desktop.stt as stt_module
 from mary.desktop.stt import DesktopSpeechToText
-
+import re
 
 class _FakeTranscriptions:
     def __init__(self) -> None:
@@ -63,7 +63,10 @@ def test_desktop_microphone_is_user_initiated_and_transcript_reuses_send_message
 
     assert "def startListening" in bridge
     assert "def stopListening" in bridge
-    assert "self.transcriptionReady.emit(value)" in bridge
+    assert re.search(
+    r"self\.transcriptionReady\.emit\(\s*value\s*\)",
+    bridge,
+)
     assert "QMediaDevices.audioInputs()" in microphone
     assert "QMediaRecorder" in microphone
     assert "bridge.startListening()" in frontend
