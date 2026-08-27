@@ -1,0 +1,326 @@
+You are working on the existing MaryV2 repository. This is an incremental preservation/reconciliation pass on the CURRENT project, not a rewrite.
+
+CURRENT ARCHITECTURE RULES
+
+* GitHub/main/current Replit repository is the source-code authority.
+* MaryV2 13.0 is the working boundary between pre-cloud and cloud-era architecture.
+* The repository’s existing /data directory represents Mary’s preserved TRUE PRE-CLOUD STATE. DO NOT modify, migrate, normalize, delete, regenerate, or overwrite anything in /data during this task.
+* Do NOT create a new Mary architecture.
+* Do NOT replace TurnMind, MaryApplication, MaryCoreService, cognition, memory, relationship, CharacterMind, GrowthEngine, agency, realtime, or any other current canonical subsystem.
+* Do NOT delete legacy/predecessor modules.
+* Do NOT touch Railway/live cloud data.
+* Do NOT deploy anything.
+* Do NOT make unrelated refactors.
+* Do NOT bump this to 13.3.
+* Preserve all existing public APIs unless absolutely necessary.
+* Existing tests must continue to pass.
+
+TASK: CONNECT THE EXISTING AUTONOMY SUBSYSTEM TO THE CANONICAL MARY RUNTIME SAFELY.
+
+BACKGROUND
+
+The current Mary constructor already creates:
+
+self.autonomy = AutonomyRuntime()
+
+The existing AutonomyRuntime already provides:
+
+* start()
+* stop()
+* pause()
+* resume()
+* cycle()
+* TriggerRegistry
+* Scheduler
+* ActionQueue
+* passive intended actions
+* explicit ActionPermission handling
+
+Its safety boundary is intentional:
+
+AUTONOMY MAY PROPOSE ACTIONS.
+AUTONOMY MUST NOT EXECUTE EXTERNAL ACTIONS BY ITSELF.
+
+Currently the autonomy object exists and is visible to other Mary systems, but the canonical MaryApplication does not start it and does not cycle it. Therefore autonomy is represented but operationally dormant.
+
+GOAL
+
+Connect autonomy into MaryApplication lifecycle so there is exactly ONE autonomy runtime belonging to the canonical Mary object.
+
+Desired lifecycle:
+
+MaryApplication created
+-> existing mary.autonomy instance
+-> autonomy starts once at canonical application startup/use
+
+Successful Mary turn
+-> existing canonical pipeline completes
+-> realtime lifecycle completes
+-> bounded TriggerContext is assembled
+-> mary.autonomy.cycle(context)
+-> resulting proposed actions remain passive/unapproved
+-> compact autonomy result is attached to PipelineResult.metadata for observability
+
+MaryApplication.close()
+-> stop autonomy safely
+-> preserve existing persistence/maintenance behavior
+
+There must NOT be:
+
+* a second AutonomyRuntime
+* a background thread
+* an infinite loop
+* a second scheduler process
+* arbitrary tool execution
+* automatic action approval
+* automatic network calls
+* filesystem execution
+* shell execution
+* permission bypass
+* autonomous LLM calls merely because a turn completed
+
+IMPLEMENTATION REQUIREMENTS
+
+1. INSPECT FIRST
+
+Before editing, inspect at minimum:
+
+* mary/autonomy/runtime.py
+* mary/autonomy/actions.py
+* mary/autonomy/triggers.py
+* mary/autonomy/scheduler.py
+* mary/runtime/application.py
+* mary/core/mary.py
+* mary/cognition/mind_state.py
+* mary/cognition/self_introspection.py
+* mary/agency/agency.py
+* existing tests touching autonomy, MaryApplication, TurnMind, realtime lifecycle, and full-system integration
+
+Use the architecture that is actually present. Do not invent replacements for existing primitives.
+
+2. APPLICATION-OWNED AUTONOMY LIFECYCLE
+
+MaryApplication must operate Mary’s existing:
+
+self.mary.autonomy
+
+Do NOT construct another AutonomyRuntime inside MaryApplication.
+
+Add a small, explicit lifecycle mechanism so autonomy is started idempotently for a canonical application.
+
+Prefer a private MaryApplication helper such as:
+
+_ensure_autonomy_started()
+
+or the closest architecture-consistent equivalent.
+
+Requirements:
+
+* STOPPED -> start()
+* RUNNING -> no-op
+* PAUSED -> do NOT silently resume unless existing semantics clearly require it
+* ERROR -> do NOT hide/reset the error automatically
+* failures starting autonomy must not silently corrupt the conversation pipeline
+
+Do not make Mary() itself globally start autonomy, because low-level Mary construction is deliberately used by tests/dependency injection and should remain side-effect-light.
+
+3. TURN-BOUND AUTONOMY CYCLE
+
+After a SUCCESSFUL canonical MaryApplication.run() pipeline turn, run ONE autonomy cycle.
+
+Do not cycle on a failed pipeline result.
+
+Autonomy failure after an otherwise successful conversational turn must NOT erase or replace Mary’s successful response.
+
+Instead:
+
+* preserve the successful PipelineResult
+* capture a bounded autonomy error in metadata
+* leave AutonomyRuntime’s own status/error semantics intact
+
+Do not swallow errors without observability.
+
+4. SAFE TRIGGER CONTEXT
+
+Use the existing mary.autonomy.triggers.TriggerContext type.
+
+Build only a bounded, non-secret context from facts already available to the canonical application.
+
+Inspect TriggerContext’s actual fields before constructing it.
+
+Use only architecture-compatible values such as, where supported by the existing class:
+
+* current timestamp
+* turn/input information
+* surface
+* transport
+* voice_input
+* current runtime/realtime state
+* bounded metadata needed by registered triggers
+
+DO NOT put into TriggerContext:
+
+* API keys
+* authorization headers
+* environment secrets
+* full private memory dumps
+* raw filesystem contents
+* cloud credentials
+* arbitrary client-provided authority claims
+
+Client metadata must not be allowed to impersonate canonical Mary state.
+
+If TriggerContext supports generic metadata/state mappings, sanitize/copy only the small allow-listed values required for autonomy.
+
+5. NO FAKE AUTONOMY
+
+There may currently be zero production triggers/schedules registered.
+
+That is acceptable for this task.
+
+DO NOT invent arbitrary triggers just to make action_count increase.
+
+A properly running cycle with:
+
+* zero registered triggers
+* zero due schedules
+* zero actions created
+
+is valid and proves the runtime lifecycle is connected.
+
+We will connect Mary’s agency/curiosity/goals into meaningful autonomy triggers in the NEXT preservation step, after this lifecycle integration is proven.
+
+6. OBSERVABILITY
+
+Attach a compact autonomy record to PipelineResult.metadata after each successful cycle.
+
+Prefer:
+
+result.metadata["autonomy"] = cycle_result.to_dict()
+
+if that is suitably bounded, or an equivalent compact structure based on the current class.
+
+It should allow us to verify at minimum:
+
+* runtime status
+* cycle id/count
+* trigger result count
+* schedule event count
+* actions created count
+* actions ready count
+* errors
+* last cycle time if appropriate
+
+Do not include secrets or enormous serialized state.
+
+Existing metadata must be preserved.
+
+7. CLOSE LIFECYCLE
+
+MaryApplication.close() should stop the existing autonomy runtime safely.
+
+Do not delete queued proposed actions merely because the process closes unless existing AutonomyRuntime semantics already require it.
+
+Preserve the current order/semantics of:
+
+* save()
+* mind.maintenance()
+* mind.close()
+
+Make the smallest architecture-consistent change.
+
+Autonomy stop failures should not prevent the rest of Mary from closing cleanly.
+
+8. SAFETY INVARIANTS
+
+Add tests proving:
+
+A. MaryApplication uses the exact same autonomy object as application.mary.autonomy.
+
+B. A normal successful application.run() starts autonomy if stopped.
+
+C. One successful turn causes exactly one autonomy cycle.
+
+D. A second successful turn causes exactly one additional cycle, not a duplicated scheduler/background loop.
+
+E. With no triggers or schedules, a cycle is valid and produces no invented action.
+
+F. Failed conversational pipeline turns do not create autonomous actions/cycles.
+
+G. Autonomy actions are not automatically approved.
+
+H. Autonomy actions are not automatically executed.
+
+I. An autonomy-cycle exception after a successful Mary response does not discard that response and is observable in metadata.
+
+J. MaryApplication.close() stops autonomy.
+
+K. Constructing low-level Mary() by itself does NOT automatically start autonomy.
+
+L. Existing TurnMind/self-introspection references still point to the same autonomy object.
+
+M. Existing realtime lifecycle behavior remains intact.
+
+Use mocks/fakes where appropriate. Tests must not call external APIs.
+
+9. REGRESSION
+
+Run the narrow new tests first.
+
+Then run all existing relevant autonomy/application/full-system tests.
+
+Then run the repository’s canonical deterministic pytest suite using the project’s established offline/test environment so no paid/cloud provider call is accidentally made.
+
+Do not weaken, skip, or delete a failing existing test merely to make the suite green.
+
+If an existing test exposes a real architectural conflict, fix the implementation rather than masking it.
+
+10. DOCUMENTATION / PRESERVATION NOTE
+
+Add a concise architecture/preservation note in the most appropriate existing architecture/changelog location stating:
+
+* AutonomyRuntime existed before this change.
+* This change does NOT introduce a new autonomy architecture.
+* It connects the existing AutonomyRuntime lifecycle to canonical MaryApplication.
+* Autonomous actions remain proposals only and require explicit approved execution elsewhere.
+* No external action broker has been connected in this pass.
+* No pre-cloud /data state was modified.
+* Meaningful agency/curiosity trigger registration remains a subsequent integration task.
+
+Do not rewrite historical architecture documents to pretend this was always connected.
+
+11. DO NOT DO YET
+
+Explicitly leave these for subsequent passes:
+
+* agency -> autonomy trigger generation
+* curiosity -> autonomy trigger generation
+* goals -> autonomy schedules
+* ExperimentManager integration
+* Windows/Ollama distributed execution
+* arbitrary PC capabilities
+* email/calendar actions
+* persistent external action execution
+* automatic action approval
+* live cloud state reconciliation
+* pre-cloud /data migration
+* 13.3 version bump
+
+12. FINAL REPORT
+
+When finished, give me:
+
+1. Exact files changed.
+2. What was changed in each.
+3. Tests added.
+4. Exact test commands run.
+5. Exact pass/fail counts.
+6. Whether /data changed — this MUST be NO.
+7. Whether any external actions can now execute automatically — this MUST be NO.
+8. Autonomy status before/after a normal canonical turn.
+9. Cycle count before/after two test turns.
+10. Any architectural concern discovered.
+11. git diff –stat.
+12. Do NOT commit/push unless I explicitly request it.
+
+Make the smallest robust patch that satisfies these requirements.
