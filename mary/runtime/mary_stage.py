@@ -17,6 +17,7 @@ from mary.runtime.pipeline import (
     PipelineStage,
     StageResult,
 )
+from mary.runtime.turn_envelope import build_turn_envelope
 
 
 class MaryStage(PipelineStage):
@@ -57,8 +58,20 @@ class MaryStage(PipelineStage):
                 "MaryStage requires string input."
             )
 
+        turn_metadata = dict(
+            context.metadata
+        )
+        turn_metadata[
+            "turn_id"
+        ] = context.turn_id
+
+        turn_context = build_turn_envelope(
+            turn_metadata
+        )
+
         result = self.mary.process(
-            context.input_data
+            context.input_data,
+            turn_context=turn_context,
         )
 
         intent_type = None

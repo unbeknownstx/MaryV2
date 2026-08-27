@@ -120,6 +120,7 @@ from mary.cognition.context_lifecycle import ConversationContextLifecycle
 from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
+from mary.runtime.turn_envelope import attach_turn_envelope
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.environment import RuntimeEnvironment
 from mary.realtime import RealtimeInteractionCoordinator
@@ -635,6 +636,8 @@ class Mary:
     def process(
         self,
         input_text: str,
+        *,
+        turn_context: dict[str, Any] | None = None,
     ) -> CognitiveCycleResult:
         """
         Process one complete MaryV2 interaction.
@@ -738,6 +741,14 @@ class Mary:
             recent_conversation=session_history,
             incoming_emotion_appraisal=incoming_emotion_payload,
         )
+
+        # Transport/session metadata is context-only. It never becomes Mary's
+        # identity, memory, relationship, or other durable state authority.
+        attach_turn_envelope(
+            context,
+            turn_context,
+        )
+
         mind_state = context.setdefault("mind_state", {})
         mind_state["conversation_engagement"] = engagement_plan.to_dict()
         if attention_events:

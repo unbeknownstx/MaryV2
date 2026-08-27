@@ -960,6 +960,12 @@ class MaryApplication:
             )
         )
 
+        # Carry effective transport facts into the pipeline even for direct
+        # local calls. MaryStage reduces this to an allow-listed envelope.
+        meta["surface"] = surface
+        meta["transport"] = transport
+        meta["voice_input"] = voice
+
         interaction = None
 
         try:
