@@ -107,6 +107,16 @@ def subsystem_integrity_report(
         "mind",
         None,
     )
+    knowledge_learning = getattr(
+        mary,
+        "knowledge_learning",
+        None,
+    )
+    knowledge_state = getattr(
+        mary,
+        "knowledge_state",
+        None,
+    )
 
     checks = {
         # ------------------------------------------------------------
@@ -340,6 +350,36 @@ def subsystem_integrity_report(
         ),
 
         # ------------------------------------------------------------
+        # Learning/knowledge uses the same candidate, learner, and durable
+        # knowledge owners instead of parallel stores.
+        # ------------------------------------------------------------
+        "knowledge_learning.candidates": _same(
+            knowledge_learning,
+            "candidates",
+            getattr(mary, "learning_knowledge", None),
+        ),
+        "knowledge_learning.knowledge": _same(
+            knowledge_learning,
+            "knowledge",
+            getattr(mary, "knowledge", None),
+        ),
+        "knowledge_learning.learner": _same(
+            knowledge_learning,
+            "learner",
+            getattr(mary, "learner", None),
+        ),
+        "knowledge_state.candidates": _same(
+            knowledge_state,
+            "candidates",
+            getattr(mary, "learning_knowledge", None),
+        ),
+        "knowledge_state.knowledge": _same(
+            knowledge_state,
+            "knowledge",
+            getattr(mary, "knowledge", None),
+        ),
+
+        # ------------------------------------------------------------
         # Supporting runtime systems remain attached to this Mary.
         # ------------------------------------------------------------
         "growth.mary": _same(
@@ -405,6 +445,12 @@ def subsystem_integrity_report(
             or name.startswith("reasoning.")
             or name.startswith("reflection.")
             or name.startswith("runtime_environment.")
+        ],
+        "learning_knowledge": [
+            name
+            for name in checks
+            if name.startswith("knowledge_learning.")
+            or name.startswith("knowledge_state.")
         ],
         "supporting_runtime": [
             name

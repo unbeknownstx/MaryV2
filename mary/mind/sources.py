@@ -205,25 +205,39 @@ def _knowledge_records(mary: Any) -> Iterable[ReservoirRecord]:
     for concept in concepts[:20_000]:
         data = concept.to_dict() if hasattr(concept, "to_dict") else dict(concept)
         status = str(data.get("status") or "candidate").lower()
-        if status not in {"verified", "established", "accepted"}:
+        # KnowledgeManager's canonical accepted status is "trusted". Earlier
+        # reservoir code used status names from the transient learning layer,
+        # which meant real trusted concepts were never indexed.
+        if status != "trusted":
             continue
         name = str(data.get("name") or data.get("concept") or data.get("id") or "").strip()
-        definition = str(data.get("definition") or data.get("description") or data.get("content") or "").strip()
-        if not name or not definition:
+        statement = str(
+            data.get("statement")
+            or data.get("definition")
+            or data.get("description")
+            or data.get("content")
+            or ""
+        ).strip()
+        if not name or not statement:
             continue
         confidence = float(data.get("confidence", 0.8) or 0.8)
+        source_ids = tuple(str(item) for item in data.get("source_ids", []) if str(item).strip())
         output.append(
             ReservoirRecord(
                 record_id=f"knowledge:{data.get('id') or _rid(name)}",
                 kind="knowledge_concept",
                 subject="world",
                 predicate=name.lower().replace(" ", "_"),
-                content=f"{name}: {definition}",
-                source=str(data.get("source") or "knowledge_manager"),
+                content=f"{name}: {statement}",
+                source="knowledge_manager",
                 authority="knowledge_verified",
                 confidence=max(0.0, min(1.0, confidence)),
                 tags=("knowledge", name),
-                metadata={"name": name, "status": status},
+                metadata={
+                    "name": name,
+                    "status": status,
+                    "source_ids": source_ids,
+                },
             )
         )
     return output

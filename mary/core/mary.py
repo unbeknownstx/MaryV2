@@ -85,6 +85,9 @@ from mary.relationship.provenance import conversation_profile, text_has_test_pro
 
 from mary.learning.learner import Learner
 from mary.learning.evaluator import Evaluator
+from mary.learning.knowledge import LearningKnowledge
+from mary.learning.knowledge_bridge import KnowledgeLearningBridge
+from mary.learning.knowledge_state import KnowledgeStateStore
 from mary.learning.researcher import Researcher
 from mary.learning.grounding import ResearchGrounder
 from mary.learning.source_resolver import SourceResolver
@@ -466,10 +469,30 @@ class Mary:
         # KNOWLEDGE
         # ============================================================
 
+        self.learning_knowledge = LearningKnowledge(
+            capacity=self.config.governance.knowledge_candidate_capacity,
+            text_limit=self.config.governance.process_text_characters,
+        )
+
         self.knowledge = KnowledgeManager(
             capacity=self.config.governance.knowledge_concept_capacity,
             source_capacity=self.config.governance.knowledge_source_capacity,
             text_limit=self.config.governance.process_text_characters,
+        )
+
+        # The persistence adapter owns only serialization I/O. Candidate state
+        # remains owned by LearningKnowledge and long-term concepts remain owned
+        # by KnowledgeManager.
+        self.knowledge_state = KnowledgeStateStore(
+            candidates=self.learning_knowledge,
+            knowledge=self.knowledge,
+        )
+
+        self.knowledge_learning = KnowledgeLearningBridge(
+            candidates=self.learning_knowledge,
+            knowledge=self.knowledge,
+            learner=self.learner,
+            on_change=self.knowledge_state.changed,
         )
 
         # ============================================================
@@ -3754,6 +3777,23 @@ class Mary:
                 },
             )
 
+            learning_outcome = self.knowledge_learning.ingest_evaluation(
+                subject=query,
+                statement=statement,
+                source=source,
+                evaluation=evaluation,
+                category="research",
+            )
+
+            if learning_outcome.promoted:
+                try:
+                    # Reservoir/vector state is derived. Mark it dirty so the
+                    # newly trusted knowledge is indexed during maintenance
+                    # without blocking the active response path.
+                    self.mind.reservoir_dirty = True
+                except Exception:
+                    pass
+
             knowledge.append(
                 {
                     "title": source.title,
@@ -3769,6 +3809,7 @@ class Mary:
                         "confidence": evaluation.confidence,
                         "reliability": evaluation.reliability,
                     },
+                    "learning": learning_outcome.to_dict(),
                 }
             )
 

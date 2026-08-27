@@ -924,6 +924,7 @@ class MaryApplication:
     memory_path: Path
     developed_self_path: Path
     preference_promotion_path: Path | None = None
+    knowledge_path: Path | None = None
 
     def run(
         self,
@@ -1072,6 +1073,7 @@ class MaryApplication:
         engagement_saved = True
         growth_saved = True
         feedback_saved = True
+        knowledge_saved = True
 
         try:
             engagement_saved = bool(
@@ -1101,6 +1103,13 @@ class MaryApplication:
         except Exception:
             feedback_saved = False
 
+        try:
+            knowledge_saved = bool(
+                self.mary.knowledge_state.save()
+            )
+        except Exception:
+            knowledge_saved = False
+
         return bool(
             memory_saved
             and developed_saved
@@ -1108,6 +1117,7 @@ class MaryApplication:
             and engagement_saved
             and growth_saved
             and feedback_saved
+            and knowledge_saved
         )
 
     def close(self) -> bool:
@@ -1135,10 +1145,12 @@ def create_persistent_mary(
     memory_path: str | Path | None = None,
     developed_self_path: str | Path | None = None,
     preference_promotion_path: str | Path | None = None,
+    knowledge_path: str | Path | None = None,
     auto_save: bool = True,
     load_memory: bool = True,
     load_developed_self: bool = True,
     load_preference_promotion: bool = True,
+    load_knowledge: bool = True,
 ) -> Mary:
     """
     Construct a Mary coordinator with durable memory enabled.
@@ -1154,10 +1166,12 @@ def create_persistent_mary(
         memory_path=memory_path,
         developed_self_path=developed_self_path,
         preference_promotion_path=preference_promotion_path,
+        knowledge_path=knowledge_path,
         auto_save=auto_save,
         load_memory=load_memory,
         load_developed_self=load_developed_self,
         load_preference_promotion=load_preference_promotion,
+        load_knowledge=load_knowledge,
         name="mary_persistent",
     ).mary
 
@@ -1168,10 +1182,12 @@ def create_application(
     memory_path: str | Path | None = None,
     developed_self_path: str | Path | None = None,
     preference_promotion_path: str | Path | None = None,
+    knowledge_path: str | Path | None = None,
     auto_save: bool = True,
     load_memory: bool = True,
     load_developed_self: bool = True,
     load_preference_promotion: bool = True,
+    load_knowledge: bool = True,
     name: str = "mary",
 ) -> MaryApplication:
     """
@@ -1262,6 +1278,25 @@ def create_application(
         .parent
         .parent
     )
+
+    resolved_knowledge_path = (
+        Path(knowledge_path)
+        if knowledge_path is not None
+        else data_root
+        / "knowledge"
+        / "knowledge.json"
+    )
+
+    try:
+        mary.knowledge_state.configure(
+            resolved_knowledge_path,
+            auto_save=auto_save,
+            load=load_knowledge,
+        )
+    except Exception as exc:
+        mary._knowledge_startup_error = (
+            f"{type(exc).__name__}: {exc}"
+        )
 
     try:
         mary.engagement.configure(
@@ -1381,6 +1416,7 @@ def create_application(
         memory_path=resolved_memory_path,
         developed_self_path=resolved_developed_self_path,
         preference_promotion_path=resolved_preference_promotion_path,
+        knowledge_path=resolved_knowledge_path,
     )
 
     require_application_integrity(
