@@ -81,6 +81,9 @@ def test_canonical_application_pipeline_uses_full_mary(
         MaryStage,
     )
     assert app.pipeline.stages[0].mary is mary
+    assert app.mary is mary
+    assert app.ecosystem.mary is mary
+    assert app.pipeline.runtime_state is app.state
 
     result = app.run(
         "remember that my favorite color is blue"

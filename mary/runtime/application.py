@@ -29,6 +29,7 @@ from typing import Any
 
 from mary.core.mary import Mary
 from mary.ecosystem import MaryEcosystem
+from mary.runtime.integrity import require_application_integrity
 from mary.runtime.mary_stage import MaryStage
 from mary.runtime.pipeline import Pipeline, PipelineResult
 from mary.runtime.state import RuntimeState
@@ -1352,7 +1353,7 @@ def create_application(
         name=name,
     )
 
-    return MaryApplication(
+    application = MaryApplication(
         mary=mary,
         state=state,
         pipeline=pipeline,
@@ -1361,6 +1362,12 @@ def create_application(
         developed_self_path=resolved_developed_self_path,
         preference_promotion_path=resolved_preference_promotion_path,
     )
+
+    require_application_integrity(
+        application
+    )
+
+    return application
 
 
 def run_interactive(

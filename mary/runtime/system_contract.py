@@ -11,9 +11,37 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-13.1-realtime-cognitive-infrastructure"
+    VERSION = VERSION = VERSION = "v2-breakthrough-13.2-unified-core"
 
     AUTHORITY = {
+                "character_runtime": (
+            "Mary is the one persistent character coordinator; "
+            "models, transports, devices, and providers do not own identity"
+        ),
+        "application_composition": (
+            "MaryApplication owns one Mary, one MaryEcosystem, "
+            "one RuntimeState, and the canonical Mary turn pipeline"
+        ),
+        "distributed_runtime": (
+            "MaryCoreService owns one long-lived MaryApplication "
+            "when running as the authoritative Core"
+        ),
+        "client_surfaces": (
+            "desktop/mobile/native/mac surfaces are presentation or "
+            "capability clients; client mode does not own canonical Mary state"
+        ),
+        "workspace_state": (
+            "MaryEcosystem owns non-identity workspace/tool state around "
+            "the exact Mary owned by MaryApplication"
+        ),
+        "provider_compute": (
+            "LLM/STT/TTS/retrieval providers are replaceable capabilities; "
+            "provider selection never changes Mary identity"
+        ),
+        "source_code_authority": (
+            "GitHub/main is source-code authority only; "
+            "repository synchronization is not live Mary-state synchronization"
+        ),
         "character_canon": "mary.character + identity/biography/personality authored state",
         "creator_relationship": "RelationshipManager/UserModel",
         "memory": "MemoryManager",
