@@ -27,12 +27,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+from mary.autonomy.runtime import AutonomyRuntimeStatus
+from mary.autonomy.triggers import TriggerContext
 from mary.core.mary import Mary
 from mary.ecosystem import MaryEcosystem
 from mary.runtime.integrity import require_application_integrity
 from mary.runtime.mary_stage import MaryStage
 from mary.runtime.pipeline import Pipeline, PipelineResult
 from mary.runtime.state import RuntimeState
+from mary.runtime.turn_envelope import build_turn_envelope
 from mary.runtime.workspace_context import build_workspace_context
 
 
@@ -926,6 +929,294 @@ class MaryApplication:
     preference_promotion_path: Path | None = None
     knowledge_path: Path | None = None
 
+    @staticmethod
+    def _bounded_autonomy_error(
+        prefix: str,
+        exc: BaseException,
+    ) -> str:
+        """Return a bounded, non-secret autonomy diagnostic."""
+
+        detail = " ".join(
+            str(exc or "").split()
+        )[:240]
+        message = (
+            f"{prefix}: {type(exc).__name__}"
+        )
+        if detail:
+            message += f": {detail}"
+        return message[:320]
+
+    def _ensure_autonomy_started(self) -> str | None:
+        """Start Mary's existing autonomy runtime only when it is stopped."""
+
+        autonomy = getattr(
+            self.mary,
+            "autonomy",
+            None,
+        )
+        if autonomy is None:
+            # Keep lightweight application fakes and older injected Mary
+            # doubles compatible. Canonical Mary always supplies this object.
+            return None
+
+        try:
+            status = autonomy.status
+
+            if status == AutonomyRuntimeStatus.STOPPED:
+                autonomy.start()
+                return None
+
+            if status in {
+                AutonomyRuntimeStatus.RUNNING,
+                AutonomyRuntimeStatus.PAUSED,
+                AutonomyRuntimeStatus.ERROR,
+            }:
+                return None
+
+            return (
+                "autonomy startup skipped: unknown runtime status"
+            )
+
+        except Exception as exc:
+            # Autonomy is auxiliary to the conversational response. Keep its
+            # own state/error semantics intact and make the failure observable
+            # without preventing the pipeline from running.
+            return self._bounded_autonomy_error(
+                "autonomy startup failed",
+                exc,
+            )
+
+    def _build_autonomy_context(
+        self,
+        *,
+        input_text: str,
+        result: PipelineResult,
+        surface: str,
+        transport: str,
+        voice_input: bool,
+    ) -> TriggerContext:
+        """Build the small, non-authoritative context exposed to triggers."""
+
+        turn_envelope = build_turn_envelope(
+            {
+                "surface": surface,
+                "transport": transport,
+                "voice_input": voice_input,
+                "turn_id": result.turn_id,
+            }
+        )
+
+        try:
+            realtime = self.mary.realtime.status()
+        except Exception:
+            realtime = {}
+
+        # Keep only current coordination facts. In particular, do not copy
+        # attention payloads, client metadata, prompts, or arbitrary state into
+        # the autonomy context.
+        realtime_state = {
+            key: realtime[key]
+            for key in (
+                "phase",
+                "anti_echo",
+                "interrupt_generation",
+                "speech_turn_id",
+            )
+            if key in realtime
+        }
+
+        safe_values = {
+            key: turn_envelope[key]
+            for key in (
+                "surface",
+                "transport",
+                "voice_input",
+                "turn_id",
+            )
+            if key in turn_envelope
+        }
+        safe_values["input_text"] = " ".join(
+            str(input_text or "").split()
+        )[:512]
+
+        autonomy_status = getattr(
+            self.mary.autonomy.status,
+            "value",
+            str(self.mary.autonomy.status),
+        )
+
+        return TriggerContext(
+            state={
+                "autonomy_status": str(autonomy_status)[:32],
+                "realtime": realtime_state,
+            },
+            values=safe_values,
+            metadata={
+                "source": "mary_application",
+                "turn_id": str(
+                    turn_envelope.get(
+                        "turn_id",
+                        result.turn_id,
+                    )
+                )[:160],
+            },
+        )
+
+    def _autonomy_record(
+        self,
+        *,
+        cycle_result: Any = None,
+        errors: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """Return a compact observability record for one application turn."""
+
+        autonomy = self.mary.autonomy
+        bounded_errors = [
+            str(error)[:320]
+            for error in errors
+            if str(error).strip()
+        ][:4]
+
+        try:
+            snapshot = autonomy.snapshot()
+        except Exception as exc:
+            bounded_errors.append(
+                self._bounded_autonomy_error(
+                    "autonomy snapshot failed",
+                    exc,
+                )
+            )
+            return {
+                "status": "unknown",
+                "cycle_id": None,
+                "cycle_count": None,
+                "trigger_result_count": 0,
+                "schedule_event_count": 0,
+                "actions_created_count": 0,
+                "actions_ready_count": 0,
+                "errors": bounded_errors[:4],
+                "last_cycle_at": None,
+            }
+
+        cycle_id = getattr(
+            cycle_result,
+            "cycle_id",
+            None,
+        )
+        cycle_errors = getattr(
+            cycle_result,
+            "errors",
+            (),
+        )
+        bounded_errors.extend(
+            str(error)[:320]
+            for error in cycle_errors
+            if str(error).strip()
+        )
+
+        return {
+            "status": getattr(
+                snapshot.status,
+                "value",
+                str(snapshot.status),
+            ),
+            "cycle_id": cycle_id,
+            "cycle_count": snapshot.cycle_count,
+            "trigger_result_count": len(
+                getattr(
+                    cycle_result,
+                    "trigger_results",
+                    (),
+                )
+            ),
+            "schedule_event_count": len(
+                getattr(
+                    cycle_result,
+                    "schedule_events",
+                    (),
+                )
+            ),
+            "actions_created_count": len(
+                getattr(
+                    cycle_result,
+                    "actions_created",
+                    (),
+                )
+            ),
+            "actions_ready_count": len(
+                getattr(
+                    cycle_result,
+                    "actions_ready",
+                    (),
+                )
+            ),
+            "errors": bounded_errors[:4],
+            "last_cycle_at": snapshot.last_cycle_at,
+        }
+
+    def _cycle_autonomy(
+        self,
+        *,
+        result: PipelineResult,
+        input_text: str,
+        surface: str,
+        transport: str,
+        voice_input: bool,
+        startup_error: str | None,
+    ) -> None:
+        """Run at most one passive autonomy cycle for a successful turn."""
+
+        if not hasattr(
+            self.mary,
+            "autonomy",
+        ):
+            return
+
+        if startup_error:
+            result.metadata["autonomy"] = self._autonomy_record(
+                errors=(startup_error,),
+            )
+            return
+
+        autonomy = self.mary.autonomy
+        if autonomy.status != AutonomyRuntimeStatus.RUNNING:
+            status = getattr(
+                autonomy.status,
+                "value",
+                str(autonomy.status),
+            )
+            result.metadata["autonomy"] = self._autonomy_record(
+                errors=(
+                    f"autonomy cycle skipped: runtime is {status}",
+                ),
+            )
+            return
+
+        try:
+            cycle_result = autonomy.cycle(
+                self._build_autonomy_context(
+                    input_text=input_text,
+                    result=result,
+                    surface=surface,
+                    transport=transport,
+                    voice_input=voice_input,
+                )
+            )
+        except Exception as exc:
+            result.metadata["autonomy"] = self._autonomy_record(
+                errors=(
+                    self._bounded_autonomy_error(
+                        "autonomy cycle failed",
+                        exc,
+                    ),
+                ),
+            )
+            return
+
+        result.metadata["autonomy"] = self._autonomy_record(
+            cycle_result=cycle_result,
+        )
+
     def run(
         self,
         input_text: str,
@@ -967,6 +1258,10 @@ class MaryApplication:
         meta["surface"] = surface
         meta["transport"] = transport
         meta["voice_input"] = voice
+
+        autonomy_startup_error = (
+            self._ensure_autonomy_started()
+        )
 
         # Workspace context is always produced by this application's own
         # ecosystem. Client-provided values are discarded so a remote caller
@@ -1061,6 +1356,22 @@ class MaryApplication:
         except Exception:
             pass
 
+        if bool(
+            getattr(
+                result,
+                "success",
+                False,
+            )
+        ):
+            self._cycle_autonomy(
+                result=result,
+                input_text=input_text,
+                surface=surface,
+                transport=transport,
+                voice_input=voice,
+                startup_error=autonomy_startup_error,
+            )
+
         return result
 
     def save(self) -> bool:
@@ -1124,6 +1435,14 @@ class MaryApplication:
         """Persist state needed when the application exits."""
 
         saved = self.save()
+
+        try:
+            # Stop only the existing runtime owned by this canonical Mary.
+            # Queued proposals remain in place according to AutonomyRuntime's
+            # documented stop semantics.
+            self.mary.autonomy.stop()
+        except Exception:
+            pass
 
         try:
             # Flush any deferred *derived* reservoir refresh after canonical

@@ -9,6 +9,9 @@ from pathlib import Path
 
 import main as main_entry
 
+from mary.autonomy.actions import ActionPermission
+from mary.autonomy.runtime import AutonomyRuntimeStatus
+from mary.autonomy.triggers import ActionTrigger
 from mary.core.mary import Mary
 from mary.llm.interface import (
     LLMInterface,
@@ -18,6 +21,7 @@ from mary.llm.interface import (
 from mary.runtime.application import create_application
 from mary.runtime.interactive import create_mary as create_interactive_mary
 from mary.runtime.mary_stage import MaryStage
+from mary.runtime.pipeline import PipelineResult, PipelineStatus
 
 
 class RuntimeFakeLLM(LLMInterface):
@@ -92,6 +96,150 @@ def test_canonical_application_pipeline_uses_full_mary(
         in result.output.lower()
     )
     assert app.state.turn_count == 1
+
+
+def test_application_connects_and_cycles_marys_existing_autonomy(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    assert app.mary.autonomy is mary.autonomy
+    assert mary.autonomy.status == AutonomyRuntimeStatus.STOPPED
+    assert mary.turn_mind.autonomy is mary.autonomy
+    assert mary.self_introspection.autonomy is mary.autonomy
+
+    first = app.run("hello Mary")
+    second = app.run("how are you?")
+
+    assert first.success is True
+    assert second.success is True
+    assert mary.autonomy.status == AutonomyRuntimeStatus.RUNNING
+    assert mary.autonomy.cycle_count == 2
+    assert first.metadata["autonomy"]["cycle_count"] == 1
+    assert second.metadata["autonomy"]["cycle_count"] == 2
+    assert first.metadata["autonomy"]["trigger_result_count"] == 0
+    assert first.metadata["autonomy"]["schedule_event_count"] == 0
+    assert first.metadata["autonomy"]["actions_created_count"] == 0
+    assert first.metadata["autonomy"]["actions_ready_count"] == 0
+    assert mary.autonomy.actions.all() == ()
+
+
+def test_failed_pipeline_turn_does_not_cycle_autonomy(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    def failed_pipeline(*args, **kwargs):
+        return PipelineResult(
+            status=PipelineStatus.FAILED,
+            turn_id="failed-turn",
+            error="deterministic test failure",
+        )
+
+    monkeypatch.setattr(app.pipeline, "run", failed_pipeline)
+
+    result = app.run("this turn fails")
+
+    assert result.success is False
+    assert mary.autonomy.status == AutonomyRuntimeStatus.RUNNING
+    assert mary.autonomy.cycle_count == 0
+    assert "autonomy" not in result.metadata
+
+
+def test_autonomy_proposals_remain_unapproved_and_unexecuted(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+    mary.autonomy.triggers.register(
+        ActionTrigger(
+            "test proposal",
+            "test_action",
+            action_description="A passive test proposal",
+        )
+    )
+
+    result = app.run("create a proposal")
+    action = mary.autonomy.actions.all()[0]
+
+    assert result.success is True
+    assert result.output
+    assert result.metadata["autonomy"]["actions_created_count"] == 1
+    assert action.permission != ActionPermission.APPROVED
+    assert action.attempts == 0
+
+
+def test_autonomy_failure_preserves_successful_response_and_is_observable(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    original_cycle = mary.autonomy.cycle
+
+    def failed_cycle(*args, **kwargs):
+        original_cycle(*args, **kwargs)
+        raise RuntimeError("deterministic autonomy failure")
+
+    monkeypatch.setattr(mary.autonomy, "cycle", failed_cycle)
+
+    result = app.run("keep my response")
+
+    assert result.success is True
+    assert result.output == "Runtime response from Mary."
+    assert result.metadata["autonomy"]["status"] == "running"
+    assert result.metadata["autonomy"]["cycle_count"] == 1
+    assert result.metadata["autonomy"]["errors"]
+    assert "autonomy cycle failed" in result.metadata["autonomy"]["errors"][0]
+
+
+def test_application_close_stops_autonomy_without_deleting_proposals(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+    app.run("prepare to close")
+
+    app.close()
+
+    assert mary.autonomy.status == AutonomyRuntimeStatus.STOPPED
 
 
 def test_canonical_runtime_preserves_memory_across_app_instances(
