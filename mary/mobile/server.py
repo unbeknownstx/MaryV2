@@ -1,8 +1,9 @@
 """Dependency-light HTTP/PWA bridge for the canonical MaryV2 runtime.
 
 This module intentionally uses Python's standard-library HTTP server so the
-mobile surface adds no mandatory Python package to MaryV2.  The browser app can use Mary's existing Vite desktop UI when a built desktop/dist
-is present, and otherwise falls back to the bundled zero-build mobile_web shell.
+mobile surface adds no mandatory Python package to MaryV2. The browser app can
+use Mary's existing Vite desktop UI when a built desktop/dist is present, and
+otherwise falls back to the bundled zero-build mobile_web shell.
 
 Security model
 --------------
@@ -34,7 +35,6 @@ from mary.conversation import ConversationLane, classify_conversation_lane
 from mary.desktop.dashboard import build_desktop_dashboard_state
 from mary.desktop.turn_trace import build_turn_trace
 from mary.desktop.projects import CreativeWorkspaceManager
-from mary.ecosystem import MaryEcosystem
 from mary.presence import PresenceEventType
 from mary.runtime.application import MaryApplication, create_application
 from mary.mobile.audio import MobileSpeechService
@@ -50,27 +50,61 @@ MAX_AUDIO_REQUEST_BYTES = 12_000_000
 def _json_safe(value: Any) -> Any:
     """Round-trip through JSON so HTTP responses cannot leak unserializable objects."""
 
-    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    return json.loads(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            default=str,
+        )
+    )
 
 
 def _is_loopback(host: str) -> bool:
-    return str(host or "").strip().lower() in {"127.0.0.1", "localhost", "::1"}
+    return str(host or "").strip().lower() in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }
 
 
 def _default_host() -> str:
-    configured = os.getenv("MARY_MOBILE_HOST", "").strip()
+    configured = os.getenv(
+        "MARY_MOBILE_HOST",
+        "",
+    ).strip()
+
     if configured:
         return configured
-    if os.getenv("REPL_ID") or os.getenv("REPL_SLUG") or os.getenv("REPLIT_DB_URL"):
+
+    if (
+        os.getenv("REPL_ID")
+        or os.getenv("REPL_SLUG")
+        or os.getenv("REPLIT_DB_URL")
+    ):
         return "0.0.0.0"
+
     return "127.0.0.1"
 
 
 def _default_port() -> int:
-    raw = os.getenv("MARY_MOBILE_PORT") or os.getenv("PORT") or "8080"
+    raw = (
+        os.getenv("MARY_MOBILE_PORT")
+        or os.getenv("PORT")
+        or "8080"
+    )
+
     try:
-        return max(1024, min(65535, int(raw)))
-    except (TypeError, ValueError):
+        return max(
+            1024,
+            min(
+                65535,
+                int(raw),
+            ),
+        )
+    except (
+        TypeError,
+        ValueError,
+    ):
         return 8080
 
 
@@ -85,54 +119,135 @@ class MobileAuth:
         return bool(self.token)
 
 
-def _resolve_auth(*, host: str, data_root: Path) -> MobileAuth:
-    configured = os.getenv("MARY_MOBILE_TOKEN", "").strip()
+def _resolve_auth(
+    *,
+    host: str,
+    data_root: Path,
+) -> MobileAuth:
+    configured = os.getenv(
+        "MARY_MOBILE_TOKEN",
+        "",
+    ).strip()
+
     if configured:
-        return MobileAuth(configured, "environment", None)
+        return MobileAuth(
+            configured,
+            "environment",
+            None,
+        )
 
     if _is_loopback(host):
-        return MobileAuth("", "loopback", None)
+        return MobileAuth(
+            "",
+            "loopback",
+            None,
+        )
 
-    token_path = data_root / "mobile" / "access_token.txt"
-    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path = (
+        data_root
+        / "mobile"
+        / "access_token.txt"
+    )
+
+    token_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     try:
-        existing = token_path.read_text(encoding="utf-8").strip()
+        existing = token_path.read_text(
+            encoding="utf-8"
+        ).strip()
     except FileNotFoundError:
         existing = ""
     except OSError:
         existing = ""
 
     if existing:
-        return MobileAuth(existing, "persisted", token_path)
+        return MobileAuth(
+            existing,
+            "persisted",
+            token_path,
+        )
 
     token = secrets.token_urlsafe(24)
-    token_path.write_text(token + "\n", encoding="utf-8")
+
+    token_path.write_text(
+        token + "\n",
+        encoding="utf-8",
+    )
+
     try:
-        os.chmod(token_path, 0o600)
+        os.chmod(
+            token_path,
+            0o600,
+        )
     except OSError:
         pass
-    return MobileAuth(token, "generated", token_path)
+
+    return MobileAuth(
+        token,
+        "generated",
+        token_path,
+    )
 
 
 class MaryRemoteMobileRuntime:
     """Compatibility facade that makes the existing mobile UI a Mary Core client.
 
     When ``MARY_CORE_URL`` is configured this class deliberately does *not*
-    construct ``Mary`` or ``MaryApplication``.  Replit/mobile becomes a thin
+    construct ``Mary`` or ``MaryApplication``. Replit/mobile becomes a thin
     interface/proxy while identity and canonical state remain owned by the one
     remote Mary Core deployment.
     """
 
-    def __init__(self, core_url: str, *, token: str, device_id: str = "replit-mobile") -> None:
-        self.client = MaryClient(core_url, token=token, device_id=device_id)
+    def __init__(
+        self,
+        core_url: str,
+        *,
+        token: str,
+        device_id: str = "replit-mobile",
+    ) -> None:
+        self.client = MaryClient(
+            core_url,
+            token=token,
+            device_id=device_id,
+        )
+
         self.speech = MobileSpeechService()
+
         self._lock = RLock()
         self._busy = False
+
         self._last_trace: dict[str, Any] = {}
-        self._conversation_id = os.getenv("MARY_CONVERSATION_ID", "creator-primary").strip() or "creator-primary"
-        configured = os.getenv("MARY_MOBILE_PROXY_DATA_DIR", "").strip()
-        self.data_root = Path(configured).expanduser().resolve() if configured else _project_root() / "data" / "mobile_proxy"
-        self.data_root.mkdir(parents=True, exist_ok=True)
+
+        self._conversation_id = (
+            os.getenv(
+                "MARY_CONVERSATION_ID",
+                "creator-primary",
+            ).strip()
+            or "creator-primary"
+        )
+
+        configured = os.getenv(
+            "MARY_MOBILE_PROXY_DATA_DIR",
+            "",
+        ).strip()
+
+        self.data_root = (
+            Path(configured)
+            .expanduser()
+            .resolve()
+            if configured
+            else _project_root()
+            / "data"
+            / "mobile_proxy"
+        )
+
+        self.data_root.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
     @property
     def busy(self) -> bool:
@@ -142,320 +257,1001 @@ class MaryRemoteMobileRuntime:
     def status(self) -> dict[str, Any]:
         state = self.client.state()
         conversation = self.client.conversation_status()
-        mary_state = dict(state.get("mary", {}) or {})
-        return _json_safe({
-            "name": mary_state.get("name", "Mary"),
-            "provider": "mary-core",
-            "model": "MaryV2",
-            "busy": self.busy,
-            "conversation": {"state": "thinking" if self.busy else "idle"},
-            "voice": {**dict(self.speech.status().get("tts", {}) or {}), "mode": "server_preferred_with_device_fallback"},
-            "speech_to_text": {**dict(self.speech.status().get("stt", {}) or {}), "mode": "server_upload_with_browser_fallback"},
-            "mobile": {"protocol": MOBILE_PROTOCOL_VERSION, "authority": "remote_mary_core"},
-            "engagement": conversation.get("engagement", {}),
-            "realtime": conversation.get("realtime", {}),
-            "nodes": state.get("nodes", {}),
-        })
 
-    def character_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
+        mary_state = dict(
+            state.get(
+                "mary",
+                {},
+            )
+            or {}
+        )
+
+        return _json_safe(
+            {
+                "name": mary_state.get(
+                    "name",
+                    "Mary",
+                ),
+                "provider": "mary-core",
+                "model": "MaryV2",
+                "busy": self.busy,
+                "conversation": {
+                    "state": (
+                        "thinking"
+                        if self.busy
+                        else "idle"
+                    )
+                },
+                "voice": {
+                    **dict(
+                        self.speech.status()
+                        .get(
+                            "tts",
+                            {},
+                        )
+                        or {}
+                    ),
+                    "mode": (
+                        "server_preferred_with_device_fallback"
+                    ),
+                },
+                "speech_to_text": {
+                    **dict(
+                        self.speech.status()
+                        .get(
+                            "stt",
+                            {},
+                        )
+                        or {}
+                    ),
+                    "mode": (
+                        "server_upload_with_browser_fallback"
+                    ),
+                },
+                "mobile": {
+                    "protocol": MOBILE_PROTOCOL_VERSION,
+                    "authority": "remote_mary_core",
+                },
+                "engagement": conversation.get(
+                    "engagement",
+                    {},
+                ),
+                "realtime": conversation.get(
+                    "realtime",
+                    {},
+                ),
+                "nodes": state.get(
+                    "nodes",
+                    {},
+                ),
+            }
+        )
+
+    def character_state(
+        self,
+        *,
+        runtime_status: str | None = None,
+    ) -> dict[str, Any]:
         state = self.client.state()
-        character = dict(state.get("mary", {}) or {})
-        if runtime_status:
-            character["runtime_status"] = runtime_status
-        return _json_safe(character)
 
-    def dashboard_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
+        character = dict(
+            state.get(
+                "mary",
+                {},
+            )
+            or {}
+        )
+
+        if runtime_status:
+            character[
+                "runtime_status"
+            ] = runtime_status
+
+        return _json_safe(
+            character
+        )
+
+    def dashboard_state(
+        self,
+        *,
+        runtime_status: str | None = None,
+    ) -> dict[str, Any]:
         state = self.client.state()
         conversation = self.client.conversation_status()
-        return _json_safe({
-            "character": self.character_state(runtime_status=runtime_status),
-            "engagement": conversation.get("engagement", {}),
-            "realtime": conversation.get("realtime", {}),
-            "growth": self.client.growth_status(),
-            "nodes": state.get("nodes", {}),
-            "mobile": {"protocol": MOBILE_PROTOCOL_VERSION, "surface": "pwa", "authority": "remote_mary_core"},
-            "core": state.get("core", {}),
-        })
 
-    def last_turn_trace(self) -> dict[str, Any]:
+        return _json_safe(
+            {
+                "character": self.character_state(
+                    runtime_status=runtime_status,
+                ),
+                "engagement": conversation.get(
+                    "engagement",
+                    {},
+                ),
+                "realtime": conversation.get(
+                    "realtime",
+                    {},
+                ),
+                "growth": self.client.growth_status(),
+                "nodes": state.get(
+                    "nodes",
+                    {},
+                ),
+                "mobile": {
+                    "protocol": MOBILE_PROTOCOL_VERSION,
+                    "surface": "pwa",
+                    "authority": "remote_mary_core",
+                },
+                "core": state.get(
+                    "core",
+                    {},
+                ),
+            }
+        )
+
+    def last_turn_trace(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
-            return _json_safe(self._last_trace)
+            return _json_safe(
+                self._last_trace
+            )
 
-    def chat(self, text: str) -> dict[str, Any]:
-        value = str(text or "").strip()
+    def chat(
+        self,
+        text: str,
+    ) -> dict[str, Any]:
+        value = str(
+            text
+            or ""
+        ).strip()
+
         if not value:
-            raise ValueError("Message text cannot be empty.")
+            raise ValueError(
+                "Message text cannot be empty."
+            )
+
         with self._lock:
             if self._busy:
-                raise RuntimeError("Mary is already processing a message.")
+                raise RuntimeError(
+                    "Mary is already processing a message."
+                )
+
             self._busy = True
+
         started = monotonic()
+
         try:
-            response = self.client.turn(value, conversation_id=self._conversation_id)
-            elapsed = monotonic() - started
+            response = self.client.turn(
+                value,
+                conversation_id=self._conversation_id,
+            )
+
+            elapsed = (
+                monotonic()
+                - started
+            )
+
             trace = {
                 "turn_id": response.turn_id,
                 "elapsed": elapsed,
-                **dict(response.provenance or {}),
+                **dict(
+                    response.provenance
+                    or {}
+                ),
                 "authority": "remote_mary_core",
                 "device_id": self.client.device_id,
             }
+
             with self._lock:
                 self._last_trace = trace
-            conversation = dict(response.conversation_state or {})
-            voice_status = dict(self.speech.status().get("tts", {}) or {})
-            return _json_safe({
-                "text": response.response,
-                "canonical_text": response.response,
-                "avatar": {},
-                "voice": {
-                    **voice_status,
-                    "enabled": True,
-                    "status": "ready",
-                    "spoken_text": response.response,
-                    "delivery_plan": dict(response.display_hints.get("delivery_plan", {}) or {}),
-                    "device_fallback": True,
-                },
-                "runtime": {"turn_id": response.turn_id, "elapsed": elapsed, "success": True, "trace": trace},
-                "character": self.character_state(runtime_status="idle"),
-                "engagement": conversation.get("engagement", {}),
-                "growth": self.client.growth_status(),
-                "realtime": conversation.get("realtime", {}),
-                "dashboard": self.dashboard_state(runtime_status="idle"),
-                "state_changes": response.state_changes,
-            })
+
+            conversation = dict(
+                response.conversation_state
+                or {}
+            )
+
+            voice_status = dict(
+                self.speech.status()
+                .get(
+                    "tts",
+                    {},
+                )
+                or {}
+            )
+
+            return _json_safe(
+                {
+                    "text": response.response,
+                    "canonical_text": response.response,
+                    "avatar": {},
+                    "voice": {
+                        **voice_status,
+                        "enabled": True,
+                        "status": "ready",
+                        "spoken_text": response.response,
+                        "delivery_plan": dict(
+                            response.display_hints.get(
+                                "delivery_plan",
+                                {},
+                            )
+                            or {}
+                        ),
+                        "device_fallback": True,
+                    },
+                    "runtime": {
+                        "turn_id": response.turn_id,
+                        "elapsed": elapsed,
+                        "success": True,
+                        "trace": trace,
+                    },
+                    "character": self.character_state(
+                        runtime_status="idle"
+                    ),
+                    "engagement": conversation.get(
+                        "engagement",
+                        {},
+                    ),
+                    "growth": self.client.growth_status(),
+                    "realtime": conversation.get(
+                        "realtime",
+                        {},
+                    ),
+                    "dashboard": self.dashboard_state(
+                        runtime_status="idle"
+                    ),
+                    "state_changes": response.state_changes,
+                }
+            )
+
         finally:
             with self._lock:
                 self._busy = False
 
-    def voice_status(self) -> dict[str, Any]:
-        return _json_safe(self.speech.status())
+    def voice_status(
+        self,
+    ) -> dict[str, Any]:
+        return _json_safe(
+            self.speech.status()
+        )
 
-    def synthesize_speech(self, text: str, *, user_text: str | None = None, delivery_plan: dict[str, Any] | None = None):
-        return self.speech.synthesize(text, user_text=user_text, delivery_plan=delivery_plan)
+    def synthesize_speech(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ):
+        return self.speech.synthesize(
+            text,
+            user_text=user_text,
+            delivery_plan=delivery_plan,
+        )
 
-    def transcribe_audio(self, audio: bytes, *, filename: str | None = None, content_type: str | None = None) -> dict[str, Any]:
-        return self.speech.transcribe(audio, filename=filename, content_type=content_type)
+    def transcribe_audio(
+        self,
+        audio: bytes,
+        *,
+        filename: str | None = None,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
+        return self.speech.transcribe(
+            audio,
+            filename=filename,
+            content_type=content_type,
+        )
 
-    def bridge_call(self, method: str, args: list[Any] | None = None) -> Any:
-        name = str(method or "").strip()
+    def bridge_call(
+        self,
+        method: str,
+        args: list[Any] | None = None,
+    ) -> Any:
+        name = str(
+            method
+            or ""
+        ).strip()
+
         if name == "getStatus":
             return self.status()
-        if name in {"getAvatarState", "getCharacterState"}:
+
+        if name in {
+            "getAvatarState",
+            "getCharacterState",
+        }:
             return self.character_state()
+
         if name == "getDashboardState":
             return self.dashboard_state()
+
         if name == "getLastTurnTrace":
             return self.last_turn_trace()
+
         if name == "getMobileVoiceStatus":
             return self.voice_status()
+
         if name == "getConversationEngagement":
-            return self.client.conversation_status().get("engagement", {})
+            return (
+                self.client
+                .conversation_status()
+                .get(
+                    "engagement",
+                    {},
+                )
+            )
+
         if name == "getGrowthState":
             return self.client.growth_status()
+
         if name == "getRealtimeState":
-            return self.client.conversation_status().get("realtime", {})
+            return (
+                self.client
+                .conversation_status()
+                .get(
+                    "realtime",
+                    {},
+                )
+            )
+
         if name == "getNodeState":
             return self.client.nodes()
-        if name in {"reportSpeechStarted", "reportSpeechFinished"}:
-            return {"ok": True, "authority": "client_presentation_only"}
-        raise KeyError(f"Bridge method is not available in remote-core mobile mode: {name}")
 
-    def close(self) -> bool:
-        # A frontend disconnect must never shut down the authoritative Core.
+        if name in {
+            "reportSpeechStarted",
+            "reportSpeechFinished",
+        }:
+            return {
+                "ok": True,
+                "authority": (
+                    "client_presentation_only"
+                ),
+            }
+
+        raise KeyError(
+            "Bridge method is not available "
+            f"in remote-core mobile mode: {name}"
+        )
+
+    def close(
+        self,
+    ) -> bool:
+        # A frontend disconnect must never shut down
+        # the authoritative Core.
         return True
 
 
 class MaryMobileRuntime:
     """Thread-safe transport facade over one canonical MaryApplication."""
 
-    def __init__(self, application: MaryApplication | None = None) -> None:
-        self.application = application or create_application(name="mary_mobile")
-        self.ecosystem = MaryEcosystem(self.application.mary)
-        self.creative_workspace = CreativeWorkspaceManager()
-        self.speech = MobileSpeechService()
-        data_root = Path(self.application.mary.config.paths.data)
-        self.voice_lab = VoiceLabStore(data_root / "voice" / "voice_lab.json")
-        self.speech.apply_voice_profile(self.voice_lab.selected())
+    def __init__(
+        self,
+        application: MaryApplication | None = None,
+    ) -> None:
+        self.application = (
+            application
+            or create_application(
+                name="mary_mobile"
+            )
+        )
+
+        # Canonical ecosystem ownership lives on MaryApplication.
+        # Mobile must reuse it rather than constructing another wrapper.
+        self.ecosystem = (
+            self.application.ecosystem
+        )
+
+        self.creative_workspace = (
+            CreativeWorkspaceManager()
+        )
+
+        self.speech = (
+            MobileSpeechService()
+        )
+
+        data_root = Path(
+            self.application
+            .mary
+            .config
+            .paths
+            .data
+        )
+
+        self.voice_lab = VoiceLabStore(
+            data_root
+            / "voice"
+            / "voice_lab.json"
+        )
+
+        self.speech.apply_voice_profile(
+            self.voice_lab.selected()
+        )
+
         self._lock = RLock()
         self._busy = False
-        self._last_trace: dict[str, Any] = {}
-        self._last_feedback_context: dict[str, Any] = {}
+
+        self._last_trace: dict[
+            str,
+            Any,
+        ] = {}
+
+        self._last_feedback_context: dict[
+            str,
+            Any,
+        ] = {}
+
         try:
             self.application.mary.avatar.ready()
         except Exception:
             pass
 
     @property
-    def busy(self) -> bool:
+    def busy(
+        self,
+    ) -> bool:
         with self._lock:
             return self._busy
 
-    def status(self) -> dict[str, Any]:
+    def status(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
-            mary_status = dict(self.application.mary.status() or {})
-            cognition = dict(mary_status.get("cognition", {}) or {})
-            environment = dict(self.application.mary.runtime_environment.snapshot() or {})
+            mary_status = dict(
+                self.application
+                .mary
+                .status()
+                or {}
+            )
+
+            cognition = dict(
+                mary_status.get(
+                    "cognition",
+                    {},
+                )
+                or {}
+            )
+
+            environment = dict(
+                self.application
+                .mary
+                .runtime_environment
+                .snapshot()
+                or {}
+            )
+
             return _json_safe(
                 {
-                    "name": mary_status.get("name", "Mary"),
-                    "provider": cognition.get("llm", "runtime"),
-                    "model": cognition.get("model", "MaryV2"),
+                    "name": mary_status.get(
+                        "name",
+                        "Mary",
+                    ),
+                    "provider": cognition.get(
+                        "llm",
+                        "runtime",
+                    ),
+                    "model": cognition.get(
+                        "model",
+                        "MaryV2",
+                    ),
                     "busy": self._busy,
-                    "conversation": {"state": "thinking" if self._busy else "idle"},
+                    "conversation": {
+                        "state": (
+                            "thinking"
+                            if self._busy
+                            else "idle"
+                        )
+                    },
                     "voice": {
-                        **dict(self.speech.status().get("tts", {}) or {}),
-                        "mode": "server_preferred_with_device_fallback",
+                        **dict(
+                            self.speech.status()
+                            .get(
+                                "tts",
+                                {},
+                            )
+                            or {}
+                        ),
+                        "mode": (
+                            "server_preferred_with_device_fallback"
+                        ),
                     },
                     "speech_to_text": {
-                        **dict(self.speech.status().get("stt", {}) or {}),
-                        "mode": "server_upload_with_browser_fallback",
+                        **dict(
+                            self.speech.status()
+                            .get(
+                                "stt",
+                                {},
+                            )
+                            or {}
+                        ),
+                        "mode": (
+                            "server_upload_with_browser_fallback"
+                        ),
                     },
                     "mobile": {
                         "protocol": MOBILE_PROTOCOL_VERSION,
-                        "host_type": environment.get("host_type", "unknown"),
-                        "effective_conversation_route": environment.get("effective_conversation_route", []),
+                        "host_type": environment.get(
+                            "host_type",
+                            "unknown",
+                        ),
+                        "effective_conversation_route": (
+                            environment.get(
+                                "effective_conversation_route",
+                                [],
+                            )
+                        ),
                     },
-                    "engagement": self.application.mary.engagement.status(),
-                    "growth": self.application.mary.growth.status(),
-                    "realtime": self.application.mary.realtime.status(),
-                    "nodes": self.application.mary.node_registry.snapshot(),
-                    "retrieval": self.application.mary.mind.retrieval.status(),
-                    "perception": self.application.mary.perception_director.snapshot(),
-                    "training_feedback": self.application.mary.training_feedback.status(),
+                    "engagement": (
+                        self.application
+                        .mary
+                        .engagement
+                        .status()
+                    ),
+                    "growth": (
+                        self.application
+                        .mary
+                        .growth
+                        .status()
+                    ),
+                    "realtime": (
+                        self.application
+                        .mary
+                        .realtime
+                        .status()
+                    ),
+                    "nodes": (
+                        self.application
+                        .mary
+                        .node_registry
+                        .snapshot()
+                    ),
+                    "retrieval": (
+                        self.application
+                        .mary
+                        .mind
+                        .retrieval
+                        .status()
+                    ),
+                    "perception": (
+                        self.application
+                        .mary
+                        .perception_director
+                        .snapshot()
+                    ),
+                    "training_feedback": (
+                        self.application
+                        .mary
+                        .training_feedback
+                        .status()
+                    ),
                 }
             )
 
-    def avatar_state(self) -> dict[str, Any]:
+    def avatar_state(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
             try:
-                return _json_safe(self.application.mary.avatar.state.to_dict())
+                return _json_safe(
+                    self.application
+                    .mary
+                    .avatar
+                    .state
+                    .to_dict()
+                )
             except Exception:
                 return {}
 
-    def character_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
+    def character_state(
+        self,
+        *,
+        runtime_status: str | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
-            resolved_status = runtime_status or ("thinking" if self._busy else "idle")
-            return _json_safe(
-                self.application.mary.live_state(runtime_status=resolved_status)
+            resolved_status = (
+                runtime_status
+                or (
+                    "thinking"
+                    if self._busy
+                    else "idle"
+                )
             )
 
-    def dashboard_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
-        with self._lock:
-            resolved_status = runtime_status or ("thinking" if self._busy else "idle")
-            payload = build_desktop_dashboard_state(
-                self.application.mary,
-                runtime_status=resolved_status,
+            return _json_safe(
+                self.application
+                .mary
+                .live_state(
+                    runtime_status=resolved_status
+                )
             )
-            payload["ecosystem"] = self.ecosystem.snapshot()
+
+    def dashboard_state(
+        self,
+        *,
+        runtime_status: str | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            resolved_status = (
+                runtime_status
+                or (
+                    "thinking"
+                    if self._busy
+                    else "idle"
+                )
+            )
+
+            payload = (
+                build_desktop_dashboard_state(
+                    self.application.mary,
+                    runtime_status=resolved_status,
+                )
+            )
+
+            payload[
+                "ecosystem"
+            ] = self.ecosystem.snapshot()
+
             try:
-                payload["mind"] = self.application.mary.mind.status()
+                payload[
+                    "mind"
+                ] = self.application.mary.mind.status()
+
             except Exception as exc:
-                payload["mind"] = {
+                payload[
+                    "mind"
+                ] = {
                     "enabled": False,
-                    "error": f"{type(exc).__name__}: {exc}",
+                    "error": (
+                        f"{type(exc).__name__}: {exc}"
+                    ),
                 }
-            payload["mobile"] = {
+
+            payload[
+                "mobile"
+            ] = {
                 "protocol": MOBILE_PROTOCOL_VERSION,
                 "surface": "pwa",
             }
-            payload["engagement"] = self.application.mary.engagement.status()
-            payload["growth"] = self.application.mary.growth.status()
-            payload["voice_lab"] = self.voice_lab.public_state()
-            payload["realtime"] = self.application.mary.realtime.status()
-            payload["nodes"] = self.application.mary.node_registry.snapshot()
-            payload["retrieval"] = self.application.mary.mind.retrieval.status()
-            payload["perception"] = self.application.mary.perception_director.snapshot()
-            payload["training_feedback"] = self.application.mary.training_feedback.status()
-            return _json_safe(payload)
 
-    def ecosystem_state(self) -> dict[str, Any]:
+            payload[
+                "engagement"
+            ] = (
+                self.application
+                .mary
+                .engagement
+                .status()
+            )
+
+            payload[
+                "growth"
+            ] = (
+                self.application
+                .mary
+                .growth
+                .status()
+            )
+
+            payload[
+                "voice_lab"
+            ] = self.voice_lab.public_state()
+
+            payload[
+                "realtime"
+            ] = (
+                self.application
+                .mary
+                .realtime
+                .status()
+            )
+
+            payload[
+                "nodes"
+            ] = (
+                self.application
+                .mary
+                .node_registry
+                .snapshot()
+            )
+
+            payload[
+                "retrieval"
+            ] = (
+                self.application
+                .mary
+                .mind
+                .retrieval
+                .status()
+            )
+
+            payload[
+                "perception"
+            ] = (
+                self.application
+                .mary
+                .perception_director
+                .snapshot()
+            )
+
+            payload[
+                "training_feedback"
+            ] = (
+                self.application
+                .mary
+                .training_feedback
+                .status()
+            )
+
+            return _json_safe(
+                payload
+            )
+
+    def ecosystem_state(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
-            return _json_safe(self.ecosystem.snapshot())
+            return _json_safe(
+                self.ecosystem.snapshot()
+            )
 
-    def mind_status(self) -> dict[str, Any]:
+    def mind_status(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
             try:
-                return _json_safe(self.application.mary.mind.status())
+                return _json_safe(
+                    self.application
+                    .mary
+                    .mind
+                    .status()
+                )
             except Exception as exc:
-                return {"enabled": False, "error": f"{type(exc).__name__}: {exc}"}
+                return {
+                    "enabled": False,
+                    "error": (
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                }
 
-    def last_turn_trace(self) -> dict[str, Any]:
+    def last_turn_trace(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
-            return _json_safe(self._last_trace or self.ecosystem.metrics.last_turn() or {})
+            return _json_safe(
+                self._last_trace
+                or self.ecosystem.metrics.last_turn()
+                or {}
+            )
 
-    def chat(self, text: str) -> dict[str, Any]:
-        value = str(text or "").strip()
+    def chat(
+        self,
+        text: str,
+    ) -> dict[str, Any]:
+        value = str(
+            text
+            or ""
+        ).strip()
+
         if not value:
-            raise ValueError("Message text cannot be empty.")
+            raise ValueError(
+                "Message text cannot be empty."
+            )
+
         if len(value) > 32_000:
-            raise ValueError("Message is too long for the mobile transport.")
+            raise ValueError(
+                "Message is too long for the mobile transport."
+            )
 
         with self._lock:
             if self._busy:
-                raise RuntimeError("Mary is already processing a message.")
+                raise RuntimeError(
+                    "Mary is already processing a message."
+                )
+
             self._busy = True
 
         started = monotonic()
+
         try:
-            lane = classify_conversation_lane(value)
+            lane = classify_conversation_lane(
+                value
+            )
+
             pipeline_started = monotonic()
+
             result = self.application.run(
                 value,
-                metadata={"surface": "mobile", "transport": "http"},
+                metadata={
+                    "surface": "mobile",
+                    "transport": "http",
+                },
             )
-            pipeline_ms = (monotonic() - pipeline_started) * 1000.0
-            if not result.success:
-                raise RuntimeError(result.error or "Mary's pipeline did not complete.")
 
-            response_text = str(result.output or "")
+            pipeline_ms = (
+                monotonic()
+                - pipeline_started
+            ) * 1000.0
+
+            if not result.success:
+                raise RuntimeError(
+                    result.error
+                    or "Mary's pipeline did not complete."
+                )
+
+            response_text = str(
+                result.output
+                or ""
+            )
+
             mary = self.application.mary
+
             avatar_started = monotonic()
-            delivery_plan: dict[str, Any] = {}
+
+            delivery_plan: dict[
+                str,
+                Any,
+            ] = {}
+
             try:
-                values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
-                cycle = values.get("cognitive_cycle")
-                cycle_metadata = dict(getattr(cycle, "metadata", {}) or {})
-                delivery_plan = dict(cycle_metadata.get("delivery_plan", {}) or {})
+                values = dict(
+                    getattr(
+                        result,
+                        "metadata",
+                        {},
+                    ).get(
+                        "pipeline_values",
+                        {},
+                    )
+                    or {}
+                )
+
+                cycle = values.get(
+                    "cognitive_cycle"
+                )
+
+                cycle_metadata = dict(
+                    getattr(
+                        cycle,
+                        "metadata",
+                        {},
+                    )
+                    or {}
+                )
+
+                delivery_plan = dict(
+                    cycle_metadata.get(
+                        "delivery_plan",
+                        {},
+                    )
+                    or {}
+                )
+
                 mary.avatar.sync_emotion()
-                avatar = mary.avatar.controller.present(
-                    text=response_text,
-                    speaking=False,
-                    metadata={"surface": "mobile", "delivery_plan": delivery_plan},
-                ).to_dict()
+
+                avatar = (
+                    mary.avatar
+                    .controller
+                    .present(
+                        text=response_text,
+                        speaking=False,
+                        metadata={
+                            "surface": "mobile",
+                            "delivery_plan": delivery_plan,
+                        },
+                    )
+                    .to_dict()
+                )
+
             except Exception:
                 try:
-                    avatar = mary.avatar.state.to_dict()
+                    avatar = (
+                        mary.avatar
+                        .state
+                        .to_dict()
+                    )
                 except Exception:
                     avatar = {}
-            avatar_ms = (monotonic() - avatar_started) * 1000.0
-            worker_total_ms = (monotonic() - started) * 1000.0
-            voice_status = dict(self.speech.status().get("tts", {}) or {})
+
+            avatar_ms = (
+                monotonic()
+                - avatar_started
+            ) * 1000.0
+
+            worker_total_ms = (
+                monotonic()
+                - started
+            ) * 1000.0
+
+            voice_status = dict(
+                self.speech.status()
+                .get(
+                    "tts",
+                    {},
+                )
+                or {}
+            )
+
             trace = build_turn_trace(
                 result,
                 pipeline_ms=pipeline_ms,
                 avatar_ms=avatar_ms,
                 voice_payload={
-                    "enabled": bool(voice_status.get("enabled", True)),
-                    "provider": voice_status.get("provider") or "device_fallback",
-                    "status": "deferred_mobile_playback",
+                    "enabled": bool(
+                        voice_status.get(
+                            "enabled",
+                            True,
+                        )
+                    ),
+                    "provider": (
+                        voice_status.get(
+                            "provider"
+                        )
+                        or "device_fallback"
+                    ),
+                    "status": (
+                        "deferred_mobile_playback"
+                    ),
                 },
                 worker_total_ms=worker_total_ms,
             )
-            trace.setdefault("mobile", {})["lane"] = getattr(lane.lane, "value", str(lane.lane))
-            self.ecosystem.record_turn(elapsed=result.elapsed, trace=trace)
+
+            trace.setdefault(
+                "mobile",
+                {},
+            )[
+                "lane"
+            ] = getattr(
+                lane.lane,
+                "value",
+                str(
+                    lane.lane
+                ),
+            )
+
+            self.ecosystem.record_turn(
+                elapsed=result.elapsed,
+                trace=trace,
+            )
 
             with self._lock:
                 self._last_trace = trace
-                engagement_status = mary.engagement.status()
-                active_session = dict(engagement_status.get("active_session", {}) or {})
+
+                engagement_status = (
+                    mary.engagement.status()
+                )
+
+                active_session = dict(
+                    engagement_status.get(
+                        "active_session",
+                        {},
+                    )
+                    or {}
+                )
+
                 self._last_feedback_context = {
                     "user_text": value,
                     "assistant_text": response_text,
-                    "provider": str(trace.get("provider") or "unknown"),
-                    "model": str(trace.get("model") or "unknown"),
-                    "conversation_mode": str(active_session.get("mode") or engagement_status.get("mode") or "adaptive"),
-                    "turn_id": str(result.turn_id or ""),
+                    "provider": str(
+                        trace.get(
+                            "provider"
+                        )
+                        or "unknown"
+                    ),
+                    "model": str(
+                        trace.get(
+                            "model"
+                        )
+                        or "unknown"
+                    ),
+                    "conversation_mode": str(
+                        active_session.get(
+                            "mode"
+                        )
+                        or engagement_status.get(
+                            "mode"
+                        )
+                        or "adaptive"
+                    ),
+                    "turn_id": str(
+                        result.turn_id
+                        or ""
+                    ),
                 }
 
             return _json_safe(
@@ -476,23 +1272,37 @@ class MaryMobileRuntime:
                         "elapsed": result.elapsed,
                         "success": True,
                         "trace": trace,
-                        "conversation_lane": getattr(lane.lane, "value", str(lane.lane)),
+                        "conversation_lane": getattr(
+                            lane.lane,
+                            "value",
+                            str(
+                                lane.lane
+                            ),
+                        ),
                     },
-                    "character": self.character_state(runtime_status="idle"),
+                    "character": self.character_state(
+                        runtime_status="idle"
+                    ),
                     "engagement": mary.engagement.status(),
                     "growth": mary.growth.status(),
                     "realtime": mary.realtime.status(),
-                    "dashboard": self.dashboard_state(runtime_status="idle"),
+                    "dashboard": self.dashboard_state(
+                        runtime_status="idle"
+                    ),
                 }
             )
+
         finally:
             with self._lock:
                 self._busy = False
 
-
-    def voice_status(self) -> dict[str, Any]:
+    def voice_status(
+        self,
+    ) -> dict[str, Any]:
         with self._lock:
-            return _json_safe(self.speech.status())
+            return _json_safe(
+                self.speech.status()
+            )
 
     def synthesize_speech(
         self,
@@ -515,510 +1325,1780 @@ class MaryMobileRuntime:
         content_type: str | None = None,
     ) -> dict[str, Any]:
         mary = self.application.mary
-        if not mary.realtime.should_accept_audio_input(source="mobile_microphone"):
+
+        if not mary.realtime.should_accept_audio_input(
+            source="mobile_microphone"
+        ):
             return {
                 "ok": False,
                 "text": "",
                 "suppressed": True,
-                "reason": "anti_echo_while_mary_speaking",
+                "reason": (
+                    "anti_echo_while_mary_speaking"
+                ),
             }
-        mary.realtime.mark_transcribing(True, source="mobile_stt")
+
+        mary.realtime.mark_transcribing(
+            True,
+            source="mobile_stt",
+        )
+
         try:
             return self.speech.transcribe(
                 audio,
                 filename=filename,
                 content_type=content_type,
             )
-        finally:
-            mary.realtime.mark_transcribing(False, source="mobile_stt")
 
-    def _publish(self, event_type: PresenceEventType, summary: str, **metadata: Any) -> None:
+        finally:
+            mary.realtime.mark_transcribing(
+                False,
+                source="mobile_stt",
+            )
+
+    def _publish(
+        self,
+        event_type: PresenceEventType,
+        summary: str,
+        **metadata: Any,
+    ) -> None:
         try:
             self.ecosystem.publish_workspace_event(
                 event_type,
                 summary,
-                importance=float(metadata.pop("importance", 0.55)),
-                metadata=metadata or None,
+                importance=float(
+                    metadata.pop(
+                        "importance",
+                        0.55,
+                    )
+                ),
+                metadata=(
+                    metadata
+                    or None
+                ),
             )
         except Exception:
             pass
 
-    def bridge_call(self, method: str, args: list[Any] | None = None) -> Any:
+    def bridge_call(
+        self,
+        method: str,
+        args: list[Any] | None = None,
+    ) -> Any:
         """Implement the display-safe subset used by the shared desktop UI."""
 
-        name = str(method or "").strip()
-        values = list(args or [])
+        name = str(
+            method
+            or ""
+        ).strip()
+
+        values = list(
+            args
+            or []
+        )
+
         with self._lock:
             if name == "getStatus":
                 return self.status()
+
             if name == "getAvatarState":
                 return self.avatar_state()
+
             if name == "getCharacterState":
                 return self.character_state()
+
             if name == "getDashboardState":
                 return self.dashboard_state()
+
             if name == "getEcosystemState":
                 return self.ecosystem_state()
+
             if name == "getMindStatus":
                 return self.mind_status()
+
             if name == "getLastTurnTrace":
                 return self.last_turn_trace()
+
             if name == "getMobileVoiceStatus":
                 return self.voice_status()
+
             if name == "getConversationEngagement":
-                return self.application.mary.engagement.status()
+                return (
+                    self.application
+                    .mary
+                    .engagement
+                    .status()
+                )
+
             if name == "setConversationMode":
-                return self.application.mary.engagement.set_mode(str(values[0] if values else "adaptive"))
+                return (
+                    self.application
+                    .mary
+                    .engagement
+                    .set_mode(
+                        str(
+                            values[0]
+                            if values
+                            else "adaptive"
+                        )
+                    )
+                )
+
             if name == "beginConversationSession":
-                mode = str(values[0] if values else "engaged")
-                turns = int(values[1] if len(values) > 1 else 8)
-                self.application.mary.engagement.begin_session(mode, turns=turns, reason="mobile_control")
-                return self.application.mary.engagement.status()
+                mode = str(
+                    values[0]
+                    if values
+                    else "engaged"
+                )
+
+                turns = int(
+                    values[1]
+                    if len(values) > 1
+                    else 8
+                )
+
+                self.application.mary.engagement.begin_session(
+                    mode,
+                    turns=turns,
+                    reason="mobile_control",
+                )
+
+                return (
+                    self.application
+                    .mary
+                    .engagement
+                    .status()
+                )
+
             if name == "endConversationSession":
                 self.application.mary.engagement.end_session()
-                return self.application.mary.engagement.status()
-            if name == "getGrowthState":
-                return self.application.mary.growth.status()
-            if name == "getRealtimeState":
-                return self.application.mary.realtime.status()
-            if name == "getAttentionState":
-                return self.application.mary.realtime.attention.snapshot()
-            if name == "getNodeState":
-                return self.application.mary.node_registry.snapshot()
-            if name == "getRetrievalState":
-                return self.application.mary.mind.retrieval.status()
-            if name == "reportSpeechStarted":
-                turn_id = str(values[0] if values else "") or None
-                self.application.mary.realtime.speech_started(turn_id=turn_id, source="mobile_client")
-                return self.application.mary.realtime.status()
-            if name == "reportSpeechEnded":
-                reason = str(values[0] if values else "speech_finished")
-                self.application.mary.realtime.speech_ended(reason=reason)
-                return self.application.mary.realtime.status()
-            if name == "reportSpeechInterrupted":
-                reason = str(values[0] if values else "client_barge_in")
-                self.application.mary.realtime.interrupt(reason=reason, by_source="mobile_client")
-                self.application.mary.realtime.speech_ended(reason="interrupted")
-                return self.application.mary.realtime.status()
-            if name == "rebuildSemanticVectors":
-                limit = int(values[0]) if values else None
-                return self.application.mary.mind.rebuild_vectors(limit=limit)
-            if name == "getTrainingFeedbackState":
-                return self.application.mary.training_feedback.status()
-            if name == "recordResponseFeedback":
-                rating = str(values[0] if values else "neutral")
-                tags = list(values[1] if len(values) > 1 and isinstance(values[1], list) else [])
-                note = str(values[2] if len(values) > 2 else "")
-                with self._lock:
-                    context = dict(self._last_feedback_context)
-                if not context:
-                    raise ValueError("No completed mobile turn is available to rate.")
-                record = self.application.mary.training_feedback.record(
-                    rating=rating,
-                    tags=tags,
-                    note=note,
-                    **context,
+
+                return (
+                    self.application
+                    .mary
+                    .engagement
+                    .status()
                 )
+
+            if name == "getGrowthState":
+                return (
+                    self.application
+                    .mary
+                    .growth
+                    .status()
+                )
+
+            if name == "getRealtimeState":
+                return (
+                    self.application
+                    .mary
+                    .realtime
+                    .status()
+                )
+
+            if name == "getAttentionState":
+                return (
+                    self.application
+                    .mary
+                    .realtime
+                    .attention
+                    .snapshot()
+                )
+
+            if name == "getNodeState":
+                return (
+                    self.application
+                    .mary
+                    .node_registry
+                    .snapshot()
+                )
+
+            if name == "getRetrievalState":
+                return (
+                    self.application
+                    .mary
+                    .mind
+                    .retrieval
+                    .status()
+                )
+
+            if name == "reportSpeechStarted":
+                turn_id = str(
+                    values[0]
+                    if values
+                    else ""
+                ) or None
+
+                self.application.mary.realtime.speech_started(
+                    turn_id=turn_id,
+                    source="mobile_client",
+                )
+
+                return (
+                    self.application
+                    .mary
+                    .realtime
+                    .status()
+                )
+
+            if name == "reportSpeechEnded":
+                reason = str(
+                    values[0]
+                    if values
+                    else "speech_finished"
+                )
+
+                self.application.mary.realtime.speech_ended(
+                    reason=reason
+                )
+
+                return (
+                    self.application
+                    .mary
+                    .realtime
+                    .status()
+                )
+
+            if name == "reportSpeechInterrupted":
+                reason = str(
+                    values[0]
+                    if values
+                    else "client_barge_in"
+                )
+
+                self.application.mary.realtime.interrupt(
+                    reason=reason,
+                    by_source="mobile_client",
+                )
+
+                self.application.mary.realtime.speech_ended(
+                    reason="interrupted"
+                )
+
+                return (
+                    self.application
+                    .mary
+                    .realtime
+                    .status()
+                )
+
+            if name == "rebuildSemanticVectors":
+                limit = (
+                    int(
+                        values[0]
+                    )
+                    if values
+                    else None
+                )
+
+                return (
+                    self.application
+                    .mary
+                    .mind
+                    .rebuild_vectors(
+                        limit=limit
+                    )
+                )
+
+            if name == "getTrainingFeedbackState":
+                return (
+                    self.application
+                    .mary
+                    .training_feedback
+                    .status()
+                )
+
+            if name == "recordResponseFeedback":
+                rating = str(
+                    values[0]
+                    if values
+                    else "neutral"
+                )
+
+                tags = list(
+                    values[1]
+                    if (
+                        len(values) > 1
+                        and isinstance(
+                            values[1],
+                            list,
+                        )
+                    )
+                    else []
+                )
+
+                note = str(
+                    values[2]
+                    if len(values) > 2
+                    else ""
+                )
+
+                with self._lock:
+                    context = dict(
+                        self._last_feedback_context
+                    )
+
+                if not context:
+                    raise ValueError(
+                        "No completed mobile turn is available to rate."
+                    )
+
+                record = (
+                    self.application
+                    .mary
+                    .training_feedback
+                    .record(
+                        rating=rating,
+                        tags=tags,
+                        note=note,
+                        **context,
+                    )
+                )
+
                 return {
                     "ok": True,
                     "id": record.id,
-                    "status": self.application.mary.training_feedback.status(),
+                    "status": (
+                        self.application
+                        .mary
+                        .training_feedback
+                        .status()
+                    ),
                 }
+
             if name == "getVoiceLab":
                 return self.voice_lab.public_state()
+
             if name == "saveVoiceProfile":
-                label = str(values[0] if values else "Mary Voice")
-                voice_id = str(values[1] if len(values) > 1 else "")
-                settings = dict(values[2] if len(values) > 2 and isinstance(values[2], dict) else VOICE_BASELINE)
-                item = self.voice_lab.save_profile(label, voice_id, settings=settings, select=True)
-                self.speech.apply_voice_profile(item)
+                label = str(
+                    values[0]
+                    if values
+                    else "Mary Voice"
+                )
+
+                voice_id = str(
+                    values[1]
+                    if len(values) > 1
+                    else ""
+                )
+
+                settings = dict(
+                    values[2]
+                    if (
+                        len(values) > 2
+                        and isinstance(
+                            values[2],
+                            dict,
+                        )
+                    )
+                    else VOICE_BASELINE
+                )
+
+                item = self.voice_lab.save_profile(
+                    label,
+                    voice_id,
+                    settings=settings,
+                    select=True,
+                )
+
+                self.speech.apply_voice_profile(
+                    item
+                )
+
                 return self.voice_lab.public_state()
+
             if name == "selectVoiceProfile":
-                item = self.voice_lab.select(str(values[0]))
-                self.speech.apply_voice_profile(item)
+                item = self.voice_lab.select(
+                    str(
+                        values[0]
+                    )
+                )
+
+                self.speech.apply_voice_profile(
+                    item
+                )
+
                 return self.voice_lab.public_state()
+
             if name == "deleteVoiceProfile":
-                self.voice_lab.delete(str(values[0]))
-                self.speech.apply_voice_profile(self.voice_lab.selected())
+                self.voice_lab.delete(
+                    str(
+                        values[0]
+                    )
+                )
+
+                self.speech.apply_voice_profile(
+                    self.voice_lab.selected()
+                )
+
                 return self.voice_lab.public_state()
+
             if name == "resetVoiceBaseline":
                 item = self.voice_lab.selected()
+
                 if item is not None:
-                    item = self.voice_lab.save_profile(str(item.get("label") or "Mary Voice"), str(item.get("voice_id") or ""), settings=dict(VOICE_BASELINE), profile_id=str(item.get("id") or ""), select=True)
-                    self.speech.apply_voice_profile(item)
+                    item = self.voice_lab.save_profile(
+                        str(
+                            item.get(
+                                "label"
+                            )
+                            or "Mary Voice"
+                        ),
+                        str(
+                            item.get(
+                                "voice_id"
+                            )
+                            or ""
+                        ),
+                        settings=dict(
+                            VOICE_BASELINE
+                        ),
+                        profile_id=str(
+                            item.get(
+                                "id"
+                            )
+                            or ""
+                        ),
+                        select=True,
+                    )
+
+                    self.speech.apply_voice_profile(
+                        item
+                    )
+
                 return self.voice_lab.public_state()
+
             if name == "rebuildCognitiveReservoir":
                 try:
-                    count = int(self.application.mary.mind.rebuild_reservoir())
-                    return {"ok": True, "records": count, "status": self.mind_status()}
+                    count = int(
+                        self.application
+                        .mary
+                        .mind
+                        .rebuild_reservoir()
+                    )
+
+                    return {
+                        "ok": True,
+                        "records": count,
+                        "status": self.mind_status(),
+                    }
+
                 except Exception as exc:
-                    return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                    return {
+                        "ok": False,
+                        "error": (
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                    }
+
             if name == "addCommandItem":
-                title = str(values[0] if values else "")
-                kind = str(values[1] if len(values) > 1 else "task")
-                item = self.ecosystem.command.add(title, kind=kind or "task")
-                self._publish(PresenceEventType.COMMAND_CHANGED, f"Command Center added {item.get('title', '')}", item_id=item.get("id"))
-                return {"ok": True, "item": item}
+                title = str(
+                    values[0]
+                    if values
+                    else ""
+                )
+
+                kind = str(
+                    values[1]
+                    if len(values) > 1
+                    else "task"
+                )
+
+                item = self.ecosystem.command.add(
+                    title,
+                    kind=kind or "task",
+                )
+
+                self._publish(
+                    PresenceEventType.COMMAND_CHANGED,
+                    (
+                        "Command Center added "
+                        f"{item.get('title', '')}"
+                    ),
+                    item_id=item.get(
+                        "id"
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "item": item,
+                }
+
             if name == "updateCommandStatus":
-                item = self.ecosystem.command.update(str(values[0]), status=str(values[1]))
-                self._publish(PresenceEventType.COMMAND_CHANGED, f"Command Center updated {item.get('title', '')}", item_id=item.get("id"), status=item.get("status"))
-                return {"ok": True, "item": item}
+                item = self.ecosystem.command.update(
+                    str(
+                        values[0]
+                    ),
+                    status=str(
+                        values[1]
+                    ),
+                )
+
+                self._publish(
+                    PresenceEventType.COMMAND_CHANGED,
+                    (
+                        "Command Center updated "
+                        f"{item.get('title', '')}"
+                    ),
+                    item_id=item.get(
+                        "id"
+                    ),
+                    status=item.get(
+                        "status"
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "item": item,
+                }
+
             if name == "startFocus":
-                minutes = int(values[0])
-                task = str(values[1] if len(values) > 1 else "")
-                state = self.ecosystem.focus.start(minutes, task=task)
-                self._publish(PresenceEventType.FOCUS_CHANGED, f"Focus started for {minutes} minutes", active=True, minutes=minutes)
-                return {"ok": True, "focus": state}
+                minutes = int(
+                    values[0]
+                )
+
+                task = str(
+                    values[1]
+                    if len(values) > 1
+                    else ""
+                )
+
+                state = self.ecosystem.focus.start(
+                    minutes,
+                    task=task,
+                )
+
+                self._publish(
+                    PresenceEventType.FOCUS_CHANGED,
+                    f"Focus started for {minutes} minutes",
+                    active=True,
+                    minutes=minutes,
+                )
+
+                return {
+                    "ok": True,
+                    "focus": state,
+                }
+
             if name == "stopFocus":
                 state = self.ecosystem.focus.stop()
-                self._publish(PresenceEventType.FOCUS_CHANGED, "Focus session stopped", active=False)
-                return {"ok": True, "focus": state}
+
+                self._publish(
+                    PresenceEventType.FOCUS_CHANGED,
+                    "Focus session stopped",
+                    active=False,
+                )
+
+                return {
+                    "ok": True,
+                    "focus": state,
+                }
+
             if name == "createStudyProject":
-                project = self.ecosystem.study.create_project(str(values[0]), objective=str(values[1] if len(values) > 1 else ""))
-                self._publish(PresenceEventType.STUDY_CHANGED, f"Study project created: {project.get('title', '')}", project_id=project.get("id"))
-                return {"ok": True, "project": project}
+                project = self.ecosystem.study.create_project(
+                    str(
+                        values[0]
+                    ),
+                    objective=str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
+                )
+
+                self._publish(
+                    PresenceEventType.STUDY_CHANGED,
+                    (
+                        "Study project created: "
+                        f"{project.get('title', '')}"
+                    ),
+                    project_id=project.get(
+                        "id"
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "project": project,
+                }
+
             if name == "addStudyCard":
-                card = self.ecosystem.study.add_card(str(values[0]), str(values[1]), str(values[2]))
-                return {"ok": True, "card": card}
+                card = self.ecosystem.study.add_card(
+                    str(
+                        values[0]
+                    ),
+                    str(
+                        values[1]
+                    ),
+                    str(
+                        values[2]
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "card": card,
+                }
+
             if name == "reviewStudyCard":
-                card = self.ecosystem.study.review(str(values[0]), str(values[1]), int(values[2]))
-                return {"ok": True, "card": card}
+                card = self.ecosystem.study.review(
+                    str(
+                        values[0]
+                    ),
+                    str(
+                        values[1]
+                    ),
+                    int(
+                        values[2]
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "card": card,
+                }
+
             if name == "personalSearch":
-                return {"ok": True, "results": self.ecosystem.search.search(str(values[0]))}
+                return {
+                    "ok": True,
+                    "results": self.ecosystem.search.search(
+                        str(
+                            values[0]
+                        )
+                    ),
+                }
+
             if name == "markNoticeRead":
-                return bool(self.ecosystem.inbox.mark_read(str(values[0]), True))
+                return bool(
+                    self.ecosystem.inbox.mark_read(
+                        str(
+                            values[0]
+                        ),
+                        True,
+                    )
+                )
+
             if name == "createResearchThread":
-                thread = self.ecosystem.research.create(str(values[0]), question=str(values[1] if len(values) > 1 else ""))
-                return {"ok": True, "thread": thread}
+                thread = self.ecosystem.research.create(
+                    str(
+                        values[0]
+                    ),
+                    question=str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "thread": thread,
+                }
+
             if name == "playArcade":
-                return {"ok": True, **self.ecosystem.arcade.play(str(values[0]), str(values[1] if len(values) > 1 else ""))}
+                return {
+                    "ok": True,
+                    **self.ecosystem.arcade.play(
+                        str(
+                            values[0]
+                        ),
+                        str(
+                            values[1]
+                            if len(values) > 1
+                            else ""
+                        ),
+                    ),
+                }
+
             if name == "getIdleAction":
-                focus_active = bool(self.ecosystem.focus.snapshot().get("active"))
-                return self.ecosystem.presence.idle_tick(focus_active=focus_active)
+                focus_active = bool(
+                    self.ecosystem
+                    .focus
+                    .snapshot()
+                    .get(
+                        "active"
+                    )
+                )
+
+                return (
+                    self.ecosystem
+                    .presence
+                    .idle_tick(
+                        focus_active=focus_active
+                    )
+                )
+
             if name == "getYouTubeStatus":
-                return self.ecosystem.youtube.status()
+                return (
+                    self.ecosystem
+                    .youtube
+                    .status()
+                )
+
             if name == "searchYouTube":
                 try:
-                    results = self.ecosystem.youtube.search(str(values[0]))
-                    return {"ok": True, "results": results, "status": self.ecosystem.youtube.status()}
+                    results = (
+                        self.ecosystem
+                        .youtube
+                        .search(
+                            str(
+                                values[0]
+                            )
+                        )
+                    )
+
+                    return {
+                        "ok": True,
+                        "results": results,
+                        "status": (
+                            self.ecosystem
+                            .youtube
+                            .status()
+                        ),
+                    }
+
                 except Exception as exc:
-                    return {"ok": False, "error": str(exc), "results": [], "status": self.ecosystem.youtube.status()}
+                    return {
+                        "ok": False,
+                        "error": str(
+                            exc
+                        ),
+                        "results": [],
+                        "status": (
+                            self.ecosystem
+                            .youtube
+                            .status()
+                        ),
+                    }
+
             if name == "saveYouTubeToResearch":
-                thread = self.ecosystem.research.create(str(values[0] or "YouTube research"), question=str(values[1] if len(values) > 1 else ""))
-                return {"ok": True, "thread": thread}
+                thread = self.ecosystem.research.create(
+                    str(
+                        values[0]
+                        or "YouTube research"
+                    ),
+                    question=str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
+                )
+
+                return {
+                    "ok": True,
+                    "thread": thread,
+                }
 
             # Native-desktop-only surfaces remain explicit rather than pretending
             # the phone can launch local Windows applications or file pickers.
-            if name in {"getIntegrationState"}:
-                return {"creative_apps": [], "mobile_limited": True}
+            if name in {
+                "getIntegrationState"
+            }:
+                return {
+                    "creative_apps": [],
+                    "mobile_limited": True,
+                }
+
             if name == "getCreativeWorkspaceState":
                 try:
-                    return self.creative_workspace.status()
+                    return (
+                        self.creative_workspace
+                        .status()
+                    )
+
                 except Exception as exc:
-                    return {"configured": False, "error": f"{type(exc).__name__}: {exc}", "files": []}
+                    return {
+                        "configured": False,
+                        "error": (
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                        "files": [],
+                    }
+
             if name == "readCreativeTextFile":
                 try:
-                    return {"ok": True, **self.creative_workspace.read_text(str(values[0] if values else ""))}
+                    return {
+                        "ok": True,
+                        **self.creative_workspace.read_text(
+                            str(
+                                values[0]
+                                if values
+                                else ""
+                            )
+                        ),
+                    }
+
                 except Exception as exc:
-                    return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                    return {
+                        "ok": False,
+                        "error": (
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                    }
+
             if name == "saveCreativeTextFile":
                 try:
-                    relative_path = str(values[0] if values else "")
-                    content = str(values[1] if len(values) > 1 else "")
-                    result = self.creative_workspace.save_text(relative_path, content)
+                    relative_path = str(
+                        values[0]
+                        if values
+                        else ""
+                    )
+
+                    content = str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    )
+
+                    result = (
+                        self.creative_workspace
+                        .save_text(
+                            relative_path,
+                            content,
+                        )
+                    )
+
                     self._publish(
                         PresenceEventType.CREATIVE_CHANGED,
-                        f"Creative text saved from mobile: {relative_path}",
-                        relative_path=relative_path[:240],
+                        (
+                            "Creative text saved from mobile: "
+                            f"{relative_path}"
+                        ),
+                        relative_path=relative_path[
+                            :240
+                        ],
                     )
-                    return {"ok": True, **result}
+
+                    return {
+                        "ok": True,
+                        **result,
+                    }
+
                 except Exception as exc:
-                    return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-            if name in {"chooseSearchRoot", "chooseMediaFile", "chooseCreativeFile", "chooseCreativeWorkspace"}:
-                return {"selected": False, "mobile_limited": True, "reason": "Configure the workspace on Mary host or with MARY_CREATIVE_WORKSPACE."}
-            if name in {"openCreativeWorkspaceFolder", "openDataFolder", "openWorkspaceFolder", "launchCreativeApp"}:
+                    return {
+                        "ok": False,
+                        "error": (
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                    }
+
+            if name in {
+                "chooseSearchRoot",
+                "chooseMediaFile",
+                "chooseCreativeFile",
+                "chooseCreativeWorkspace",
+            }:
+                return {
+                    "selected": False,
+                    "mobile_limited": True,
+                    "reason": (
+                        "Configure the workspace on Mary host "
+                        "or with MARY_CREATIVE_WORKSPACE."
+                    ),
+                }
+
+            if name in {
+                "openCreativeWorkspaceFolder",
+                "openDataFolder",
+                "openWorkspaceFolder",
+                "launchCreativeApp",
+            }:
                 return False
 
-        raise KeyError(f"Unsupported mobile bridge method: {name}")
+        raise KeyError(
+            f"Unsupported mobile bridge method: {name}"
+        )
 
-    def close(self) -> None:
+    def close(
+        self,
+    ) -> None:
         with self._lock:
             self.application.close()
 
 
-class MaryMobileRequestHandler(SimpleHTTPRequestHandler):
+class MaryMobileRequestHandler(
+    SimpleHTTPRequestHandler
+):
     server_version = "MaryMobile/1"
 
-    def __init__(self, *args: Any, directory: str | None = None, **kwargs: Any) -> None:
-        super().__init__(*args, directory=directory, **kwargs)
+    def __init__(
+        self,
+        *args: Any,
+        directory: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            *args,
+            directory=directory,
+            **kwargs,
+        )
 
     @property
-    def mary_server(self) -> "MaryMobileServer":
+    def mary_server(
+        self,
+    ) -> "MaryMobileServer":
         return self.server  # type: ignore[return-value]
 
-    def log_message(self, fmt: str, *args: Any) -> None:
-        print(f"[MaryMobile] {self.address_string()} - {fmt % args}", flush=True)
+    def log_message(
+        self,
+        fmt: str,
+        *args: Any,
+    ) -> None:
+        print(
+            f"[MaryMobile] {self.address_string()} - {fmt % args}",
+            flush=True,
+        )
 
-    def _allowed_origin(self) -> str:
-        origin = str(self.headers.get("Origin", "") or "").strip()
+    def _allowed_origin(
+        self,
+    ) -> str:
+        origin = str(
+            self.headers.get(
+                "Origin",
+                "",
+            )
+            or ""
+        ).strip()
+
         if not origin:
             return ""
-        defaults = {"capacitor://localhost", "http://localhost", "https://localhost", "null"}
+
+        defaults = {
+            "capacitor://localhost",
+            "http://localhost",
+            "https://localhost",
+            "null",
+        }
+
         configured = {
             item.strip().rstrip("/")
-            for item in os.getenv("MARY_MOBILE_ALLOWED_ORIGINS", "").split(",")
+            for item in os.getenv(
+                "MARY_MOBILE_ALLOWED_ORIGINS",
+                "",
+            ).split(",")
             if item.strip()
         }
-        if origin.rstrip("/") in defaults | configured:
+
+        if origin.rstrip("/") in (
+            defaults
+            | configured
+        ):
             return origin
+
         return ""
 
-    def do_OPTIONS(self) -> None:  # noqa: N802
-        if not urlparse(self.path).path.startswith("/api/"):
-            self.send_error(HTTPStatus.NOT_FOUND)
+    def do_OPTIONS(
+        self,
+    ) -> None:
+        if not urlparse(
+            self.path
+        ).path.startswith(
+            "/api/"
+        ):
+            self.send_error(
+                HTTPStatus.NOT_FOUND
+            )
             return
+
         origin = self._allowed_origin()
-        if self.headers.get("Origin") and not origin:
-            self.send_error(HTTPStatus.FORBIDDEN)
+
+        if (
+            self.headers.get(
+                "Origin"
+            )
+            and not origin
+        ):
+            self.send_error(
+                HTTPStatus.FORBIDDEN
+            )
             return
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Mary-Audio-Filename")
-        self.send_header("Access-Control-Max-Age", "600")
+
+        self.send_response(
+            HTTPStatus.NO_CONTENT
+        )
+
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, OPTIONS",
+        )
+
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Authorization, Content-Type, X-Mary-Audio-Filename",
+        )
+
+        self.send_header(
+            "Access-Control-Max-Age",
+            "600",
+        )
+
         self.end_headers()
 
-    def end_headers(self) -> None:
+    def end_headers(
+        self,
+    ) -> None:
         origin = self._allowed_origin()
+
         if origin:
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Vary", "Origin")
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                origin,
+            )
+
+            self.send_header(
+                "Vary",
+                "Origin",
+            )
+
             self.send_header(
                 "Access-Control-Expose-Headers",
-                "X-Mary-Voice-Provider, X-Mary-Voice-Model, X-Mary-Voice-Status, X-Mary-Voice-Cache",
+                (
+                    "X-Mary-Voice-Provider, "
+                    "X-Mary-Voice-Model, "
+                    "X-Mary-Voice-Status, "
+                    "X-Mary-Voice-Cache"
+                ),
             )
-        if not urlparse(self.path).path.startswith("/api/"):
-            suffix = Path(urlparse(self.path).path).suffix.lower()
-            if suffix in {".html", ".js", ".css", ".webmanifest"} or self.path == "/":
-                self.send_header("Cache-Control", "no-cache")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)")
+
+        if not urlparse(
+            self.path
+        ).path.startswith(
+            "/api/"
+        ):
+            suffix = Path(
+                urlparse(
+                    self.path
+                ).path
+            ).suffix.lower()
+
+            if (
+                suffix
+                in {
+                    ".html",
+                    ".js",
+                    ".css",
+                    ".webmanifest",
+                }
+                or self.path == "/"
+            ):
+                self.send_header(
+                    "Cache-Control",
+                    "no-cache",
+                )
+
+        self.send_header(
+            "X-Content-Type-Options",
+            "nosniff",
+        )
+
+        self.send_header(
+            "Referrer-Policy",
+            "no-referrer",
+        )
+
+        self.send_header(
+            "Permissions-Policy",
+            (
+                "camera=(), "
+                "geolocation=(), "
+                "microphone=(self)"
+            ),
+        )
+
         super().end_headers()
 
-    def _authorized(self) -> bool:
-        expected = self.mary_server.auth.token
+    def _authorized(
+        self,
+    ) -> bool:
+        expected = (
+            self.mary_server
+            .auth
+            .token
+        )
+
         if not expected:
             return True
-        supplied = self.headers.get("Authorization", "")
-        return secrets.compare_digest(supplied, f"Bearer {expected}")
 
-    def _send_json(self, payload: Any, status: int = HTTPStatus.OK) -> None:
-        raw = json.dumps(_json_safe(payload), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self.send_response(int(status))
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Cache-Control", "no-store")
+        supplied = self.headers.get(
+            "Authorization",
+            "",
+        )
+
+        return secrets.compare_digest(
+            supplied,
+            f"Bearer {expected}",
+        )
+
+    def _send_json(
+        self,
+        payload: Any,
+        status: int = HTTPStatus.OK,
+    ) -> None:
+        raw = json.dumps(
+            _json_safe(
+                payload
+            ),
+            ensure_ascii=False,
+            separators=(
+                ",",
+                ":",
+            ),
+        ).encode(
+            "utf-8"
+        )
+
+        self.send_response(
+            int(
+                status
+            )
+        )
+
+        self.send_header(
+            "Content-Type",
+            "application/json; charset=utf-8",
+        )
+
+        self.send_header(
+            "Content-Length",
+            str(
+                len(
+                    raw
+                )
+            ),
+        )
+
+        self.send_header(
+            "Cache-Control",
+            "no-store",
+        )
+
         self.end_headers()
-        self.wfile.write(raw)
 
-    def _send_audio(self, audio: bytes, *, mime_type: str, metadata: dict[str, Any]) -> None:
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", str(mime_type or "application/octet-stream"))
-        self.send_header("Content-Length", str(len(audio)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Mary-Voice-Status", str(metadata.get("status") or "success"))
-        self.send_header("X-Mary-Voice-Provider", str(metadata.get("provider") or "unknown")[:120])
-        self.send_header("X-Mary-Voice-Model", str(metadata.get("model") or "")[:160])
-        self.send_header("X-Mary-Voice-Cache", "hit" if metadata.get("cached") else "miss")
+        self.wfile.write(
+            raw
+        )
+
+    def _send_audio(
+        self,
+        audio: bytes,
+        *,
+        mime_type: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        self.send_response(
+            HTTPStatus.OK
+        )
+
+        self.send_header(
+            "Content-Type",
+            str(
+                mime_type
+                or "application/octet-stream"
+            ),
+        )
+
+        self.send_header(
+            "Content-Length",
+            str(
+                len(
+                    audio
+                )
+            ),
+        )
+
+        self.send_header(
+            "Cache-Control",
+            "no-store",
+        )
+
+        self.send_header(
+            "X-Mary-Voice-Status",
+            str(
+                metadata.get(
+                    "status"
+                )
+                or "success"
+            ),
+        )
+
+        self.send_header(
+            "X-Mary-Voice-Provider",
+            str(
+                metadata.get(
+                    "provider"
+                )
+                or "unknown"
+            )[:120],
+        )
+
+        self.send_header(
+            "X-Mary-Voice-Model",
+            str(
+                metadata.get(
+                    "model"
+                )
+                or ""
+            )[:160],
+        )
+
+        self.send_header(
+            "X-Mary-Voice-Cache",
+            (
+                "hit"
+                if metadata.get(
+                    "cached"
+                )
+                else "miss"
+            ),
+        )
+
         self.end_headers()
-        self.wfile.write(audio)
 
-    def _read_bytes(self, *, maximum: int) -> bytes:
+        self.wfile.write(
+            audio
+        )
+
+    def _read_bytes(
+        self,
+        *,
+        maximum: int,
+    ) -> bytes:
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = int(
+                self.headers.get(
+                    "Content-Length",
+                    "0",
+                )
+            )
         except ValueError as exc:
-            raise ValueError("Invalid Content-Length.") from exc
+            raise ValueError(
+                "Invalid Content-Length."
+            ) from exc
+
         if length <= 0:
-            raise ValueError("Request body is empty.")
-        if length > maximum:
-            raise OverflowError("Request body is too large.")
-        return self.rfile.read(length)
+            raise ValueError(
+                "Request body is empty."
+            )
 
-    def _read_json(self) -> dict[str, Any]:
+        if length > maximum:
+            raise OverflowError(
+                "Request body is too large."
+            )
+
+        return self.rfile.read(
+            length
+        )
+
+    def _read_json(
+        self,
+    ) -> dict[str, Any]:
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = int(
+                self.headers.get(
+                    "Content-Length",
+                    "0",
+                )
+            )
         except ValueError as exc:
-            raise ValueError("Invalid Content-Length.") from exc
+            raise ValueError(
+                "Invalid Content-Length."
+            ) from exc
+
         if length <= 0:
             return {}
+
         if length > MAX_REQUEST_BYTES:
-            raise OverflowError("Request body is too large.")
-        raw = self.rfile.read(length)
+            raise OverflowError(
+                "Request body is too large."
+            )
+
+        raw = self.rfile.read(
+            length
+        )
+
         try:
-            value = json.loads(raw.decode("utf-8"))
+            value = json.loads(
+                raw.decode(
+                    "utf-8"
+                )
+            )
         except Exception as exc:
-            raise ValueError("Request body must be valid JSON.") from exc
-        if not isinstance(value, dict):
-            raise ValueError("Request JSON must be an object.")
+            raise ValueError(
+                "Request body must be valid JSON."
+            ) from exc
+
+        if not isinstance(
+            value,
+            dict,
+        ):
+            raise ValueError(
+                "Request JSON must be an object."
+            )
+
         return value
 
-    def _require_api_auth(self) -> bool:
+    def _require_api_auth(
+        self,
+    ) -> bool:
         if self._authorized():
             return True
-        self._send_json({"ok": False, "error": "Unauthorized", "auth_required": True}, HTTPStatus.UNAUTHORIZED)
+
+        self._send_json(
+            {
+                "ok": False,
+                "error": "Unauthorized",
+                "auth_required": True,
+            },
+            HTTPStatus.UNAUTHORIZED,
+        )
+
         return False
 
-    def do_GET(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
+    def do_GET(
+        self,
+    ) -> None:
+        path = urlparse(
+            self.path
+        ).path
+
         if path == "/api/health":
             if not self._require_api_auth():
                 return
+
             self._send_json(
                 {
                     "ok": True,
                     "service": "MaryV2 Mobile",
                     "protocol": MOBILE_PROTOCOL_VERSION,
-                    "auth": "token" if self.mary_server.auth.enabled else "loopback",
-                    "status": self.mary_server.runtime.status(),
+                    "auth": (
+                        "token"
+                        if self.mary_server.auth.enabled
+                        else "loopback"
+                    ),
+                    "status": (
+                        self.mary_server
+                        .runtime
+                        .status()
+                    ),
                 }
             )
             return
+
         if path == "/api/state":
             if not self._require_api_auth():
                 return
-            self._send_json(self.mary_server.runtime.dashboard_state())
+
+            self._send_json(
+                self.mary_server
+                .runtime
+                .dashboard_state()
+            )
             return
+
         if path == "/api/trace":
             if not self._require_api_auth():
                 return
-            self._send_json(self.mary_server.runtime.last_turn_trace())
+
+            self._send_json(
+                self.mary_server
+                .runtime
+                .last_turn_trace()
+            )
             return
+
         if path == "/api/voice/status":
             if not self._require_api_auth():
                 return
-            self._send_json({"ok": True, **self.mary_server.runtime.voice_status()})
+
+            self._send_json(
+                {
+                    "ok": True,
+                    **self.mary_server
+                    .runtime
+                    .voice_status(),
+                }
+            )
             return
-        if path.startswith("/api/"):
-            self._send_json({"ok": False, "error": "Unknown API route."}, HTTPStatus.NOT_FOUND)
+
+        if path.startswith(
+            "/api/"
+        ):
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": "Unknown API route.",
+                },
+                HTTPStatus.NOT_FOUND,
+            )
             return
 
         # SPA fallback: unknown extensionless routes reopen the Mary UI.
-        parsed = Path(path)
-        if path != "/" and not parsed.suffix:
+        parsed = Path(
+            path
+        )
+
+        if (
+            path != "/"
+            and not parsed.suffix
+        ):
             self.path = "/index.html"
+
         return super().do_GET()
 
-    def do_POST(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
-        if not path.startswith("/api/"):
-            self._send_json({"ok": False, "error": "POST is only supported for API routes."}, HTTPStatus.NOT_FOUND)
+    def do_POST(
+        self,
+    ) -> None:
+        path = urlparse(
+            self.path
+        ).path
+
+        if not path.startswith(
+            "/api/"
+        ):
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": (
+                        "POST is only supported for API routes."
+                    ),
+                },
+                HTTPStatus.NOT_FOUND,
+            )
             return
+
         if not self._require_api_auth():
             return
+
         try:
             if path == "/api/stt":
-                raw = self._read_bytes(maximum=MAX_AUDIO_REQUEST_BYTES)
-                payload = self.mary_server.runtime.transcribe_audio(
-                    raw,
-                    filename=self.headers.get("X-Mary-Audio-Filename"),
-                    content_type=self.headers.get("Content-Type"),
+                raw = self._read_bytes(
+                    maximum=MAX_AUDIO_REQUEST_BYTES
                 )
-                self._send_json({"ok": True, **payload})
+
+                payload = (
+                    self.mary_server
+                    .runtime
+                    .transcribe_audio(
+                        raw,
+                        filename=self.headers.get(
+                            "X-Mary-Audio-Filename"
+                        ),
+                        content_type=self.headers.get(
+                            "Content-Type"
+                        ),
+                    )
+                )
+
+                self._send_json(
+                    {
+                        "ok": True,
+                        **payload,
+                    }
+                )
                 return
 
             body = self._read_json()
+
             if path == "/api/chat":
-                payload = self.mary_server.runtime.chat(str(body.get("text") or ""))
-                self._send_json({"ok": True, **payload})
-                return
-            if path == "/api/tts":
-                delivery_plan = body.get("delivery_plan") or {}
-                if not isinstance(delivery_plan, dict):
-                    raise ValueError("delivery_plan must be a JSON object.")
-                speech = self.mary_server.runtime.synthesize_speech(
-                    str(body.get("text") or ""),
-                    user_text=str(body.get("user_text") or "") or None,
-                    delivery_plan=delivery_plan,
+                payload = (
+                    self.mary_server
+                    .runtime
+                    .chat(
+                        str(
+                            body.get(
+                                "text"
+                            )
+                            or ""
+                        )
+                    )
                 )
+
+                self._send_json(
+                    {
+                        "ok": True,
+                        **payload,
+                    }
+                )
+                return
+
+            if path == "/api/tts":
+                delivery_plan = (
+                    body.get(
+                        "delivery_plan"
+                    )
+                    or {}
+                )
+
+                if not isinstance(
+                    delivery_plan,
+                    dict,
+                ):
+                    raise ValueError(
+                        "delivery_plan must be a JSON object."
+                    )
+
+                speech = (
+                    self.mary_server
+                    .runtime
+                    .synthesize_speech(
+                        str(
+                            body.get(
+                                "text"
+                            )
+                            or ""
+                        ),
+                        user_text=(
+                            str(
+                                body.get(
+                                    "user_text"
+                                )
+                                or ""
+                            )
+                            or None
+                        ),
+                        delivery_plan=delivery_plan,
+                    )
+                )
+
                 if speech.successful:
                     self._send_audio(
                         speech.audio,
                         mime_type=speech.mime_type,
-                        metadata={**speech.metadata, "cached": speech.cached},
+                        metadata={
+                            **speech.metadata,
+                            "cached": speech.cached,
+                        },
                     )
+
                 else:
                     self._send_json(
-                        {"ok": False, "fallback": "device", **speech.metadata},
+                        {
+                            "ok": False,
+                            "fallback": "device",
+                            **speech.metadata,
+                        },
                         HTTPStatus.SERVICE_UNAVAILABLE,
                     )
+
                 return
+
             if path == "/api/bridge":
-                method = str(body.get("method") or "")
-                args = body.get("args") or []
-                if not isinstance(args, list):
-                    raise ValueError("Bridge args must be a JSON array.")
-                payload = self.mary_server.runtime.bridge_call(method, args)
-                self._send_json({"ok": True, "result": payload})
+                method = str(
+                    body.get(
+                        "method"
+                    )
+                    or ""
+                )
+
+                args = (
+                    body.get(
+                        "args"
+                    )
+                    or []
+                )
+
+                if not isinstance(
+                    args,
+                    list,
+                ):
+                    raise ValueError(
+                        "Bridge args must be a JSON array."
+                    )
+
+                payload = (
+                    self.mary_server
+                    .runtime
+                    .bridge_call(
+                        method,
+                        args,
+                    )
+                )
+
+                self._send_json(
+                    {
+                        "ok": True,
+                        "result": payload,
+                    }
+                )
                 return
-            self._send_json({"ok": False, "error": "Unknown API route."}, HTTPStatus.NOT_FOUND)
+
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": "Unknown API route.",
+                },
+                HTTPStatus.NOT_FOUND,
+            )
+
         except OverflowError as exc:
-            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": str(
+                        exc
+                    ),
+                },
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
+
         except KeyError as exc:
-            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.NOT_FOUND)
-        except (ValueError, TypeError) as exc:
-            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": str(
+                        exc
+                    ),
+                },
+                HTTPStatus.NOT_FOUND,
+            )
+
+        except (
+            ValueError,
+            TypeError,
+        ) as exc:
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": str(
+                        exc
+                    ),
+                },
+                HTTPStatus.BAD_REQUEST,
+            )
+
         except RuntimeError as exc:
-            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.CONFLICT)
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": str(
+                        exc
+                    ),
+                },
+                HTTPStatus.CONFLICT,
+            )
+
         except Exception as exc:
-            self._send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": (
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                },
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
 
 
-class MaryMobileServer(ThreadingHTTPServer):
+class MaryMobileServer(
+    ThreadingHTTPServer
+):
     daemon_threads = True
 
     def __init__(
         self,
-        address: tuple[str, int],
+        address: tuple[
+            str,
+            int,
+        ],
         *,
         runtime: MaryMobileRuntime,
         static_root: Path,
         auth: MobileAuth,
     ) -> None:
         self.runtime = runtime
-        self.static_root = Path(static_root).resolve()
-        self.auth = auth
-        handler = partial(MaryMobileRequestHandler, directory=str(self.static_root))
-        super().__init__(address, handler)
 
-    def server_close(self) -> None:
+        self.static_root = (
+            Path(
+                static_root
+            )
+            .resolve()
+        )
+
+        self.auth = auth
+
+        handler = partial(
+            MaryMobileRequestHandler,
+            directory=str(
+                self.static_root
+            ),
+        )
+
+        super().__init__(
+            address,
+            handler,
+        )
+
+    def server_close(
+        self,
+    ) -> None:
         try:
             self.runtime.close()
         finally:
             super().server_close()
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+def _project_root(
+) -> Path:
+    return (
+        Path(
+            __file__
+        )
+        .resolve()
+        .parents[2]
+    )
 
 
-def _static_root(root: Path) -> Path:
-    configured = os.getenv("MARY_MOBILE_STATIC_ROOT", "").strip()
+def _static_root(
+    root: Path,
+) -> Path:
+    configured = os.getenv(
+        "MARY_MOBILE_STATIC_ROOT",
+        "",
+    ).strip()
+
     if configured:
-        return Path(configured).expanduser().resolve()
+        return (
+            Path(
+                configured
+            )
+            .expanduser()
+            .resolve()
+        )
 
     # Mobile is a first-class surface, not a responsive fallback for Desktop.
     # Prefer the dedicated phone UI even when desktop/dist happens to exist on
     # the same development host (common on Replit/GitHub/PC working copies).
-    standalone = root / "mobile_web"
-    if (standalone / "index.html").exists():
+    standalone = (
+        root
+        / "mobile_web"
+    )
+
+    if (
+        standalone
+        / "index.html"
+    ).exists():
         return standalone
 
     # An explicit escape hatch remains for development/recovery builds where
     # only the compiled desktop frontend is available.
-    built = root / "desktop" / "dist"
-    if (built / "index.html").exists():
+    built = (
+        root
+        / "desktop"
+        / "dist"
+    )
+
+    if (
+        built
+        / "index.html"
+    ).exists():
         return built
-    return root / "desktop"
+
+    return (
+        root
+        / "desktop"
+    )
 
 
 def run_mobile_server(
@@ -1028,78 +3108,259 @@ def run_mobile_server(
     application: MaryApplication | None = None,
 ) -> None:
     root = _project_root()
-    resolved_host = host or _default_host()
-    resolved_port = int(port or _default_port())
-    core_url = os.getenv("MARY_CORE_URL", "").strip()
+
+    resolved_host = (
+        host
+        or _default_host()
+    )
+
+    resolved_port = int(
+        port
+        or _default_port()
+    )
+
+    core_url = os.getenv(
+        "MARY_CORE_URL",
+        "",
+    ).strip()
+
     if core_url:
         if application is not None:
-            raise RuntimeError("application= cannot be combined with MARY_CORE_URL remote-client mode.")
-        core_token = os.getenv("MARY_CORE_TOKEN", "").strip()
+            raise RuntimeError(
+                "application= cannot be combined with "
+                "MARY_CORE_URL remote-client mode."
+            )
+
+        core_token = os.getenv(
+            "MARY_CORE_TOKEN",
+            "",
+        ).strip()
+
         if not core_token:
-            raise RuntimeError("MARY_CORE_TOKEN is required when MARY_CORE_URL enables remote-client mode.")
+            raise RuntimeError(
+                "MARY_CORE_TOKEN is required when "
+                "MARY_CORE_URL enables remote-client mode."
+            )
+
         runtime = MaryRemoteMobileRuntime(
             core_url,
             token=core_token,
-            device_id=os.getenv("MARY_DEVICE_ID", "replit-mobile").strip() or "replit-mobile",
+            device_id=(
+                os.getenv(
+                    "MARY_DEVICE_ID",
+                    "replit-mobile",
+                ).strip()
+                or "replit-mobile"
+            ),
         )
-        auth_data_root = runtime.data_root
-    else:
-        runtime = MaryMobileRuntime(application)
-        auth_data_root = Path(runtime.application.mary.config.paths.data)
-    static_root = _static_root(root)
-    auth = _resolve_auth(host=resolved_host, data_root=auth_data_root)
 
-    if not (static_root / "index.html").exists():
+        auth_data_root = (
+            runtime.data_root
+        )
+
+    else:
+        runtime = MaryMobileRuntime(
+            application
+        )
+
+        auth_data_root = Path(
+            runtime.application
+            .mary
+            .config
+            .paths
+            .data
+        )
+
+    static_root = _static_root(
+        root
+    )
+
+    auth = _resolve_auth(
+        host=resolved_host,
+        data_root=auth_data_root,
+    )
+
+    if not (
+        static_root
+        / "index.html"
+    ).exists():
         runtime.close()
+
         raise RuntimeError(
-            f"Mobile UI not found at {static_root}. Run `cd desktop && npm ci && npm run build` first."
+            f"Mobile UI not found at {static_root}. "
+            "Run `cd desktop && npm ci && npm run build` first."
         )
 
     server = MaryMobileServer(
-        (resolved_host, resolved_port),
+        (
+            resolved_host,
+            resolved_port,
+        ),
         runtime=runtime,
         static_root=static_root,
         auth=auth,
     )
 
-    print("=" * 68, flush=True)
-    print("MARYV2 MOBILE COMPANION", flush=True)
-    print("=" * 68, flush=True)
-    print(f"Host: {resolved_host}", flush=True)
-    print(f"Port: {resolved_port}", flush=True)
-    print(f"UI:   {static_root}", flush=True)
+    print(
+        "="
+        * 68,
+        flush=True,
+    )
+
+    print(
+        "MARYV2 MOBILE COMPANION",
+        flush=True,
+    )
+
+    print(
+        "="
+        * 68,
+        flush=True,
+    )
+
+    print(
+        f"Host: {resolved_host}",
+        flush=True,
+    )
+
+    print(
+        f"Port: {resolved_port}",
+        flush=True,
+    )
+
+    print(
+        f"UI:   {static_root}",
+        flush=True,
+    )
+
     if auth.enabled:
-        print("Mobile API protection: bearer token", flush=True)
+        print(
+            "Mobile API protection: bearer token",
+            flush=True,
+        )
+
         if auth.source == "generated":
-            print("", flush=True)
-            print("FIRST-RUN MOBILE ACCESS TOKEN", flush=True)
-            print(auth.token, flush=True)
-            print("Enter this once in the Mary mobile app. It is saved on this device.", flush=True)
+            print(
+                "",
+                flush=True,
+            )
+
+            print(
+                "FIRST-RUN MOBILE ACCESS TOKEN",
+                flush=True,
+            )
+
+            print(
+                auth.token,
+                flush=True,
+            )
+
+            print(
+                (
+                    "Enter this once in the Mary mobile app. "
+                    "It is saved on this device."
+                ),
+                flush=True,
+            )
+
         elif auth.source == "persisted":
-            print(f"Token loaded from: {auth.token_path}", flush=True)
+            print(
+                f"Token loaded from: {auth.token_path}",
+                flush=True,
+            )
+
         else:
-            print("Token loaded from MARY_MOBILE_TOKEN.", flush=True)
+            print(
+                "Token loaded from MARY_MOBILE_TOKEN.",
+                flush=True,
+            )
+
     else:
-        print("Mobile API protection: loopback-only (no token required)", flush=True)
-    print("", flush=True)
+        print(
+            (
+                "Mobile API protection: loopback-only "
+                "(no token required)"
+            ),
+            flush=True,
+        )
+
+    print(
+        "",
+        flush=True,
+    )
+
     if core_url:
-        device_id = os.getenv("MARY_DEVICE_ID", "replit-mobile").strip() or "replit-mobile"
-        print("Mode: remote-core client", flush=True)
-        print("Mobile authority: remote_mary_core", flush=True)
-        print(f"Core URL: {core_url.rstrip('/')}", flush=True)
-        print(f"Device ID: {device_id}", flush=True)
-        print("Canonical state authority: Mary Core", flush=True)
-        print("This mobile surface does not create a second Mary.", flush=True)
+        device_id = (
+            os.getenv(
+                "MARY_DEVICE_ID",
+                "replit-mobile",
+            ).strip()
+            or "replit-mobile"
+        )
+
+        print(
+            "Mode: remote-core client",
+            flush=True,
+        )
+
+        print(
+            "Mobile authority: remote_mary_core",
+            flush=True,
+        )
+
+        print(
+            f"Core URL: {core_url.rstrip('/')}",
+            flush=True,
+        )
+
+        print(
+            f"Device ID: {device_id}",
+            flush=True,
+        )
+
+        print(
+            "Canonical state authority: Mary Core",
+            flush=True,
+        )
+
+        print(
+            "This mobile surface does not create a second Mary.",
+            flush=True,
+        )
+
     else:
-        print("Mode: local MaryApplication", flush=True)
-        print("Mobile authority: local development runtime", flush=True)
-        print("Canonical state authority: local MaryApplication", flush=True)
-    print("=" * 68, flush=True)
+        print(
+            "Mode: local MaryApplication",
+            flush=True,
+        )
+
+        print(
+            "Mobile authority: local development runtime",
+            flush=True,
+        )
+
+        print(
+            (
+                "Canonical state authority: "
+                "local MaryApplication"
+            ),
+            flush=True,
+        )
+
+    print(
+        "="
+        * 68,
+        flush=True,
+    )
 
     try:
-        server.serve_forever(poll_interval=0.25)
+        server.serve_forever(
+            poll_interval=0.25
+        )
+
     except KeyboardInterrupt:
         pass
+
     finally:
         server.shutdown()
         server.server_close()
