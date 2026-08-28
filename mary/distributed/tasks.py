@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from threading import RLock
+from threading import Condition, RLock
 from time import monotonic
 from typing import Any
 from uuid import uuid4
@@ -64,6 +64,12 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
                 raise ValueError("llm.ollama message content exceeds the 48000 character task limit.")
             messages.append({"role": role, "content": content})
 
+        role = str(values.get("role") or "general").strip().lower()
+        if role not in {"general", "conversation", "fast", "utility"}:
+            raise ValueError(
+                "llm.ollama role must be general, conversation, fast, or utility."
+            )
+
         try:
             temperature = float(values.get("temperature", 0.7))
         except (TypeError, ValueError) as exc:
@@ -77,6 +83,7 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
 
         return {
             "messages": messages,
+            "role": role,
             "temperature": temperature,
             "max_tokens": max(1, min(2048, max_tokens)),
         }
@@ -174,6 +181,7 @@ class DeviceTaskBroker:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
         self._lock = RLock()
+        self._condition = Condition(self._lock)
         self._tasks: dict[str, DeviceCapabilityTask] = {}
         self._order: list[str] = []
 
@@ -202,30 +210,59 @@ class DeviceTaskBroker:
             requester_device_id=_clean_text(requester_device_id or "unknown-device", 160),
             selected_node_id=selected.node_id,
         )
-        with self._lock:
+        with self._condition:
             self._expire_locked()
             self._tasks[task.task_id] = task
             self._order.append(task.task_id)
             self._trim_locked()
+            # Wake a node that is holding a long-poll request. The broker remains
+            # transport-agnostic; HTTP long-poll is only one consumer of this
+            # condition.
+            self._condition.notify_all()
         return task
 
-    def poll(self, node_id: str) -> DeviceCapabilityTask | None:
+    def poll(
+        self,
+        node_id: str,
+        *,
+        wait_seconds: float = 0.0,
+    ) -> DeviceCapabilityTask | None:
+        """Claim the next task for ``node_id``, optionally waiting for one.
+
+        Waiting happens on the broker's own condition variable rather than on
+        Mary's canonical turn lock. This lets a remote capability node keep one
+        authenticated request parked at Core and be woken immediately when work
+        is queued, eliminating the old fixed polling delay without creating a
+        second execution authority.
+        """
+
         node_id = str(node_id or "").strip()
-        with self._lock:
-            self._expire_locked()
-            for task_id in self._order:
-                task = self._tasks.get(task_id)
-                if task is None:
-                    continue
-                if task.selected_node_id != node_id:
-                    continue
-                if task.status != "queued" or task.claimed:
-                    continue
-                task.claimed = True
-                task.status = "claimed"
-                task.updated_at = _utc_now()
-                return task
-        return None
+        try:
+            timeout = max(0.0, min(25.0, float(wait_seconds)))
+        except (TypeError, ValueError):
+            timeout = 0.0
+        deadline = monotonic() + timeout
+
+        with self._condition:
+            while True:
+                self._expire_locked()
+                for task_id in self._order:
+                    task = self._tasks.get(task_id)
+                    if task is None:
+                        continue
+                    if task.selected_node_id != node_id:
+                        continue
+                    if task.status != "queued" or task.claimed:
+                        continue
+                    task.claimed = True
+                    task.status = "claimed"
+                    task.updated_at = _utc_now()
+                    return task
+
+                remaining = deadline - monotonic()
+                if remaining <= 0.0:
+                    return None
+                self._condition.wait(timeout=remaining)
 
     def complete(
         self,
@@ -256,7 +293,39 @@ class DeviceTaskBroker:
             )
             task.error = _clean_text(error, 500)
             task.updated_at = _utc_now()
+            self._condition.notify_all()
             return task
+
+    def wait_for_terminal(
+        self,
+        task_id: str,
+        *,
+        timeout_seconds: float,
+    ) -> DeviceCapabilityTask | None:
+        """Wait for a queued capability task to reach a terminal state.
+
+        The waiter releases the broker lock while sleeping, so a device node may
+        poll, execute, and complete the task concurrently with a serialized Mary
+        turn that is waiting for its result.
+        """
+
+        try:
+            timeout = max(0.0, min(240.0, float(timeout_seconds)))
+        except (TypeError, ValueError):
+            timeout = 0.0
+        deadline = monotonic() + timeout
+        task_key = str(task_id)
+
+        with self._condition:
+            while True:
+                self._expire_locked()
+                task = self._tasks.get(task_key)
+                if task is None or task.status in _TERMINAL_STATUSES:
+                    return task
+                remaining = deadline - monotonic()
+                if remaining <= 0.0:
+                    return task
+                self._condition.wait(timeout=remaining)
 
     def get(self, task_id: str) -> DeviceCapabilityTask | None:
         with self._lock:

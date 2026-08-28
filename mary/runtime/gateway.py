@@ -85,7 +85,7 @@ class MaryRuntimeGateway(Protocol):
     ) -> dict[str, Any]: ...
     def preview_capability_task(self, capability: str, intent: str) -> dict[str, Any]: ...
     def dispatch_capability_task(self, capability: str, intent: str, args: dict[str, Any] | None = None) -> dict[str, Any]: ...
-    def poll_capability_task(self) -> dict[str, Any]: ...
+    def poll_capability_task(self, *, wait_seconds: float = 0.0) -> dict[str, Any]: ...
     def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]: ...
     def capability_task_status(self, task_id: str) -> dict[str, Any]: ...
 
@@ -349,7 +349,8 @@ class LocalMaryGateway:
     def dispatch_capability_task(self, capability: str, intent: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         raise RuntimeError("Device task dispatch is a remote-Core capability; standalone mode has no device broker.")
 
-    def poll_capability_task(self) -> dict[str, Any]:
+    def poll_capability_task(self, *, wait_seconds: float = 0.0) -> dict[str, Any]:
+        del wait_seconds
         raise RuntimeError("Device task polling is a remote-Core capability; standalone mode has no device broker.")
 
     def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]:
@@ -475,8 +476,8 @@ class RemoteMaryGateway:
     def dispatch_capability_task(self, capability: str, intent: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.client.dispatch_capability_task(capability, intent, args)
 
-    def poll_capability_task(self) -> dict[str, Any]:
-        return self.client.poll_capability_task()
+    def poll_capability_task(self, *, wait_seconds: float = 0.0) -> dict[str, Any]:
+        return self.client.poll_capability_task(wait_seconds=wait_seconds)
 
     def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]:
         return self.client.complete_capability_task(task_id, status=status, result=result, error=error)

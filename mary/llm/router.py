@@ -243,6 +243,9 @@ class LLMRouter:
         provider_name = str(name).lower().strip()
         registered = self.providers.get(provider_name)
         if registered is not None:
+            purpose_adapter = getattr(registered, "for_purpose", None)
+            if callable(purpose_adapter):
+                return purpose_adapter(purpose)
             return registered
         purpose_name = str(purpose or "").lower().strip()
         if purpose_name not in {"conversation_fast", "social_instant"} or provider_name not in {"groq", "ollama"}:

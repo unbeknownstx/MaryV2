@@ -16,3 +16,12 @@ def test_turn_request_rejects_bad_mode():
         assert "requested_mode" in str(exc)
     else:
         raise AssertionError("invalid mode should fail")
+
+
+def test_node_task_poll_request_bounds_long_poll_wait():
+    from mary.protocol.models import NodeTaskPollRequest
+
+    request = NodeTaskPollRequest.from_dict({"node_id": "windows-pc", "wait_seconds": 20})
+    assert request.wait_seconds == 20.0
+    assert NodeTaskPollRequest.from_dict({"node_id": "windows-pc", "wait_seconds": 999}).wait_seconds == 25.0
+    assert NodeTaskPollRequest.from_dict({"node_id": "windows-pc"}).wait_seconds == 0.0

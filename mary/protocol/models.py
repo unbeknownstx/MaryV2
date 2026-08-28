@@ -318,12 +318,20 @@ class CapabilityTaskDispatchRequest:
 @dataclass(frozen=True)
 class NodeTaskPollRequest:
     node_id: str
+    wait_seconds: float = 0.0
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "NodeTaskPollRequest":
         if not isinstance(payload, dict):
             raise ValueError("Node task poll must be a JSON object.")
-        return cls(node_id=_node_id(payload.get("node_id")))
+        try:
+            wait_seconds = float(payload.get("wait_seconds", 0.0) or 0.0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("wait_seconds must be numeric.") from exc
+        return cls(
+            node_id=_node_id(payload.get("node_id")),
+            wait_seconds=max(0.0, min(25.0, wait_seconds)),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

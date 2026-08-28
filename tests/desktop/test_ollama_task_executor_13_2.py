@@ -40,8 +40,8 @@ class FakeOllamaProvider:
     calls = []
     base_url = "http://127.0.0.1:11434"
 
-    def __init__(self):
-        self.model = "qwen3:4b"
+    def __init__(self, model=None):
+        self.model = model or "qwen3:4b"
 
     def is_available(self):
         return True
@@ -75,6 +75,7 @@ def _task():
                 {"role": "system", "content": "Stay grounded."},
                 {"role": "user", "content": "Say hello."},
             ],
+            "role": "general",
             "temperature": 0.55,
             "max_tokens": 96,
         },

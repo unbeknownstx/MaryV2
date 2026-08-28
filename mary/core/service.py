@@ -17,6 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, preview_capability_task
+from mary.llm.providers.device_ollama import DeviceOllamaProvider
 from mary.protocol.models import (
     CapabilityRouteRequest,
     CapabilityTaskDispatchRequest,
@@ -66,7 +67,25 @@ class MaryCoreService:
         self.started_monotonic = monotonic()
         self._turn_lock = RLock()
         self.device_tasks = DeviceTaskBroker()
+        self._device_ollama_provider: DeviceOllamaProvider | None = None
+        self._attach_device_ollama_provider()
         self._closed = False
+
+    def _attach_device_ollama_provider(self) -> None:
+        """Let remote Core treat a connected Ollama node as provider ``ollama``.
+
+        The router remains the single LLM policy owner. This adapter only makes
+        the already-existing Ollama route executable on a replaceable device
+        node when the cloud host itself has no Ollama server.
+        """
+
+        router = getattr(self.mary, "llm", None)
+        registry = getattr(self.mary, "node_registry", None)
+        register = getattr(router, "register_provider", None)
+        if registry is None or not callable(register):
+            return
+        self._device_ollama_provider = DeviceOllamaProvider(registry, self.device_tasks)
+        register("ollama", self._device_ollama_provider)
 
     def process_turn(self, request: TurnRequest | dict[str, Any]) -> TurnResponse:
         if self._closed:
@@ -246,13 +265,12 @@ class MaryCoreService:
             trusted=True,
             execution_policy="authorization_required",
         )
-        with self._turn_lock:
-            registered = self.mary.node_registry.register(descriptor)
-            return _json_safe({
-                "ok": True,
-                "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
-                "registry": self.mary.node_registry.snapshot(),
-            })
+        registered = self.mary.node_registry.register(descriptor)
+        return _json_safe({
+            "ok": True,
+            "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
+            "registry": self.mary.node_registry.snapshot(),
+        })
 
     def heartbeat_node(
         self,
@@ -265,14 +283,13 @@ class MaryCoreService:
             if isinstance(request, NodeHeartbeatRequest)
             else NodeHeartbeatRequest.from_dict(request)
         )
-        with self._turn_lock:
-            if not self.mary.node_registry.heartbeat(model.node_id):
-                raise KeyError(f"Unknown capability node: {model.node_id}")
-            node = self.mary.node_registry.get(model.node_id)
-            return _json_safe({
-                "ok": True,
-                "node": node.to_dict(stale_after=self.mary.node_registry.stale_after) if node else {},
-            })
+        if not self.mary.node_registry.heartbeat(model.node_id):
+            raise KeyError(f"Unknown capability node: {model.node_id}")
+        node = self.mary.node_registry.get(model.node_id)
+        return _json_safe({
+            "ok": True,
+            "node": node.to_dict(stale_after=self.mary.node_registry.stale_after) if node else {},
+        })
 
     def disconnect_node(
         self,
@@ -285,13 +302,12 @@ class MaryCoreService:
             if isinstance(request, NodeHeartbeatRequest)
             else NodeHeartbeatRequest.from_dict(request)
         )
-        with self._turn_lock:
-            changed = self.mary.node_registry.disconnect(model.node_id)
-            return _json_safe({
-                "ok": changed,
-                "node_id": model.node_id,
-                "connected": False,
-            })
+        changed = self.mary.node_registry.disconnect(model.node_id)
+        return _json_safe({
+            "ok": changed,
+            "node_id": model.node_id,
+            "connected": False,
+        })
 
     def route_capability(
         self,
@@ -302,14 +318,13 @@ class MaryCoreService:
             if isinstance(request, CapabilityRouteRequest)
             else CapabilityRouteRequest.from_dict(request)
         )
-        with self._turn_lock:
-            return _json_safe(
-                self.mary.node_registry.route_preview(
-                    model.capability,
-                    prefer_private=model.prefer_private,
-                    prefer_local=model.prefer_local,
-                )
+        return _json_safe(
+            self.mary.node_registry.route_preview(
+                model.capability,
+                prefer_private=model.prefer_private,
+                prefer_local=model.prefer_local,
             )
+        )
 
     def preview_capability_task(
         self,
@@ -322,22 +337,21 @@ class MaryCoreService:
             if isinstance(request, CapabilityTaskPreviewRequest)
             else CapabilityTaskPreviewRequest.from_dict(request)
         )
-        with self._turn_lock:
-            plan = preview_capability_task(
-                self.mary.node_registry,
-                capability=model.capability,
-                intent=model.intent,
-                requester_device_id=model.device_id,
-            )
-            return _json_safe({
-                "ok": True,
-                "plan": plan.to_dict(),
-                "execution": {
-                    "authorized": False,
-                    "endpoint": None,
-                    "policy": "preview only; no device task was executed",
-                },
-            })
+        plan = preview_capability_task(
+            self.mary.node_registry,
+            capability=model.capability,
+            intent=model.intent,
+            requester_device_id=model.device_id,
+        )
+        return _json_safe({
+            "ok": True,
+            "plan": plan.to_dict(),
+            "execution": {
+                "authorized": False,
+                "endpoint": None,
+                "policy": "preview only; no device task was executed",
+            },
+        })
 
     def dispatch_capability_task(
         self,
@@ -357,23 +371,22 @@ class MaryCoreService:
             if isinstance(request, CapabilityTaskDispatchRequest)
             else CapabilityTaskDispatchRequest.from_dict(request)
         )
-        with self._turn_lock:
-            task = self.device_tasks.enqueue(
-                self.mary.node_registry,
-                capability=model.capability,
-                intent=model.intent,
-                args=model.args,
-                requester_device_id=model.device_id,
-            )
-            return _json_safe({
-                "ok": True,
-                "task": task.to_dict(),
-                "execution": {
-                    "authorized_by_core": False,
-                    "device_permission_required": True,
-                    "policy": "typed task queued; selected device controls local execution permission",
-                },
-            })
+        task = self.device_tasks.enqueue(
+            self.mary.node_registry,
+            capability=model.capability,
+            intent=model.intent,
+            args=model.args,
+            requester_device_id=model.device_id,
+        )
+        return _json_safe({
+            "ok": True,
+            "task": task.to_dict(),
+            "execution": {
+                "authorized_by_core": False,
+                "device_permission_required": True,
+                "policy": "typed task queued; selected device controls local execution permission",
+            },
+        })
 
     def poll_capability_task(
         self,
@@ -384,15 +397,17 @@ class MaryCoreService:
             if isinstance(request, NodeTaskPollRequest)
             else NodeTaskPollRequest.from_dict(request)
         )
-        with self._turn_lock:
-            node = self.mary.node_registry.get(model.node_id)
-            if node is None:
-                raise KeyError(f"Unknown capability node: {model.node_id}")
-            task = self.device_tasks.poll(model.node_id)
-            return _json_safe({
-                "ok": True,
-                "task": task.to_dict() if task is not None else None,
-            })
+        node = self.mary.node_registry.get(model.node_id)
+        if node is None:
+            raise KeyError(f"Unknown capability node: {model.node_id}")
+        task = self.device_tasks.poll(
+            model.node_id,
+            wait_seconds=model.wait_seconds,
+        )
+        return _json_safe({
+            "ok": True,
+            "task": task.to_dict() if task is not None else None,
+        })
 
     def complete_capability_task(
         self,
@@ -403,22 +418,20 @@ class MaryCoreService:
             if isinstance(request, NodeTaskCompletionRequest)
             else NodeTaskCompletionRequest.from_dict(request)
         )
-        with self._turn_lock:
-            task = self.device_tasks.complete(
-                node_id=model.node_id,
-                task_id=model.task_id,
-                status=model.status,
-                result=model.result,
-                error=model.error,
-            )
-            return _json_safe({"ok": True, "task": task.to_dict()})
+        task = self.device_tasks.complete(
+            node_id=model.node_id,
+            task_id=model.task_id,
+            status=model.status,
+            result=model.result,
+            error=model.error,
+        )
+        return _json_safe({"ok": True, "task": task.to_dict()})
 
     def capability_task_status(self, task_id: str) -> dict[str, Any]:
-        with self._turn_lock:
-            task = self.device_tasks.get(task_id)
-            if task is None:
-                raise KeyError(f"Unknown capability task: {task_id}")
-            return _json_safe({"ok": True, "task": task.to_dict()})
+        task = self.device_tasks.get(task_id)
+        if task is None:
+            raise KeyError(f"Unknown capability task: {task_id}")
+        return _json_safe({"ok": True, "task": task.to_dict()})
 
     def workspace_status(self) -> dict[str, Any]:
         """Return the canonical remote-safe Mary workspace snapshot."""

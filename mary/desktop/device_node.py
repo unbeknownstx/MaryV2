@@ -21,6 +21,28 @@ from mary.llm.providers.ollama import OllamaProvider
 from mary.runtime.gateway import RemoteMaryGateway
 
 
+def _ollama_model_for_role(role: str) -> str:
+    """Resolve a concrete local model from a bounded role name.
+
+    Core may request a role, never an arbitrary model ID. The device owns the
+    role-to-model mapping so hardware upgrades do not require a Core rewrite.
+    """
+
+    general = os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b").strip() or "qwen3:4b"
+    # Preserve Mary's existing local-role contract: the conversation override
+    # is the latency-sensitive model used by conversation_fast/social lanes.
+    # Engaged/deep conversation keeps the richer general model.
+    conversation = general
+    fast = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip() or general
+    utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip() or fast
+    return {
+        "general": general,
+        "conversation": conversation,
+        "fast": fast,
+        "utility": utility,
+    }.get(str(role or "general").strip().lower(), general)
+
+
 def _ollama_capability() -> CapabilityDescriptor | None:
     """Probe the same Ollama endpoint/model configuration used for execution."""
 
@@ -48,6 +70,10 @@ def _ollama_capability() -> CapabilityDescriptor | None:
         metadata={
             "model_count": len(models),
             "configured_model": provider.model_name(),
+            "general_model": _ollama_model_for_role("general"),
+            "conversation_model": _ollama_model_for_role("conversation"),
+            "fast_model": _ollama_model_for_role("fast"),
+            "utility_model": _ollama_model_for_role("utility"),
         },
     )
 
@@ -117,14 +143,16 @@ class DesktopCapabilityNodeAgent:
         application: Any,
         bridge: Any,
         heartbeat_seconds: float = 30.0,
-        task_poll_seconds: float = 2.0,
+        task_poll_seconds: float = 0.0,
+        task_wait_seconds: float = 20.0,
         permissions: DeviceExecutionPermissions | None = None,
     ) -> None:
         self.gateway = gateway
         self.application = application
         self.bridge = bridge
         self.heartbeat_seconds = max(10.0, float(heartbeat_seconds))
-        self.task_poll_seconds = max(0.75, float(task_poll_seconds))
+        self.task_poll_seconds = max(0.0, float(task_poll_seconds))
+        self.task_wait_seconds = max(1.0, min(25.0, float(task_wait_seconds)))
         self.permissions = permissions or DeviceExecutionPermissions()
         self.display_name = (
             os.getenv("MARY_NODE_NAME", "").strip()
@@ -201,6 +229,8 @@ class DesktopCapabilityNodeAgent:
             "registered": self._registered,
             "heartbeat_seconds": self.heartbeat_seconds,
             "task_poll_seconds": self.task_poll_seconds,
+            "task_wait_seconds": self.task_wait_seconds,
+            "task_delivery": "long_poll",
             "capabilities": [item.to_dict() for item in self._capabilities],
             "allowed_execution_capabilities": sorted(self.permissions.allowed()),
             "execution_authorized": False,
@@ -209,8 +239,9 @@ class DesktopCapabilityNodeAgent:
             "last_error": self._last_error,
         }
 
-    def poll_once(self) -> dict[str, Any]:
-        payload = self.gateway.poll_capability_task()
+    def poll_once(self, *, wait_seconds: float | None = None) -> dict[str, Any]:
+        wait = self.task_wait_seconds if wait_seconds is None else max(0.0, float(wait_seconds))
+        payload = self.gateway.poll_capability_task(wait_seconds=wait)
         task = payload.get("task")
         if not isinstance(task, dict):
             return {"ok": True, "task": None}
@@ -270,7 +301,10 @@ class DesktopCapabilityNodeAgent:
         if not raw_messages:
             raise ValueError("llm.ollama task requires messages.")
 
-        provider = OllamaProvider()
+        role = str(args.get("role") or "general").strip().lower()
+        if role not in {"general", "conversation", "fast", "utility"}:
+            raise ValueError("Unsupported llm.ollama model role.")
+        provider = OllamaProvider(model=_ollama_model_for_role(role))
         if not provider.is_available():
             raise RuntimeError("Configured Ollama provider is unavailable on this device.")
 
@@ -343,7 +377,7 @@ class DesktopCapabilityNodeAgent:
             self._last_error = f"{type(exc).__name__}: {exc}"
 
         last_heartbeat = monotonic()
-        while not self._stop.wait(self.task_poll_seconds):
+        while not self._stop.is_set():
             now = monotonic()
             if now - last_heartbeat >= self.heartbeat_seconds:
                 try:
@@ -352,7 +386,9 @@ class DesktopCapabilityNodeAgent:
                     self._last_error = f"{type(exc).__name__}: {exc}"
                 last_heartbeat = now
             try:
-                self.poll_once()
+                # Keep one authenticated request parked at Core. Enqueue wakes
+                # this request immediately, avoiding the old 0–2 second poll gap.
+                self.poll_once(wait_seconds=self.task_wait_seconds)
             except Exception as exc:
                 self._last_error = f"{type(exc).__name__}: {exc}"
                 # A restarted Core may have forgotten node registration. Recover
@@ -362,3 +398,5 @@ class DesktopCapabilityNodeAgent:
                     last_heartbeat = monotonic()
                 except Exception:
                     pass
+            if self.task_poll_seconds > 0.0 and self._stop.wait(self.task_poll_seconds):
+                break

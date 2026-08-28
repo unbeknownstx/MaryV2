@@ -89,6 +89,7 @@ def test_broker_sanitizes_bounded_ollama_chat_task():
             {"role": "system", "content": "Stay grounded."},
             {"role": "user", "content": "Hello Mary"},
         ],
+        "role": "general",
         "temperature": 1.5,
         "max_tokens": 2048,
     }

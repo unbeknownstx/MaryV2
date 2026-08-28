@@ -120,9 +120,18 @@ class MaryClient:
         })
         return self._request("POST", "/v1/nodes/task/dispatch", model.to_dict(), timeout=min(self.timeout, 5.0))
 
-    def poll_capability_task(self) -> dict[str, Any]:
-        model = NodeTaskPollRequest.from_dict({"node_id": self.device_id})
-        return self._request("POST", "/v1/nodes/task/poll", model.to_dict(), timeout=min(self.timeout, 3.0))
+    def poll_capability_task(self, *, wait_seconds: float = 0.0) -> dict[str, Any]:
+        model = NodeTaskPollRequest.from_dict({
+            "node_id": self.device_id,
+            "wait_seconds": wait_seconds,
+        })
+        request_timeout = max(3.0, float(model.wait_seconds) + 5.0)
+        return self._request(
+            "POST",
+            "/v1/nodes/task/poll",
+            model.to_dict(),
+            timeout=min(max(self.timeout, request_timeout), 35.0),
+        )
 
     def complete_capability_task(
         self,
