@@ -58,7 +58,8 @@ def test_focus_idle_path_and_chrome_are_quiet():
     assert "focus_active=focus_active" in bridge
     assert '{"animation"} if focus_active else None' in manager
     assert 'data-focus="active"' in css
-    assert "!r.focus_quiet" in js
+    assert "focus_quiet" in js
+    assert "applyIdleAction" in js
 
 
 def test_home_renderer_is_read_only_and_cross_workspace():

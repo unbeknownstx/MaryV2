@@ -672,3 +672,36 @@ button, [role="button"], a, .nav-item, .game-card, .project-file, .action-button
 .avatar-stage::after { content:""; position:absolute; width:min(38vw,420px); aspect-ratio:1; left:50%; bottom:-21%; transform:translateX(-50%); background:url('/assets/ui/presence-orb.svg') center/contain no-repeat; opacity:.26; filter:blur(.2px); pointer-events:none; animation:presence-orbit 12s linear infinite; }
 @keyframes presence-orbit { 50% { transform:translateX(-50%) rotate(180deg) scale(1.035); opacity:.36; } to { transform:translateX(-50%) rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .app-shell::after, .avatar-stage::after { animation:none; } }
+
+/* Explicit opt-in Mary training feedback; presentation only. */
+.message-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .45rem;
+  margin-top: .3rem;
+  opacity: .58;
+  font-size: .62rem;
+  letter-spacing: .08em;
+}
+.message-feedback:hover { opacity: .92; }
+.message-feedback button {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.035);
+  color: inherit;
+  cursor: pointer;
+}
+.message-feedback button:hover { transform: translateY(-1px); }
+
+
+/* Full-spectrum realtime body-state projection. The renderer still owns the
+   actual Mary performance; these stage cues make turn-taking legible even
+   before speech audio is ready. */
+#main-stage[data-interaction-state="listening"]::after{animation-duration:2.4s;opacity:.74;filter:saturate(1.08)}
+#main-stage[data-interaction-state="transcribing"]::after{animation-duration:1.8s;opacity:.62}
+#main-stage[data-interaction-state="thinking"]::after,#main-stage[data-interaction-state="responding"]::after{animation-duration:1.2s;opacity:.82}
+#main-stage[data-interaction-state="speaking"]::after{animation-duration:2.1s;opacity:.76}
+#main-stage[data-interaction-state="interrupted"]::after{animation-duration:.72s;opacity:.88}

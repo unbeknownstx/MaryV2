@@ -40,4 +40,14 @@ class InitiativeEngine:
         elif event.event_type==PresenceEventType.VISUAL_OBSERVATION: action=InitiativeAction.OPINE
         elif event.event_type in {PresenceEventType.PROJECT_CHANGED,PresenceEventType.CREATIVE_CHANGED,PresenceEventType.COMMAND_CHANGED,PresenceEventType.STUDY_CHANGED}: action=InitiativeAction.HELP
         return InitiativeDecision(action,round(score,3),"salient live-context event",True)
-    def mark_spoken(self): self._last_spoke_at=monotonic()
+    def mark_spoken(self):
+        self._last_spoke_at=monotonic()
+
+    def seconds_since_spoken(self) -> float | None:
+        if self._last_spoke_at <= 0.0:
+            return None
+        return max(0.0, monotonic() - self._last_spoke_at)
+
+    def cooldown_ready(self) -> bool:
+        elapsed = self.seconds_since_spoken()
+        return elapsed is None or elapsed >= self.min_speak_interval

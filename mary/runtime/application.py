@@ -1392,6 +1392,18 @@ class MaryApplication:
                 False,
             )
         )
+        initiated_by = str(meta.get("initiated_by") or "creator").strip().lower()
+        input_authority = str(meta.get("input_authority") or "creator").strip().lower()
+        initiative_turn = bool(
+            initiated_by in {"mary_presence", "mary_initiative", "presence"}
+            or input_authority in {"environment_context_only", "context_only"}
+        )
+
+        if not initiative_turn:
+            try:
+                self.ecosystem.presence.note_creator_activity()
+            except Exception:
+                pass
 
         # Carry effective transport facts into the pipeline even for direct
         # local calls. MaryStage reduces this to an allow-listed envelope.
@@ -1419,12 +1431,19 @@ class MaryApplication:
         interaction = None
 
         try:
-            interaction = self.mary.realtime.begin_turn(
-                input_text,
-                surface=surface,
-                transport=transport,
-                voice=voice,
-            )
+            if initiative_turn:
+                interaction = self.mary.realtime.begin_initiative(
+                    input_text,
+                    surface=surface,
+                    transport=transport,
+                )
+            else:
+                interaction = self.mary.realtime.begin_turn(
+                    input_text,
+                    surface=surface,
+                    transport=transport,
+                    voice=voice,
+                )
         except Exception:
             interaction = None
 
@@ -1502,7 +1521,7 @@ class MaryApplication:
                 "success",
                 False,
             )
-        ):
+        ) and not initiative_turn:
             self._cycle_autonomy(
                 result=result,
                 input_text=input_text,
@@ -1513,6 +1532,165 @@ class MaryApplication:
             )
 
         return result
+
+    def presence_pulse(
+        self,
+        *,
+        surface: str = "client",
+        conversation_id: str = "creator-primary",
+        device_id: str = "unknown-device",
+        surface_visible: bool = True,
+        focus_active: bool | None = None,
+    ) -> dict[str, Any]:
+        """Run one canonical Presence arbitration cycle.
+
+        The same method serves local desktop, mobile, and remote Mary Core.
+        Most calls return ``spoke=False`` without invoking cognition or an LLM.
+        A grounded environmental event or an already-represented Mary curiosity
+        may produce one initiative turn after realtime/focus/cooldown gates.
+        """
+
+        presence = self.ecosystem.presence
+        realtime = self.mary.realtime.status()
+        phase = str(realtime.get("phase") or "idle").strip().lower()
+
+        if focus_active is None:
+            try:
+                focus_active = bool(self.ecosystem.focus.snapshot().get("active", False))
+            except Exception:
+                focus_active = False
+
+        performance_context = self.mary.performance_context.status()
+        try:
+            initiative_gain = float(performance_context.get("initiative_gain", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            initiative_gain = 1.0
+
+        claim = presence.claim_initiative(
+            focus_active=bool(focus_active),
+            realtime_phase=phase,
+            surface_visible=bool(surface_visible),
+            initiative_gain=initiative_gain,
+        )
+
+        candidate = dict(claim.get("candidate") or {})
+        initiative_kind = "presence_event"
+        authority = "environment_context_only"
+        prompt = " ".join(str(candidate.get("summary") or "").split()).strip()
+        event_id = str(candidate.get("id") or "")[:160]
+        event_type = str(candidate.get("event_type") or "")[:80]
+        event_source = str(candidate.get("source") or "")[:80]
+        candidate_metadata = dict(candidate.get("metadata") or {})
+        action = str(candidate_metadata.get("initiative_action") or "react").strip().lower()[:48]
+
+        # If no environmental event is currently worth speaking about, Mary may
+        # surface one *already represented* relationship curiosity after a long
+        # quiet interval.  This is not a generated private thought and it never
+        # becomes creator-authored evidence merely because Presence voiced it.
+        if not prompt and presence.represented_curiosity_ready(
+            surface_visible=bool(surface_visible),
+            focus_active=bool(focus_active),
+            realtime_phase=phase,
+            performance_mode=str(performance_context.get("mode") or "private"),
+        ):
+            try:
+                gaps = list(self.mary.relationship_curiosity.unresolved_gaps())
+            except Exception:
+                gaps = []
+            if gaps:
+                gap = dict(gaps[0])
+                question = str(gap.get("question") or gap.get("description") or "").strip()
+                if question:
+                    initiative_kind = "represented_curiosity"
+                    authority = "mary_internal_context"
+                    prompt = question[:700]
+                    event_type = "represented_curiosity"
+                    event_source = "relationship_curiosity"
+                    action = "question"
+
+        if not prompt:
+            return {
+                "ok": True,
+                "speak": False,
+                "spoke": False,
+                "reason": str(claim.get("reason") or "silence"),
+                "candidate": candidate or None,
+                "initiative_kind": None,
+                "realtime": realtime,
+                "performance_context": performance_context,
+                "presence": presence.snapshot(),
+                "pipeline_result": None,
+                "llm_calls": 0,
+            }
+
+        try:
+            result = self.run(
+                prompt,
+                metadata={
+                    "surface": str(surface or "client")[:64],
+                    "transport": "presence_pulse",
+                    "conversation_id": str(conversation_id or "creator-primary")[:160],
+                    "device_id": str(device_id or "unknown-device")[:160],
+                    "voice_input": False,
+                    "initiated_by": "mary_presence",
+                    "input_authority": authority,
+                    "presence_event_id": event_id,
+                    "presence_type": event_type,
+                    "presence_source": event_source,
+                    "presence_action": action,
+                    "initiative_kind": initiative_kind,
+                },
+            )
+        except Exception:
+            if candidate:
+                try:
+                    presence.requeue_initiative(candidate)
+                except Exception:
+                    pass
+            raise
+
+        if not bool(getattr(result, "success", False)):
+            if candidate:
+                try:
+                    presence.requeue_initiative(candidate)
+                except Exception:
+                    pass
+            return {
+                "ok": False,
+                "speak": False,
+                "spoke": False,
+                "reason": str(getattr(result, "error", None) or "presence_pipeline_failed"),
+                "candidate": candidate or None,
+                "initiative_kind": initiative_kind,
+                "realtime": self.mary.realtime.status(),
+                "performance_context": performance_context,
+                "presence": presence.snapshot(),
+                "pipeline_result": result,
+            }
+
+        presence.mark_spoken(event_id=event_id or None)
+        if initiative_kind == "represented_curiosity":
+            presence.mark_curiosity_offered()
+
+        return {
+            "ok": True,
+            "speak": True,
+            "spoke": True,
+            "reason": str(claim.get("reason") or initiative_kind),
+            "candidate": candidate or None,
+            "initiative_kind": initiative_kind,
+            "presence_action": action,
+            "authority": authority,
+            "presence_event_id": event_id or None,
+            "presence_context": prompt[:1000],
+            "text": str(getattr(result, "output", "") or ""),
+            "response": str(getattr(result, "output", "") or ""),
+            "turn_id": str(getattr(result, "turn_id", "") or ""),
+            "realtime": self.mary.realtime.status(),
+            "performance_context": performance_context,
+            "presence": presence.snapshot(),
+            "pipeline_result": result,
+        }
 
     def save(self) -> bool:
         """Persist Mary's durable memory and explicitly developed self-state."""

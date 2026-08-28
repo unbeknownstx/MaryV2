@@ -1,0 +1,401 @@
+{
+  "release": "MaryV2 13.2 Stage 13 Full-Spectrum Convergence",
+  "baseline": "confirmed Stage 10 checkout",
+  "source_only": true,
+  "data_included": false,
+  "delete_operations": [],
+  "file_count_without_manifest": 96,
+  "files": [
+    {
+      "path": "STAGE11_CHARACTER_REALIZATION.md",
+      "sha256": "747b29b36f9172833d47d7329d019ec69ebaf48fa2b18f99485b4ddf557c5945"
+    },
+    {
+      "path": "STAGE13_FULL_SPECTRUM_CONVERGENCE.md",
+      "sha256": "7589ca4d8f1d1797144c32e79536f75fbe883488f6ec1573477007795b0a735b"
+    },
+    {
+      "path": "STAGE8_README.txt",
+      "sha256": "e2ed06d771fa613adcb3ce501e468b07f47ee05f14647e8b12133984e138292d"
+    },
+    {
+      "path": "desktop/src/main.js",
+      "sha256": "3723e3511c5e2128d036ef722c4acf435bfc06540e8f530cb72fa5bc46a093e0"
+    },
+    {
+      "path": "desktop/src/runtime/httpBridge.js",
+      "sha256": "b3a938e6e7a23fd1222c81e3ee531e89e78a62f2d1806e9f3afd1da814e4c2e3"
+    },
+    {
+      "path": "desktop/src/style.css",
+      "sha256": "2999ab84ab75d6b1c31bdf3f4029ab93530c32233b334d15de84f8add8e4a9c0"
+    },
+    {
+      "path": "mary/cognition/continuity.py",
+      "sha256": "7f851f7621f94a76d829b77772747504fb8b3a54681ec4780d8afa78a8f4aaca"
+    },
+    {
+      "path": "mary/cognition/mind_state.py",
+      "sha256": "f59489fccdf65abc34e4dee1676030bb1ae6b44f02dad37184d44c1c98fb8640"
+    },
+    {
+      "path": "mary/cognition/orchestrator.py",
+      "sha256": "a6f784e91bbec07779cd796b6d9a69f2a45b3deae38017ef15c215f609e7f6ca"
+    },
+    {
+      "path": "mary/cognition/reasoning.py",
+      "sha256": "6c542dd0222e38fd6c3be2c9a8fd2f4331bc009d74784d8ef34380ddafb61b49"
+    },
+    {
+      "path": "mary/cognition/reflection.py",
+      "sha256": "7c5a97ff75faefe737f1fa91081e5fca9b3b623f3fedeafab951026e7ac7c34f"
+    },
+    {
+      "path": "mary/cognition/self_introspection.py",
+      "sha256": "585002e44260ed764d9890b9ce03e928a32e04dff72bc67e425f2359abe5ec2d"
+    },
+    {
+      "path": "mary/core/mary.py",
+      "sha256": "6bf840d997d6ed76f9c35e4192ea142ad57eb8325fc68cb37e40837145af711f"
+    },
+    {
+      "path": "mary/core/service.py",
+      "sha256": "0481e299a94000850a5e7db2c9e8dda6010ea960f3e6cd49310a41db5f9e323f"
+    },
+    {
+      "path": "mary/desktop/bridge.py",
+      "sha256": "fea0bde798bb0316d9559ade473830858e30f3e6199cd8cffcbef38c199f9891"
+    },
+    {
+      "path": "mary/desktop/dashboard.py",
+      "sha256": "2f47c53b901baaacc8f3f88fc8a06587dfb4d68643d6fd91f65d7ac1d4a17897"
+    },
+    {
+      "path": "mary/desktop/device_node.py",
+      "sha256": "1c90a9f84cb5e1889dd099868e358232dedd61d6cc969887c17f3e9c3b0cd11f"
+    },
+    {
+      "path": "mary/desktop/remote_application.py",
+      "sha256": "6c52beb4623abb8eaa685e14e1455e09214d8ddf5ce060da450e5c1613554a42"
+    },
+    {
+      "path": "mary/desktop/voice.py",
+      "sha256": "2746780f82324b0ef5f458d29caef95a63f12df827d7015afe571a89e7d5971c"
+    },
+    {
+      "path": "mary/development/growth.py",
+      "sha256": "4cc1e7d3c920c6c02e5fc761c6a49ec468f9ef99ca39305b17499a5f077c8fe8"
+    },
+    {
+      "path": "mary/distributed/permissions.py",
+      "sha256": "6adf45e6ab0d80d3d1cea2190d60e873e73d47a0d30631ede1fdbdfcef7f84ca"
+    },
+    {
+      "path": "mary/distributed/tasks.py",
+      "sha256": "e1c29d71ad0b33e7ce68508c6eb6231c61b6112d5c246cccdacac1717ebfc97e"
+    },
+    {
+      "path": "mary/expression/__init__.py",
+      "sha256": "029e2345de813238202273b44ddb17e3f938e9feca3714547dd5776cacb1e6fa"
+    },
+    {
+      "path": "mary/expression/context.py",
+      "sha256": "7bdb75e1909dddeb7607654e7c818d6c11ed8b15880d2d7730aa308388a75b01"
+    },
+    {
+      "path": "mary/expression/delivery_plan.py",
+      "sha256": "ddc19d2e4df7ff588807fad918e5edb7f1fa8a8c79c723c62df5bc7791fe87dc"
+    },
+    {
+      "path": "mary/expression/dialogue.py",
+      "sha256": "85315903749634135a7aeec8c5a8ae975329b9f16accbfa521d5ec45274aa2d6"
+    },
+    {
+      "path": "mary/expression/dialogue_plan.py",
+      "sha256": "bc150ef32116e861ab39cd1dbb59f850c6e64f70508fc87b345488589e63d357"
+    },
+    {
+      "path": "mary/expression/director.py",
+      "sha256": "b845914cb6c64dfbbbd6c8c261610ec0015c210efe3ddd7589ebcb9fa98b5532"
+    },
+    {
+      "path": "mary/expression/performance_packet.py",
+      "sha256": "0d3af22e227e6242d6856beb8f34200df9e551135424fdff58d34d1414b38e9e"
+    },
+    {
+      "path": "mary/llm/output_quality.py",
+      "sha256": "d47a7a7a76193628d9e11a45da445ab61b6ad2cfd4bbfefccfdd970b304db165"
+    },
+    {
+      "path": "mary/llm/providers/device_ollama.py",
+      "sha256": "f17083271cf3ae84820079e05e67a29f9a2b0cf25e760e38ce39f0d1c3f4c43d"
+    },
+    {
+      "path": "mary/llm/router.py",
+      "sha256": "a1e68e110f5290ff83e8132f54334b49f26208cdd7553db23d61f73b97a5def8"
+    },
+    {
+      "path": "mary/mind/dialogue_policy.py",
+      "sha256": "3fb7f5acdc896e6a2f4a5b45fc93c6f548f5b56877472302a3be81ba4ecdc5ec"
+    },
+    {
+      "path": "mary/mind/local_authority_confirmation.py",
+      "sha256": "786b4eaff88405354bad0222c0f545800b8ef0d40ef84b3b8b50030ef7adfa0e"
+    },
+    {
+      "path": "mary/mind/local_composer_v2.py",
+      "sha256": "e2179da673a3c915bf81f18a09bf4e6722672890ba38d16436aa0ada330ed0ae"
+    },
+    {
+      "path": "mary/mind/local_response_projector.py",
+      "sha256": "b8391c68ee8bee1040a8b86996d2b55545f14e227e23d9b38337faf14799daa1"
+    },
+    {
+      "path": "mary/mobile/server.py",
+      "sha256": "9f92466f91d7ef1393c177fe8cca9c5889db4584ce56d23688cfabc6a9924949"
+    },
+    {
+      "path": "mary/mobile/voice_lab.py",
+      "sha256": "60c4196cc692321c9631f4bcebe56fc6516e90ff3fd714fc04e4fc6a9f9862c6"
+    },
+    {
+      "path": "mary/personality/character_core.py",
+      "sha256": "71abc657bfd7893ee4da8573b7a0ec23da15a9dd5dfe36d6acadf2a747f027da"
+    },
+    {
+      "path": "mary/personality/voice_exemplars.py",
+      "sha256": "9bc2320416db9ed4865a209e993a16c1be8090f352ef4ef61d925e050f03a666"
+    },
+    {
+      "path": "mary/presence/initiative.py",
+      "sha256": "8322fd98d97bf4397f2fce176b52e7fe8b5a7d18160b50f3b0a06510b54400db"
+    },
+    {
+      "path": "mary/presence/manager.py",
+      "sha256": "758cccd1b87261894aa65cc53412d334569fb499d59263b69a39f64d67b69a15"
+    },
+    {
+      "path": "mary/protocol/client.py",
+      "sha256": "6d5466f4ae127f623a23d32ebd8fb817f1ee15698a5b57c1a0451bd1d2e4957b"
+    },
+    {
+      "path": "mary/protocol/models.py",
+      "sha256": "baed15ee3dbf1fecbb08a2dad41cdf7b1deb413eab9d75448046d5a6fc8e5f48"
+    },
+    {
+      "path": "mary/realtime/interaction.py",
+      "sha256": "b9952adca8715dd05b22b499c832272c77b612b3fe267d87e61ecc44eb310382"
+    },
+    {
+      "path": "mary/runtime/application.py",
+      "sha256": "8bb417e465645d0a597a3ec1601ec151747a64d3d841917a65f438dc7ef2b08b"
+    },
+    {
+      "path": "mary/runtime/gateway.py",
+      "sha256": "195bd1fc1e887cf959a295c2ebbbd35b84608680e0f05be84f6e770bfc5361c1"
+    },
+    {
+      "path": "mary/runtime/turn_envelope.py",
+      "sha256": "0aa4506adaed58ca306aa11f42f89b7bc655cf617204dccf9063c6b396d9f03e"
+    },
+    {
+      "path": "mary/training/__init__.py",
+      "sha256": "621ffb54203ba89d249de4d57f1d12e7b8959ad5418a7a73527a5b49937d77bf"
+    },
+    {
+      "path": "mary/training/exporter.py",
+      "sha256": "981d06a4a2dd8b76f42f9d85f78dec7911f981c72da8e24d2d84f4db20e1e89a"
+    },
+    {
+      "path": "mary/training/feedback.py",
+      "sha256": "fa3a656c1700c4bba79e11b94a273b3d8107ecd71d4869335ace5a20f5b42fe0"
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/app.js",
+      "sha256": "ba1709d4b96a32930bd032a4575171a05abb6d33cc16b4297ee683aa0e68a169"
+    },
+    {
+      "path": "mobile_native/MaryMobile/www/style.css",
+      "sha256": "213bcdc0cd0974344ff24c912e15acb34d9fff9f5d9802b0d15fe2bdf1898bf5"
+    },
+    {
+      "path": "mobile_web/app.js",
+      "sha256": "ba1709d4b96a32930bd032a4575171a05abb6d33cc16b4297ee683aa0e68a169"
+    },
+    {
+      "path": "mobile_web/style.css",
+      "sha256": "213bcdc0cd0974344ff24c912e15acb34d9fff9f5d9802b0d15fe2bdf1898bf5"
+    },
+    {
+      "path": "scripts/benchmark_core_llm_providers.py",
+      "sha256": "3be84d7f7a94e41333070e86a07c30938abab9eafd2ae5c259f1c3df131221ec"
+    },
+    {
+      "path": "scripts/benchmark_ollama_node_roles.py",
+      "sha256": "c1c8f5968023093e826b6cc88f6a6bb3cceee042cc07d39fd43ee01e66fb31b1"
+    },
+    {
+      "path": "scripts/check_local_model_roles.py",
+      "sha256": "153d48d836b6b159da1497dccd7fec64478338214436e91a2ae12cf2adbaf4a0"
+    },
+    {
+      "path": "scripts/check_ollama_node_roundtrip.py",
+      "sha256": "787d795af31b47b60bedf3b1ee159c09475961568c9ede1cd2fd1e8c61315ac7"
+    },
+    {
+      "path": "scripts/export_mary_training_dataset.py",
+      "sha256": "a9245d5c9da3d8a28fdb6e48843f065c4e01bf5505093bc6c7f74c8a0138ba32"
+    },
+    {
+      "path": "scripts/launch_windows_node.ps1",
+      "sha256": "e89dbbe32f0dfeb21af6af3ab5206b559864b391b7d9ae6d662ed8c075dacbad"
+    },
+    {
+      "path": "scripts/run_windows_node.py",
+      "sha256": "b66e74108543b305c5ceefadbcdfbc7dd65168dd84ec7918d609608f413975d7"
+    },
+    {
+      "path": "scripts/verify_self_introspection_install.py",
+      "sha256": "ab14c5b062b92a3842a2596443e9c31510c3b8acf3e5e1de9767eaafbcb6cdb5"
+    },
+    {
+      "path": "tests/cognition/test_character_core_introspection.py",
+      "sha256": "895260aaf3bdea6711f9efd7552fc6f39612e88369a2df33830434ef325baa99"
+    },
+    {
+      "path": "tests/cognition/test_character_realization_13_2.py",
+      "sha256": "d8df9fa69f9ff4871231746ddad36044e8097ae87f0f88e7fc36817908baf953"
+    },
+    {
+      "path": "tests/cognition/test_creator_directives.py",
+      "sha256": "c4e6d82ab4609a950b267ff6c98a280f04c5769fcff35113687b07234194aa77"
+    },
+    {
+      "path": "tests/cognition/test_self_introspection.py",
+      "sha256": "fb796dd00fc799f888d460ee136b02db3434f1386e361531a7a9de1beb4139d9"
+    },
+    {
+      "path": "tests/cognition/test_turn_mind_state.py",
+      "sha256": "008e9204b7785547ef8123a447f54d3f027f352260e56f14fa147c6e718f2ca5"
+    },
+    {
+      "path": "tests/core/test_production_hybrid_core_12_12_3.py",
+      "sha256": "f8f98352011b5ccdd52bbbecb07aa6df0c95525971592da023b8867aad01b7c6"
+    },
+    {
+      "path": "tests/desktop/test_game_shell_12_7.py",
+      "sha256": "c29e7bad793af51e73081783a432b72d6b23d85e7b098205680faa50c1fb43e9"
+    },
+    {
+      "path": "tests/desktop/test_headless_windows_node_13_2.py",
+      "sha256": "ecb1aeec28ade3c86d7198db3efffc327b1f03c6cbcd9f8ae66de82088b4ad00"
+    },
+    {
+      "path": "tests/desktop/test_ollama_task_executor_13_2.py",
+      "sha256": "0e570fc22633e0b846c9ee1cc34883340e2663b7dc017eeb71cc4e45a232a291"
+    },
+    {
+      "path": "tests/desktop/test_presence_presentation_12_10.py",
+      "sha256": "8af8f9930748661dd4325197df8c568aa3ce554fbcc5d5de46b4c12c9c330c99"
+    },
+    {
+      "path": "tests/development/test_mary_13_growth.py",
+      "sha256": "3f05f536ac72ea026e56d759e0733ae39dac1cee7f8db88a95292a506563ff63"
+    },
+    {
+      "path": "tests/distributed/test_device_long_poll_13_2.py",
+      "sha256": "8601219faafef05e76e17421c462ff413f6d1feabbc44d7644541dfe23982bee"
+    },
+    {
+      "path": "tests/distributed/test_device_permissions_13_2.py",
+      "sha256": "3342be1d0e69879e03486afb1aecdff4cc9c945c691c507fbf7dc8dec7e893fd"
+    },
+    {
+      "path": "tests/distributed/test_device_task_broker_13_2.py",
+      "sha256": "e2e2251f5d4d0cde620a0d41342e960a40560c899a9fb2ff204aff06a0ce19d0"
+    },
+    {
+      "path": "tests/expression/test_character_performer_13_2.py",
+      "sha256": "5a2790bccef576cc8cbcfb546b7b32678cc44a1f2e26c1c1213c79f533583cf9"
+    },
+    {
+      "path": "tests/integration/test_full_spectrum_convergence_13_2.py",
+      "sha256": "46eb12f0e94115fb3e4472271c9b5f9bce13fd0aeb3cfba928428d682b99fa86"
+    },
+    {
+      "path": "tests/integration/test_live_conversation_grounding_12_5_2.py",
+      "sha256": "f53477e5c6b4d9e2a2e9e9392c302e5f8ec82133d6cbf0c241f9b96f7e77a7cd"
+    },
+    {
+      "path": "tests/integration/test_long_session_hardening.py",
+      "sha256": "af0a6e62e21260b3835b619e5da9885f14ceb63941e8baeda5852051c8d5d51a"
+    },
+    {
+      "path": "tests/llm/test_device_ollama_provider_13_2.py",
+      "sha256": "d0b23bd831b474444f34e80354a7cb28a460ab68137d3310f9317fc3aeb858ed"
+    },
+    {
+      "path": "tests/llm/test_output_quality.py",
+      "sha256": "69da1a1fbf0f47be072c7284db84209db4eb043c062e9e459107c385eb6fce12"
+    },
+    {
+      "path": "tests/mind/test_local_dialogue_12_12.py",
+      "sha256": "79d00522c3d9b76a2aca1980a79d1c1da8fc86c796ee22d43a887df5b75956a9"
+    },
+    {
+      "path": "tests/mind/test_production_local_mind_v2.py",
+      "sha256": "19486c1870f3c50f8978f47a5184fba64ff28b129d7a6e848d94a31f033c0dcc"
+    },
+    {
+      "path": "tests/mobile/test_mobile_13_evolution.py",
+      "sha256": "9f7b74ef9812170546eefaf4569305a4d8b2516d18f0dad67ccc7b1a635dcb17"
+    },
+    {
+      "path": "tests/mobile/test_mobile_convergence_13_2.py",
+      "sha256": "eee3b6a5e2d7405083da802940b4462e16a4e587dbb7f5ea98834a337c9ba61b"
+    },
+    {
+      "path": "tests/personality/test_voice_exemplars_13_2.py",
+      "sha256": "82d9f726eb56f33e7c84bb8774d142848f44f700faf982da763bf8d7198e8695"
+    },
+    {
+      "path": "tests/protocol/test_core_service.py",
+      "sha256": "698630fb9ef6777658dccfd9e73bcb36f76383e47f28c5c652a6898d53c9b2e7"
+    },
+    {
+      "path": "tests/protocol/test_device_ollama_core_bridge_13_2.py",
+      "sha256": "e03be7e4acb6a3970ee0eb5bd8c17a83e1a0689a6e49a33da248923e9b8fe5e8"
+    },
+    {
+      "path": "tests/protocol/test_device_task_execution_contract_13_2.py",
+      "sha256": "be607cc7bbb3bfaa5add65d27c24124ac0ebd0558a345dfc6a92cb7d0469fbe8"
+    },
+    {
+      "path": "tests/protocol/test_models.py",
+      "sha256": "12c3f2881211eeedd44ec90a69d4308e69c094965229d8b53f054d2683070f89"
+    },
+    {
+      "path": "tests/protocol/test_runtime_actions_13_2.py",
+      "sha256": "9b967715404efec8619b199c4ae730ccefd8438b1c412d85d2fe799d7617755f"
+    },
+    {
+      "path": "tests/relationship/test_curiosity_development.py",
+      "sha256": "6ac214fc7aa64ffabe02ab730589fdefdcd9aa77c0b3b0995d7a07e5e1b945ab"
+    },
+    {
+      "path": "tests/training/test_training_dataset_13_2.py",
+      "sha256": "04824a2501d32c58f839ad087cabc2613bac1de0cb9960e46994bf96578dc4fb"
+    },
+    {
+      "path": "tests/voice/test_character_performance_delivery_13_2.py",
+      "sha256": "60ec50967b516e52901911e16b6f2412a383b28bcce593e51ba751e6008b1a97"
+    }
+  ],
+  "verification": {
+    "full_pytest": "1288 passed, 1 skipped, 0 failed",
+    "mobile_native_sync": "pass",
+    "javascript_syntax": "pass",
+    "python_compile": "pass",
+    "repository_data_hash": "unchanged"
+  }
+}

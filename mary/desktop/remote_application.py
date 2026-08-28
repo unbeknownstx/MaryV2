@@ -329,6 +329,28 @@ class _PresenceView:
                 "authority": "remote_core_compatibility_fallback",
             }
 
+    def pulse(
+        self,
+        *,
+        surface_visible: bool = True,
+        focus_active: bool | None = None,
+        conversation_id: str = "creator-primary",
+    ) -> dict[str, Any]:
+        """Ask canonical Core for at most one grounded Mary initiative.
+
+        This is deliberately a cheap poll: Core returns silence without a model
+        call unless Presence arbitration (or represented curiosity) clears.
+        """
+
+        values: dict[str, Any] = {
+            "surface": "desktop",
+            "surface_visible": bool(surface_visible),
+            "conversation_id": str(conversation_id or "creator-primary"),
+        }
+        if focus_active is not None:
+            values["focus_active"] = bool(focus_active)
+        return dict(self.gateway.runtime_action("presence.pulse", values) or {})
+
 
 class _RemoteEcosystemView:
     """Desktop compatibility surface over canonical workspace + local capabilities."""
@@ -434,6 +456,9 @@ class RemoteMaryApplicationView:
             reflection=reflection,
             metadata={
                 "delivery_plan": dict(hints.get("delivery_plan", {}) or {}),
+                "performance_packet": dict(hints.get("performance_packet", {}) or {}),
+                "performance_context": dict(hints.get("performance_context", {}) or {}),
+                "dialogue_plan": dict(hints.get("dialogue_plan", {}) or {}),
                 "timings": dict(hints.get("timings", {}) or {}),
             },
         )

@@ -257,8 +257,11 @@ class DialogueTurn:
         self,
     ) -> bool:
         return (
-            self.user_message is not None
-            and self.mary_response is not None
+            self.mary_response is not None
+            and (
+                self.user_message is not None
+                or bool(self.metadata.get("mary_initiated", False))
+            )
         )
 
     def complete(
@@ -896,6 +899,29 @@ class DialogueManager:
             message
         )
 
+        return turn
+
+    def begin_initiative_turn(
+        self,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> DialogueTurn:
+        """Begin an assistant-initiated turn without inventing a user message.
+
+        Presence/environment context may cause Mary to speak, but that context
+        must never be written into dialogue history as though the creator said
+        it.  The resulting Mary response is still normal session continuity.
+        """
+
+        if self.state.active_turn is not None and not self.state.active_turn.completed:
+            raise RuntimeError("A dialogue turn is already active.")
+        self.state.turn_number += 1
+        values = dict(metadata or {})
+        values["mary_initiated"] = True
+        values.setdefault("conversation_id", self.active_session_id)
+        turn = DialogueTurn(number=self.state.turn_number, metadata=values)
+        self.state.active_turn = turn
+        self.state.set_mode(DialogueMode.THINKING)
         return turn
 
     # ============================================================

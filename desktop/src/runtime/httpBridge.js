@@ -209,7 +209,7 @@ export async function createHttpBridge() {
     'getEcosystemState', 'getMindStatus', 'rebuildCognitiveReservoir',
     'getLastTurnTrace', 'getIntegrationState', 'getYouTubeStatus',
     'chooseSearchRoot', 'chooseMediaFile', 'chooseCreativeFile',
-    'getCreativeWorkspaceState', 'chooseCreativeWorkspace',
+    'getCreativeWorkspaceState', 'chooseCreativeWorkspace', 'getPerformanceContext',
   ];
   callbackMethods.forEach((method) => {
     bridge[method] = (callback) => bridgeCall(method, [], callback);
@@ -227,6 +227,35 @@ export async function createHttpBridge() {
   bridge.createResearchThread = (title, question, callback) => bridgeCall('createResearchThread', [title, question], callback);
   bridge.playArcade = (key, payload, unused, callback) => bridgeCall('playArcade', [key, payload, unused], callback);
   bridge.getIdleAction = (callback) => bridgeCall('getIdleAction', [], callback);
+  bridge.setPerformanceContext = (mode, callback) => bridgeCall('setPerformanceContext', [mode], callback);
+  bridge.pulsePresence = async () => {
+    if (speaking || document.hidden) return null;
+    try {
+      const result = await bridgeCallRaw('presencePulse', [true]);
+      if (!result?.speak && !result?.spoke) return result;
+      const text = String(result.text || result.response || '').trim();
+      if (!text) return result;
+      const hints = result.display_hints || {};
+      const packet = result.performance_packet || hints.performance_packet || {};
+      const payload = {
+        ...result,
+        text,
+        avatar: result.avatar || {},
+        voice: result.voice || { delivery_plan: hints.delivery_plan || {}, performance_packet: packet },
+        runtime: {
+          ...(result.runtime || {}),
+          initiative: true,
+          delivery_plan: hints.delivery_plan || result.runtime?.delivery_plan || {},
+          performance_packet: packet,
+        },
+      };
+      bridge.messageReady.emit(JSON.stringify(payload));
+      if (!speak(text)) state('idle', 'mobile_presence_complete');
+      return result;
+    } catch (_) {
+      return null;
+    }
+  };
   bridge.searchYouTube = (query, callback) => bridgeCall('searchYouTube', [query], callback);
   bridge.saveYouTubeToResearch = (title, url, callback) => bridgeCall('saveYouTubeToResearch', [title, url], callback);
   bridge.readCreativeTextFile = (path, callback) => bridgeCall('readCreativeTextFile', [path], callback);

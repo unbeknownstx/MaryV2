@@ -133,6 +133,18 @@ def desktop_capabilities(application: Any, bridge: Any) -> list[CapabilityDescri
     return items
 
 
+def headless_ollama_capabilities() -> list[CapabilityDescriptor]:
+    """Return the bounded capabilities exposed by the headless Windows node.
+
+    The headless node intentionally advertises only local Ollama. It does not
+    imply that Desktop UI, microphone, filesystem, personal-search, or creative
+    workspace capabilities are available while the GUI is closed.
+    """
+
+    ollama = _ollama_capability()
+    return [ollama] if ollama is not None else []
+
+
 class DesktopCapabilityNodeAgent:
     """Background registration, heartbeat, and bounded task polling."""
 
@@ -140,8 +152,11 @@ class DesktopCapabilityNodeAgent:
         self,
         gateway: RemoteMaryGateway,
         *,
-        application: Any,
-        bridge: Any,
+        application: Any | None = None,
+        bridge: Any | None = None,
+        capabilities: list[CapabilityDescriptor] | None = None,
+        host_type: str = "desktop",
+        surface: str = "desktop",
         heartbeat_seconds: float = 30.0,
         task_poll_seconds: float = 0.0,
         task_wait_seconds: float = 20.0,
@@ -150,6 +165,8 @@ class DesktopCapabilityNodeAgent:
         self.gateway = gateway
         self.application = application
         self.bridge = bridge
+        self.host_type = str(host_type or "desktop")[:80]
+        self.surface = str(surface or "desktop")[:80]
         self.heartbeat_seconds = max(10.0, float(heartbeat_seconds))
         self.task_poll_seconds = max(0.0, float(task_poll_seconds))
         self.task_wait_seconds = max(1.0, min(25.0, float(task_wait_seconds)))
@@ -165,7 +182,15 @@ class DesktopCapabilityNodeAgent:
             "windows": "windows",
             "linux": "linux",
         }.get(platform.system().strip().lower(), platform.system().strip().lower() or "unknown")
-        self._capabilities = desktop_capabilities(application, bridge)
+        if capabilities is None:
+            if application is None or bridge is None:
+                raise ValueError(
+                    "Desktop capability discovery requires application and bridge, "
+                    "or an explicit bounded capabilities list."
+                )
+            self._capabilities = desktop_capabilities(application, bridge)
+        else:
+            self._capabilities = list(capabilities)
         self._stop = Event()
         self._thread: Thread | None = None
         self._registered = False
@@ -175,9 +200,9 @@ class DesktopCapabilityNodeAgent:
     def registration_payload(self) -> dict[str, Any]:
         return {
             "display_name": self.display_name,
-            "host_type": "desktop",
+            "host_type": self.host_type,
             "platform": self.platform,
-            "surface": "desktop",
+            "surface": self.surface,
             "capabilities": [item.to_dict() for item in self._capabilities],
             "local": True,
         }
@@ -349,6 +374,8 @@ class DesktopCapabilityNodeAgent:
         if not query:
             raise ValueError("personal_search task requires query.")
         limit = max(1, min(12, int(args.get("limit", 8) or 8)))
+        if self.application is None:
+            raise RuntimeError("Headless node does not expose personal_search.")
         search = getattr(getattr(self.application, "ecosystem", None), "search", None)
         if search is None:
             raise RuntimeError("Desktop personal search is unavailable.")

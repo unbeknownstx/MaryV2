@@ -85,3 +85,28 @@ button.primary,button.ghost,button.action,.action{min-height:46px;border-radius:
 .search-status{margin:10px 0 0;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:12px;color:var(--muted);font-size:10px}
 .search-status.ready{border-color:rgba(98,209,174,.35);color:#bdebdc}
 @media (max-width:420px){.conversation-mode-bar{gap:5px}.thread-pill{max-width:44%;padding:5px 8px}.thread-pill small{display:none}}
+
+/* Stage 12 performer projection for the static mobile portrait.  These cues are
+   intentionally subtle: Mary Core decides the expression; the PWA only renders it. */
+.portrait-zone .portrait{transition:transform .22s ease,filter .22s ease}
+.portrait-zone[data-expression="happy"] .portrait,.portrait-zone[data-expression="amused"] .portrait,.portrait-zone[data-expression="excited"] .portrait{transform:translateY(-.5%) scale(1.012);filter:saturate(1.16) brightness(1.035) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-expression="surprised"] .portrait{transform:translateY(-.7%) scale(1.018);filter:saturate(1.13) brightness(1.06) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-expression="sad"] .portrait,.portrait-zone[data-expression="soft"] .portrait{transform:translateY(.35%) scale(.996);filter:saturate(.94) brightness(.96) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-expression="angry"] .portrait,.portrait-zone[data-expression="firm"] .portrait{transform:scale(1.006);filter:saturate(1.02) contrast(1.055) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+
+/* MaryV2 13.2 full-spectrum performer convergence.
+   Realtime lifecycle and directed performance are presentation signals only;
+   they never own Mary's identity or emotional truth. */
+.portrait-zone .portrait{transition:transform .26s ease,filter .26s ease,opacity .2s ease}
+.portrait-zone[data-interaction-state="listening"] .portrait{transform:scale(1.012) translateY(-.25%);filter:saturate(1.1) contrast(1.02) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-interaction-state="transcribing"] .portrait{transform:scale(1.006);filter:saturate(1.02) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-interaction-state="thinking"] .portrait,.portrait-zone[data-interaction-state="responding"] .portrait{transform:scale(.998) translateX(-.35%);filter:saturate(.98) brightness(.97) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-interaction-state="speaking"] .portrait{animation:mary-mobile-speaking 2.7s ease-in-out infinite;filter:saturate(1.12) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-interaction-state="interrupted"] .portrait{transform:scale(1.005);filter:saturate(1.02) contrast(1.025) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-expression="happy"] .portrait,.portrait-zone[data-expression="amused"] .portrait,.portrait-zone[data-expression="smirk"] .portrait{filter:saturate(1.16) brightness(1.015) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-expression="angry"] .portrait,.portrait-zone[data-expression="serious"] .portrait{filter:saturate(1.02) contrast(1.055) brightness(.965) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-expression="sad"] .portrait{filter:saturate(.88) brightness(.96) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
+.portrait-zone[data-gaze="glance_away"] .portrait{transform:translateX(-.5%) scale(.998)}
+.portrait-zone[data-gesture="animated"][data-interaction-state="speaking"] .portrait,.portrait-zone[data-gesture="celebrate"][data-interaction-state="speaking"] .portrait{animation-duration:1.8s}
+@keyframes mary-mobile-speaking{0%,100%{transform:translateY(0) scale(1.004)}50%{transform:translateY(-.35%) scale(1.008)}}
+@media(prefers-reduced-motion:reduce){.portrait-zone .portrait{transition:none}.portrait-zone[data-interaction-state="speaking"] .portrait{animation:none}}

@@ -312,8 +312,16 @@ class DesktopVoiceEngine:
             return finish({**self.status.to_dict(), "status": "disabled", "spoken_text": spoken_text})
 
         active_settings = self.base_settings
+        # Stage 12 separates two concerns that used to share one switch.
+        # Emotion-profile shaping remains opt-in, but TurnMind's bounded
+        # performer delivery is on by default so Mary's represented sarcasm,
+        # warmth, excitement, firmness, etc. are actually audible instead of
+        # being flattened back to one Voice Lab baseline.  Set
+        # MARY_TTS_PERFORMANCE_DELIVERY=false to disable this presentation-only
+        # layer without changing Mary Core state.
         if _env_bool("MARY_TTS_DYNAMIC_DELIVERY", False):
             active_settings = resolve_emotion_voice_settings(self.base_settings, emotional_state)
+        if _env_bool("MARY_TTS_PERFORMANCE_DELIVERY", True):
             active_settings = _apply_delivery_plan(active_settings, delivery_plan)
         synth_started = monotonic()
         speech = self.service.synthesize(spoken_text, settings=active_settings)

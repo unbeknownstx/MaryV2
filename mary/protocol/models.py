@@ -143,6 +143,9 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "mind.maintenance",
     "llm.probe",
     "presence.idle_tick",
+    "presence.pulse",
+    "performance.context.status",
+    "performance.context.set",
     "training.feedback.status",
     "training.feedback.record",
 }

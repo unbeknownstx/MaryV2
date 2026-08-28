@@ -80,6 +80,7 @@ class LLMRouter:
         # instrumentation does not silently break routing consumers.
         self.last_generation_attempts: list[dict[str, str]] = []
         self.last_generation_attempt_timings: list[dict[str, Any]] = []
+        self.last_generation_route: dict[str, Any] = {}
         self.resource_governor = ResourceGovernor(config.governance)
 
         # Process-local conversational routing override. This is intentionally
@@ -667,6 +668,16 @@ class LLMRouter:
                 purpose=effective_purpose,
             )
         )
+        self.last_generation_route = {
+            "requested_provider": effective_provider,
+            "route": effective_route,
+            "purpose": effective_purpose,
+            "strategy": self.routing_strategy(),
+            "order": list(order),
+            "selected_provider": None,
+            "selected_model": None,
+            "status": "routing",
+        }
         self.resource_governor.record_generation_start(
             route=str(
                 effective_route
@@ -876,9 +887,15 @@ class LLMRouter:
             })
             self.resource_governor.record_attempt(provider_name, "success")
             self.resource_governor.record_usage(response.usage)
+            self.last_generation_route.update({
+                "selected_provider": provider_name,
+                "selected_model": str(response.model or selected.model_name()),
+                "status": "success",
+            })
             return response
 
         if last_error is not None:
+            self.last_generation_route["status"] = "failed"
             raise last_error
 
         primary = (
@@ -895,6 +912,65 @@ class LLMRouter:
     # ============================================================
     # STATUS
     # ============================================================
+
+
+    def routing_status(self) -> dict[str, Any]:
+        """Return display-safe truth about Mary's current model routing fabric.
+
+        This is observability only. It does not authorize provider use, mutate
+        provider order, contact a provider, or promote a capability node into an
+        identity/state owner. Availability checks are local/configuration checks.
+        """
+
+        routes = {
+            "general": self._provider_order(None),
+            "conversation": self._provider_order(None, purpose="conversation"),
+            "private": self._provider_order(None, route="private"),
+            "expert": self._provider_order(None, route="expert"),
+        }
+        names: list[str] = []
+        for order in routes.values():
+            for name in order:
+                if name not in names:
+                    names.append(name)
+
+        providers: list[dict[str, Any]] = []
+        for name in names:
+            remaining = self._cooldown_remaining(name)
+            available = False
+            model = None
+            source = "configured_host"
+            try:
+                selected = self._get_provider_for_purpose(name, "conversation")
+                available = bool(selected.is_available()) and remaining <= 0.0
+                model = str(selected.model_name() or "") or None
+                if selected.__class__.__name__ == "DeviceOllamaProvider":
+                    source = "capability_node"
+            except Exception:
+                available = False
+            providers.append({
+                "provider": name,
+                "available": available,
+                "model": model,
+                "source": source,
+                "cooldown_seconds": round(remaining, 2),
+            })
+
+        return {
+            "strategy": self.routing_strategy(),
+            "session_override": self.session_override_status(),
+            "routes": routes,
+            "providers": providers,
+            "last_generation": {
+                **dict(self.last_generation_route),
+                "attempts": [dict(item) for item in self.last_generation_attempts],
+                "timings": [dict(item) for item in self.last_generation_attempt_timings],
+            },
+            "policy": (
+                "Models and capability nodes are replaceable execution engines; "
+                "Mary Core remains the identity/state authority."
+            ),
+        }
 
     def is_available(
         self,

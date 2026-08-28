@@ -131,6 +131,8 @@ def test_provider_prompt_carries_stance_not_fictional_autobiography():
     assert "hard_boundaries" in combined
     assert "capability_is_not_authority" in combined
     assert "trusted_peer" in combined
+    assert "voice_exemplars" in combined
+    assert "creator-authored cadence references" in combined
     assert "Ferrymen" not in combined
     assert "ruby" not in combined.lower()
     assert "Placita Olvera" not in combined

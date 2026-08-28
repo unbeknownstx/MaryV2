@@ -138,6 +138,7 @@ class VoiceLabStore:
             "selected_profile_id": self.selected_profile_id,
             "baseline": dict(BASELINE),
             "dynamic_delivery": str(os.getenv("MARY_TTS_DYNAMIC_DELIVERY", "false")).lower() in {"1","true","yes","on"},
+            "performance_delivery": str(os.getenv("MARY_TTS_PERFORMANCE_DELIVERY", "true")).lower() not in {"0","false","no","off"},
             "profiles": [
                 {
                     "id": x.get("id"),

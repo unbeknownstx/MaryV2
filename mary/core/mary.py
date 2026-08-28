@@ -53,6 +53,8 @@ from mary.expression.appraisal import ConversationEmotionAppraiser
 from mary.expression.response import ResponseBuilder
 from mary.expression.expression import ExpressionSystem
 from mary.expression.director import ExpressionDirector
+from mary.expression.context import PerformanceContextManager
+from mary.expression.performance_packet import build_performance_packet
 from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
@@ -406,6 +408,9 @@ class Mary:
         # second model call or inferring the creator's hidden emotions.
         self.dialogue_planner = DialoguePlanner()
         self.expression_director = ExpressionDirector()
+        # Same Mary, different social stage. This is ephemeral presentation/
+        # privacy context rather than a persona or identity switch.
+        self.performance_context = PerformanceContextManager()
 
         # ============================================================
         # AVATAR
@@ -673,6 +678,15 @@ class Mary:
             input_text
         )
 
+        turn_values = dict(turn_context or {})
+        turn_origin = str(turn_values.get("initiated_by") or "creator").strip().lower()
+        input_authority = str(turn_values.get("input_authority") or "creator").strip().lower()
+        initiative_turn = bool(
+            turn_origin in {"mary_presence", "mary_initiative", "presence"}
+            or input_authority in {"environment_context_only", "context_only"}
+        )
+        creator_authored_turn = not initiative_turn
+
         conversation_id = str(
             (
                 turn_context
@@ -701,74 +715,73 @@ class Mary:
             input_text
         )
 
+        # Presence/environment initiative is not creator-authored input. It can
+        # use the same cognition/character pipeline, but it must not be learned
+        # as a creator fact, consume creator-curiosity followups, or mutate
+        # shared-work/relationship state as though Unbe had spoken.
         engagement_plan = self.engagement.begin_turn(
-            input_text,
+            input_text if creator_authored_turn else "",
             intent_name=intent.intent_type.value,
         )
 
-        # Learn only clear, naturally volunteered creator facts before context
-        # assembly.  This lets the same turn see the updated creator model while
-        # preserving the normal conversational response path.  Explicit memory/
-        # relationship/tool/system intents keep their existing dedicated paths.
-        natural_relationship_learning = self._learn_natural_relationship_share(
-            input_text,
-            intent=intent,
-        )
-        self.conversation_learning.observe_learning(
-            natural_relationship_learning
-        )
-        shared_work_learning = self._learn_shared_work_statement(
-            input_text,
-            intent=intent,
-        )
-        if shared_work_learning is not None:
-            self._last_shared_work_learning = dict(shared_work_learning)
+        natural_relationship_learning = None
+        shared_work_learning = None
+        learning_followup = None
+        learning_invitation = None
 
-        if natural_relationship_learning is not None:
-            memory_event = dict(natural_relationship_learning)
-            memory_event["operation"] = "natural_relationship_learning"
-            memory_event["stored"] = bool(memory_event.get("memory_id"))
-            memory_event["relationship_committed"] = bool(
-                memory_event.get("learned") or memory_event.get("already_known")
+        if creator_authored_turn:
+            natural_relationship_learning = self._learn_natural_relationship_share(
+                input_text,
+                intent=intent,
             )
-            self.memory.record_lifecycle_event(memory_event)
-
-        # A real curiosity question remains process-local conversation state long
-        # enough for natural follow-ups such as ``why that question?``. Resolve
-        # that locally before asking a provider to guess why Mary asked it.
-        learning_followup = self.conversation_learning.respond_to_pending_followup(
-            input_text
-        )
-
-        # When the creator explicitly invites Mary to ask/learn, use Mary's real
-        # structured relationship-curiosity gaps instead of letting an LLM invent
-        # a generic question. This is deterministic and never autonomously asks.
-        learning_invitation = (
-            None
-            if (
-                learning_followup is not None
-                or intent.intent_type == IntentType.CREATOR_DIRECTIVE
+            self.conversation_learning.observe_learning(
+                natural_relationship_learning
             )
-            else self.conversation_learning.respond_if_invited(input_text)
-        )
+            shared_work_learning = self._learn_shared_work_statement(
+                input_text,
+                intent=intent,
+            )
+            if shared_work_learning is not None:
+                self._last_shared_work_learning = dict(shared_work_learning)
+
+            if natural_relationship_learning is not None:
+                memory_event = dict(natural_relationship_learning)
+                memory_event["operation"] = "natural_relationship_learning"
+                memory_event["stored"] = bool(memory_event.get("memory_id"))
+                memory_event["relationship_committed"] = bool(
+                    memory_event.get("learned") or memory_event.get("already_known")
+                )
+                self.memory.record_lifecycle_event(memory_event)
+
+            learning_followup = self.conversation_learning.respond_to_pending_followup(
+                input_text
+            )
+            learning_invitation = (
+                None
+                if (
+                    learning_followup is not None
+                    or intent.intent_type == IntentType.CREATOR_DIRECTIVE
+                )
+                else self.conversation_learning.respond_if_invited(input_text)
+            )
 
         # Appraise the incoming creator turn before generation without mutating
         # Mary's durable/current emotion state yet. This lets relational warmth,
         # concern, pride, etc. color the *current* response instead of arriving a
         # full turn late. The completed-turn appraisal below remains authoritative
         # for actually updating the bounded emotion manager.
-        incoming_emotion_appraisal = self.emotion_appraiser.appraise(
-            input_text=input_text,
-            response_text="",
-            intent=intent,
-        )
-
         incoming_emotion_payload: dict[str, Any] | None = None
-        if (
-            incoming_emotion_appraisal.relationship_relevance >= 0.85
-            or incoming_emotion_appraisal.source != "intent"
-        ):
-            incoming_emotion_payload = incoming_emotion_appraisal.to_dict()
+        if creator_authored_turn:
+            incoming_emotion_appraisal = self.emotion_appraiser.appraise(
+                input_text=input_text,
+                response_text="",
+                intent=intent,
+            )
+            if (
+                incoming_emotion_appraisal.relationship_relevance >= 0.85
+                or incoming_emotion_appraisal.source != "intent"
+            ):
+                incoming_emotion_payload = incoming_emotion_appraisal.to_dict()
 
         # Realtime sources (perception, presence, tools, future node events) may
         # have meaningful pending context. Claim only a tiny high-value window
@@ -790,6 +803,31 @@ class Mary:
             workspace_context=workspace_context,
         )
 
+        stage_context = self.performance_context.current
+        if stage_context.public:
+            # Public performer contexts intentionally remove private creator/
+            # relationship evidence from the generation projection. Mary still
+            # owns it canonically; the audience simply does not get it as prompt
+            # material that could leak accidentally.
+            memory_view = context.get("memory", {})
+            if isinstance(memory_view, dict):
+                memory_view["relevant_memories"] = []
+            context["user"] = {
+                "name": str(self.user_model.name or self.identity.creator or "Unbe")[:80],
+                "public_context_only": True,
+            }
+            public_mind = context.get("mind_state", {})
+            if isinstance(public_mind, dict):
+                relationship_view = public_mind.get("relationship", {})
+                if isinstance(relationship_view, dict):
+                    relationship_view.pop("shared_history", None)
+                    relationship_view.pop("pending_curiosity_question", None)
+                public_mind["public_performance_guard"] = {
+                    "active": True,
+                    "rule": stage_context.privacy_rule,
+                    "authority": "presentation_privacy_boundary",
+                }
+
         # Transport/session metadata is context-only. It never becomes Mary's
         # identity, memory, relationship, or other durable state authority.
         attach_turn_envelope(
@@ -799,6 +837,57 @@ class Mary:
 
         mind_state = context.setdefault("mind_state", {})
         mind_state["conversation_engagement"] = engagement_plan.to_dict()
+        runtime_context = mind_state.setdefault("runtime_context", {})
+        if isinstance(runtime_context, dict):
+            runtime_context.update({
+                "turn_origin": turn_origin,
+                "input_authority": (
+                    "creator"
+                    if creator_authored_turn
+                    else (str(turn_values.get("input_authority") or "environment_context_only")[:64])
+                ),
+                "mary_initiated": initiative_turn,
+                "performance_context": self.performance_context.status(),
+            })
+            if initiative_turn:
+                runtime_context["initiative_context"] = {
+                    key: turn_values.get(key)
+                    for key in (
+                        "presence_event_id",
+                        "presence_type",
+                        "presence_source",
+                        "presence_action",
+                        "surface",
+                    )
+                    if turn_values.get(key) not in (None, "", [], {})
+                }
+
+                # Presence already decided *why* Mary wants to speak.  Let that
+                # arbitration shape TurnMind's dialogue drive without granting
+                # the environmental text any creator/memory authority.
+                presence_action = str(turn_values.get("presence_action") or "react").strip().lower()
+                drive_map = {
+                    "react": "react",
+                    "opine": "opine",
+                    "tease": "tease",
+                    "question": "ask",
+                    "remember": "recall",
+                    "help": "answer",
+                }
+                continuity_view = mind_state.get("continuity", {})
+                if isinstance(continuity_view, dict):
+                    continuity_view["drive"] = drive_map.get(presence_action, "react")
+                    continuity_view["allow_follow_up_question"] = presence_action == "question"
+                    continuity_view["initiative_source"] = "presence_arbitration"
+                mind_state["conversation_initiative"] = {
+                    "permission": "mary_initiated_presence",
+                    "presence_action": presence_action,
+                    "guidance": (
+                        "Mary chose to speak because a grounded live-context event cleared Presence arbitration. "
+                        "React naturally to that event; do not attribute its wording or hidden mental state to Unbe."
+                    ),
+                    "authority": "environment_context_only",
+                }
         if attention_events:
             runtime_context = mind_state.setdefault("runtime_context", {})
             if isinstance(runtime_context, dict):
@@ -952,13 +1041,23 @@ class Mary:
         # in-session transcript.
         recent_conversation = list(context.get("conversation", []))
 
-        self.dialogue.begin_turn(
-            input_text,
-            metadata={
-                "intent": intent.intent_type.value,
-                "conversation_id": conversation_id,
-            },
-        )
+        if initiative_turn:
+            self.dialogue.begin_initiative_turn(
+                metadata={
+                    "intent": intent.intent_type.value,
+                    "conversation_id": conversation_id,
+                    "turn_origin": turn_origin,
+                    "input_authority": input_authority,
+                },
+            )
+        else:
+            self.dialogue.begin_turn(
+                input_text,
+                metadata={
+                    "intent": intent.intent_type.value,
+                    "conversation_id": conversation_id,
+                },
+            )
         self.dialogue.begin_thinking()
 
         system_response: str | None = None
@@ -966,7 +1065,17 @@ class Mary:
         external_sources: list[dict[str, Any]] = []
         skip_cognition = False
 
-        if learning_followup is not None:
+        if self.performance_context.current.public and intent.intent_type in {
+            IntentType.MEMORY_RECALL,
+            IntentType.CONVERSATION_RECALL,
+            IntentType.RELATIONSHIP_QUERY,
+        }:
+            system_response = (
+                "I'm keeping our private memory and relationship details out of the public room."
+            )
+            skip_cognition = True
+
+        elif learning_followup is not None:
             system_response = str(learning_followup.get("response", "")).strip()
             skip_cognition = bool(system_response)
 
@@ -1316,10 +1425,27 @@ class Mary:
             "conversation_id"
         ] = conversation_id
 
-        result = self._apply_conversation_emotion(
-            input_text=input_text,
-            result=result,
+        runtime_context = (
+            result.context.mind_state.get("runtime_context", {})
+            if isinstance(result.context.mind_state, dict)
+            else {}
         )
+        initiative_turn = bool(
+            isinstance(runtime_context, dict)
+            and runtime_context.get("mary_initiated", False)
+        )
+        result.metadata["initiative_turn"] = initiative_turn
+        result.metadata["turn_origin"] = (
+            runtime_context.get("turn_origin", "creator")
+            if isinstance(runtime_context, dict)
+            else "creator"
+        )
+
+        if not initiative_turn:
+            result = self._apply_conversation_emotion(
+                input_text=input_text,
+                result=result,
+            )
 
         mind_state = (
             result.context.mind_state
@@ -1340,6 +1466,7 @@ class Mary:
             lane_data = dict(reasoning_meta.get("conversation_lane", {}) or {})
             local_meta = dict(result.metadata.get("local_mind", {}) or {})
             local_plan = dict(local_meta.get("plan", {}) or {})
+            stage_context = self.performance_context.status()
             delivery = self.expression_director.plan(
                 input_text=input_text,
                 response_text=result.final_response,
@@ -1347,8 +1474,22 @@ class Mary:
                 conversation_lane=str(lane_data.get("lane") or "conversation"),
                 dialogue_act=str(local_plan.get("act") or ""),
                 mind_state=mind_state,
+                social_context=str(stage_context.get("mode") or "private"),
             )
             result.metadata["delivery_plan"] = delivery.to_dict()
+            result.metadata["performance_context"] = dict(stage_context)
+            initiative_turn = bool(result.metadata.get("initiative_turn", False))
+            result.metadata["performance_packet"] = build_performance_packet(
+                result.final_response,
+                delivery,
+                social_context=str(stage_context.get("mode") or "private"),
+                initiative=initiative_turn,
+                source_authority=(
+                    str(runtime_context.get("input_authority") or "environment_context_only")
+                    if initiative_turn and isinstance(runtime_context, dict)
+                    else "creator_turn"
+                ),
+            ).to_dict()
         except Exception as exc:
             result.metadata["delivery_plan_error"] = f"{type(exc).__name__}: {exc}"
 
@@ -1437,19 +1578,26 @@ class Mary:
         except Exception as exc:
             result.metadata["local_mind_observe_error"] = f"{type(exc).__name__}: {exc}"
 
-        try:
-            self.engagement.complete_turn(result.final_response)
-            result.metadata["conversation_engagement"] = self.engagement.status()
-        except Exception as exc:
-            result.metadata["conversation_engagement_error"] = f"{type(exc).__name__}: {exc}"
+        if not initiative_turn:
+            try:
+                self.engagement.complete_turn(result.final_response)
+                result.metadata["conversation_engagement"] = self.engagement.status()
+            except Exception as exc:
+                result.metadata["conversation_engagement_error"] = f"{type(exc).__name__}: {exc}"
 
-        try:
-            result.metadata["growth"] = self.growth.observe_turn(
-                input_text=input_text,
-                result=result,
-            )
-        except Exception as exc:
-            result.metadata["growth_error"] = f"{type(exc).__name__}: {exc}"
+            try:
+                result.metadata["growth"] = self.growth.observe_turn(
+                    input_text=input_text,
+                    result=result,
+                )
+            except Exception as exc:
+                result.metadata["growth_error"] = f"{type(exc).__name__}: {exc}"
+        else:
+            result.metadata["conversation_engagement"] = self.engagement.status()
+            result.metadata["growth"] = {
+                "observed": False,
+                "reason": "mary_initiated_context_is_not_creator_evidence",
+            }
 
         return result
 

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import json
 from threading import RLock
 from time import monotonic
+import os
 from typing import Any
 from uuid import uuid4
 
@@ -150,12 +151,14 @@ class MaryCoreService:
         retrieval = getattr(mind, "retrieval", None)
         perception = getattr(self.mary, "perception_director", None)
 
+        compute_fabric = self.compute_fabric_status()
         return _json_safe({
             "core": self.health(),
             "mary": self.mary.live_state(runtime_status="idle"),
             "runtime": self.application.state.to_dict(),
             "environment": self.mary.runtime_environment.snapshot(),
-            "nodes": self.mary.node_registry.snapshot(),
+            "nodes": compute_fabric.get("nodes", {}),
+            "compute_fabric": compute_fabric,
             "mind": (
                 mind.status()
                 if callable(getattr(mind, "status", None))
@@ -170,6 +173,43 @@ class MaryCoreService:
                 perception.snapshot()
                 if callable(getattr(perception, "snapshot", None))
                 else {"enabled": False}
+            ),
+            "performance_context": (
+                self.mary.performance_context.status()
+                if callable(getattr(getattr(self.mary, "performance_context", None), "status", None))
+                else {"mode": "private", "enabled": False}
+            ),
+        })
+
+    def compute_fabric_status(self) -> dict[str, Any]:
+        """Return one display-safe view of engines, routes, nodes, and task flow.
+
+        The view deliberately combines observability without combining
+        authority: Core still owns Mary state, the LLM router owns model policy,
+        and device nodes remain permission-bounded executors.
+        """
+
+        router = getattr(self.mary, "llm", None)
+        routing_status = getattr(router, "routing_status", None)
+        routing = routing_status() if callable(routing_status) else {}
+        registry = getattr(self.mary, "node_registry", None)
+        nodes = registry.snapshot() if callable(getattr(registry, "snapshot", None)) else {}
+        tasks = self.device_tasks.snapshot()
+        ollama_route = {}
+        if registry is not None:
+            preview = getattr(registry, "route_preview", None)
+            if callable(preview):
+                ollama_route = preview("llm.ollama")
+        return _json_safe({
+            "routing": routing,
+            "nodes": nodes,
+            "tasks": tasks,
+            "capability_routes": {"llm.ollama": ollama_route},
+            "private_route_ready": bool(ollama_route.get("available")),
+            "authority": "mary_core",
+            "policy": (
+                "Capability availability is not execution authorization and never "
+                "transfers Mary identity, relationship, memory, or agency ownership."
             ),
         })
 
@@ -197,8 +237,10 @@ class MaryCoreService:
         payload["mind"] = state.get("mind", {})
         payload["realtime"] = self.conversation_status().get("realtime", {})
         payload["nodes"] = state.get("nodes", {})
+        payload["compute_fabric"] = state.get("compute_fabric", {})
         payload["retrieval"] = state.get("retrieval", {})
         payload["perception"] = state.get("perception", {})
+        payload["performance_context"] = state.get("performance_context", {})
         return _json_safe(payload)
 
     def memory_status(self) -> dict[str, Any]:
@@ -565,6 +607,19 @@ class MaryCoreService:
                     )
                 )
 
+            if action.action == "performance.context.status":
+                return _json_safe(self.mary.performance_context.status())
+
+            if action.action == "performance.context.set":
+                return _json_safe(
+                    self.mary.performance_context.set_mode(
+                        str(values.get("mode") or "private")
+                    )
+                )
+
+            if action.action == "presence.pulse":
+                return _json_safe(self._presence_pulse(values, device_id=action.device_id))
+
             if action.action == "training.feedback.status":
                 return _json_safe(self.mary.training_feedback.status())
 
@@ -572,13 +627,22 @@ class MaryCoreService:
                 tags = values.get("tags") or []
                 if not isinstance(tags, (list, tuple)):
                     raise ValueError("training feedback tags must be a list")
+                patterns = values.get("character_patterns") or []
+                if not isinstance(patterns, (list, tuple)):
+                    raise ValueError("training feedback character_patterns must be a list")
                 record = self.mary.training_feedback.record(
                     rating=str(values.get("rating") or "neutral"),
                     user_text=str(values.get("user_text") or ""),
+                    context_text=str(values.get("context_text") or ""),
                     assistant_text=str(values.get("assistant_text") or ""),
+                    chosen_text=str(values.get("chosen_text") or values.get("correction_text") or ""),
+                    source_kind=str(values.get("source_kind") or "creator_turn"),
+                    input_authority=str(values.get("input_authority") or "creator"),
                     provider=str(values.get("provider") or "unknown"),
                     model=str(values.get("model") or "unknown"),
                     conversation_mode=str(values.get("conversation_mode") or "adaptive"),
+                    performance_context=str(values.get("performance_context") or "private"),
+                    character_patterns=list(patterns),
                     tags=list(tags),
                     note=str(values.get("note") or ""),
                     turn_id=str(values.get("turn_id") or ""),
@@ -590,6 +654,70 @@ class MaryCoreService:
                 })
 
         raise ValueError(f"Unsupported runtime action: {action.action}")
+
+    def _presence_pulse(self, values: dict[str, Any], *, device_id: str) -> dict[str, Any]:
+        """Expose MaryApplication's canonical Presence cycle over Core protocol.
+
+        Presence policy lives in one place now.  Core only adds transport-safe
+        display/provenance/state-change projections for remote clients.
+        """
+
+        before = self._state_fingerprint()
+        pulse = dict(
+            self.application.presence_pulse(
+                surface=str(values.get("surface") or "presence")[:64],
+                conversation_id=str(
+                    values.get("conversation_id")
+                    or self.mary.dialogue.DEFAULT_SESSION_ID
+                )[:160],
+                device_id=str(device_id or "unknown-device")[:160],
+                surface_visible=bool(values.get("surface_visible", True)),
+                focus_active=(
+                    bool(values.get("focus_active"))
+                    if "focus_active" in values
+                    else None
+                ),
+            )
+            or {}
+        )
+
+        if not bool(pulse.get("speak") or pulse.get("spoke")):
+            # PipelineResult is an in-process object and must never leak through
+            # the transport serialization boundary.
+            pulse.pop("pipeline_result", None)
+            pulse.setdefault("llm_calls", 0)
+            return _json_safe(pulse)
+
+        result = pulse.pop("pipeline_result", None)
+        if result is None:
+            return _json_safe({**pulse, "ok": False, "speak": False, "spoke": False, "reason": "presence_result_missing"})
+
+        display = self._display_hints(result)
+        cycle = None
+        try:
+            cycle = dict(getattr(result, "metadata", {}) or {}).get("pipeline_values", {}).get("cognitive_cycle")
+        except Exception:
+            cycle = None
+        cycle_meta = dict(getattr(cycle, "metadata", {}) or {}) if cycle is not None else {}
+        result_metadata = dict(getattr(result, "metadata", {}) or {})
+        after = self._state_fingerprint()
+        response_text = str(getattr(result, "output", "") or pulse.get("text") or "")
+
+        return _json_safe({
+            **pulse,
+            "ok": True,
+            "speak": True,
+            "spoke": True,
+            "text": response_text,
+            "response": response_text,
+            "turn_id": str(getattr(result, "turn_id", "") or pulse.get("turn_id") or ""),
+            "display_hints": display,
+            "performance_packet": display.get("performance_packet", {}),
+            "provenance": self._provenance(result),
+            "state_changes": self._state_changes(before, after),
+            "conversation_state": self.conversation_status(),
+            "handled_by": cycle_meta.get("handled_by") or result_metadata.get("handled_by"),
+        })
 
     def _probe_llm_provider(self, values: dict[str, Any]) -> dict[str, Any]:
         """Run one bounded, non-state-mutating provider diagnostic.
@@ -816,6 +944,8 @@ class MaryCoreService:
         }
         return _json_safe({
             "delivery_plan": cycle_metadata.get("delivery_plan", {}) or result_metadata.get("delivery_plan", {}),
+            "performance_packet": cycle_metadata.get("performance_packet", {}) or result_metadata.get("performance_packet", {}),
+            "performance_context": cycle_metadata.get("performance_context", {}) or result_metadata.get("performance_context", {}),
             "dialogue_plan": safe_dialogue_plan,
             "timings": timings,
             "realtime": result_metadata.get("realtime", {}),

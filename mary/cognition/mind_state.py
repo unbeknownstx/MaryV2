@@ -16,6 +16,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.relationship.provenance import conversation_profile
 from mary.cognition.continuity import ConversationContinuity
 from mary.cognition.performance import PerformanceDirector
+from mary.personality.voice_exemplars import select_voice_exemplars
 
 
 def _clamp(value: float) -> float:
@@ -703,6 +704,8 @@ class TurnMindStateBuilder:
             if line not in hard_boundaries:
                 hard_boundaries.append(line)
 
+        voice_exemplars = select_voice_exemplars(selected, limit=3)
+
         return {
             "source": "authored_character_core",
             "canon_boundary": (
@@ -719,6 +722,7 @@ class TurnMindStateBuilder:
             "stance_claims": stance_claims[:8],
             "delivery": delivery[:9],
             "voice": voice[:8],
+            "voice_exemplars": voice_exemplars,
             "avoid": avoid[:9],
             "hard_boundaries": hard_boundaries[:10],
             "epistemic_lens": epistemic_lens,
@@ -1103,6 +1107,15 @@ class TurnMindStateBuilder:
 
         drive = str(continuity.get("drive", "react"))
         emotion_intensity = _clamp(emotion.get("turn_intensity", emotion.get("intensity", 0.0)) or 0.0)
+        try:
+            interaction_momentum = _clamp(continuity.get("interaction_momentum", 0.35) or 0.0)
+        except (TypeError, ValueError):
+            interaction_momentum = 0.35
+        turn_emotion_name = str(emotion.get("turn_primary", emotion.get("primary", "neutral")) or "neutral").lower()
+        serious_turn = (
+            turn_emotion_name in {"anger", "frustration", "sadness", "grief", "hurt", "fear", "distress", "concern"}
+            and emotion_intensity >= 0.35
+        )
         if mode == "relational_conversation":
             if drive in {"opine", "disagree", "reflect"}:
                 verbosity = max(verbosity, 0.48)
@@ -1132,6 +1145,16 @@ class TurnMindStateBuilder:
         ) if question_allowed else 0.0
 
         emotion_name = str(emotion.get("turn_primary", emotion.get("primary", "neutral")))
+        cadence_instruction = (
+            f"Immediate conversation cadence is {continuity.get('cadence_mode', 'quiet')} "
+            f"({interaction_momentum:.2f}). Treat this as observable pacing only, never as a hidden claim about Unbe. "
+            + (
+                "This turn is serious, so character/emotion overrides momentum."
+                if serious_turn
+                else "If the exchange is light, preserve some of that momentum in timing and expressiveness instead of resetting to neutral."
+            )
+        )
+
         emotional_instruction = (
             f"Current turn emotional color is {emotion_name} at intensity "
             f"{float(emotion.get('turn_intensity', emotion.get('intensity', 0.0)) or 0.0):.2f}; "
@@ -1148,7 +1171,7 @@ class TurnMindStateBuilder:
             "Use familiar conversational language with Unbe; do not sound like customer support.",
             "Prefer natural sentences over headings, tables, or bullet lists unless the task genuinely benefits from structure.",
             "Do not end ordinary conversation with canned service offers such as 'anything else?', 'how can I help?', or 'let me know if you'd like'.",
-            "Mary is a persistent character, not support copy and not a stage performance. Let personality come from viewpoint and word choice; use pauses, interjections, fragments, or emphasis sparingly when they truly fit.",
+            "Mary is a persistent character, not support copy. Do not write stage directions into ordinary dialogue; the performer layer handles voice/body. Her spoken language may still be witty, sarcastic, flirty, bubbly, sharp, soft, or deadpan when the active character pattern supports it.",
             (
                 f"Mary's available casual slang includes {slang}. {slang_rule}"
                 if slang
@@ -1176,6 +1199,7 @@ class TurnMindStateBuilder:
                 if creator_style
                 else "No explicit creator communication-style preference is currently stored; use Mary's own conversational style."
             ),
+            cadence_instruction,
             emotional_instruction,
         )
 
@@ -1193,6 +1217,11 @@ class TurnMindStateBuilder:
                 + (0.08 if mode == "relational_conversation" else 0.0)
                 + (0.08 * emotion_intensity)
                 + (0.05 if drive in {"react", "opine", "disagree"} else 0.0)
+                + (
+                    0.10 * max(0.0, interaction_momentum - 0.35)
+                    if mode == "relational_conversation" and not serious_turn
+                    else 0.0
+                )
             ),
             familiarity=str(relationship.get("familiarity", "developing")),
             preferred_length=preferred_length,

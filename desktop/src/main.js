@@ -53,6 +53,7 @@ let youtubeResults = [];
 let youtubeStatus = {};
 let focusTicker = null;
 let lastIdleActionAt = performance.now();
+let lastPresencePulseAt = performance.now();
 let integrationState = { creative_apps: [] };
 let creativeWorkspaceState = { configured: false, files: [] };
 let activeStudioFile = '';
@@ -72,7 +73,16 @@ let speechWaveform = null;
 let activeMouthExpression = null;
 let lipSyncWeight = 0;
 let currentVrm = null;
-let currentDeliveryPlan = { profile: 'neutral', energy: .4, gesture_energy: .3, avatar_expression: 'neutral' };
+const BASE_DELIVERY_PLAN = { profile: 'neutral', energy: .4, gesture_energy: .3, avatar_expression: 'neutral', gesture_style: 'natural', gaze_style: 'engaged', head_style: 'natural', performance_beats: [] };
+let currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
+let currentPerformanceBeatIndex = -1;
+let currentPerformancePacket = {};
+let ambientAvatarState = { expression: 'neutral', emotion_intensity: 0 };
+let preReactionCue = null;
+let preReactionUntil = 0;
+let performanceSettleTimer = null;
+let idleCue = null;
+let idleCueTimer = null;
 let modelBaseY = 0;
 let modelBounds = null;
 let avatarFraming = 'portrait';
@@ -300,6 +310,129 @@ function resetKnownExpressions(manager) {
   }
 }
 
+function performanceBeatState() {
+  const beats = Array.isArray(currentDeliveryPlan.performance_beats) ? currentDeliveryPlan.performance_beats : [];
+  if (!activeSpeechAudio || !beats.length || !Number.isFinite(activeSpeechAudio.duration) || activeSpeechAudio.duration <= 0) {
+    return { index: -1, beat: null };
+  }
+  const progress = clamp(activeSpeechAudio.currentTime / activeSpeechAudio.duration);
+  const index = beats.findIndex((beat) => progress >= Number(beat.start ?? 0) && progress <= Number(beat.end ?? 1));
+  const resolved = index >= 0 ? index : Math.max(0, Math.min(beats.length - 1, Math.floor(progress * beats.length)));
+  return { index: resolved, beat: beats[resolved] || null };
+}
+
+function applyPerformanceExpression(beat) {
+  const manager = currentVrm?.expressionManager;
+  if (!manager || !beat) return;
+  resetKnownExpressions(manager);
+  const expression = String(beat.expression || currentDeliveryPlan.avatar_expression || 'neutral').toLowerCase();
+  const preset = PRESET_MAP[expression] || 'relaxed';
+  const beatEnergy = clamp(beat.energy ?? currentDeliveryPlan.energy ?? .4);
+  const intensity = Math.max(.08, Math.min(.82, .18 + beatEnergy * .62));
+  try { manager.setValue(preset, intensity); } catch (_) { /* optional preset */ }
+}
+
+function updatePerformanceBeat() {
+  const { index, beat } = performanceBeatState();
+  if (index === currentPerformanceBeatIndex) return beat;
+  currentPerformanceBeatIndex = index;
+  if (beat) applyPerformanceExpression(beat);
+  return beat;
+}
+
+function applyPerformancePacket(packet = {}) {
+  if (performanceSettleTimer) {
+    window.clearTimeout(performanceSettleTimer);
+    performanceSettleTimer = null;
+  }
+  currentPerformancePacket = packet && typeof packet === 'object' ? packet : {};
+  const delivery = currentPerformancePacket.delivery || {};
+  if (delivery && typeof delivery === 'object' && Object.keys(delivery).length) {
+    currentDeliveryPlan = { ...BASE_DELIVERY_PLAN, ...delivery };
+  }
+  const reaction = currentPerformancePacket.pre_reaction || {};
+  const style = String(reaction.style || 'none').toLowerCase();
+  const duration = Math.max(0, Math.min(420, Number(reaction.duration_ms) || 0));
+  if (style === 'none' || duration <= 0) {
+    preReactionCue = null;
+    preReactionUntil = 0;
+    return 0;
+  }
+  preReactionCue = {
+    style,
+    expression: String(reaction.expression || currentDeliveryPlan.avatar_expression || 'neutral'),
+    gaze_style: String(reaction.gaze_style || currentDeliveryPlan.gaze_style || 'engaged'),
+    head_style: String(reaction.head_style || currentDeliveryPlan.head_style || 'natural'),
+    intensity: clamp(reaction.intensity ?? .28),
+  };
+  preReactionUntil = performance.now() + duration;
+  applyAvatarState({
+    expression: preReactionCue.expression,
+    emotion_intensity: preReactionCue.intensity,
+  });
+  return duration;
+}
+
+function rememberAmbientAvatarState(state = {}) {
+  if (state && typeof state === 'object' && Object.keys(state).length) {
+    ambientAvatarState = { ...ambientAvatarState, ...state };
+  }
+  applyAvatarState(state);
+}
+
+function settlePerformanceState(delay = 320) {
+  if (performanceSettleTimer) window.clearTimeout(performanceSettleTimer);
+  performanceSettleTimer = window.setTimeout(() => {
+    currentPerformancePacket = {};
+    currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
+    currentPerformanceBeatIndex = -1;
+    preReactionCue = null;
+    preReactionUntil = 0;
+    applyAvatarState(ambientAvatarState);
+    performanceSettleTimer = null;
+  }, Math.max(0, Number(delay) || 0));
+}
+
+function applyIdleAction(raw, { preview = false } = {}) {
+  const payload = parsePayload(raw);
+  const action = payload.action || {};
+  const kind = String(action.kind || '').toLowerCase();
+  const name = String(action.name || 'quiet').toLowerCase();
+  if (preview) toast(`Idle: ${name || 'quiet'}`);
+
+  if (kind === 'sound' && action.sound && !payload.focus_quiet) {
+    const audio = new Audio(`./assets/sounds/${action.sound}`);
+    audio.volume = preview ? .12 : .06;
+    audio.play().catch(() => {});
+    return;
+  }
+
+  // Phrases are never emitted directly from the renderer. Spoken initiative
+  // belongs to canonical Presence -> TurnMind -> CharacterMind/LLM.
+  if (kind !== 'animation' || !currentVrm || conversationState !== 'idle' || activeSpeechAudio) return;
+
+  if (idleCueTimer) window.clearTimeout(idleCueTimer);
+  const durations = {
+    blink_slow: 900, look_side: 2200, glance_down: 1800, head_tilt: 2100,
+    shift_weight: 2600, shoulder_settle: 1800, stretch_small: 2400, smile_soft: 2200,
+  };
+  idleCue = { name, started_at: performance.now(), until: performance.now() + (durations[name] || 1800) };
+
+  if (name === 'blink_slow') { blinkPhase = 0; }
+  if (name === 'smile_soft') {
+    applyAvatarState({ expression: 'happy', emotion_intensity: .18 });
+  }
+
+  const token = idleCue;
+  idleCueTimer = window.setTimeout(() => {
+    if (idleCue === token) {
+      idleCue = null;
+      if (!activeSpeechAudio && conversationState === 'idle') applyAvatarState(ambientAvatarState);
+    }
+    idleCueTimer = null;
+  }, durations[name] || 1800);
+}
+
 function applyAvatarState(state = {}) {
   const delivery = state?.metadata?.delivery_plan || state?.delivery_plan || {};
   if (delivery && typeof delivery === 'object' && Object.keys(delivery).length) {
@@ -342,17 +475,83 @@ function animate(now = performance.now()) {
 
   if (currentVrm) {
     updateLipSync();
+    const activeBeat = updatePerformanceBeat();
     currentVrm.update(delta);
-    const gestureEnergy = clamp(currentDeliveryPlan.gesture_energy ?? .3);
+    const reactionActive = preReactionCue && now < preReactionUntil;
+    let gestureEnergy = clamp(activeBeat?.energy ?? currentDeliveryPlan.gesture_energy ?? .3);
+    let gestureStyle = String(activeBeat?.gesture_style || currentDeliveryPlan.gesture_style || 'natural');
+    let headStyle = String(reactionActive ? preReactionCue.head_style : (activeBeat?.head_style || currentDeliveryPlan.head_style || 'natural'));
+    let gazeStyle = String(reactionActive ? preReactionCue.gaze_style : (activeBeat?.gaze_style || currentDeliveryPlan.gaze_style || 'engaged'));
+
+    // Realtime lifecycle is also body language. These local cues never decide
+    // what Mary thinks; they make listening/thinking/turn-taking visible while
+    // the richer turn-specific performance score takes over during speech.
+    if (!activeSpeechAudio && !reactionActive) {
+      if (conversationState === 'listening') {
+        gestureEnergy = .12; gestureStyle = 'soft'; headStyle = 'tilt'; gazeStyle = 'direct';
+      } else if (conversationState === 'transcribing') {
+        gestureEnergy = .09; gestureStyle = 'soft'; headStyle = 'still'; gazeStyle = 'direct';
+      } else if (conversationState === 'thinking' || conversationState === 'responding') {
+        gestureEnergy = .13; gestureStyle = 'soft'; headStyle = 'thoughtful'; gazeStyle = 'glance_away';
+      } else if (conversationState === 'interrupted') {
+        gestureEnergy = .10; gestureStyle = 'soft'; headStyle = 'still'; gazeStyle = 'direct';
+      }
+    }
+
+    const idleName = (!activeSpeechAudio && !reactionActive && conversationState === 'idle' && idleCue && now < idleCue.until) ? idleCue.name : '';
+    if (idleName === 'look_side') { headStyle = 'thoughtful'; gazeStyle = 'glance_away'; gestureStyle = 'soft'; gestureEnergy = .11; }
+    else if (idleName === 'glance_down') { headStyle = 'quiet'; gazeStyle = 'soft'; gestureStyle = 'soft'; gestureEnergy = .08; }
+    else if (idleName === 'head_tilt') { headStyle = 'tilt'; gazeStyle = 'direct'; gestureStyle = 'soft'; gestureEnergy = .10; }
+    else if (idleName === 'shift_weight') { gestureStyle = 'tease'; gestureEnergy = .10; headStyle = 'soft'; gazeStyle = 'engaged'; }
+    else if (idleName === 'shoulder_settle') { gestureStyle = 'soft'; gestureEnergy = .07; headStyle = 'soft'; }
+    else if (idleName === 'stretch_small') { gestureStyle = 'animated'; gestureEnergy = .16; headStyle = 'soft'; gazeStyle = 'engaged'; }
+    else if (idleName === 'smile_soft') { gestureStyle = 'soft'; gestureEnergy = .08; gazeStyle = 'soft'; headStyle = 'tilt'; }
+
     const speakingBoost = conversationState === 'speaking' ? .55 + gestureEnergy * .65 : .45;
-    currentVrm.scene.position.y = modelBaseY + Math.sin(elapsed * (1.15 + gestureEnergy * .22)) * (0.0045 + .003 * speakingBoost);
+    const bounceGain = ['animated','celebrate'].includes(gestureStyle) ? 1.65 : gestureStyle === 'firm' ? .58 : gestureStyle === 'soft' ? .72 : 1.0;
+    currentVrm.scene.position.y = modelBaseY + Math.sin(elapsed * (1.15 + gestureEnergy * .22)) * (0.0045 + .003 * speakingBoost) * bounceGain;
+
     const head = currentVrm.humanoid?.getNormalizedBoneNode?.('head');
     if (head) {
-      const conversationalMotion = conversationState === 'speaking' ? (0.028 + gestureEnergy * .035) : 0.028;
-      const thoughtfulSlowdown = String(currentDeliveryPlan.profile || '') === 'thoughtful' ? .72 : 1.0;
-      head.rotation.y = Math.sin(elapsed * 0.22 * thoughtfulSlowdown) * conversationalMotion;
-      head.rotation.z = Math.sin(elapsed * 0.31 * thoughtfulSlowdown) * (0.009 + gestureEnergy * .012);
-      if (conversationState === 'speaking') head.rotation.x = Math.sin(elapsed * 1.4) * gestureEnergy * .012;
+      let motion = conversationState === 'speaking' ? (0.028 + gestureEnergy * .035) : 0.028;
+      let yawRate = .22;
+      let roll = .009 + gestureEnergy * .012;
+      let pitch = conversationState === 'speaking' ? gestureEnergy * .012 : 0;
+      let yawOffset = 0;
+      let rollOffset = 0;
+      if (headStyle === 'still') { motion *= .22; roll *= .30; pitch *= .25; }
+      if (headStyle === 'thoughtful') { yawRate *= .62; motion *= .72; roll *= .70; }
+      if (headStyle === 'quiet' || headStyle === 'soft') { yawRate *= .70; motion *= .55; roll *= .58; pitch *= .55; }
+      if (headStyle === 'tilt') { rollOffset = .045; motion *= .70; }
+      if (headStyle === 'flustered') { yawOffset = -.045; rollOffset = .025; yawRate *= 1.28; }
+      if (headStyle === 'amused') { rollOffset = .025; yawRate *= 1.15; }
+      if (headStyle === 'animated') { motion *= 1.30; roll *= 1.35; pitch *= 1.5; yawRate *= 1.22; }
+      if (gazeStyle === 'direct') { motion *= .58; yawOffset *= .35; }
+      if (gazeStyle === 'glance_away') yawOffset -= .065;
+      if (gazeStyle === 'soft') motion *= .70;
+      if (idleName === 'look_side') yawOffset -= .04;
+      if (idleName === 'glance_down') pitch += .035;
+      if (idleName === 'head_tilt') rollOffset += .025;
+      if (idleName === 'stretch_small') { pitch -= .018; rollOffset -= .015; }
+      head.rotation.y = yawOffset + Math.sin(elapsed * yawRate) * motion;
+      head.rotation.z = rollOffset + Math.sin(elapsed * .31 * (headStyle === 'thoughtful' ? .72 : 1.0)) * roll;
+      head.rotation.x = Math.sin(elapsed * (headStyle === 'animated' ? 1.75 : 1.4)) * pitch;
+    }
+
+    const chest = currentVrm.humanoid?.getNormalizedBoneNode?.('upperChest');
+    if (chest) {
+      const speaking = conversationState === 'speaking';
+      let chestYaw = speaking ? Math.sin(elapsed * .42) * gestureEnergy * .012 : 0;
+      let chestRoll = speaking ? Math.sin(elapsed * .36) * gestureEnergy * .009 : 0;
+      if (gestureStyle === 'tease') chestRoll += .014;
+      if (gestureStyle === 'firm') { chestYaw *= .35; chestRoll *= .35; }
+      if (gestureStyle === 'soft') { chestYaw *= .55; chestRoll *= .55; }
+      if (gestureStyle === 'animated' || gestureStyle === 'celebrate') { chestYaw *= 1.55; chestRoll *= 1.45; }
+      if (idleName === 'shift_weight') chestRoll += Math.sin((now - idleCue.started_at) / 700) * .018;
+      if (idleName === 'shoulder_settle') chestRoll += .008 * Math.max(0, 1 - (now - idleCue.started_at) / 1800);
+      if (idleName === 'stretch_small') chestYaw += Math.sin((now - idleCue.started_at) / 500) * .012;
+      chest.rotation.y = chestYaw;
+      chest.rotation.z = chestRoll;
     }
     updateBlink(now);
   }
@@ -453,8 +652,10 @@ function stopVoicePlayback({ notifyBridge = true } = {}) {
     } catch (_) { /* best effort */ }
   }
   activeSpeechAudio = null;
+  currentPerformanceBeatIndex = -1;
   disconnectLipSyncGraph();
   restoreAmbientVolume();
+  settlePerformanceState(120);
   if (notifyBridge && bridge?.voicePlaybackFinished) bridge.voicePlaybackFinished();
 }
 
@@ -475,6 +676,12 @@ function audioSourceFromVoice(voice = {}) {
 
 function playVoice(voice = {}) {
   if (!voice?.enabled || voice.status !== 'success' || (!voice.audio_url && !voice.audio_base64)) return;
+  const packet = voice?.performance_packet && typeof voice.performance_packet === 'object' ? voice.performance_packet : currentPerformancePacket;
+  const delivery = packet.delivery || voice.delivery_plan || {};
+  if (delivery && typeof delivery === 'object' && Object.keys(delivery).length) {
+    currentDeliveryPlan = { ...currentDeliveryPlan, ...delivery };
+  }
+  applyAvatarState({ expression: currentDeliveryPlan.avatar_expression || 'neutral', emotion_intensity: currentDeliveryPlan.energy || .3 });
   stopVoicePlayback({ notifyBridge: false });
   bridge?.voicePlaybackStage?.('payload_received');
   const prepared = audioSourceFromVoice(voice);
@@ -483,6 +690,7 @@ function playVoice(voice = {}) {
   audio.preload = 'auto';
   audio.src = prepared.source;
   activeSpeechAudio = audio;
+  currentPerformanceBeatIndex = -1;
   let lipSyncAttached = false;
   const cleanupSource = () => {
     if (typeof prepared.revoke === 'function') {
@@ -506,8 +714,10 @@ function playVoice(voice = {}) {
     cleanupSource();
     if (activeSpeechAudio === audio) {
       activeSpeechAudio = null;
+      currentPerformanceBeatIndex = -1;
       disconnectLipSyncGraph();
       restoreAmbientVolume();
+      settlePerformanceState(360);
       bridge?.voicePlaybackFinished?.();
     }
   });
@@ -516,6 +726,7 @@ function playVoice(voice = {}) {
     if (activeSpeechAudio === audio) activeSpeechAudio = null;
     disconnectLipSyncGraph();
     restoreAmbientVolume();
+    settlePerformanceState(120);
     bridge?.voicePlaybackFinished?.();
     toast('Mary generated voice audio, but playback failed.', 'error');
   });
@@ -526,6 +737,7 @@ function playVoice(voice = {}) {
     if (activeSpeechAudio === audio) activeSpeechAudio = null;
     disconnectLipSyncGraph();
     restoreAmbientVolume();
+    settlePerformanceState(120);
     bridge?.voicePlaybackFinished?.();
     toast(`Voice playback failed: ${error}`, 'error');
   });
@@ -557,6 +769,7 @@ function ensureAmbientMusic() {
 // ---------------------------------------------------------------------------
 
 function appendMessage(speaker, text, kind) {
+  if (kind === 'mary') $$('.message-feedback').forEach((node) => node.remove());
   const article = document.createElement('article');
   article.className = `message ${kind}`;
   const meta = document.createElement('div');
@@ -570,9 +783,48 @@ function appendMessage(speaker, text, kind) {
   bubble.className = 'bubble';
   bubble.textContent = text;
   article.append(meta, bubble);
+  if (kind === 'mary') {
+    const feedback = document.createElement('footer');
+    feedback.className = 'message-feedback';
+    feedback.innerHTML = '<span>TRAIN MARY · OPTIONAL</span><button type="button" data-response-feedback="positive" title="This felt like Mary">♡</button><button type="button" data-response-feedback="negative" title="This did not feel like Mary">×</button>';
+    article.append(feedback);
+  }
   messages.append(article);
   messages.scrollTop = messages.scrollHeight;
 }
+
+function recordDesktopFeedback(button) {
+  if (!bridge?.recordResponseFeedback) return;
+  const rating = String(button?.dataset?.responseFeedback || 'neutral');
+  const tags = [rating === 'positive' ? 'felt_like_mary' : 'did_not_feel_like_mary'];
+  let chosen = '';
+  if (rating === 'negative') {
+    const correction = window.prompt('Optional: what should Mary have said instead?', '');
+    if (correction === null) return;
+    chosen = String(correction || '').trim();
+    if (chosen) tags.push('correction_supplied');
+  }
+  bridge.recordResponseFeedback(
+    rating,
+    JSON.stringify(tags),
+    '',
+    chosen,
+    (raw) => {
+      const result = parsePayload(raw);
+      if (result.ok === false) {
+        console.warn('Mary feedback was not saved:', result.error || result);
+        return;
+      }
+      const footer = button.closest('.message-feedback');
+      if (footer) footer.innerHTML = `<span>${rating === 'positive' ? 'SAVED · FELT LIKE MARY' : (chosen ? 'SAVED · CORRECTION ADDED' : 'SAVED · NEEDS REFINEMENT')}</span>`;
+    },
+  );
+}
+
+messages?.addEventListener('click', (event) => {
+  const button = event.target.closest?.('[data-response-feedback]');
+  if (button) recordDesktopFeedback(button);
+});
 
 function setConnected(value, label = '') {
   statusDot.classList.toggle('connected', Boolean(value));
@@ -628,6 +880,8 @@ function setConversationState(raw) {
   const state = String(payload.state || raw || 'idle').toLowerCase();
   if (!['idle', 'listening', 'transcribing', 'responding', 'thinking', 'speaking', 'interrupted'].includes(state)) return;
   conversationState = state;
+  const stage = $('#main-stage');
+  if (stage) stage.dataset.interactionState = state;
   refreshConversationControls();
 }
 
@@ -1100,8 +1354,10 @@ function renderFocus() {
 
 function renderStream() {
   const presence=ecosystemState.presence || {}; const skills=ecosystemState.skills || []; const byKey=Object.fromEntries(skills.map(x=>[x.key,x]));
-  return `<div class="presence-status"><div class="presence-node ready"><strong>Presence Core</strong><span>${escapeHtml(titleCase(presence.mode || 'companion'))} · initiative + silence</span></div><div class="presence-node"><strong>Twitch</strong><span>${byKey.twitch?.enabled?'Enabled':'Optional · disabled for first boot'}</span></div><div class="presence-node"><strong>OBS / Vision</strong><span>${byKey.obs?.enabled||byKey.vision?.enabled?'Enabled':'Optional · disabled for first boot'}</span></div></div>
-  <div class="workspace-grid" style="margin-top:12px"><div class="workspace-panel hero-panel"><h3>Mary Presence</h3><p>The part that moves Mary beyond prompt → response: typed live context, pending thoughts, cheap idle behavior, and a decision layer where staying quiet is valid.</p><div class="data-row"><span>Pending thoughts</span><strong>${(presence.pending_thoughts||[]).length}</strong></div><div class="data-row"><span>Recent context events</span><strong>${(presence.recent||[]).length}</strong></div><button class="primary-small" id="presence-idle-test" style="height:34px;margin-top:8px">Preview an idle behavior</button></div><div class="workspace-panel"><h3>External systems — later</h3><p>Twitch, OBS, and screen vision are deliberately present as skills but disabled by default. They cannot block getting Mary running on your PC.</p><div class="chip-row">${['twitch','obs','vision'].map(k=>`<span class="chip">${byKey[k]?.enabled?'●':'○'} ${escapeHtml(titleCase(k))}</span>`).join('')}</div></div></div>`;
+  const stage=dashboardState.performance_context || runtimeStatus.performance_context || {}; const mode=stage.mode || 'private'; const modes=['private','casual','focus','stream','performance'];
+  return `<div class="presence-status"><div class="presence-node ready"><strong>Presence Core</strong><span>${escapeHtml(titleCase(presence.mode || 'companion'))} · initiative + silence</span></div><div class="presence-node ready"><strong>Character Stage</strong><span>${escapeHtml(titleCase(mode))} · same Mary, different projection</span></div><div class="presence-node"><strong>Twitch / OBS</strong><span>${byKey.twitch?.enabled||byKey.obs?.enabled?'Connected':'Optional adapters'}</span></div></div>
+  <div class="workspace-grid" style="margin-top:12px"><div class="workspace-panel hero-panel"><h3>Mary Presence</h3><p>The part that moves Mary beyond prompt → response: live context, pending thoughts, cheap idle behavior, and a decision layer where staying quiet is valid.</p><div class="data-row"><span>Pending thoughts</span><strong>${(presence.pending_thoughts||[]).length}</strong></div><div class="data-row"><span>Recent context events</span><strong>${(presence.recent||[]).length}</strong></div><button class="primary-small" id="presence-idle-test" style="height:34px;margin-top:8px">Preview an idle behavior</button></div><div class="workspace-panel accent"><h3>Social Stage</h3><p>These are performance contexts, not alternate personas. Public modes project Mary more clearly while keeping private creator/relationship context out of the room.</p><div class="chip-row">${modes.map(x=>`<button class="chip ${x===mode?'active':''}" data-performance-context="${x}">${escapeHtml(titleCase(x))}</button>`).join('')}</div><div class="data-row"><span>Audience</span><strong>${escapeHtml(titleCase(stage.audience||'creator'))}</strong></div><div class="data-row"><span>Privacy</span><strong>${stage.public?'PUBLIC GUARD':'PRIVATE'}</strong></div></div></div>
+  <div class="workspace-panel" style="margin-top:12px"><h3>External performer adapters</h3><p>Twitch, OBS and vision remain optional inputs/outputs. They never own Mary; they publish context or render actions through Core.</p><div class="chip-row">${['twitch','obs','vision'].map(k=>`<span class="chip">${byKey[k]?.enabled?'●':'○'} ${escapeHtml(titleCase(k))}</span>`).join('')}</div></div>`;
 }
 
 function renderSearch() {
@@ -1225,7 +1481,7 @@ function renderVoice() {
         <div class="data-row"><span>Speech input</span><strong>${stt.enabled ? `ON · ${escapeHtml(stt.provider || 'configured')}` : 'OFF'}</strong></div>
         <div class="data-row"><span>Conversation state</span><strong>${escapeHtml(titleCase(conversationState))}</strong></div>
         <div class="data-row"><span>Delivery mode</span><strong>${escapeHtml(titleCase(plan.metadata?.performance_mode || 'natural conversation'))}</strong></div>
-        <p>12.12.2 keeps ordinary delivery restrained. Emotion colors Mary's baseline instead of turning every line into a separate acting profile.</p>
+        <p>Stage 12 keeps neutral conversation natural, but represented Mary character modes now become audible and visible performance instead of being flattened back to one baseline.</p>
       </div>
       <div class="workspace-panel">
         <h3>Last delivery plan</h3>
@@ -1233,7 +1489,9 @@ function renderVoice() {
         <div class="data-row"><span>Energy / warmth</span><strong>${escapeHtml(`${plan.energy ?? '—'} / ${plan.warmth ?? '—'}`)}</strong></div>
         <div class="data-row"><span>Stability / style</span><strong>${escapeHtml(`${plan.stability ?? '—'} / ${plan.style ?? '—'}`)}</strong></div>
         <div class="data-row"><span>Pace / emphasis</span><strong>${escapeHtml(`${plan.pace ?? '—'} / ${plan.emphasis ?? '—'}`)}</strong></div>
-        <div class="data-row"><span>Gesture</span><strong>${escapeHtml(plan.gesture_energy ?? '—')}</strong></div>
+        <div class="data-row"><span>Gesture</span><strong>${escapeHtml(`${plan.gesture_energy ?? '—'} · ${titleCase(plan.gesture_style || 'natural')}`)}</strong></div>
+        <div class="data-row"><span>Gaze / head</span><strong>${escapeHtml(`${titleCase(plan.gaze_style || 'engaged')} / ${titleCase(plan.head_style || 'natural')}`)}</strong></div>
+        <div class="data-row"><span>Performance beats</span><strong>${escapeHtml(String(Array.isArray(plan.performance_beats) ? plan.performance_beats.length : 0))}</strong></div>
         <p>${escapeHtml(plan.rationale || 'Complete a turn to see the current delivery plan.')}</p>
       </div>
     </div>
@@ -1331,7 +1589,16 @@ function bindWorkspaceActions() {
   $('#search-add-root')?.addEventListener('click',()=>bridge?.chooseSearchRoot?.((raw)=>{const r=parsePayload(raw);if(r.selected)bridge.getDashboardState?.((x)=>applyDashboardState(x));}));
   $('#research-create')?.addEventListener('click',()=>{const title=$('#research-title')?.value?.trim();if(!title||!bridge?.createResearchThread)return;bridge.createResearchThread(title,'',(raw)=>{const r=parsePayload(raw);if(r.ok)bridge.getDashboardState?.((x)=>applyDashboardState(x));});});
   $$('[data-arcade]').forEach((button)=>button.addEventListener('click',()=>bridge?.playArcade?.(button.dataset.arcade,'','',(raw)=>{const r=parsePayload(raw);const node=$('#arcade-result');if(node)node.textContent=r.message||r.result||r.error||'Done.';})));
-  $('#presence-idle-test')?.addEventListener('click',()=>bridge?.getIdleAction?.((raw)=>{const r=parsePayload(raw);const a=r.action||{};toast(`Idle: ${a.name||'quiet'}`);if(a.sound&&!r.focus_quiet){const audio=new Audio(`./assets/sounds/${a.sound}`);audio.volume=.12;audio.play().catch(()=>{});}}));
+  $('#presence-idle-test')?.addEventListener('click',()=>bridge?.getIdleAction?.((raw)=>applyIdleAction(raw,{preview:true})));
+  $$('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
+    bridge?.setPerformanceContext?.(button.dataset.performanceContext,(raw)=>{
+      const r=parsePayload(raw);
+      if(r.error){toast(r.error,'error');return;}
+      dashboardState.performance_context=r;
+      toast(`Mary stage · ${titleCase(r.mode||button.dataset.performanceContext)}`);
+      renderWorkspace('stream');
+    });
+  }));
   $$('#workspace-body [data-project-file]').forEach((button) => button.addEventListener('click', () => {
     const path = button.dataset.projectFile || '';
     if (button.dataset.referenceOnly === 'true') {
@@ -1604,13 +1871,18 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
   bridge.messageReady.connect((raw) => {
     const payload = parsePayload(raw);
     appendMessage('Mary', payload.text || '[No response]', 'mary');
-    applyAvatarState(payload.avatar || {});
+    rememberAmbientAvatarState(payload.avatar || {});
+    const packet = payload.runtime?.performance_packet || payload.voice?.performance_packet || {};
+    const preReactionMs = applyPerformancePacket(packet);
     if (payload.runtime?.trace) applyTurnTrace(payload.runtime.trace);
     // Desktop voice returns audio. Mobile browser voice is handled by the
-    // HTTP bridge so the same transcript never plays twice.
-    if (!bridge._isHttpBridge) playVoice(payload.voice || {});
+    // HTTP bridge so the same transcript never plays twice.  A bounded
+    // deterministic pre-reaction lets Mary's face move before speech begins.
+    if (!bridge._isHttpBridge) {
+      window.setTimeout(() => playVoice(payload.voice || {}), preReactionMs);
+    }
   });
-  bridge.avatarStateChanged.connect((raw) => applyAvatarState(parsePayload(raw)));
+  bridge.avatarStateChanged.connect((raw) => rememberAmbientAvatarState(parsePayload(raw)));
   bridge.busyChanged.connect((value) => setBusy(value));
   bridge.conversationStateChanged.connect((raw) => setConversationState(raw));
   bridge.characterStateChanged?.connect((raw) => applyCharacterState(raw));
@@ -1640,7 +1912,7 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
     if (runtimeStatus.conversation) setConversationState(runtimeStatus.conversation);
   });
   bridge.getLastTurnTrace?.((raw) => applyTurnTrace(parsePayload(raw)));
-  bridge.getAvatarState((raw) => applyAvatarState(parsePayload(raw)));
+  bridge.getAvatarState((raw) => rememberAmbientAvatarState(parsePayload(raw)));
   bridge.getCharacterState?.((raw) => applyCharacterState(raw));
   bridge.getDashboardState?.((raw) => {
     applyDashboardState(raw);
@@ -1697,9 +1969,13 @@ window.setInterval(() => {
     const homeLive=$('#presence-home-live'); if(homeLive) homeLive.innerHTML=`<i></i>FOCUS ${formatFocusTime(remaining)}`;
     if(remaining===0 && !focus._notified){ focus._notified=true; const audio=new Audio('./assets/sounds/focus_complete.wav'); audio.volume=.16; audio.play().catch(()=>{}); toast('Focus block complete.'); }
   }
+  if(bridge && !document.hidden && !busy && conversationState==='idle' && performance.now()-lastPresencePulseAt>15000){
+    lastPresencePulseAt=performance.now();
+    bridge.pulsePresence?.();
+  }
   if(bridge && conversationState==='idle' && performance.now()-lastIdleActionAt>90000){
     lastIdleActionAt=performance.now();
-    bridge.getIdleAction?.((raw)=>{const r=parsePayload(raw);const a=r.action||{};if(a.kind==='sound'&&a.sound&&!r.focus_quiet){const audio=new Audio(`./assets/sounds/${a.sound}`);audio.volume=.06;audio.play().catch(()=>{});} if(a.kind==='animation'&&currentVrm){currentVrm.scene.rotation.y=(Math.random()-.5)*.035;}});
+    bridge.getIdleAction?.((raw)=>applyIdleAction(raw));
   }
 },1000);
 

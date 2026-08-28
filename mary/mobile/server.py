@@ -668,15 +668,21 @@ class MaryRemoteMobileRuntime:
 
             with self._lock:
                 self._last_trace = trace
+                performance_packet = dict((response.display_hints or {}).get("performance_packet", {}) or {})
+                delivery = dict((response.display_hints or {}).get("delivery_plan", {}) or {})
                 self._last_feedback_context = {
                     "user_text": value,
                     "assistant_text": str(response.response or ""),
+                    "source_kind": "creator_turn",
+                    "input_authority": "creator",
                     "provider": str(trace.get("provider") or "unknown"),
                     "model": str(trace.get("model") or "unknown"),
                     "conversation_mode": str(
                         getattr(response, "effective_mode", "adaptive")
                         or "adaptive"
                     ),
+                    "performance_context": str(performance_packet.get("social_context") or "private"),
+                    "character_patterns": list(dict(delivery.get("metadata", {}) or {}).get("performer_patterns", []) or [])[:12],
                     "turn_id": str(response.turn_id or ""),
                 }
 
@@ -712,6 +718,13 @@ class MaryRemoteMobileRuntime:
                             )
                             or {}
                         ),
+                        "performance_packet": dict(
+                            response.display_hints.get(
+                                "performance_packet",
+                                {},
+                            )
+                            or {}
+                        ),
                         "device_fallback": True,
                     },
                     "runtime": {
@@ -730,6 +743,13 @@ class MaryRemoteMobileRuntime:
                         "delivery_plan": dict(
                             response.display_hints.get(
                                 "delivery_plan",
+                                {},
+                            )
+                            or {}
+                        ),
+                        "performance_packet": dict(
+                            response.display_hints.get(
+                                "performance_packet",
                                 {},
                             )
                             or {}
@@ -883,6 +903,19 @@ class MaryRemoteMobileRuntime:
                 "conversation_id": self._conversation_id,
                 "authority": "remote_mary_core",
             }
+
+        if name == "getPerformanceContext":
+            return self.client.runtime_action(
+                "performance.context.status"
+            )
+
+        if name == "setPerformanceContext":
+            values = list(args or [])
+            mode = str(values[0] if values else "private")
+            return self.client.runtime_action(
+                "performance.context.set",
+                {"mode": mode},
+            )
 
         if name == "personalSearch":
             values = list(
@@ -1258,6 +1291,77 @@ class MaryRemoteMobileRuntime:
                 )
             )
 
+        if name == "presencePulse":
+            values = list(args or [])
+            surface_visible = bool(values[0]) if values else True
+            focus_active = bool(values[1]) if len(values) > 1 else False
+            payload = dict(
+                self.client.runtime_action(
+                    "presence.pulse",
+                    {
+                        "surface": "mobile",
+                        "surface_visible": surface_visible,
+                        "focus_active": focus_active,
+                        "conversation_id": self._conversation_id,
+                    },
+                )
+                or {}
+            )
+            if not bool(payload.get("speak") or payload.get("spoke")):
+                return payload
+
+            response_text = str(payload.get("response") or payload.get("text") or "")
+            hints = dict(payload.get("display_hints") or {})
+            delivery = dict(hints.get("delivery_plan") or {})
+            packet = dict(hints.get("performance_packet") or payload.get("performance_packet") or {})
+            provenance = dict(payload.get("provenance") or {})
+            candidate_context = str(payload.get("presence_context") or "").strip()
+            if not candidate_context:
+                candidate_context = str(
+                    dict(payload.get("candidate") or {}).get("summary")
+                    or payload.get("initiative_kind")
+                    or "Mary initiative"
+                )
+            with self._lock:
+                self._last_feedback_context = {
+                    "user_text": "",
+                    "context_text": candidate_context[:4000],
+                    "assistant_text": response_text,
+                    "source_kind": "mary_initiative",
+                    "input_authority": str(payload.get("authority") or "environment_context_only"),
+                    "provider": str(provenance.get("provider") or "unknown"),
+                    "model": str(provenance.get("model") or "unknown"),
+                    "conversation_mode": str(
+                        dict(payload.get("conversation_state") or {}).get("engagement", {}).get("mode")
+                        or "adaptive"
+                    ),
+                    "performance_context": str(packet.get("social_context") or "private"),
+                    "character_patterns": list(dict(delivery.get("metadata") or {}).get("performer_patterns", []) or [])[:12],
+                    "turn_id": str(payload.get("turn_id") or ""),
+                }
+            voice_status = dict(self.speech.status().get("tts", {}) or {})
+            return _json_safe({
+                **payload,
+                "text": response_text,
+                "voice": {
+                    **voice_status,
+                    "enabled": True,
+                    "status": "ready",
+                    "spoken_text": response_text,
+                    "delivery_plan": delivery,
+                    "performance_packet": packet,
+                    "device_fallback": True,
+                },
+                "runtime": {
+                    "turn_id": str(payload.get("turn_id") or ""),
+                    "conversation_id": self._conversation_id,
+                    "initiative": True,
+                    "delivery_plan": delivery,
+                    "performance_packet": packet,
+                    "turn_mind": dict(hints.get("dialogue_plan") or {}),
+                },
+            })
+
         if name == "getTrainingFeedbackState":
             return self.client.runtime_action(
                 "training.feedback.status"
@@ -1272,6 +1376,7 @@ class MaryRemoteMobileRuntime:
                 else []
             )
             note = str(values[2] if len(values) > 2 else "")
+            chosen_text = str(values[3] if len(values) > 3 else "")
             with self._lock:
                 context = dict(self._last_feedback_context)
             if not context:
@@ -1285,6 +1390,7 @@ class MaryRemoteMobileRuntime:
                     "rating": rating,
                     "tags": tags,
                     "note": note,
+                    "chosen_text": chosen_text,
                 },
             )
 
@@ -1899,6 +2005,7 @@ class MaryMobileRuntime:
                 str,
                 Any,
             ] = {}
+            performance_packet: dict[str, Any] = {}
 
             try:
                 values = dict(
@@ -1931,6 +2038,13 @@ class MaryMobileRuntime:
                 delivery_plan = dict(
                     cycle_metadata.get(
                         "delivery_plan",
+                        {},
+                    )
+                    or {}
+                )
+                performance_packet = dict(
+                    cycle_metadata.get(
+                        "performance_packet",
                         {},
                     )
                     or {}
@@ -2044,6 +2158,8 @@ class MaryMobileRuntime:
                 self._last_feedback_context = {
                     "user_text": value,
                     "assistant_text": response_text,
+                    "source_kind": "creator_turn",
+                    "input_authority": "creator",
                     "provider": str(
                         trace.get(
                             "provider"
@@ -2065,6 +2181,8 @@ class MaryMobileRuntime:
                         )
                         or "adaptive"
                     ),
+                    "performance_context": str(performance_packet.get("social_context") or "private"),
+                    "character_patterns": list(dict(delivery_plan.get("metadata", {}) or {}).get("performer_patterns", []) or [])[:12],
                     "turn_id": str(
                         result.turn_id
                         or ""
@@ -2082,6 +2200,7 @@ class MaryMobileRuntime:
                         "status": "ready",
                         "spoken_text": response_text,
                         "delivery_plan": delivery_plan,
+                        "performance_packet": performance_packet,
                         "device_fallback": True,
                     },
                     "runtime": {
@@ -2103,6 +2222,10 @@ class MaryMobileRuntime:
                         ),
                         "delivery_plan": dict(
                             delivery_plan
+                            or {}
+                        ),
+                        "performance_packet": dict(
+                            performance_packet
                             or {}
                         ),
                         "conversation_lane": getattr(
@@ -2306,6 +2429,14 @@ class MaryMobileRuntime:
                     "authority": "local_development_runtime",
                 }
 
+            if name == "getPerformanceContext":
+                return self.application.mary.performance_context.status()
+
+            if name == "setPerformanceContext":
+                return self.application.mary.performance_context.set_mode(
+                    str(values[0] if values else "private")
+                )
+
             if name == "setConversationMode":
                 return (
                     self.application
@@ -2476,6 +2607,69 @@ class MaryMobileRuntime:
                     )
                 )
 
+            if name == "presencePulse":
+                surface_visible = bool(values[0]) if values else True
+                focus_active = bool(values[1]) if len(values) > 1 else False
+                pulse = self.application.presence_pulse(
+                    surface="mobile",
+                    conversation_id=self._conversation_id,
+                    device_id="mobile-local",
+                    surface_visible=surface_visible,
+                    focus_active=focus_active,
+                )
+                result = pulse.pop("pipeline_result", None)
+                if not bool(pulse.get("spoke")) or result is None:
+                    return _json_safe(pulse)
+
+                response_text = str(result.output or "")
+                pipeline_values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
+                cycle = pipeline_values.get("cognitive_cycle")
+                cycle_metadata = dict(getattr(cycle, "metadata", {}) or {})
+                delivery = dict(cycle_metadata.get("delivery_plan", {}) or {})
+                packet = dict(cycle_metadata.get("performance_packet", {}) or {})
+                reasoning = getattr(cycle, "reasoning", None)
+                reasoning_meta = dict(getattr(reasoning, "metadata", {}) or {})
+                candidate = dict(pulse.get("candidate") or {})
+                with self._lock:
+                    self._last_feedback_context = {
+                        "user_text": "",
+                        "context_text": str(candidate.get("summary") or "Mary initiative")[:4000],
+                        "assistant_text": response_text,
+                        "source_kind": "mary_initiative",
+                        "input_authority": "environment_context_only",
+                        "provider": str(reasoning_meta.get("provider") or "local/system"),
+                        "model": str(reasoning_meta.get("model") or "n/a"),
+                        "conversation_mode": str(self.application.mary.engagement.status().get("mode") or "adaptive"),
+                        "performance_context": str(packet.get("social_context") or "private"),
+                        "character_patterns": list(dict(delivery.get("metadata") or {}).get("performer_patterns", []) or [])[:12],
+                        "turn_id": str(result.turn_id or ""),
+                    }
+                voice_status = dict(self.speech.status().get("tts", {}) or {})
+                return _json_safe({
+                    **pulse,
+                    "speak": True,
+                    "spoke": True,
+                    "text": response_text,
+                    "response": response_text,
+                    "turn_id": str(result.turn_id or ""),
+                    "voice": {
+                        **voice_status,
+                        "enabled": True,
+                        "status": "ready",
+                        "spoken_text": response_text,
+                        "delivery_plan": delivery,
+                        "performance_packet": packet,
+                        "device_fallback": True,
+                    },
+                    "runtime": {
+                        "turn_id": str(result.turn_id or ""),
+                        "conversation_id": self._conversation_id,
+                        "initiative": True,
+                        "delivery_plan": delivery,
+                        "performance_packet": packet,
+                    },
+                })
+
             if name == "getTrainingFeedbackState":
                 return (
                     self.application
@@ -2508,6 +2702,11 @@ class MaryMobileRuntime:
                     if len(values) > 2
                     else ""
                 )
+                chosen_text = str(
+                    values[3]
+                    if len(values) > 3
+                    else ""
+                )
 
                 with self._lock:
                     context = dict(
@@ -2527,6 +2726,7 @@ class MaryMobileRuntime:
                         rating=rating,
                         tags=tags,
                         note=note,
+                        chosen_text=chosen_text,
                         **context,
                     )
                 )

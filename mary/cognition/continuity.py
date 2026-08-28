@@ -70,6 +70,8 @@ class ContinuitySnapshot:
     consecutive_question_turns: int
     allow_follow_up_question: bool
     max_follow_up_questions: int
+    interaction_momentum: float
+    cadence_mode: str
     instructions: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
@@ -85,6 +87,8 @@ class ContinuitySnapshot:
             "consecutive_question_turns": self.consecutive_question_turns,
             "allow_follow_up_question": self.allow_follow_up_question,
             "max_follow_up_questions": self.max_follow_up_questions,
+            "interaction_momentum": round(float(self.interaction_momentum), 3),
+            "cadence_mode": self.cadence_mode,
             "instructions": list(self.instructions),
         }
 
@@ -177,6 +181,16 @@ class ConversationContinuity:
             allow_question = False
             max_questions = 0
 
+        interaction_momentum = self._interaction_momentum(
+            input_text=input_text,
+            recent_conversation=recent_conversation,
+        )
+        cadence_mode = (
+            "lively" if interaction_momentum >= 0.68
+            else "engaged" if interaction_momentum >= 0.42
+            else "quiet"
+        )
+
         instruction_items = [
             f"Primary conversational move for this turn: {drive.value}. Do that move before considering any secondary move.",
             "Do not repeat Mary's recent opening, metaphor, punchline, question structure, or conversational move when a different natural move works.",
@@ -188,6 +202,11 @@ class ConversationContinuity:
             "Curiosity can appear as noticing, wondering, hypothesizing, remembering, or forming an opinion; it does not require Mary to ask Unbe a question.",
             "When Mary has an opinion, let her state it instead of reflexively bouncing the decision back to Unbe.",
             "Color, slang, emoji, and metaphor are optional texture. Do not make every casual reply poetic or decorate every turn.",
+            (
+                f"Ephemeral interaction cadence is {cadence_mode} ({interaction_momentum:.2f}). "
+                "This reflects only observable conversational rhythm, not Unbe's hidden emotion or a durable trait. "
+                "Let lively rhythm modestly increase immediacy/animation when the subject is light; serious emotion or moral stakes always override it."
+            ),
         ]
 
         if overused:
@@ -233,8 +252,69 @@ class ConversationContinuity:
             consecutive_question_turns=consecutive_questions,
             allow_follow_up_question=allow_question,
             max_follow_up_questions=max_questions,
+            interaction_momentum=interaction_momentum,
+            cadence_mode=cadence_mode,
             instructions=tuple(instruction_items),
         )
+
+    @staticmethod
+    def _interaction_momentum(
+        *,
+        input_text: str,
+        recent_conversation: list[dict[str, str]],
+    ) -> float:
+        """Estimate observable turn rhythm without inferring private emotion.
+
+        This value is intentionally ephemeral and recomputed from the immediate
+        transcript.  It is a pacing signal only: it is never memory, relationship
+        evidence, or a claim that the creator *feels* excited/happy/etc.
+        """
+
+        items = [
+            item for item in recent_conversation[-8:]
+            if isinstance(item, dict) and str(item.get("content", "")).strip()
+        ]
+        density = min(1.0, len(items) / 8.0)
+
+        alternating = 0
+        previous_role = ""
+        for item in items:
+            role = str(item.get("role", ""))
+            if previous_role and role and role != previous_role:
+                alternating += 1
+            previous_role = role
+        alternation = min(1.0, alternating / 5.0)
+
+        text = str(input_text or "").strip()
+        normalized = normalize_for_matching(text)
+        words = _WORD_RE.findall(text.lower())
+        brevity = 1.0 if 0 < len(words) <= 12 else 0.55 if len(words) <= 28 else 0.2
+        punctuation = min(1.0, (text.count("!") * 0.28) + (text.count("?") * 0.08))
+        lively_markers = (
+            "lol", "lmao", "haha", "hell yeah", "hell yea", "lets go", "let's go",
+            "no way", "bro", "dude", "wild", "awesome", "nice", "yooo", "yo ",
+        )
+        marker_signal = 1.0 if any(marker in normalized for marker in lively_markers) else 0.0
+
+        # All-caps is only a surface cue and is bounded so one acronym does not
+        # make a turn hyperactive.
+        alpha = [c for c in text if c.isalpha()]
+        uppercase_ratio = (
+            sum(1 for c in alpha if c.isupper()) / len(alpha)
+            if len(alpha) >= 6 else 0.0
+        )
+        caps_signal = min(1.0, max(0.0, (uppercase_ratio - 0.35) * 1.8))
+
+        score = (
+            0.08
+            + density * 0.22
+            + alternation * 0.24
+            + brevity * 0.16
+            + punctuation * 0.12
+            + marker_signal * 0.14
+            + caps_signal * 0.04
+        )
+        return max(0.0, min(1.0, score))
 
     def _select_drive(
         self,

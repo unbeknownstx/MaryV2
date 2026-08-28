@@ -129,6 +129,9 @@ class _ConversationWorker(QObject):
             delivery_plan = dict(
                 cycle_metadata.get("delivery_plan", {}) or {}
             )
+            performance_packet = dict(
+                cycle_metadata.get("performance_packet", {}) or {}
+            )
 
             # Avatar presentation is best-effort. A visual-state defect must
             # never swallow an otherwise valid conversation response.
@@ -211,6 +214,11 @@ class _ConversationWorker(QObject):
                 round(voice_ms, 2),
             )
 
+            voice_payload = {
+                **voice_payload,
+                "delivery_plan": delivery_plan,
+                "performance_packet": performance_packet,
+            }
             payload = DesktopTurnPayload(
                 text=display_text,
                 canonical_text=response_text,
@@ -222,6 +230,8 @@ class _ConversationWorker(QObject):
                     "success": result.success,
                     "avatar_error": avatar_error,
                     "voice_error": voice_error,
+                    "delivery_plan": delivery_plan,
+                    "performance_packet": performance_packet,
                     "trace": trace,
                 },
             )
@@ -241,6 +251,180 @@ class _ConversationWorker(QObject):
                 flush=True,
             )
             self.failed.emit(error)
+
+
+class _PresenceWorker(QObject):
+    """Run one cheap Presence arbitration pulse off the Qt GUI thread."""
+
+    finished = Signal(object)
+    silent = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        application: MaryApplication | RemoteMaryApplicationView,
+        voice: DesktopVoiceEngine,
+        audio_cache: DesktopAudioCache | None = None,
+    ) -> None:
+        super().__init__()
+        self.application = application
+        self.voice = voice
+        self.audio_cache = audio_cache
+
+    @Slot()
+    def run(self) -> None:
+        started = monotonic()
+        try:
+            focus_active = False
+            try:
+                focus_active = bool(self.application.ecosystem.focus.snapshot().get("active", False))
+            except Exception:
+                pass
+
+            conversation_id = str(getattr(self.application, "conversation_id", "creator-primary"))
+            if getattr(self.application, "authority", "") == "remote_mary_core":
+                pulse = dict(
+                    self.application.ecosystem.presence.pulse(
+                        surface_visible=True,
+                        focus_active=focus_active,
+                        conversation_id=conversation_id,
+                    )
+                    or {}
+                )
+                spoke = bool(pulse.get("speak") or pulse.get("spoke"))
+            else:
+                pulse = dict(
+                    self.application.presence_pulse(
+                        surface="desktop",
+                        surface_visible=True,
+                        focus_active=focus_active,
+                        conversation_id=conversation_id,
+                        device_id=str(getattr(self.application, "device_id", "desktop")),
+                    )
+                    or {}
+                )
+                spoke = bool(pulse.get("speak") or pulse.get("spoke"))
+
+            if not spoke:
+                self.silent.emit(pulse)
+                return
+
+            result = pulse.get("pipeline_result")
+            hints: dict[str, Any] = {}
+            response_text = str(pulse.get("text") or pulse.get("response") or "").strip()
+            turn_id = str(pulse.get("turn_id") or "")
+            elapsed = monotonic() - started
+
+            if result is not None:
+                response_text = str(getattr(result, "output", None) or response_text).strip()
+                turn_id = str(getattr(result, "turn_id", None) or turn_id)
+                elapsed = float(getattr(result, "elapsed", elapsed) or elapsed)
+                pipeline_values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
+                cycle = pipeline_values.get("cognitive_cycle")
+                cycle_metadata = dict(getattr(cycle, "metadata", {}) or {})
+                hints = {
+                    "delivery_plan": dict(cycle_metadata.get("delivery_plan", {}) or {}),
+                    "performance_packet": dict(cycle_metadata.get("performance_packet", {}) or {}),
+                }
+            else:
+                hints = dict(pulse.get("display_hints") or {})
+
+            if not response_text:
+                self.silent.emit({**pulse, "reason": "initiative_returned_empty_text"})
+                return
+
+            delivery_plan = dict(hints.get("delivery_plan", {}) or {})
+            performance_packet = dict(
+                pulse.get("performance_packet")
+                or hints.get("performance_packet")
+                or {}
+            )
+            mary = self.application.mary
+            if getattr(self.application, "authority", "") == "remote_mary_core":
+                try:
+                    mary.update_from_display_hints(hints, response_text)
+                except Exception:
+                    pass
+
+            avatar_error: str | None = None
+            try:
+                mary.avatar.sync_emotion()
+                avatar_state = mary.avatar.controller.present(
+                    text=response_text,
+                    speaking=False,
+                    metadata={
+                        "surface": "desktop",
+                        "delivery_plan": delivery_plan,
+                        "performance_packet": performance_packet,
+                        "initiative": True,
+                    },
+                )
+                avatar_payload = avatar_state.to_dict()
+            except Exception as exc:
+                avatar_error = f"{type(exc).__name__}: {exc}"
+                avatar_payload = mary.avatar.state.to_dict()
+
+            voice_error: str | None = None
+            try:
+                voice_payload = self.voice.synthesize(
+                    response_text,
+                    user_text=None,
+                    emotional_state=mary.emotion.state,
+                    delivery_plan=delivery_plan,
+                )
+            except Exception as exc:
+                voice_error = f"{type(exc).__name__}: {exc}"
+                voice_payload = {
+                    **self.voice.status.to_dict(),
+                    "status": "failed",
+                    "error": voice_error,
+                    "spoken_text": response_text,
+                }
+
+            if self.audio_cache is not None and voice_payload.get("status") == "success":
+                voice_payload = self.audio_cache.stage(voice_payload)
+
+            spoken_text = str(voice_payload.get("spoken_text") or "").strip()
+            display_text = spoken_text or response_text
+            payload = DesktopTurnPayload(
+                text=display_text,
+                canonical_text=response_text,
+                avatar=avatar_payload,
+                voice={
+                    **voice_payload,
+                    "delivery_plan": delivery_plan,
+                    "performance_packet": performance_packet,
+                },
+                runtime={
+                    "turn_id": turn_id,
+                    "elapsed": elapsed,
+                    "success": True,
+                    "initiative": True,
+                    "initiative_kind": str(pulse.get("initiative_kind") or "presence_event"),
+                    "presence_action": str(pulse.get("presence_action") or "react"),
+                    "presence_context": str(
+                        pulse.get("presence_context")
+                        or dict(pulse.get("candidate") or {}).get("summary")
+                        or pulse.get("initiative_kind")
+                        or "Mary initiative"
+                    )[:4000],
+                    "input_authority": str(pulse.get("authority") or "environment_context_only"),
+                    "provenance": dict(pulse.get("provenance") or {}),
+                    "avatar_error": avatar_error,
+                    "voice_error": voice_error,
+                    "delivery_plan": delivery_plan,
+                    "performance_packet": performance_packet,
+                    "trace": {
+                        "turn_id": turn_id,
+                        "initiative": True,
+                        "response_engine": "mary_presence",
+                        "delivery_plan": delivery_plan,
+                    },
+                },
+            )
+            self.finished.emit(payload)
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
 class _TranscriptionWorker(QObject):
@@ -307,6 +491,9 @@ class MaryDesktopBridge(QObject):
         self._active_thread: QThread | None = None
         self._active_worker: _ConversationWorker | None = None
 
+        self._presence_thread: QThread | None = None
+        self._presence_worker: _PresenceWorker | None = None
+
         self._speech_thread: QThread | None = None
         self._speech_worker: _TranscriptionWorker | None = None
 
@@ -332,6 +519,8 @@ class MaryDesktopBridge(QObject):
         self._active_turn_submitted_at: float | None = None
         self._pending_turn_trace: dict[str, Any] | None = None
         self._pending_turn_submitted_at: float | None = None
+        self._active_feedback_user_text: str = ""
+        self._last_feedback_context: dict[str, Any] = {}
 
         self.microphone.stateChanged.connect(
             self._on_microphone_state_changed
@@ -386,6 +575,7 @@ class MaryDesktopBridge(QObject):
             self.voicePlaybackStopRequested.emit()
 
         self._active_turn_submitted_at = monotonic()
+        self._active_feedback_user_text = value
 
         lane = classify_conversation_lane(value)
 
@@ -426,6 +616,33 @@ class MaryDesktopBridge(QObject):
         worker.failed.connect(self._on_turn_failed)
         thread.finished.connect(self._on_thread_finished)
 
+        thread.start()
+
+    @Slot()
+    def pulsePresence(self) -> None:  # noqa: N802 - JS-facing API
+        """Run one non-blocking canonical Presence pulse while Desktop is idle."""
+
+        if self._busy or self._presence_thread is not None:
+            return
+        if self.conversation_runtime.state != DesktopConversationState.IDLE:
+            return
+        if self._speech_thread is not None or self.microphone.is_recording:
+            return
+
+        thread = QThread(self)
+        worker = _PresenceWorker(
+            self.application,
+            self.voice,
+            self.audio_cache,
+        )
+        worker.moveToThread(thread)
+        self._presence_thread = thread
+        self._presence_worker = worker
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_presence_finished)
+        worker.silent.connect(self._on_presence_silent)
+        worker.failed.connect(self._on_presence_failed)
+        thread.finished.connect(self._on_presence_thread_finished)
         thread.start()
 
     @Slot()
@@ -724,6 +941,57 @@ class MaryDesktopBridge(QObject):
                     "error": f"{type(exc).__name__}: {exc}",
                 }
             )
+
+    @Slot(result=str)
+    def getTrainingFeedbackState(self) -> str:  # noqa: N802 - JS-facing API
+        """Return the explicit-feedback dataset status; never character authority."""
+        try:
+            if getattr(self.application, "authority", "") == "remote_mary_core":
+                state = self.application.gateway.runtime_action("training.feedback.status")
+            else:
+                state = self.application.mary.training_feedback.status()
+            return _json(state)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, str, str, str, result=str)
+    def recordResponseFeedback(
+        self,
+        rating: str,
+        tags_json: str = "[]",
+        note: str = "",
+        chosen_text: str = "",
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Record one opt-in Mary response rating/correction from Desktop."""
+        context = dict(self._last_feedback_context)
+        if not context:
+            return _json({"ok": False, "error": "No completed desktop turn is available to rate."})
+        try:
+            parsed = json.loads(tags_json or "[]")
+            tags = list(parsed if isinstance(parsed, list) else [])
+        except Exception:
+            tags = []
+        values = {
+            **context,
+            "rating": str(rating or "neutral"),
+            "tags": tags,
+            "note": str(note or ""),
+            "chosen_text": str(chosen_text or ""),
+        }
+        try:
+            if getattr(self.application, "authority", "") == "remote_mary_core":
+                result = self.application.gateway.runtime_action("training.feedback.record", values)
+            else:
+                record = self.application.mary.training_feedback.record(**values)
+                result = {
+                    "ok": True,
+                    "id": record.id,
+                    "status": self.application.mary.training_feedback.status(),
+                }
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
     @Slot(result=str)
     def getLastTurnTrace(
@@ -1193,6 +1461,33 @@ class MaryDesktopBridge(QObject):
                     "error": str(exc),
                 }
             )
+
+    @Slot(result=str)
+    def getPerformanceContext(self) -> str:  # noqa: N802
+        try:
+            if getattr(self.application, "authority", "") == "remote_mary_core":
+                payload = self.application.gateway.runtime_action("performance.context.status")
+            else:
+                payload = self.application.mary.performance_context.status()
+            return _json(payload)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, result=str)
+    def setPerformanceContext(self, mode: str) -> str:  # noqa: N802
+        try:
+            value = str(mode or "private")
+            if getattr(self.application, "authority", "") == "remote_mary_core":
+                payload = self.application.gateway.runtime_action(
+                    "performance.context.set",
+                    {"mode": value},
+                )
+            else:
+                payload = self.application.mary.performance_context.set_mode(value)
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json(payload)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
     @Slot(result=str)
     def getIdleAction(
@@ -1697,6 +1992,11 @@ class MaryDesktopBridge(QObject):
         self.microphone.stop()
         self.audio_cache.cleanup()
 
+        presence_thread = self._presence_thread
+        if presence_thread is not None and presence_thread.isRunning():
+            presence_thread.quit()
+            presence_thread.wait()
+
         speech_thread = self._speech_thread
 
         if (
@@ -2059,6 +2359,67 @@ class MaryDesktopBridge(QObject):
         )
 
     @Slot(object)
+    def _on_presence_finished(self, payload: object) -> None:
+        if not isinstance(payload, DesktopTurnPayload):
+            self._finish_presence_thread()
+            return
+        payload_dict = payload.to_dict()
+        runtime = dict(payload.runtime or {})
+        delivery = dict(runtime.get("delivery_plan") or {})
+        packet = dict(runtime.get("performance_packet") or {})
+        provenance = dict(runtime.get("provenance") or {})
+        self._last_feedback_context = {
+            "user_text": "",
+            "context_text": str(runtime.get("presence_context") or "Mary initiative")[:4000],
+            "assistant_text": str(payload.canonical_text or payload.text),
+            "source_kind": "mary_initiative",
+            "input_authority": str(runtime.get("input_authority") or "environment_context_only"),
+            "provider": str(provenance.get("provider") or "unknown"),
+            "model": str(provenance.get("model") or "unknown"),
+            "conversation_mode": "adaptive",
+            "performance_context": str(packet.get("social_context") or "private"),
+            "character_patterns": list(
+                dict(delivery.get("metadata") or {}).get("performer_patterns", []) or []
+            )[:12],
+            "turn_id": str(runtime.get("turn_id") or ""),
+        }
+        self.messageReady.emit(_json(payload_dict))
+        self.avatarStateChanged.emit(_json(payload.avatar))
+        self._emit_character_state()
+        voice = payload.voice
+        if not bool(
+            voice.get("enabled")
+            and voice.get("status") == "success"
+            and (voice.get("audio_url") or voice.get("audio_base64"))
+        ):
+            self._transition_conversation_state(
+                DesktopConversationState.IDLE,
+                reason="presence_finished_without_voice",
+            )
+        self._finish_presence_thread()
+
+    @Slot(object)
+    def _on_presence_silent(self, _payload: object) -> None:
+        self._finish_presence_thread()
+
+    @Slot(str)
+    def _on_presence_failed(self, error: str) -> None:
+        # Presence is optional.  A transient network/provider failure should not
+        # interrupt the creator with an error toast every polling interval.
+        print(f"[MaryDesktop] presence pulse failed: {error}", flush=True)
+        self._finish_presence_thread()
+
+    @Slot()
+    def _on_presence_thread_finished(self) -> None:
+        self._presence_worker = None
+        self._presence_thread = None
+
+    def _finish_presence_thread(self) -> None:
+        thread = self._presence_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot(object)
     def _on_turn_finished(
         self,
         payload: object,
@@ -2142,6 +2503,25 @@ class MaryDesktopBridge(QObject):
             "trace"
         ] = trace
 
+        delivery = dict(payload.runtime.get("delivery_plan") or {})
+        packet = dict(payload.runtime.get("performance_packet") or {})
+        self._last_feedback_context = {
+            "user_text": str(self._active_feedback_user_text or "")[:4000],
+            "context_text": "",
+            "assistant_text": str(payload.canonical_text or payload.text),
+            "source_kind": "creator_turn",
+            "input_authority": "creator",
+            "provider": str(trace.get("provider") or "unknown"),
+            "model": str(trace.get("model") or "unknown"),
+            "conversation_mode": "adaptive",
+            "performance_context": str(packet.get("social_context") or "private"),
+            "character_patterns": list(
+                dict(delivery.get("metadata") or {}).get("performer_patterns", []) or []
+            )[:12],
+            "turn_id": str(payload.runtime.get("turn_id") or ""),
+        }
+        self._active_feedback_user_text = ""
+
         self.messageReady.emit(
             _json(
                 payload_dict
@@ -2219,6 +2599,7 @@ class MaryDesktopBridge(QObject):
         )
 
         self._active_turn_submitted_at = None
+        self._active_feedback_user_text = ""
 
         self._transition_conversation_state(
             DesktopConversationState.IDLE,

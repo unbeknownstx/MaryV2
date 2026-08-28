@@ -22,6 +22,12 @@ _IDENTIFIER_LIMITS = {
     "device_id": 160,
     "requested_mode": 32,
     "turn_id": 160,
+    "initiated_by": 48,
+    "input_authority": 64,
+    "presence_event_id": 160,
+    "presence_type": 80,
+    "presence_source": 80,
+    "presence_action": 48,
 }
 
 

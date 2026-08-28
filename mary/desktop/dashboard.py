@@ -405,6 +405,7 @@ def build_desktop_dashboard_state(
         "retrieval": (mary.mind.retrieval.status() if hasattr(getattr(mary, "mind", None), "retriever") else {}),
         "perception": mary.perception_director.snapshot() if hasattr(mary, "perception_director") else {},
         "training_feedback": mary.training_feedback.status() if hasattr(mary, "training_feedback") else {},
+        "performance_context": mary.performance_context.status() if hasattr(mary, "performance_context") else {},
         "providers": _provider_state(mary),
         "agency": {
             "active_goals": int(mary.agency.goals.count_active()),

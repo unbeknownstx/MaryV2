@@ -59,6 +59,7 @@ class RealtimeInteractionCoordinator:
         self._interrupt_generation = 0
         self._stats = {
             "turns": 0,
+            "initiative_turns": 0,
             "speech_starts": 0,
             "interruptions": 0,
             "suppressed_echo_inputs": 0,
@@ -122,6 +123,38 @@ class RealtimeInteractionCoordinator:
             self._active_turn = turn
             self._stats["turns"] += 1
             self._transition(InteractionPhase.THINKING, reason="creator_input_claimed")
+            return turn
+
+    def begin_initiative(
+        self,
+        summary: str,
+        *,
+        surface: str = "presence",
+        transport: str = "core",
+    ) -> InteractionTurn:
+        """Begin a Mary-initiated turn without publishing creator attention.
+
+        The caller must already have passed Presence arbitration.  This method
+        only coordinates lifecycle/interruptibility and deliberately does not
+        reinterpret environmental context as creator speech/text.
+        """
+        value = " ".join(str(summary or "").split()).strip()
+        if not value:
+            raise ValueError("Initiative turns require non-empty grounded context.")
+        with self._lock:
+            if self._phase != InteractionPhase.IDLE:
+                raise RuntimeError(f"Cannot begin initiative while realtime phase is {self._phase.value}.")
+            turn = InteractionTurn(
+                id=f"initiative_{uuid.uuid4().hex[:12]}",
+                source=str(surface or "presence")[:60],
+                transport=str(transport or "core")[:60],
+                attention_event_id=None,
+                phase=InteractionPhase.THINKING,
+            )
+            self._active_turn = turn
+            self._stats["turns"] += 1
+            self._stats["initiative_turns"] += 1
+            self._transition(InteractionPhase.THINKING, reason="mary_initiative_claimed")
             return turn
 
     def mark_responding(self, *, response_text: str = "") -> None:

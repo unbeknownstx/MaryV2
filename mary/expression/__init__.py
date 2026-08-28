@@ -52,6 +52,13 @@ from .response import (
 from .delivery_plan import DeliveryPlan
 from .dialogue_plan import DialoguePlan, DialoguePlanner
 from .director import ExpressionDirector
+from .context import PerformanceContext, PerformanceContextManager
+from .performance_packet import (
+    PerformancePacket,
+    PerformanceSegment,
+    MicroReaction,
+    build_performance_packet,
+)
 
 from .dialogue import (
     DialogueMode,
@@ -90,6 +97,12 @@ __all__ = [
     "DialoguePlan",
     "DialoguePlanner",
     "ExpressionDirector",
+    "PerformanceContext",
+    "PerformanceContextManager",
+    "PerformancePacket",
+    "PerformanceSegment",
+    "MicroReaction",
+    "build_performance_packet",
 
     # Dialogue
     "DialogueMode",
