@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from mary.autonomy.runtime import AutonomyRuntimeStatus
-from mary.autonomy.triggers import TriggerContext
+from mary.autonomy.triggers import ActionTrigger, TriggerContext
 from mary.core.mary import Mary
 from mary.ecosystem import MaryEcosystem
 from mary.runtime.integrity import require_application_integrity
@@ -1154,6 +1154,117 @@ class MaryApplication:
             "last_cycle_at": snapshot.last_cycle_at,
         }
 
+    def _agency_autonomy_proposal_trigger(
+        self,
+        *,
+        result: PipelineResult,
+    ) -> ActionTrigger | None:
+        """Build one passive autonomy trigger from an active Agency orientation.
+
+        Agency remains the owner of goals, intentions, curiosities, priorities,
+        and decisions. Autonomy receives only the already-derived turn proposal.
+        The resulting Action is descriptive and unapproved; this method never
+        executes, approves, schedules, or persists external work.
+        """
+
+        pipeline_values = dict(
+            getattr(result, "metadata", {}).get(
+                "pipeline_values",
+                {},
+            )
+            or {}
+        )
+        cognitive_cycle = pipeline_values.get("cognitive_cycle")
+        context = getattr(cognitive_cycle, "context", None)
+        mind_state = getattr(context, "mind_state", None)
+        if not isinstance(mind_state, dict):
+            return None
+
+        agency = mind_state.get("agency")
+        if not isinstance(agency, dict):
+            return None
+
+        orientation = agency.get("orientation")
+        if not isinstance(orientation, dict):
+            return None
+        if not bool(orientation.get("active")):
+            return None
+        if orientation.get("execution") != "not_authorized":
+            return None
+
+        decision = orientation.get("decision")
+        priority = orientation.get("priority")
+        if not isinstance(decision, dict) or not isinstance(priority, dict):
+            return None
+
+        source_item_id = str(
+            decision.get("source_item_id")
+            or priority.get("item_id")
+            or ""
+        ).strip()[:160]
+        source_item_type = str(
+            decision.get("source_item_type")
+            or priority.get("type")
+            or ""
+        ).strip()[:64]
+        description = " ".join(
+            str(decision.get("description") or "").split()
+        )[:512]
+        if not source_item_id or not description:
+            return None
+
+        # Keep one outstanding proposal per durable Agency item. Repeated turns
+        # about the same goal/curiosity should not grow an unbounded action queue.
+        autonomy = self.mary.autonomy
+        for action in autonomy.actions.all():
+            metadata = getattr(action, "metadata", {})
+            if not isinstance(metadata, dict):
+                continue
+            if metadata.get("bridge") != "agency_autonomy_proposal":
+                continue
+            if str(metadata.get("source_item_id") or "") != source_item_id:
+                continue
+            status = getattr(getattr(action, "status", None), "value", "")
+            if status not in {
+                "completed",
+                "failed",
+                "cancelled",
+                "expired",
+                "rejected",
+            }:
+                return None
+
+        suggested_action = str(
+            decision.get("suggested_action") or "consider"
+        ).strip()[:120]
+        confidence = decision.get("confidence")
+        turn_relevance = orientation.get("turn_relevance")
+
+        return ActionTrigger(
+            name=f"agency proposal {source_item_id}"[:160],
+            action_name=f"agency_{suggested_action}"[:160],
+            description=(
+                "Passive bridge from Mary's current Agency orientation into "
+                "Autonomy's proposal queue."
+            ),
+            action_description=description,
+            parameters={
+                "source_item_id": source_item_id,
+                "source_item_type": source_item_type,
+                "suggested_action": suggested_action,
+                "confidence": confidence,
+                "turn_relevance": turn_relevance,
+            },
+            one_shot=True,
+            metadata={
+                "bridge": "agency_autonomy_proposal",
+                "source_item_id": source_item_id,
+                "source_item_type": source_item_type,
+                "turn_id": str(getattr(result, "turn_id", ""))[:160],
+                "execution": "not_authorized",
+            },
+        )
+
     def _cycle_autonomy(
         self,
         *,
@@ -1192,7 +1303,14 @@ class MaryApplication:
             )
             return
 
+        proposal_trigger = None
         try:
+            proposal_trigger = self._agency_autonomy_proposal_trigger(
+                result=result,
+            )
+            if proposal_trigger is not None:
+                autonomy.triggers.register(proposal_trigger)
+
             cycle_result = autonomy.cycle(
                 self._build_autonomy_context(
                     input_text=input_text,
@@ -1212,10 +1330,32 @@ class MaryApplication:
                 ),
             )
             return
+        finally:
+            if proposal_trigger is not None:
+                try:
+                    autonomy.triggers.unregister(
+                        proposal_trigger.trigger_id
+                    )
+                except Exception:
+                    pass
 
-        result.metadata["autonomy"] = self._autonomy_record(
+        record = self._autonomy_record(
             cycle_result=cycle_result,
         )
+        if proposal_trigger is not None:
+            record["agency_proposal"] = {
+                "created": any(
+                    getattr(action, "metadata", {}).get("bridge")
+                    == "agency_autonomy_proposal"
+                    for action in getattr(
+                        cycle_result,
+                        "actions_created",
+                        (),
+                    )
+                ),
+                "execution": "not_authorized",
+            }
+        result.metadata["autonomy"] = record
 
     def run(
         self,

@@ -311,3 +311,90 @@ def test_legacy_entry_point_factories_now_use_mary_stage(
         interactive_pipeline.stages[0],
         MaryStage,
     )
+
+
+def test_active_agency_orientation_becomes_one_passive_autonomy_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    mary.agency.goals.add_goal(
+        "Finish MaryV2 convergence",
+        importance=0.95,
+    )
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    result = app.run("What should we work on next?")
+    actions = mary.autonomy.actions.all()
+
+    assert result.success is True
+    assert len(actions) == 1
+    action = actions[0]
+    assert action.metadata["bridge"] == "agency_autonomy_proposal"
+    assert action.metadata["source_item_type"] == "goal"
+    assert action.metadata["execution"] == "not_authorized"
+    assert action.permission != ActionPermission.APPROVED
+    assert action.attempts == 0
+    assert result.metadata["autonomy"]["agency_proposal"] == {
+        "created": True,
+        "execution": "not_authorized",
+    }
+    # The bridge trigger is turn-scoped. Only the passive Action proposal remains.
+    assert mary.autonomy.triggers.all() == ()
+
+
+def test_agency_autonomy_bridge_deduplicates_outstanding_source_item(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    mary.agency.goals.add_goal(
+        "Finish MaryV2 convergence",
+        importance=0.95,
+    )
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    first = app.run("What should we work on next?")
+    second = app.run("What should we work on next?")
+
+    assert first.success is True
+    assert second.success is True
+    assert len(mary.autonomy.actions.all()) == 1
+    assert first.metadata["autonomy"]["actions_created_count"] == 1
+    assert second.metadata["autonomy"]["actions_created_count"] == 0
+
+
+def test_unrelated_turn_does_not_create_agency_autonomy_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    mary.agency.goals.add_goal(
+        "Finish MaryV2 convergence",
+        importance=0.95,
+    )
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    result = app.run("What is your favorite color?")
+
+    assert result.success is True
+    assert mary.autonomy.actions.all() == ()
+    assert result.metadata["autonomy"]["actions_created_count"] == 0
