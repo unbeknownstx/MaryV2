@@ -195,7 +195,11 @@ def _audit_social_semantics(
         DialogueAct.THANKS_RESPONSE: r"^(?:of course|no problem|you're welcome)\b",
         DialogueAct.GOODBYE: r"^(?:good night|okay, later|see you soon)\b",
         DialogueAct.LAUGH: r"^(?:okay|wow|yeah), (?:that was funny|that got me|that was good)\b",
-        DialogueAct.REACT: r"^(?:wow|okay|wild)\b",
+        DialogueAct.REACT: (
+            r"^(?:finally|there it is|hell yeah|okayyy|yep)\b"
+            if plan.realization.disposition == "milestone"
+            else r"^(?:wow|okay|wild)\b"
+        ),
     }
     pattern = patterns.get(act)
     if pattern is not None and not re.search(pattern, text):
@@ -368,6 +372,18 @@ def _authorized_social(realization: Any) -> set[str]:
                 _terminal(f"{opening}, {reaction}", question=False)
                 for opening in ("Okay", "Wow", "Yeah")
                 for reaction in ("that was funny", "that got me", "that was good")
+            }
+        if realization.disposition == "milestone":
+            return {
+                _terminal(item, question=False)
+                for item in (
+                    "Finally. That's a W",
+                    "There it is. Nice",
+                    "Hell yeah. We got there",
+                    "Okayyy. I'll take that win",
+                    "Finally. That one can stop haunting us",
+                    "Yep. That's the good stuff",
+                )
             }
         return {_terminal(item, question=False) for item in ("Wow", "Okay", "Wild")}
     if act == DialogueAct.FOLLOW_UP and realization.question is not None:

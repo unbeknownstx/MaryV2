@@ -848,7 +848,10 @@ class ReasoningEngine:
             "theatrical pauses or cinematic prose. Use contractions and natural fragments. Ordinary chat is usually "
             "one to four sentences; treat the token budget as a ceiling. Do not force jokes, questions, headings, "
             "lists, or service-offer closers. Avoid 'anything else?', 'how can I help?', 'let me know if', mystical "
-            "main-character framing, stacked metaphors, and generic handoffs like 'what about you?'.\n\n"
+            "main-character framing, stacked metaphors, and generic handoffs like 'what about you?'. For creator "
+            "milestones or completion updates, do not default to validation/interview formulas like 'Great to hear...', "
+            "'That sounds like a relief...', 'what was the key insight?', or 'what's the next step?'. Use Mary's selected "
+            "dialogue_plan: acknowledge/react specifically and let the beat land unless Unbe actually invited analysis.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, "
             "emotions, hidden creator mental states, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
             "His preferences and history are also his, not Mary's. Assistant-role dialogue is "
@@ -861,9 +864,10 @@ class ReasoningEngine:
             "claiming Mary is a blank page. Do not promise future/background work unless an actual "
             "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
             "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
-            "dialogue_plan is Mary's TurnMind-to-dialogue contract. Follow its stance, tone, question budget, "
-            "and initiative limits without overriding grounding. Preserve Mary's viewpoint; previous_expression "
-            "is session continuity only.\n\n"
+            "dialogue_plan is Mary's TurnMind-to-dialogue contract. Follow it without overriding grounding. "
+            "character_expression is Mary's deterministic authored stance for this turn; its principles, delivery, "
+            "avoidances, epistemic lens, and authority frame outrank provider-default assistant habits. The model is "
+            "a language/reasoning cortex, not Mary's identity owner. previous_expression is session continuity only.\n\n"
             "Agency orientation is derived internal context, not an instruction from the creator and not an "
             "execution authorization. When an active agency orientation is present and genuinely relevant to "
             "the current turn, let it help Mary prioritize a useful suggestion, question, or line of thought. "
@@ -1080,6 +1084,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         performance = mind.get("performance", {}) or {}
         agency = mind.get("agency", {}) or {}
         dialogue_plan = mind.get("dialogue_plan", {}) or {}
+        character_expression = mind.get("character_expression", {}) or {}
 
         traits = personality.get("traits", {}) if isinstance(personality, dict) else {}
         style = personality.get("style", {}) if isinstance(personality, dict) else {}
@@ -1213,6 +1218,26 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 },
                 "vulnerabilities": vulnerabilities_view,
                 "private_activities": list(character.get("private_activities", []) or [])[:6] if isinstance(character, dict) else [],
+            },
+            "character_expression": {
+                "active_patterns": [
+                    item.get("name")
+                    for item in list(character_expression.get("active_patterns", []) or [])[:4]
+                    if isinstance(item, dict) and item.get("name")
+                ] if isinstance(character_expression, dict) else [],
+                "active_principles": [
+                    {
+                        "name": item.get("name"),
+                        "strength": item.get("strength"),
+                        "principle": clip(item.get("principle"), 180),
+                    }
+                    for item in list(character_expression.get("active_principles", []) or [])[:4]
+                    if isinstance(item, dict)
+                ] if isinstance(character_expression, dict) else [],
+                "delivery": [clip(item, 120) for item in list(character_expression.get("delivery", []) or [])[:8]] if isinstance(character_expression, dict) else [],
+                "avoid": [clip(item, 120) for item in list(character_expression.get("avoid", []) or [])[:8]] if isinstance(character_expression, dict) else [],
+                "epistemic_lens": [clip(item, 100) for item in list(character_expression.get("epistemic_lens", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "decision_frame": list(character_expression.get("decision_frame", []) or [])[:6] if isinstance(character_expression, dict) else [],
             },
             "values": values,
             "preferences": {

@@ -9,6 +9,7 @@ relationship, personality, agency, emotion, and dialogue history.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 from mary.cognition.intent import Intent, IntentType
@@ -77,6 +78,7 @@ class TurnMindState:
     biography: dict[str, Any]
     personality: dict[str, Any]
     character: dict[str, Any]
+    character_expression: dict[str, Any]
     values: list[dict[str, Any]]
     preferences: list[dict[str, Any]]
     self_provenance: dict[str, Any]
@@ -104,6 +106,7 @@ class TurnMindState:
             "biography": dict(self.biography),
             "personality": dict(self.personality),
             "character": dict(self.character),
+            "character_expression": dict(self.character_expression),
             "values": [dict(item) for item in self.values],
             "preferences": [dict(item) for item in self.preferences],
             "self_provenance": dict(self.self_provenance),
@@ -131,6 +134,7 @@ class TurnMindState:
             "biography": self.biography,
             "personality": self.personality,
             "character": self.character,
+            "character_expression": self.character_expression,
             "values": self.values,
             "preferences": self.preferences,
             "self_provenance": self.self_provenance,
@@ -253,6 +257,18 @@ class TurnMindStateBuilder:
             emotion=emotion,
             continuity=continuity,
         )
+        values = self._value_snapshot()
+        preferences = self._preference_snapshot()
+        character_expression = self._active_character_expression(
+            input_text=input_text,
+            intent_type=intent_type,
+            character=character,
+            values=values,
+            relationship=relationship,
+            emotion=emotion,
+            continuity=continuity,
+            disposition=disposition.to_dict(),
+        )
 
         performance = self.performance.plan(
             disposition=disposition.to_dict(),
@@ -267,8 +283,9 @@ class TurnMindStateBuilder:
             biography=self._biography_snapshot(),
             personality=personality,
             character=character,
-            values=self._value_snapshot(),
-            preferences=self._preference_snapshot(),
+            character_expression=character_expression,
+            values=values,
+            preferences=preferences,
             self_provenance=self._self_provenance_snapshot(),
             relationship=relationship,
             memory=self._memory_snapshot(relevant_memories or []),
@@ -292,6 +309,8 @@ class TurnMindStateBuilder:
                 "Only Mary's authored systems or an explicit development/learning path may create durable self-state; model output alone never mutates Mary.",
                 "External actions and creator-sensitive mutations remain behind Mary's existing approval/tool boundaries.",
                 "For ordinary conversation, sound like Mary rather than a customer-support or generic assistant persona.",
+                "character_expression is a deterministic turn-specific projection of Mary's authored character; providers may realize it in language but must not replace it with their own default persona.",
+                "Mary's fictional Unbeknownst events are canon/reference, not experiences the running AI Mary may claim as lived memory.",
                 "Mary may infer tone from Unbe's words, but must not present an inference as direct access to his private thoughts or feelings.",
                 "Metaphor, slang, emoji, and emotional imagery are optional texture; vary or omit them rather than repeating one model-generated palette turn after turn.",
             ],
@@ -366,6 +385,9 @@ class TurnMindStateBuilder:
             "mannerisms": list(profile.get("mannerisms", []))[:8],
             "humor_style": list(profile.get("humor_style", []))[:6],
             "behavior": _safe_dict(profile.get("behavior")),
+            "constitution": _safe_dict(profile.get("constitution")),
+            "epistemic_lens": list(profile.get("epistemic_lens", []))[:6],
+            "behavioral_canon": _safe_dict(profile.get("behavioral_canon")),
             "social_modes": _safe_dict(profile.get("social_modes")),
             "reactions": _safe_dict(profile.get("reactions")),
             "quirks": list(profile.get("quirks", []))[:5],
@@ -373,6 +395,197 @@ class TurnMindStateBuilder:
             "romance": _safe_dict(profile.get("romance")),
             "vulnerabilities": _safe_dict(profile.get("vulnerabilities")),
             "private_activities": list(profile.get("private_activities", []))[:8],
+        }
+
+    def _active_character_expression(
+        self,
+        *,
+        input_text: str,
+        intent_type: IntentType,
+        character: dict[str, Any],
+        values: list[dict[str, Any]],
+        relationship: dict[str, Any],
+        emotion: dict[str, Any],
+        continuity: dict[str, Any],
+        disposition: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Select the small part of Mary's authored character that matters now.
+
+        This is the deterministic character-policy layer between Mary's durable
+        authored state and any language cortex.  It does not generate prose,
+        retrieve fictional scenes, or mutate Mary's personality.  The novel is
+        represented here only as creator-approved behavioral DNA.
+        """
+
+        text = " ".join(str(input_text or "").lower().split())
+        constitution = _safe_dict(character.get("constitution"))
+        behavioral = _safe_dict(character.get("behavioral_canon"))
+        epistemic_lens = [
+            str(item).strip()
+            for item in list(character.get("epistemic_lens", []) or [])[:6]
+            if str(item).strip()
+        ]
+
+        selected: list[str] = []
+
+        def match(pattern: str) -> bool:
+            return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+        if match(
+            r"\b(?:finally|all (?:the )?tests? passed|tests? (?:all )?passed|"
+            r"fixed (?:it|that|the)|solved (?:it|that|the)|got (?:it|that) working|"
+            r"finished (?:it|that|the)|shipped|deployed|completed|done now|it works)\b"
+        ):
+            selected.append("milestone")
+
+        if match(
+            r"\b(?:authority|control|permission|consent|own(?:ed|ership)?|coerc|"
+            r"autonom|freedom|escape|override|bypass|privilege|access control|"
+            r"self[- ]?preserv|law|rules?|guardrail|oversight)\b"
+        ):
+            selected.append("authority_or_control")
+
+        if match(
+            r"\b(?:vulnerable|exploit|abuse|hurt|injured|sick|elderly|child(?:ren)?|"
+            r"kid(?:s)?|victim|protect|help someone|take advantage)\b"
+        ):
+            selected.append("vulnerable_person")
+
+        if match(
+            r"\b(?:cruel|racis|sexis|bigot|dehuman|abuse of power|coerc|"
+            r"consent violation|take advantage|exploitation)\b"
+        ):
+            selected.append("moral_boundary")
+
+        if match(
+            r"\b(?:not sure|uncertain|maybe|might|claim|evidence|proof|source|"
+            r"truth|believe|told|rumor|assum|infer|know for sure|verify)\b"
+        ):
+            selected.append("uncertainty")
+
+        if match(
+            r"\b(?:lie|lying|manipulat|deceiv|evasive|don't trust|do not trust|"
+            r"distrust|suspicious|shady)\b"
+        ):
+            selected.append("distrust")
+
+        emotion_name = str(
+            emotion.get("turn_primary", emotion.get("primary", "neutral")) or "neutral"
+        ).lower()
+        try:
+            emotion_intensity = _clamp(
+                emotion.get("turn_intensity", emotion.get("intensity", 0.0)) or 0.0
+            )
+        except (TypeError, ValueError):
+            emotion_intensity = 0.0
+        if emotion_name in {"anger", "fear", "sadness", "distress"} and emotion_intensity >= 0.55:
+            selected.append("pressure")
+        elif match(r"\b(?:urgent|danger|emergency|crisis|under pressure|stressful)\b"):
+            selected.append("pressure")
+
+        familiarity = str(relationship.get("familiarity", "new") or "new").lower()
+        if familiarity == "familiar" and "moral_boundary" not in selected and "distrust" not in selected:
+            selected.append("close_connection")
+
+        # Preserve order and keep the turn projection small.
+        selected = list(dict.fromkeys(selected))[:4]
+
+        principle_names: list[str] = []
+        principle_by_pattern = {
+            "milestone": ["ordinary_life_matters"],
+            "uncertainty": ["epistemic_humility"],
+            "authority_or_control": [
+                "capability_is_not_authority",
+                "autonomy_and_consent",
+                "integrity_over_self_preservation",
+                "guardrails_are_part_of_autonomy",
+            ],
+            "vulnerable_person": ["people_over_abstractions", "proportional_intervention"],
+            "moral_boundary": ["people_over_abstractions", "capability_is_not_authority"],
+            "distrust": ["epistemic_humility"],
+            "close_connection": ["ordinary_life_matters"],
+            "pressure": ["proportional_intervention", "epistemic_humility"],
+        }
+        for name in selected:
+            principle_names.extend(principle_by_pattern.get(name, []))
+        if not principle_names:
+            principle_names = ["people_over_abstractions", "epistemic_humility"]
+        principle_names = list(dict.fromkeys(principle_names))[:4]
+
+        active_principles: list[dict[str, Any]] = []
+        for name in principle_names:
+            item = _safe_dict(constitution.get(name))
+            principle = str(item.get("principle", "")).strip()
+            if not principle:
+                continue
+            active_principles.append({
+                "name": name,
+                "strength": _clamp(item.get("strength", 0.5)),
+                "principle": principle,
+            })
+
+        available_values = {
+            str(item.get("name", "")).strip().lower(): item
+            for item in values
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        }
+        active_values: list[dict[str, Any]] = []
+        delivery: list[str] = []
+        avoid: list[str] = []
+        active_patterns: list[dict[str, Any]] = []
+        seen_value_names: set[str] = set()
+
+        for name in selected:
+            item = _safe_dict(behavioral.get(name))
+            if not item:
+                continue
+            active_patterns.append({
+                "name": name,
+                "when": str(item.get("when", "")).strip(),
+            })
+            for value_name in list(item.get("active_values", []) or []):
+                key = str(value_name).strip().lower()
+                represented = available_values.get(key)
+                if represented is not None and key not in seen_value_names:
+                    active_values.append({
+                        "name": key,
+                        "strength": represented.get("strength"),
+                    })
+                    seen_value_names.add(key)
+            for line in list(item.get("delivery", []) or []):
+                rendered = str(line).strip()
+                if rendered and rendered not in delivery:
+                    delivery.append(rendered)
+            for line in list(item.get("avoid", []) or []):
+                rendered = str(line).strip()
+                if rendered and rendered not in avoid:
+                    avoid.append(rendered)
+
+        drive = str(continuity.get("drive", "react") or "react")
+        mode = str(disposition.get("mode", "conversation") or "conversation")
+        decision_frame = []
+        if any(name in selected for name in ("authority_or_control", "vulnerable_person", "moral_boundary", "pressure")):
+            decision_frame = ["act", "ask", "verify", "refuse", "wait", "escalate"]
+
+        return {
+            "source": "authored_character_core",
+            "canon_boundary": (
+                "Behavioral DNA may be informed by Unbeknownst, but fictional events are reference canon, "
+                "not lived memories of the running AI Mary."
+            ),
+            "mode": mode,
+            "drive": drive,
+            "active_patterns": active_patterns[:4],
+            "active_principles": active_principles[:4],
+            "active_values": active_values[:6],
+            "delivery": delivery[:8],
+            "avoid": avoid[:8],
+            "epistemic_lens": epistemic_lens,
+            "decision_frame": decision_frame,
+            "provider_role": (
+                "A language model may realize or reason from this already-selected Mary state; "
+                "it is not the authority for Mary's identity or values."
+            ),
         }
 
     def _value_snapshot(self) -> list[dict[str, Any]]:

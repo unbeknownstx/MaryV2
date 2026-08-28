@@ -604,6 +604,16 @@ def _render_social(
                 f"reaction-open:{opening.lower()}",
                 f"reaction:{reaction}",
             )
+        if plan.disposition == "milestone":
+            response = rng.choice((
+                "Finally. That's a W",
+                "There it is. Nice",
+                "Hell yeah. We got there",
+                "Okayyy. I'll take that win",
+                "Finally. That one can stop haunting us",
+                "Yep. That's the good stuff",
+            ))
+            return _terminal(response, question=False), (f"milestone:{response.lower()}",)
         reaction = rng.choice(("Wow", "Okay", "Wild"))
         return _terminal(reaction, question=False), (f"reaction:{reaction.lower()}",)
     if act == DialogueAct.FOLLOW_UP and plan.question:

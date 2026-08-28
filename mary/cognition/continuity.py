@@ -148,16 +148,30 @@ class ConversationContinuity:
             )
         )
 
+        milestone_update = (
+            drive == ConversationalDrive.REACT
+            and any(
+                marker in normalized_input
+                for marker in (
+                    "finally", "passed", "finished", "milestone", "got it",
+                    "fixed", "solved", "got everything working", "got it working",
+                )
+            )
+        )
+
         # Opinion/repair/disagreement turns should land on Mary's own thought
         # instead of reflexively handing the conversation back to Unbe. Explicit
         # invitations to ask still win. This makes independence visible in the
         # dialogue rather than merely represented in character data.
         if (
-            drive in {
-                ConversationalDrive.OPINE,
-                ConversationalDrive.DISAGREE,
-                ConversationalDrive.REFLECT,
-            }
+            (
+                drive in {
+                    ConversationalDrive.OPINE,
+                    ConversationalDrive.DISAGREE,
+                    ConversationalDrive.REFLECT,
+                }
+                or milestone_update
+            )
             and not question_invited
         ):
             allow_question = False
@@ -254,7 +268,7 @@ class ConversationContinuity:
             return ConversationalDrive.THINK_ALOUD
         if lowered in {"hey", "hey mary", "hi", "hi mary", "yo", "yo mary", "sup", "what up"}:
             return ConversationalDrive.ACKNOWLEDGE
-        if any(word in lowered for word in ("finally", "passed", "finished", "worked", "working", "milestone", "got it")):
+        if any(word in lowered for word in ("finally", "passed", "finished", "worked", "working", "milestone", "got it", "fixed", "solved")):
             return ConversationalDrive.REACT
         if any(phrase in lowered for phrase in (
             "i think", "i feel like", "maybe we", "seems like", "overengineer", "over-engineer",

@@ -16,7 +16,7 @@ from time import monotonic
 from typing import Any, Mapping
 
 from mary.cognition.intent import Intent, IntentType
-from mary.conversation.lanes import classify_conversation_lane
+from mary.conversation.lanes import ConversationLane, LaneDecision, classify_conversation_lane
 from .dialogue_policy import LocalDialoguePolicy
 from .hot_state import HotMindState
 from .local_authority_confirmation import confirm_dialogue_plan_authority
@@ -262,6 +262,22 @@ class CharacterMind:
         classification_started = monotonic()
         try:
             plan = self.policy.plan(text, intent=intent, hot_state=hot, reservoir=self.reservoir)
+            if (
+                plan.local
+                and plan.act.value == "react"
+                and str(plan.slots.get("reaction_kind") or "").strip().lower() == "milestone"
+            ):
+                # A creator milestone can contain technical nouns such as
+                # "tests" or "deploy" while still being a fact-free social
+                # reaction. The local dialogue policy has already classified
+                # the semantic act, so do not let keyword-only lane heuristics
+                # force an unnecessary language-cortex call.
+                lane = LaneDecision(
+                    ConversationLane.SOCIAL_INSTANT,
+                    "high-confidence local milestone reaction",
+                    1_800,
+                    False,
+                )
             authority = project_response_authority(plan, lane=lane, input_text=text)
             risk = classify_local_response(
                 dialogue=plan,

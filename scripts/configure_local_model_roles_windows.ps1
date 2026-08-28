@@ -1,7 +1,7 @@
 param(
     [string]$GeneralModel = "qwen3:4b-instruct",
-    [string]$FastModel = "qwen3:1.7b",
-    [string]$UtilityModel = ""
+    [string]$FastModel = "qwen3:4b-instruct",
+    [string]$UtilityModel = "qwen3:1.7b"
 )
 
 $ErrorActionPreference = "Stop"

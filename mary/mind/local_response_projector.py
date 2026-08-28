@@ -319,9 +319,19 @@ def _project_social(
         meanings = ("Say goodbye without adding a new claim.",)
         max_words = 6
     elif act in {DialogueAct.LAUGH, DialogueAct.REACT}:
-        response_intent = "Give one bounded conversational reaction."
-        meanings = ("React briefly without adding factual meaning.",)
-        max_words = 8
+        reaction_kind = str(dialogue_plan.slots.get("reaction_kind") or "").strip().lower()
+        if act == DialogueAct.REACT and reaction_kind == "milestone":
+            response_intent = (
+                "Give one familiar Mary-style reaction to the creator's stated milestone. "
+                "Celebrate the beat without turning it into an interview or adding factual claims."
+            )
+            meanings = ("Acknowledge the creator's stated milestone and let the win land.",)
+            max_sentences = 2
+            max_words = 18
+        else:
+            response_intent = "Give one bounded conversational reaction."
+            meanings = ("React briefly without adding factual meaning.",)
+            max_words = 8
     elif act == DialogueAct.FOLLOW_UP:
         if not allow_question:
             raise _UnsupportedProjection("follow_up_question_budget_exhausted")
@@ -349,7 +359,11 @@ def _project_social(
         question=question,
         max_sentences=max_sentences,
         max_words=max_words,
-        disposition="amused" if act == DialogueAct.LAUGH else "neutral",
+        disposition=(
+            "amused" if act == DialogueAct.LAUGH
+            else "milestone" if act == DialogueAct.REACT and str(dialogue_plan.slots.get("reaction_kind") or "").strip().lower() == "milestone"
+            else "neutral"
+        ),
     )
 
 

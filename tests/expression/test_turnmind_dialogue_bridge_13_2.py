@@ -167,3 +167,31 @@ def test_dialogue_plan_classifies_structured_response_type():
     assert planner.response_type("What part should we tackle first?", {"drive": "ask"}) == ResponseType.QUESTION
     assert planner.response_type("I keep coming back to the same thing.", {"drive": "reflect"}) == ResponseType.REFLECTION
     assert planner.response_type("Yeah. That's the part.", {"drive": "react"}) == ResponseType.STATEMENT
+
+
+def test_milestone_reaction_plan_is_provider_independent_and_does_not_interview_creator():
+    planner = DialoguePlanner()
+    plan = planner.plan({
+        "disposition": {
+            "mode": "relational_conversation",
+            "preferred_length": "micro",
+        },
+        "performance": {
+            "opening_style": "natural_entry",
+            "ending_style": "natural_landing",
+        },
+        "continuity": {
+            "drive": "react",
+            "allow_follow_up_question": True,
+        },
+        "relationship": {"familiarity": "familiar"},
+    }, input_text="I finally solved that bug and all the tests passed.")
+
+    data = plan.to_dict()
+    assert data["drive"] == "react"
+    assert data["stance"] == "responsive"
+    assert data["opening_style"] == "direct_reaction"
+    assert data["ending_style"] == "clean_statement"
+    assert data["allow_question"] is False
+    assert data["question_budget"] == 0
+    assert any("do not turn a completion or milestone into an interview" in item for item in data["directives"])

@@ -167,3 +167,22 @@ def test_pushback_prompt_selects_disagree_drive():
     continuity = result.context.mind_state["continuity"]
     assert continuity["drive"] == "disagree"
     assert continuity["allow_follow_up_question"] is False
+
+
+def test_milestone_update_stays_react_and_lands_without_question():
+    mary = _mary(SequenceRouter([
+        "Yeah. That one was hanging over us for a while. Nice to have it actually closed.",
+    ]))
+
+    result = mary.process("I finally solved that bug and all the tests passed.")
+    continuity = result.context.mind_state["continuity"]
+    plan = result.context.mind_state["dialogue_plan"]
+
+    assert continuity["drive"] == "react"
+    assert continuity["allow_follow_up_question"] is False
+    assert plan["drive"] == "react"
+    assert plan["opening_style"] == "direct_reaction"
+    assert plan["ending_style"] == "clean_statement"
+    assert plan["allow_question"] is False
+    assert plan["question_budget"] == 0
+    assert "?" not in result.final_response

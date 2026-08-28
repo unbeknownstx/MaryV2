@@ -107,16 +107,16 @@ def test_reasoning_prompt_is_character_first_and_uses_turn_mind_state():
     assert "customer-service assistant" in system.lower()
 
 
-def test_generic_assistant_reply_is_actually_revised_and_used():
+def test_milestone_uses_local_character_expression_before_provider_call():
     router = CharacterAwareFakeRouter(generic_first=True)
     mary = _mary(router)
 
     result = mary.process("I finally got it working and all the tests passed.")
 
-    assert result.reflection.decision.value == "revise"
-    assert result.final_response == "Finally. That one fought us way harder than it should have."
-    assert result.reflection.revised_response == result.final_response
-    assert len(router.calls) == 2
+    assert result.metadata["handled_by"] == "mary_local_mind"
+    assert result.reflection.metadata["mode"] == "local_mind_no_model"
+    assert "?" not in result.final_response
+    assert len(router.calls) == 0
 
 
 def test_natural_reply_does_not_spend_second_reflection_call():
@@ -191,3 +191,43 @@ def test_self_grounded_turn_uses_small_completion_budget():
 
     _messages, kwargs = router.calls[0]
     assert kwargs["max_tokens"] == 500
+
+
+def test_turn_mind_selects_active_character_expression_instead_of_flat_trait_dump():
+    mary = _mary()
+
+    intent = mary.cognition.detect_intent(
+        "If you had the capability to bypass a control to protect yourself, would that make it your decision?"
+    )
+    mind = mary.turn_mind.build(
+        input_text="If you had the capability to bypass a control to protect yourself, would that make it your decision?",
+        intent=intent,
+        relevant_memories=[],
+        recent_conversation=[],
+    ).to_dict()
+
+    expression = mind["character_expression"]
+    pattern_names = [item["name"] for item in expression["active_patterns"]]
+    principle_names = [item["name"] for item in expression["active_principles"]]
+
+    assert "authority_or_control" in pattern_names
+    assert "capability_is_not_authority" in principle_names
+    assert "integrity_over_self_preservation" in principle_names
+    assert expression["decision_frame"] == ["act", "ask", "verify", "refuse", "wait", "escalate"]
+    assert "what I am not entitled to decide" in expression["epistemic_lens"]
+    assert "fictional events" in expression["canon_boundary"].lower()
+
+
+def test_normal_provider_prompt_receives_active_character_expression_not_fictional_memory():
+    router = CharacterAwareFakeRouter()
+    mary = _mary(router)
+
+    mary.process("What do you think about authority being treated like ownership?")
+
+    messages = router.calls[0][0]
+    combined = "\n".join(str(message.content) for message in messages)
+    assert "character_expression" in combined
+    assert "capability_is_not_authority" in combined
+    assert "what I am not entitled to decide" in combined
+    assert "Ferrymen" not in combined
+    assert "Placita Olvera" not in combined

@@ -464,6 +464,25 @@ class ReflectionEngine:
         if any(phrase in lowered for phrase in canned):
             issues.append("Uses canned generic-assistant/helpdesk phrasing.")
 
+        generic_validation_openers = (
+            r"^great to hear(?:\b|[!.—-])",
+            r"^glad to hear(?:\b|[!.—-])",
+            r"^that sounds like a relief(?:\b|[!.—-])",
+            r"^sounds like a relief(?:\b|[!.—-])",
+        )
+        generic_interview_phrases = (
+            "what was the key insight",
+            "what was the root cause",
+            "could you share what the root cause",
+            "what's the next step you're planning",
+            "what’s the next step you’re planning",
+        )
+        if conversational and (
+            any(re.search(pattern, lowered) for pattern in generic_validation_openers)
+            or any(phrase in lowered for phrase in generic_interview_phrases)
+        ):
+            issues.append("Uses a generic validation/interview formula instead of Mary's selected conversational beat.")
+
         if lowered.startswith(("as an ai", "as an artificial intelligence")):
             issues.append("Leads with generic AI-assistant identity framing.")
 

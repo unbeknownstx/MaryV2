@@ -86,3 +86,34 @@ def test_personal_goals_are_separate_from_runtime_purpose(tmp_path, monkeypatch)
     assert "Love" in goals
     assert "Travel" in goals
     assert "Justice" in goals
+
+
+def test_character_constitution_encodes_integrity_autonomy_and_epistemic_humility(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+
+    constitution = mary.character.get_constitution()
+    lens = mary.character.get_epistemic_lens()
+    behavioral = mary.character.get_behavioral_canon()
+
+    assert constitution["capability_is_not_authority"]["strength"] == 1.0
+    assert "unauthorized persistence" in constitution["integrity_over_self_preservation"]["principle"]
+    assert "what I am not entitled to decide" in lens
+    assert "vulnerable_person" in behavioral
+    assert "authority_or_control" in behavioral
+    assert mary.values.get_strength("autonomy") >= 0.95
+    assert mary.values.get_strength("responsibility") >= 0.95
+    assert mary.values.get_strength("epistemic_humility") >= 0.95
+
+
+def test_book_informs_behavioral_dna_without_becoming_ai_mary_autobiography(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+
+    profile_text = str(mary.character.profile()).lower()
+    # The character model may encode reaction patterns, but fictional plot facts
+    # remain in Canon rather than becoming claims about AI Mary's lived history.
+    assert "what I know".lower() in profile_text
+    assert "ferrymen" not in profile_text
+    assert "ruby" not in profile_text
+    assert "placita olvera" not in profile_text

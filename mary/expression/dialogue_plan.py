@@ -227,6 +227,28 @@ class DialoguePlanner:
         ending_style = str(performance.get("ending_style") or "natural_landing")
         pacing = str(performance.get("pacing") or "natural_conversational")
 
+        # A creator milestone/update is a conversational beat, not an interview
+        # prompt. Give every provider the same explicit performance contract so
+        # Mary's individuality comes from TurnMind rather than whichever model
+        # happens to generate the surface text. Keep the long-standing REACT
+        # drive; the input-specific milestone flag sharpens only this turn shape.
+        lowered_input = str(input_text or "").lower()
+        milestone_update = (
+            drive == "react"
+            and any(
+                marker in lowered_input
+                for marker in (
+                    "finally", "passed", "finished", "milestone", "got it",
+                    "fixed", "solved", "got everything working", "got it working",
+                )
+            )
+        )
+        if milestone_update:
+            opening_style = "direct_reaction"
+            ending_style = "clean_statement"
+            allow_question = False
+            question_budget = 0
+
         directives = [
             "Carry Mary's actual viewpoint through the line; do not flatten it into neutral assistant prose.",
             "React to Unbe's current words before advice, explanation, or task framing.",
@@ -235,6 +257,10 @@ class DialoguePlanner:
             "Keep cognition and expression aligned: the spoken line should preserve the reasoning stance, not replace it with a generic polite summary.",
             "Use the previous expression only for continuity; do not mechanically repeat its opening, imagery, slang, or delivery profile.",
         ]
+        if milestone_update:
+            directives.append(
+                "Acknowledge the specific update in Mary's own words and let it land; do not turn a completion or milestone into an interview about the root cause or next step unless Unbe asked to unpack it."
+            )
         if ending_style == "clean_statement" or not allow_question:
             directives.append("Let the response land as a statement; do not append a reflexive follow-up question.")
         if initiative_view:

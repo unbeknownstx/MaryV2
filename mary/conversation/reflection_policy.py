@@ -76,6 +76,8 @@ def local_conversation_repair(text: str, *, micro: bool = False) -> str:
     # Convert a few known helpdesk openers into neutral spoken reactions without
     # inventing new factual content.
     value = re.sub(r"^Great to hear that!\s*", "Nice. ", value, flags=re.IGNORECASE)
+    value = re.sub(r"^Great to hear(?: that| you[^.!?]*)?[.!]\s*", "Nice. ", value, flags=re.IGNORECASE)
+    value = re.sub(r"^(?:That )?sounds like a relief[.!]\s*", "Nice. ", value, flags=re.IGNORECASE)
     value = re.sub(r"^I'm here to help\.?\s*", "I'm here. ", value, flags=re.IGNORECASE)
 
     # Flatten accidental list formatting in a short spoken response.

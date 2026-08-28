@@ -86,17 +86,30 @@ def main() -> int:
     print("MARYV2 PERFORMANCE PASS V1 VERIFICATION")
     print("=" * 72)
 
-    router = SequenceRouter(["Okay. That's a solid milestone. What's on your radar next?"])
+    router = SequenceRouter(["I think that tension matters because systems can become more important than the people they were meant to serve."])
     mary = Mary()
     _wire(mary, router)
-    result = mary.process("I finally got everything working and all the tests passed.")
 
-    mind = result.context.mind_state
+    # A bounded shared-work milestone is now a CharacterMind reflex.  This is
+    # intentional: the release verifier must not require an LLM call merely to
+    # prove that Mary has a performance plan.
+    milestone = mary.process("I finally got everything working and all the tests passed.")
+    mind = milestone.context.mind_state
     performance = mind.get("performance", {})
     if not performance or performance.get("opening_style") != "immediate_reaction":
         raise AssertionError("Performance Director is not shaping the turn")
-    _pass("TurnMindState carries a real acting/performance plan")
+    if milestone.metadata.get("llm_calls_after_action") != 0 or milestone.metadata.get("handled_by") != "mary_local_mind":
+        raise AssertionError("bounded milestone did not remain a zero-call CharacterMind reflex")
+    _pass("TurnMindState shapes a milestone that CharacterMind can express with zero LLM calls")
 
+    # Use a genuinely open-ended turn to verify the provider-facing character
+    # and performance contract.  Open conversation still belongs to Mary's
+    # language cortex; only already-represented reflexes bypass it.
+    result = mary.process(
+        "I keep thinking about why people build systems that eventually start controlling them."
+    )
+    if not router.calls:
+        raise AssertionError("open-ended conversation did not escalate to the language cortex")
     first_prompt = router.calls[0][0]
     system_prompt = str(first_prompt[0].content)
     user_prompt = str(first_prompt[1].content)

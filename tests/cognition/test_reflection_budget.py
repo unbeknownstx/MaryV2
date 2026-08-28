@@ -82,3 +82,30 @@ def test_research_reflection_reuses_evidence_result_without_llm_call():
     assert result.decision == ReflectionDecision.ACCEPT
     assert result.metadata["mode"] == "evidence_validation_reuse"
     assert llm.calls == []
+
+
+def test_generic_milestone_interview_is_rejected_as_provider_style_leakage():
+    llm = CaptureLLM()
+    engine = ReflectionEngine(llm=llm)
+
+    result = engine.reflect(
+        context=CognitiveContext(
+            input_text="I finally solved that bug.",
+            mind_state={
+                "disposition": {"mode": "relational_conversation"},
+                "dialogue_plan": {
+                    "drive": "acknowledge",
+                    "ending_style": "clean_statement",
+                    "allow_question": False,
+                    "question_budget": 0,
+                },
+            },
+        ),
+        reasoning=ReasoningResult(
+            response="Great to hear you finally cracked it! What was the key insight that led to the fix?",
+            metadata={"conversation_lane": {"lane": "conversation"}},
+        ),
+    )
+
+    assert result.decision == ReflectionDecision.REVISE
+    assert any("generic validation/interview formula" in issue.lower() for issue in result.issues)

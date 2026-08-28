@@ -18,6 +18,9 @@ from typing import Any, Dict, List, Optional
 from mary.personality.character_core import (
     CORE_ARCHETYPE,
     CORE_BEHAVIOR,
+    CORE_BEHAVIORAL_CANON,
+    CORE_CONSTITUTION,
+    CORE_EPISTEMIC_LENS,
     CORE_HUMOR_STYLE,
     CORE_MANNERISMS,
     CORE_PRIVATE_ACTIVITIES,
@@ -47,6 +50,9 @@ class Character:
     DEFAULT_MANNERISMS = CORE_MANNERISMS
     DEFAULT_HUMOR_STYLE = CORE_HUMOR_STYLE
     DEFAULT_BEHAVIOR = CORE_BEHAVIOR
+    DEFAULT_CONSTITUTION = CORE_CONSTITUTION
+    DEFAULT_EPISTEMIC_LENS = CORE_EPISTEMIC_LENS
+    DEFAULT_BEHAVIORAL_CANON = CORE_BEHAVIORAL_CANON
     DEFAULT_SOCIAL_MODES = CORE_SOCIAL_MODES
     DEFAULT_REACTIONS = CORE_REACTIONS
     DEFAULT_QUIRKS = CORE_QUIRKS
@@ -63,6 +69,9 @@ class Character:
         mannerisms: Optional[List[str]] = None,
         humor_style: Optional[List[str]] = None,
         behavior: Optional[Dict[str, float]] = None,
+        constitution: Optional[Dict[str, Dict[str, Any]]] = None,
+        epistemic_lens: Optional[List[str]] = None,
+        behavioral_canon: Optional[Dict[str, Dict[str, Any]]] = None,
         social_modes: Optional[Dict[str, str]] = None,
         reactions: Optional[Dict[str, str]] = None,
         quirks: Optional[List[str]] = None,
@@ -89,6 +98,16 @@ class Character:
         self.behavior = deepcopy(self.DEFAULT_BEHAVIOR)
         if behavior:
             self.set_behavior(behavior)
+
+        self.constitution = deepcopy(
+            constitution if constitution is not None else self.DEFAULT_CONSTITUTION
+        )
+        self.epistemic_lens = list(
+            epistemic_lens if epistemic_lens is not None else self.DEFAULT_EPISTEMIC_LENS
+        )
+        self.behavioral_canon = deepcopy(
+            behavioral_canon if behavioral_canon is not None else self.DEFAULT_BEHAVIORAL_CANON
+        )
 
         self.social_modes = deepcopy(
             social_modes if social_modes is not None else self.DEFAULT_SOCIAL_MODES
@@ -156,6 +175,15 @@ class Character:
     def get_humor_style(self) -> List[str]:
         return list(self.humor_style)
 
+    def get_constitution(self) -> Dict[str, Dict[str, Any]]:
+        return deepcopy(self.constitution)
+
+    def get_epistemic_lens(self) -> List[str]:
+        return list(self.epistemic_lens)
+
+    def get_behavioral_canon(self) -> Dict[str, Dict[str, Any]]:
+        return deepcopy(self.behavioral_canon)
+
     def get_social_modes(self) -> Dict[str, str]:
         return deepcopy(self.social_modes)
 
@@ -190,6 +218,9 @@ class Character:
             "mannerisms": self.get_mannerisms(),
             "humor_style": self.get_humor_style(),
             "behavior": self.get_behavior(),
+            "constitution": self.get_constitution(),
+            "epistemic_lens": self.get_epistemic_lens(),
+            "behavioral_canon": self.get_behavioral_canon(),
             "social_modes": self.get_social_modes(),
             "reactions": self.get_reactions(),
             "quirks": self.get_quirks(),
@@ -228,6 +259,9 @@ class Character:
             mannerisms=data.get("mannerisms"),
             humor_style=data.get("humor_style"),
             behavior=data.get("behavior"),
+            constitution=data.get("constitution"),
+            epistemic_lens=data.get("epistemic_lens"),
+            behavioral_canon=data.get("behavioral_canon"),
             social_modes=data.get("social_modes"),
             reactions=data.get("reactions"),
             quirks=data.get("quirks"),
@@ -249,6 +283,9 @@ class Character:
         self.mannerisms = list(self.DEFAULT_MANNERISMS)
         self.humor_style = list(self.DEFAULT_HUMOR_STYLE)
         self.behavior = deepcopy(self.DEFAULT_BEHAVIOR)
+        self.constitution = deepcopy(self.DEFAULT_CONSTITUTION)
+        self.epistemic_lens = list(self.DEFAULT_EPISTEMIC_LENS)
+        self.behavioral_canon = deepcopy(self.DEFAULT_BEHAVIORAL_CANON)
         self.social_modes = deepcopy(self.DEFAULT_SOCIAL_MODES)
         self.reactions = deepcopy(self.DEFAULT_REACTIONS)
         self.quirks = list(self.DEFAULT_QUIRKS)

@@ -15,6 +15,12 @@ _GOODBYE_RE = re.compile(r"^\s*(?:bye|goodbye|good night|night mary|later|see ya
 _LAUGH_RE = re.compile(r"^\s*(?:lol+|lmao+|haha+|hehe+|😂+|😭+)[!.?\s]*$", re.I)
 _ACK_RE = re.compile(r"^\s*(?:ok|okay|yeah|yep|yup|nah|nope|nice|cool|got it)[!.?\s]*$", re.I)
 _REACT_RE = re.compile(r"^\s*(?:damn|wow|wild)[!.?\s]*$", re.I)
+_MILESTONE_RE = re.compile(
+    r"\b(?:finally|all (?:the )?tests? passed|tests? (?:all )?passed|"
+    r"fixed (?:it|that|the)|solved (?:it|that|the)|got (?:it|that) working|"
+    r"finished (?:it|that|the)|shipped|deployed|completed|done now|it works)\b",
+    re.I,
+)
 _HOW_ARE_YOU_RE = re.compile(r"\b(?:how are you|how're you|how you doing|how you feel|you good)\b", re.I)
 _WHAT_UP_RE = re.compile(r"\b(?:what are you up to|what're you up to|what are you doing|whats up with you|what's up with you)\b", re.I)
 _CREATOR_FACT_RE = re.compile(r"\bwhat(?:'s| is) my (?P<field>[a-z0-9 _-]{2,50})\??$", re.I)
@@ -57,6 +63,17 @@ class LocalDialoguePolicy:
             return DialoguePlan(DialogueAct.GOODBYE, 0.99, "simple goodbye", local=True)
         if _LAUGH_RE.search(value):
             return DialoguePlan(DialogueAct.LAUGH, 0.98, "laughter/reaction", local=True)
+        if _MILESTONE_RE.search(value) and intent_type in {
+            IntentType.CONVERSATION, IntentType.FEEDBACK, IntentType.UNKNOWN
+        }:
+            return DialoguePlan(
+                DialogueAct.REACT,
+                0.97,
+                "creator shared a bounded completion/milestone that Mary can react to without model reasoning",
+                local=True,
+                slots={"reaction_kind": "milestone"},
+                target_length="micro",
+            )
         if _ACK_RE.search(value):
             return DialoguePlan(DialogueAct.ACKNOWLEDGE, 0.94, "short acknowledgement", local=True)
         if _REACT_RE.search(value):

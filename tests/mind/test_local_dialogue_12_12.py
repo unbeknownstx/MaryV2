@@ -102,3 +102,23 @@ def test_high_confidence_local_knowledge_can_answer_without_model():
     )
     assert local.handled is True
     assert "rebuildable local retrieval" in local.response.lower()
+
+
+def test_shared_work_milestone_is_a_local_character_reflex_without_llm(monkeypatch):
+    mary = Mary()
+    called = {"value": False}
+
+    def forbidden(*args, **kwargs):
+        called["value"] = True
+        raise AssertionError("milestone reflex should not require a language-model call")
+
+    monkeypatch.setattr(mary.llm, "generate", forbidden)
+    result = mary.process("I finally solved that bug and all the tests passed.")
+
+    assert called["value"] is False
+    assert result.metadata["handled_by"] == "mary_local_mind"
+    assert result.reasoning.metadata["provider"] == "local/mind"
+    assert result.reasoning.metadata["response_engine"] == "local_composer_v2"
+    assert result.reflection.metadata["llm_calls"] == 0
+    assert "?" not in result.final_response
+    assert result.final_response.strip()
