@@ -16,20 +16,19 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
+from mary.llm.interface import LLMMessage
+from mary.llm.providers.ollama import OllamaProvider
 from mary.runtime.gateway import RemoteMaryGateway
 
 
 def _ollama_capability() -> CapabilityDescriptor | None:
-    enabled = os.getenv("MARY_OLLAMA_ENABLED", "true").strip().lower() in {
-        "1", "true", "yes", "on"
-    }
-    if not enabled:
+    """Probe the same Ollama endpoint/model configuration used for execution."""
+
+    provider = OllamaProvider()
+    if not provider.is_available():
         return None
 
-    host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").strip() or "http://127.0.0.1:11434"
-    if not host.startswith(("http://", "https://")):
-        host = "http://" + host
-    endpoint = host.rstrip("/") + "/api/tags"
+    endpoint = provider.base_url.rstrip("/") + "/api/tags"
     try:
         request = Request(endpoint, headers={"Accept": "application/json"})
         with urlopen(request, timeout=0.35) as response:
@@ -37,7 +36,7 @@ def _ollama_capability() -> CapabilityDescriptor | None:
         payload = json.loads(raw.decode("utf-8"))
         models = list(payload.get("models", []) or []) if isinstance(payload, dict) else []
     except Exception:
-        return None
+        models = []
 
     return CapabilityDescriptor(
         name="llm.ollama",
@@ -46,7 +45,10 @@ def _ollama_capability() -> CapabilityDescriptor | None:
         local=True,
         cost="local",
         latency="interactive",
-        metadata={"model_count": len(models)},
+        metadata={
+            "model_count": len(models),
+            "configured_model": provider.model_name(),
+        },
     )
 
 
@@ -235,6 +237,8 @@ class DesktopCapabilityNodeAgent:
         try:
             if capability == "personal_search":
                 result_payload = self._execute_personal_search(dict(task.get("args") or {}))
+            elif capability == "llm.ollama":
+                result_payload = self._execute_ollama(dict(task.get("args") or {}))
             else:
                 raise ValueError(f"No bounded device executor exists for {capability}.")
             result = self.gateway.complete_capability_task(
@@ -257,6 +261,54 @@ class DesktopCapabilityNodeAgent:
                 )
             except Exception:
                 return {"ok": False, "error": error}
+
+
+    def _execute_ollama(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Run one bounded chat generation through the PC's configured Ollama."""
+
+        raw_messages = list(args.get("messages") or [])
+        if not raw_messages:
+            raise ValueError("llm.ollama task requires messages.")
+
+        provider = OllamaProvider()
+        if not provider.is_available():
+            raise RuntimeError("Configured Ollama provider is unavailable on this device.")
+
+        messages = [
+            LLMMessage(
+                role=str(item.get("role") or "user"),
+                content=str(item.get("content") or ""),
+            )
+            for item in raw_messages
+            if isinstance(item, dict)
+        ]
+        if len(messages) != len(raw_messages):
+            raise ValueError("llm.ollama task contains an invalid message.")
+
+        response = provider.generate(
+            messages,
+            temperature=float(args.get("temperature", 0.7)),
+            max_tokens=int(args.get("max_tokens", 1024)),
+        )
+        content = str(response.content or "").strip()
+        if not content:
+            raise RuntimeError("Ollama returned an empty response.")
+        if len(content) > 32_000:
+            content = content[:31_999].rstrip() + "…"
+
+        usage = dict(response.usage or {})
+        safe_usage = {
+            key: max(0, int(usage.get(key, 0) or 0))
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        }
+        return {
+            "content": content,
+            "provider": "ollama",
+            "model": str(response.model or provider.model_name())[:160],
+            "finish_reason": str(response.finish_reason or "")[:80],
+            "usage": safe_usage,
+            "privacy": "generated on selected device; raw provider payload not returned",
+        }
 
     def _execute_personal_search(self, args: dict[str, Any]) -> dict[str, Any]:
         query = " ".join(str(args.get("query") or "").split())[:500]

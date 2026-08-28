@@ -16,7 +16,7 @@ from uuid import uuid4
 from .nodes import NodeRegistry
 
 
-_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search"}
+_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama"}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
 
 
@@ -39,7 +39,78 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             "query": query,
             "limit": max(1, min(12, limit)),
         }
+    if capability == "llm.ollama":
+        raw_messages = values.get("messages")
+        if not isinstance(raw_messages, list) or not raw_messages:
+            raise ValueError("llm.ollama requires a non-empty messages array.")
+        if len(raw_messages) > 12:
+            raise ValueError("llm.ollama supports at most 12 messages per task.")
+
+        messages: list[dict[str, str]] = []
+        total_characters = 0
+        for raw_message in raw_messages:
+            if not isinstance(raw_message, dict):
+                raise ValueError("Each llm.ollama message must be a JSON object.")
+            role = str(raw_message.get("role") or "").strip().lower()
+            if role not in {"system", "user", "assistant"}:
+                raise ValueError("llm.ollama message role must be system, user, or assistant.")
+            content = str(raw_message.get("content") or "").strip()
+            if not content:
+                raise ValueError("llm.ollama messages cannot be empty.")
+            if len(content) > 12_000:
+                raise ValueError("A single llm.ollama message exceeds the 12000 character limit.")
+            total_characters += len(content)
+            if total_characters > 48_000:
+                raise ValueError("llm.ollama message content exceeds the 48000 character task limit.")
+            messages.append({"role": role, "content": content})
+
+        try:
+            temperature = float(values.get("temperature", 0.7))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("llm.ollama temperature must be numeric.") from exc
+        temperature = max(0.0, min(1.5, temperature))
+
+        try:
+            max_tokens = int(values.get("max_tokens", 1024) or 1024)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("llm.ollama max_tokens must be an integer.") from exc
+
+        return {
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max(1, min(2048, max_tokens)),
+        }
     raise ValueError(f"Capability execution is not supported: {capability}")
+
+
+def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dict[str, Any]:
+    values = dict(result or {})
+    if capability != "llm.ollama":
+        return values
+
+    content = str(values.get("content") or "").strip()
+    if not content:
+        return {}
+    if len(content) > 32_000:
+        content = content[:31_999].rstrip() + "…"
+
+    usage = values.get("usage")
+    usage_values = dict(usage or {}) if isinstance(usage, dict) else {}
+    safe_usage = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        try:
+            safe_usage[key] = max(0, int(usage_values.get(key, 0) or 0))
+        except (TypeError, ValueError):
+            safe_usage[key] = 0
+
+    return {
+        "content": content,
+        "provider": "ollama",
+        "model": str(values.get("model") or "unknown")[:160],
+        "finish_reason": str(values.get("finish_reason") or "")[:80],
+        "usage": safe_usage,
+        "privacy": "generated on selected device; raw provider payload not retained by Core",
+    }
 
 
 @dataclass(frozen=True)
@@ -178,7 +249,11 @@ class DeviceTaskBroker:
                 return task
             task.status = normalized_status
             task.claimed = True
-            task.result = dict(result or {})
+            task.result = (
+                _sanitize_task_result(task.capability, result)
+                if normalized_status == "completed"
+                else {}
+            )
             task.error = _clean_text(error, 500)
             task.updated_at = _utc_now()
             return task

@@ -3,15 +3,19 @@ import pytest
 from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, NodeRegistry
 
 
-def _registry():
+def _registry(*capability_names: str):
     registry = NodeRegistry()
-    cap = CapabilityDescriptor("personal_search", private=True, local=True)
+    names = capability_names or ("personal_search",)
+    capabilities = {
+        name: CapabilityDescriptor(name, private=True, local=True)
+        for name in names
+    }
     registry.register(NodeDescriptor(
         node_id="windows-pc",
         role="capability_node",
         host_type="desktop",
         platform="windows",
-        capabilities={cap.name: cap},
+        capabilities=capabilities,
     ))
     return registry
 
@@ -61,3 +65,89 @@ def test_broker_has_no_shell_execution_contract():
             args={"command": "whoami"},
             requester_device_id="client",
         )
+
+
+def test_broker_sanitizes_bounded_ollama_chat_task():
+    broker = DeviceTaskBroker()
+    task = broker.enqueue(
+        _registry("llm.ollama"),
+        capability="llm.ollama",
+        intent="Use the private local model",
+        args={
+            "messages": [
+                {"role": "system", "content": " Stay grounded. "},
+                {"role": "user", "content": " Hello Mary "},
+            ],
+            "temperature": 9.0,
+            "max_tokens": 99999,
+        },
+        requester_device_id="mary-core",
+    )
+
+    assert task.args == {
+        "messages": [
+            {"role": "system", "content": "Stay grounded."},
+            {"role": "user", "content": "Hello Mary"},
+        ],
+        "temperature": 1.5,
+        "max_tokens": 2048,
+    }
+
+
+def test_broker_rejects_unbounded_or_invalid_ollama_messages():
+    broker = DeviceTaskBroker()
+    registry = _registry("llm.ollama")
+
+    with pytest.raises(ValueError):
+        broker.enqueue(
+            registry,
+            capability="llm.ollama",
+            intent="invalid role",
+            args={"messages": [{"role": "tool", "content": "no"}]},
+            requester_device_id="mary-core",
+        )
+
+    with pytest.raises(ValueError):
+        broker.enqueue(
+            registry,
+            capability="llm.ollama",
+            intent="oversized content",
+            args={"messages": [{"role": "user", "content": "x" * 12_001}]},
+            requester_device_id="mary-core",
+        )
+
+
+def test_core_broker_discards_unexpected_ollama_result_fields():
+    broker = DeviceTaskBroker()
+    task = broker.enqueue(
+        _registry("llm.ollama"),
+        capability="llm.ollama",
+        intent="Use private local model",
+        args={"messages": [{"role": "user", "content": "Hello"}]},
+        requester_device_id="mary-core",
+    )
+    broker.poll("windows-pc")
+    completed = broker.complete(
+        node_id="windows-pc",
+        task_id=task.task_id,
+        status="completed",
+        result={
+            "content": "hello from local",
+            "provider": "spoofed",
+            "model": "qwen3:4b",
+            "usage": {"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6},
+            "raw": {"secret": "do not retain"},
+            "unexpected": "discard me",
+        },
+    )
+
+    assert completed.result == {
+        "content": "hello from local",
+        "provider": "ollama",
+        "model": "qwen3:4b",
+        "finish_reason": "",
+        "usage": {"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6},
+        "privacy": "generated on selected device; raw provider payload not retained by Core",
+    }
+    assert "secret" not in repr(completed.result)
+    assert "unexpected" not in repr(completed.result)

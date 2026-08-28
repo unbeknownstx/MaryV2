@@ -103,3 +103,60 @@ def test_dispatch_refuses_shell_and_wrong_node_cannot_complete(monkeypatch):
             "args": {"command": "whoami"},
         })
         assert bad.status_code in {409, 422}
+
+
+def test_ollama_task_uses_same_typed_core_broker_and_sanitizes_completion(monkeypatch):
+    monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
+    service = MaryCoreService(FakeApplication(), instance_id="task-core")
+    app = create_app(service)
+    headers = {"Authorization": "Bearer task-secret"}
+
+    with TestClient(app) as client:
+        reg = client.post("/v1/nodes/register", headers=headers, json={
+            "node_id": "windows-pc",
+            "display_name": "Windows PC",
+            "host_type": "desktop",
+            "platform": "windows",
+            "surface": "desktop",
+            "capabilities": [{"name": "llm.ollama", "private": True, "local": True}],
+        })
+        assert reg.status_code == 200
+
+        dispatch = client.post("/v1/nodes/task/dispatch", headers=headers, json={
+            "capability": "llm.ollama",
+            "intent": "Generate with the private Windows Ollama model",
+            "args": {
+                "messages": [{"role": "user", "content": "Hello Mary"}],
+                "temperature": 0.5,
+                "max_tokens": 80,
+            },
+            "device_id": "mary-core",
+        })
+        assert dispatch.status_code == 200
+        task = dispatch.json()["task"]
+        assert task["selected_node_id"] == "windows-pc"
+        assert task["args"]["max_tokens"] == 80
+
+        poll = client.post("/v1/nodes/task/poll", headers=headers, json={"node_id": "windows-pc"})
+        assert poll.status_code == 200
+        assert poll.json()["task"]["capability"] == "llm.ollama"
+
+        completion = client.post("/v1/nodes/task/complete", headers=headers, json={
+            "node_id": "windows-pc",
+            "task_id": task["task_id"],
+            "status": "completed",
+            "result": {
+                "content": "Hi from the PC.",
+                "provider": "spoofed",
+                "model": "qwen3:4b",
+                "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
+                "raw": {"secret": "discard"},
+            },
+        })
+        assert completion.status_code == 200
+        result = completion.json()["task"]["result"]
+        assert result["content"] == "Hi from the PC."
+        assert result["provider"] == "ollama"
+        assert result["model"] == "qwen3:4b"
+        assert "raw" not in result
+        assert "discard" not in repr(result)
