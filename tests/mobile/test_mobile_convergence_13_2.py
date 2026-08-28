@@ -704,6 +704,16 @@ def test_mobile_web_is_a_13_2_first_class_core_client():
     )
 
     assert (
+        "m.reservoir?.records"
+        in js
+    )
+
+    assert (
+        "t.provider_attempts||t.attempts||[]"
+        in js
+    )
+
+    assert (
         "Search approved files on my devices"
         in js
     )
