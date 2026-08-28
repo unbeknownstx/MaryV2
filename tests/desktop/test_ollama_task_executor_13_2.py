@@ -102,6 +102,10 @@ def test_ollama_task_is_rejected_until_local_permission_exists(tmp_path, monkeyp
 
 def test_authorized_ollama_task_uses_local_provider_and_returns_bounded_result(tmp_path, monkeypatch):
     FakeOllamaProvider.calls = []
+    # Keep this executor test hermetic. Production may intentionally configure a
+    # different general model (for example qwen3:4b-instruct) on the device;
+    # role-to-model environment behavior is covered by dedicated routing tests.
+    monkeypatch.setenv("MARY_OLLAMA_MODEL", "qwen3:4b")
     monkeypatch.setattr(device_module, "OllamaProvider", FakeOllamaProvider)
     gateway = FakeGateway()
     permissions = DeviceExecutionPermissions(tmp_path / "permissions.json")
