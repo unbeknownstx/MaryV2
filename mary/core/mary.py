@@ -745,7 +745,10 @@ class Mary:
         # a generic question. This is deterministic and never autonomously asks.
         learning_invitation = (
             None
-            if learning_followup is not None
+            if (
+                learning_followup is not None
+                or intent.intent_type == IntentType.CREATOR_DIRECTIVE
+            )
             else self.conversation_learning.respond_if_invited(input_text)
         )
 

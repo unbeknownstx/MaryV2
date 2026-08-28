@@ -59,6 +59,33 @@ def _parent(mary: Mary):
     )
 
 
+def test_learn_more_about_me_prefers_durable_creator_directive_over_invitation(tmp_path, monkeypatch):
+    mary, provider, app = _app(tmp_path, monkeypatch)
+
+    intent = mary.cognition.detect_intent("learn more about me")
+    assert intent.intent_type == IntentType.CREATOR_DIRECTIVE
+
+    result = app.run("learn more about me")
+
+    assert result.success is True
+    assert "active creator-directed curiosity" in str(result.output).lower()
+    assert len(mary.creator_directives.get_active()) == 1
+    assert _parent(mary).get("status") == "open"
+    assert _gap_children(mary)
+
+    priority = app.run("what is your top priority")
+    autonomy = dict(priority.metadata.get("autonomy", {}) or {})
+    assert autonomy.get("agency_proposal") == {
+        "created": True,
+        "execution": "not_authorized",
+    }
+    actions = mary.autonomy.actions.all()
+    assert len(actions) == 1
+    assert actions[0].metadata.get("source_item_id") == _parent(mary).get("id")
+    assert actions[0].metadata.get("execution") == "not_authorized"
+    assert provider.calls == 0
+
+
 def test_creator_directive_develops_specific_relationship_gaps(tmp_path, monkeypatch):
     mary, provider, app = _app(tmp_path, monkeypatch)
 
