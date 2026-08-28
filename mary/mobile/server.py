@@ -47,18 +47,31 @@ MAX_REQUEST_BYTES = 256_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
 
 
-def _clean_conversation_id(value: Any, fallback: str = "creator-primary") -> str:
+def _clean_conversation_id(
+    value: Any,
+    fallback: str = "creator-primary",
+) -> str:
     """Return a bounded transport-safe conversation/session identifier."""
 
-    raw = str(value or "").strip() or str(fallback or "creator-primary").strip()
+    raw = (
+        str(value or "").strip()
+        or str(fallback or "creator-primary").strip()
+    )
+
     cleaned = "".join(
         ch if (ch.isalnum() or ch in "._:-") else "-"
         for ch in raw
     ).strip("-._:")
-    return (cleaned or "creator-primary")[:160]
+
+    return (
+        cleaned
+        or "creator-primary"
+    )[:160]
 
 
-def _json_safe(value: Any) -> Any:
+def _json_safe(
+    value: Any,
+) -> Any:
     """Round-trip through JSON so HTTP responses cannot leak unserializable objects."""
 
     return json.loads(
@@ -70,8 +83,12 @@ def _json_safe(value: Any) -> Any:
     )
 
 
-def _is_loopback(host: str) -> bool:
-    return str(host or "").strip().lower() in {
+def _is_loopback(
+    host: str,
+) -> bool:
+    return str(
+        host or ""
+    ).strip().lower() in {
         "127.0.0.1",
         "localhost",
         "::1",
@@ -112,6 +129,7 @@ def _default_port() -> int:
                 int(raw),
             ),
         )
+
     except (
         TypeError,
         ValueError,
@@ -126,8 +144,12 @@ class MobileAuth:
     token_path: Path | None
 
     @property
-    def enabled(self) -> bool:
-        return bool(self.token)
+    def enabled(
+        self,
+    ) -> bool:
+        return bool(
+            self.token
+        )
 
 
 def _resolve_auth(
@@ -147,7 +169,9 @@ def _resolve_auth(
             None,
         )
 
-    if _is_loopback(host):
+    if _is_loopback(
+        host
+    ):
         return MobileAuth(
             "",
             "loopback",
@@ -169,8 +193,10 @@ def _resolve_auth(
         existing = token_path.read_text(
             encoding="utf-8"
         ).strip()
+
     except FileNotFoundError:
         existing = ""
+
     except OSError:
         existing = ""
 
@@ -181,7 +207,9 @@ def _resolve_auth(
             token_path,
         )
 
-    token = secrets.token_urlsafe(24)
+    token = secrets.token_urlsafe(
+        24
+    )
 
     token_path.write_text(
         token + "\n",
@@ -193,6 +221,7 @@ def _resolve_auth(
             token_path,
             0o600,
         )
+
     except OSError:
         pass
 
@@ -224,19 +253,27 @@ class MaryRemoteMobileRuntime:
             token=token,
             device_id=device_id,
         )
+
         # Keep constructor compatibility for lightweight test/fake clients while
         # still identifying the real protocol surface when supported.
         try:
             self.client.surface = "mobile"
+
         except Exception:
             pass
 
-        self.speech = MobileSpeechService()
+        self.speech = (
+            MobileSpeechService()
+        )
 
         self._lock = RLock()
+
         self._busy = False
 
-        self._last_trace: dict[str, Any] = {}
+        self._last_trace: dict[
+            str,
+            Any,
+        ] = {}
 
         self._conversation_id = (
             os.getenv(
@@ -252,13 +289,17 @@ class MaryRemoteMobileRuntime:
         ).strip()
 
         self.data_root = (
-            Path(configured)
+            Path(
+                configured
+            )
             .expanduser()
             .resolve()
             if configured
-            else _project_root()
-            / "data"
-            / "mobile_proxy"
+            else (
+                _project_root()
+                / "data"
+                / "mobile_proxy"
+            )
         )
 
         self.data_root.mkdir(
@@ -267,13 +308,24 @@ class MaryRemoteMobileRuntime:
         )
 
     @property
-    def busy(self) -> bool:
+    def busy(
+        self,
+    ) -> bool:
         with self._lock:
             return self._busy
 
-    def status(self) -> dict[str, Any]:
-        state = self.client.state()
-        conversation = self.client.conversation_status()
+    def status(
+        self,
+    ) -> dict[str, Any]:
+        state = (
+            self.client
+            .state()
+        )
+
+        conversation = (
+            self.client
+            .conversation_status()
+        )
 
         mary_state = dict(
             state.get(
@@ -301,7 +353,8 @@ class MaryRemoteMobileRuntime:
                 },
                 "voice": {
                     **dict(
-                        self.speech.status()
+                        self.speech
+                        .status()
                         .get(
                             "tts",
                             {},
@@ -314,7 +367,8 @@ class MaryRemoteMobileRuntime:
                 },
                 "speech_to_text": {
                     **dict(
-                        self.speech.status()
+                        self.speech
+                        .status()
                         .get(
                             "stt",
                             {},
@@ -350,7 +404,10 @@ class MaryRemoteMobileRuntime:
         *,
         runtime_status: str | None = None,
     ) -> dict[str, Any]:
-        state = self.client.state()
+        state = (
+            self.client
+            .state()
+        )
 
         character = dict(
             state.get(
@@ -374,39 +431,99 @@ class MaryRemoteMobileRuntime:
         *,
         runtime_status: str | None = None,
     ) -> dict[str, Any]:
-        state = self.client.state()
-        conversation = self.client.conversation_status()
+        """Return the canonical Mary Core dashboard with mobile metadata.
 
-        return _json_safe(
-            {
-                "character": self.character_state(
-                    runtime_status=runtime_status,
-                ),
-                "engagement": conversation.get(
-                    "engagement",
-                    {},
-                ),
-                "realtime": conversation.get(
-                    "realtime",
-                    {},
-                ),
-                "growth": self.client.growth_status(),
-                "nodes": state.get(
+        Remote mobile is a presentation surface only. Relationship, memory,
+        personality, agency, growth, retrieval, perception, and other Mary
+        state are projected from the authoritative Core dashboard rather than
+        reconstructed by the mobile proxy.
+        """
+
+        state = (
+            self.client
+            .state()
+        )
+
+        conversation = (
+            self.client
+            .conversation_status()
+        )
+
+        payload = dict(
+            self.client.dashboard()
+            or {}
+        )
+
+        # Preserve the current PWA character shape and allow the presentation
+        # layer to expose its temporary runtime status without changing Mary.
+        payload[
+            "character"
+        ] = self.character_state(
+            runtime_status=runtime_status,
+        )
+
+        # Conversation state is session-sensitive. Prefer the dedicated Core
+        # conversation projection while retaining the dashboard value if a
+        # lightweight/fake client omits it.
+        payload[
+            "engagement"
+        ] = conversation.get(
+            "engagement",
+            payload.get(
+                "engagement",
+                {},
+            ),
+        )
+
+        payload[
+            "realtime"
+        ] = conversation.get(
+            "realtime",
+            payload.get(
+                "realtime",
+                {},
+            ),
+        )
+
+        # Keep current Core node state fresh when the state endpoint provides
+        # it. Nodes remain capabilities; they never own Mary state.
+        if state.get(
+            "nodes"
+        ) is not None:
+            payload[
+                "nodes"
+            ] = state.get(
+                "nodes",
+                payload.get(
                     "nodes",
                     {},
                 ),
-                "mobile": {
-                    "protocol": MOBILE_PROTOCOL_VERSION,
-                    "surface": "pwa",
-                    "authority": "remote_mary_core",
-                    "conversation_id": self._conversation_id,
-                },
-                "core": state.get(
-                    "core",
-                    {},
-                ),
-                "ecosystem": self.ecosystem_state(),
-            }
+            )
+
+        # These fields describe the client surface and Core connection only.
+        # They are deliberately layered onto, not substituted for, Mary state.
+        payload[
+            "mobile"
+        ] = {
+            "protocol": MOBILE_PROTOCOL_VERSION,
+            "surface": "pwa",
+            "authority": "remote_mary_core",
+            "conversation_id": self._conversation_id,
+        }
+
+        payload[
+            "core"
+        ] = state.get(
+            "core",
+            {},
+        )
+
+        payload[
+            "ecosystem"
+        ] = self.ecosystem_state()
+
+        return _json_safe(
+            payload
         )
 
     def ecosystem_state(
@@ -417,12 +534,17 @@ class MaryRemoteMobileRuntime:
             "workspace",
             None,
         )
-        if not callable(workspace):
+
+        if not callable(
+            workspace
+        ):
             return {}
+
         try:
             return _json_safe(
                 workspace()
             )
+
         except Exception:
             return {}
 
@@ -459,18 +581,29 @@ class MaryRemoteMobileRuntime:
 
             self._busy = True
 
-        resolved_conversation_id = _clean_conversation_id(
-            conversation_id or self._conversation_id
+        resolved_conversation_id = (
+            _clean_conversation_id(
+                conversation_id
+                or self._conversation_id
+            )
         )
-        self._conversation_id = resolved_conversation_id
+
+        self._conversation_id = (
+            resolved_conversation_id
+        )
 
         started = monotonic()
 
         try:
-            response = self.client.turn(
-                value,
-                conversation_id=resolved_conversation_id,
-                voice_input=bool(voice_input),
+            response = (
+                self.client
+                .turn(
+                    value,
+                    conversation_id=resolved_conversation_id,
+                    voice_input=bool(
+                        voice_input
+                    ),
+                )
             )
 
             elapsed = (
@@ -498,7 +631,8 @@ class MaryRemoteMobileRuntime:
             )
 
             voice_status = dict(
-                self.speech.status()
+                self.speech
+                .status()
                 .get(
                     "tts",
                     {},
@@ -553,7 +687,10 @@ class MaryRemoteMobileRuntime:
                         "engagement",
                         {},
                     ),
-                    "growth": self.client.growth_status(),
+                    "growth": (
+                        self.client
+                        .growth_status()
+                    ),
                     "realtime": conversation.get(
                         "realtime",
                         {},
@@ -561,7 +698,9 @@ class MaryRemoteMobileRuntime:
                     "dashboard": self.dashboard_state(
                         runtime_status="idle"
                     ),
-                    "state_changes": response.state_changes,
+                    "state_changes": (
+                        response.state_changes
+                    ),
                 }
             )
 
@@ -641,7 +780,10 @@ class MaryRemoteMobileRuntime:
             )
 
         if name == "getGrowthState":
-            return self.client.growth_status()
+            return (
+                self.client
+                .growth_status()
+            )
 
         if name == "getRealtimeState":
             return (
@@ -654,7 +796,10 @@ class MaryRemoteMobileRuntime:
             )
 
         if name == "getNodeState":
-            return self.client.nodes()
+            return (
+                self.client
+                .nodes()
+            )
 
         if name == "getEcosystemState":
             return self.ecosystem_state()
@@ -666,178 +811,459 @@ class MaryRemoteMobileRuntime:
             }
 
         if name == "setConversationId":
-            values = list(args or [])
-            self._conversation_id = _clean_conversation_id(
-                values[0] if values else "creator-primary"
+            values = list(
+                args
+                or []
             )
+
+            self._conversation_id = (
+                _clean_conversation_id(
+                    values[0]
+                    if values
+                    else "creator-primary"
+                )
+            )
+
             return {
                 "conversation_id": self._conversation_id,
                 "authority": "remote_mary_core",
             }
 
         if name == "personalSearch":
-            values = list(args or [])
-            query = str(values[0] if values else "").strip()
+            values = list(
+                args
+                or []
+            )
+
+            query = str(
+                values[0]
+                if values
+                else ""
+            ).strip()
+
             if not query:
-                raise ValueError("Search query cannot be empty.")
-            limit = max(1, min(12, int(values[1] if len(values) > 1 else 8)))
-            route = self.client.route_capability("personal_search")
-            if not route.get("available"):
+                raise ValueError(
+                    "Search query cannot be empty."
+                )
+
+            limit = max(
+                1,
+                min(
+                    12,
+                    int(
+                        values[1]
+                        if len(values) > 1
+                        else 8
+                    ),
+                ),
+            )
+
+            route = (
+                self.client
+                .route_capability(
+                    "personal_search"
+                )
+            )
+
+            if not route.get(
+                "available"
+            ):
                 return {
                     "ok": False,
                     "results": [],
                     "status": "no_capable_node",
-                    "error": "No connected device currently provides PersonalSearch.",
+                    "error": (
+                        "No connected device currently "
+                        "provides PersonalSearch."
+                    ),
                     "route": route,
                 }
-            dispatched = self.client.dispatch_capability_task(
-                "personal_search",
-                f"Search approved personal files for: {query}",
-                {"query": query, "limit": limit},
+
+            dispatched = (
+                self.client
+                .dispatch_capability_task(
+                    "personal_search",
+                    (
+                        "Search approved personal files for: "
+                        f"{query}"
+                    ),
+                    {
+                        "query": query,
+                        "limit": limit,
+                    },
+                )
             )
-            task = dict(dispatched.get("task", {}) or {})
-            task_id = str(task.get("task_id") or "")
-            deadline = monotonic() + 12.0
-            while task_id and monotonic() < deadline:
-                current = self.client.capability_task_status(task_id)
-                task = dict(current.get("task", {}) or {})
-                status = str(task.get("status") or "").lower()
+
+            task = dict(
+                dispatched.get(
+                    "task",
+                    {},
+                )
+                or {}
+            )
+
+            task_id = str(
+                task.get(
+                    "task_id"
+                )
+                or ""
+            )
+
+            deadline = (
+                monotonic()
+                + 12.0
+            )
+
+            while (
+                task_id
+                and monotonic() < deadline
+            ):
+                current = (
+                    self.client
+                    .capability_task_status(
+                        task_id
+                    )
+                )
+
+                task = dict(
+                    current.get(
+                        "task",
+                        {},
+                    )
+                    or {}
+                )
+
+                status = str(
+                    task.get(
+                        "status"
+                    )
+                    or ""
+                ).lower()
+
                 if status == "completed":
-                    result = dict(task.get("result", {}) or {})
-                    items = list(result.get("items", []) or [])
+                    result = dict(
+                        task.get(
+                            "result",
+                            {},
+                        )
+                        or {}
+                    )
+
+                    items = list(
+                        result.get(
+                            "items",
+                            [],
+                        )
+                        or []
+                    )
+
                     return {
                         "ok": True,
                         "results": items,
-                        "count": int(result.get("count", len(items)) or len(items)),
+                        "count": int(
+                            result.get(
+                                "count",
+                                len(items),
+                            )
+                            or len(items)
+                        ),
                         "task_id": task_id,
                         "status": status,
-                        "privacy": result.get("privacy", "device-sanitized results"),
-                        "selected_node_id": task.get("selected_node_id"),
+                        "privacy": result.get(
+                            "privacy",
+                            "device-sanitized results",
+                        ),
+                        "selected_node_id": (
+                            task.get(
+                                "selected_node_id"
+                            )
+                        ),
                     }
-                if status in {"rejected", "failed", "expired"}:
+
+                if status in {
+                    "rejected",
+                    "failed",
+                    "expired",
+                }:
                     return {
                         "ok": False,
                         "results": [],
                         "task_id": task_id,
                         "status": status,
-                        "error": str(task.get("error") or "PersonalSearch did not complete."),
-                        "selected_node_id": task.get("selected_node_id"),
+                        "error": str(
+                            task.get(
+                                "error"
+                            )
+                            or "PersonalSearch did not complete."
+                        ),
+                        "selected_node_id": (
+                            task.get(
+                                "selected_node_id"
+                            )
+                        ),
                     }
-                sleep(0.25)
+
+                sleep(
+                    0.25
+                )
+
             return {
                 "ok": True,
                 "results": [],
                 "task_id": task_id,
                 "status": "pending",
                 "pending": True,
-                "selected_node_id": task.get("selected_node_id"),
-                "message": "Search was queued on the selected device and is still running.",
+                "selected_node_id": (
+                    task.get(
+                        "selected_node_id"
+                    )
+                ),
+                "message": (
+                    "Search was queued on the selected "
+                    "device and is still running."
+                ),
             }
 
         if name == "setConversationMode":
-            return self.client.runtime_action(
-                "conversation.set_mode",
-                {"mode": str(args[0] if args else "adaptive")},
+            return (
+                self.client
+                .runtime_action(
+                    "conversation.set_mode",
+                    {
+                        "mode": str(
+                            args[0]
+                            if args
+                            else "adaptive"
+                        )
+                    },
+                )
             )
 
         if name == "beginConversationSession":
-            values = list(args or [])
-            return self.client.runtime_action(
-                "conversation.begin_session",
-                {
-                    "mode": str(values[0] if values else "engaged"),
-                    "turns": int(values[1] if len(values) > 1 else 8),
-                },
+            values = list(
+                args
+                or []
+            )
+
+            return (
+                self.client
+                .runtime_action(
+                    "conversation.begin_session",
+                    {
+                        "mode": str(
+                            values[0]
+                            if values
+                            else "engaged"
+                        ),
+                        "turns": int(
+                            values[1]
+                            if len(values) > 1
+                            else 8
+                        ),
+                    },
+                )
             )
 
         if name == "endConversationSession":
-            return self.client.runtime_action(
-                "conversation.end_session"
+            return (
+                self.client
+                .runtime_action(
+                    "conversation.end_session"
+                )
             )
 
         workspace_actions = {
             "addCommandItem": lambda values: (
                 "command.add",
                 {
-                    "title": str(values[0] if values else ""),
-                    "kind": str(values[1] if len(values) > 1 else "task"),
+                    "title": str(
+                        values[0]
+                        if values
+                        else ""
+                    ),
+                    "kind": str(
+                        values[1]
+                        if len(values) > 1
+                        else "task"
+                    ),
                 },
             ),
             "updateCommandStatus": lambda values: (
                 "command.update",
                 {
-                    "item_id": str(values[0]),
-                    "status": str(values[1]),
+                    "item_id": str(
+                        values[0]
+                    ),
+                    "status": str(
+                        values[1]
+                    ),
                 },
             ),
             "startFocus": lambda values: (
                 "focus.start",
                 {
-                    "minutes": int(values[0]),
-                    "task": str(values[1] if len(values) > 1 else ""),
+                    "minutes": int(
+                        values[0]
+                    ),
+                    "task": str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
                 },
             ),
-            "stopFocus": lambda values: ("focus.stop", {}),
+            "stopFocus": lambda values: (
+                "focus.stop",
+                {},
+            ),
             "createStudyProject": lambda values: (
                 "study.create_project",
                 {
-                    "title": str(values[0]),
-                    "objective": str(values[1] if len(values) > 1 else ""),
+                    "title": str(
+                        values[0]
+                    ),
+                    "objective": str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
                 },
             ),
             "addStudyCard": lambda values: (
                 "study.add_card",
                 {
-                    "project_id": str(values[0]),
-                    "prompt": str(values[1]),
-                    "answer": str(values[2]),
+                    "project_id": str(
+                        values[0]
+                    ),
+                    "prompt": str(
+                        values[1]
+                    ),
+                    "answer": str(
+                        values[2]
+                    ),
                 },
             ),
             "reviewStudyCard": lambda values: (
                 "study.review_card",
                 {
-                    "project_id": str(values[0]),
-                    "card_id": str(values[1]),
-                    "score": int(values[2]),
+                    "project_id": str(
+                        values[0]
+                    ),
+                    "card_id": str(
+                        values[1]
+                    ),
+                    "score": int(
+                        values[2]
+                    ),
                 },
             ),
             "markNoticeRead": lambda values: (
                 "inbox.mark_read",
-                {"notice_id": str(values[0]), "read": True},
+                {
+                    "notice_id": str(
+                        values[0]
+                    ),
+                    "read": True,
+                },
             ),
             "createResearchThread": lambda values: (
                 "research.create_thread",
                 {
-                    "title": str(values[0]),
-                    "question": str(values[1] if len(values) > 1 else ""),
+                    "title": str(
+                        values[0]
+                    ),
+                    "question": str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
                 },
             ),
         }
 
         if name in workspace_actions:
-            values = list(args or [])
-            action, payload = workspace_actions[name](values)
-            return self.client.workspace_action(action, payload)
-
-        if name == "reportSpeechStarted":
-            values = list(args or [])
-            return self.client.runtime_action(
-                "realtime.speech_started",
-                {"turn_id": str(values[0] if values else "")},
+            values = list(
+                args
+                or []
             )
 
-        if name in {"reportSpeechEnded", "reportSpeechFinished"}:
-            values = list(args or [])
-            return self.client.runtime_action(
-                "realtime.speech_ended",
-                {"reason": str(values[0] if values else "speech_finished")},
+            action, payload = (
+                workspace_actions[
+                    name
+                ](
+                    values
+                )
+            )
+
+            return (
+                self.client
+                .workspace_action(
+                    action,
+                    payload,
+                )
+            )
+
+        if name == "reportSpeechStarted":
+            values = list(
+                args
+                or []
+            )
+
+            return (
+                self.client
+                .runtime_action(
+                    "realtime.speech_started",
+                    {
+                        "turn_id": str(
+                            values[0]
+                            if values
+                            else ""
+                        )
+                    },
+                )
+            )
+
+        if name in {
+            "reportSpeechEnded",
+            "reportSpeechFinished",
+        }:
+            values = list(
+                args
+                or []
+            )
+
+            return (
+                self.client
+                .runtime_action(
+                    "realtime.speech_ended",
+                    {
+                        "reason": str(
+                            values[0]
+                            if values
+                            else "speech_finished"
+                        )
+                    },
+                )
             )
 
         if name == "reportSpeechInterrupted":
-            values = list(args or [])
-            return self.client.runtime_action(
-                "realtime.interrupt",
-                {"reason": str(values[0] if values else "client_barge_in")},
+            values = list(
+                args
+                or []
+            )
+
+            return (
+                self.client
+                .runtime_action(
+                    "realtime.interrupt",
+                    {
+                        "reason": str(
+                            values[0]
+                            if values
+                            else "client_barge_in"
+                        )
+                    },
+                )
             )
 
         raise KeyError(
@@ -870,7 +1296,8 @@ class MaryMobileRuntime:
         # Canonical ecosystem ownership lives on MaryApplication.
         # Mobile must reuse it rather than constructing another wrapper.
         self.ecosystem = (
-            self.application.ecosystem
+            self.application
+            .ecosystem
         )
 
         self.creative_workspace = (
@@ -889,17 +1316,22 @@ class MaryMobileRuntime:
             .data
         )
 
-        self.voice_lab = VoiceLabStore(
-            data_root
-            / "voice"
-            / "voice_lab.json"
+        self.voice_lab = (
+            VoiceLabStore(
+                data_root
+                / "voice"
+                / "voice_lab.json"
+            )
         )
 
         self.speech.apply_voice_profile(
             self.voice_lab.selected()
         )
 
-        self._lock = RLock()
+        self._lock = (
+            RLock()
+        )
+
         self._busy = False
 
         self._last_trace: dict[
@@ -912,12 +1344,18 @@ class MaryMobileRuntime:
             Any,
         ] = {}
 
-        self._conversation_id = _clean_conversation_id(
-            os.getenv("MARY_CONVERSATION_ID", "creator-primary")
+        self._conversation_id = (
+            _clean_conversation_id(
+                os.getenv(
+                    "MARY_CONVERSATION_ID",
+                    "creator-primary",
+                )
+            )
         )
 
         try:
             self.application.mary.avatar.ready()
+
         except Exception:
             pass
 
@@ -979,7 +1417,8 @@ class MaryMobileRuntime:
                     },
                     "voice": {
                         **dict(
-                            self.speech.status()
+                            self.speech
+                            .status()
                             .get(
                                 "tts",
                                 {},
@@ -992,7 +1431,8 @@ class MaryMobileRuntime:
                     },
                     "speech_to_text": {
                         **dict(
-                            self.speech.status()
+                            self.speech
+                            .status()
                             .get(
                                 "stt",
                                 {},
@@ -1075,6 +1515,7 @@ class MaryMobileRuntime:
                     .state
                     .to_dict()
                 )
+
             except Exception:
                 return {}
 
@@ -1125,12 +1566,20 @@ class MaryMobileRuntime:
 
             payload[
                 "ecosystem"
-            ] = self.ecosystem.snapshot()
+            ] = (
+                self.ecosystem
+                .snapshot()
+            )
 
             try:
                 payload[
                     "mind"
-                ] = self.application.mary.mind.status()
+                ] = (
+                    self.application
+                    .mary
+                    .mind
+                    .status()
+                )
 
             except Exception as exc:
                 payload[
@@ -1171,7 +1620,10 @@ class MaryMobileRuntime:
 
             payload[
                 "voice_lab"
-            ] = self.voice_lab.public_state()
+            ] = (
+                self.voice_lab
+                .public_state()
+            )
 
             payload[
                 "realtime"
@@ -1228,7 +1680,8 @@ class MaryMobileRuntime:
     ) -> dict[str, Any]:
         with self._lock:
             return _json_safe(
-                self.ecosystem.snapshot()
+                self.ecosystem
+                .snapshot()
             )
 
     def mind_status(
@@ -1242,6 +1695,7 @@ class MaryMobileRuntime:
                     .mind
                     .status()
                 )
+
             except Exception as exc:
                 return {
                     "enabled": False,
@@ -1277,7 +1731,9 @@ class MaryMobileRuntime:
                 "Message text cannot be empty."
             )
 
-        if len(value) > 32_000:
+        if len(
+            value
+        ) > 32_000:
             raise ValueError(
                 "Message is too long for the mobile transport."
             )
@@ -1293,25 +1749,40 @@ class MaryMobileRuntime:
         started = monotonic()
 
         try:
-            lane = classify_conversation_lane(
-                value
+            lane = (
+                classify_conversation_lane(
+                    value
+                )
             )
 
-            pipeline_started = monotonic()
-
-            resolved_conversation_id = _clean_conversation_id(
-                conversation_id or self._conversation_id
+            pipeline_started = (
+                monotonic()
             )
-            self._conversation_id = resolved_conversation_id
 
-            result = self.application.run(
-                value,
-                metadata={
-                    "surface": "mobile",
-                    "transport": "http",
-                    "conversation_id": resolved_conversation_id,
-                    "voice_input": bool(voice_input),
-                },
+            resolved_conversation_id = (
+                _clean_conversation_id(
+                    conversation_id
+                    or self._conversation_id
+                )
+            )
+
+            self._conversation_id = (
+                resolved_conversation_id
+            )
+
+            result = (
+                self.application
+                .run(
+                    value,
+                    metadata={
+                        "surface": "mobile",
+                        "transport": "http",
+                        "conversation_id": resolved_conversation_id,
+                        "voice_input": bool(
+                            voice_input
+                        ),
+                    },
+                )
             )
 
             pipeline_ms = (
@@ -1330,9 +1801,14 @@ class MaryMobileRuntime:
                 or ""
             )
 
-            mary = self.application.mary
+            mary = (
+                self.application
+                .mary
+            )
 
-            avatar_started = monotonic()
+            avatar_started = (
+                monotonic()
+            )
 
             delivery_plan: dict[
                 str,
@@ -1352,8 +1828,10 @@ class MaryMobileRuntime:
                     or {}
                 )
 
-                cycle = values.get(
-                    "cognitive_cycle"
+                cycle = (
+                    values.get(
+                        "cognitive_cycle"
+                    )
                 )
 
                 cycle_metadata = dict(
@@ -1396,6 +1874,7 @@ class MaryMobileRuntime:
                         .state
                         .to_dict()
                     )
+
                 except Exception:
                     avatar = {}
 
@@ -1410,7 +1889,8 @@ class MaryMobileRuntime:
             ) * 1000.0
 
             voice_status = dict(
-                self.speech.status()
+                self.speech
+                .status()
                 .get(
                     "tts",
                     {},
@@ -1464,7 +1944,8 @@ class MaryMobileRuntime:
                 self._last_trace = trace
 
                 engagement_status = (
-                    mary.engagement.status()
+                    mary.engagement
+                    .status()
                 )
 
                 active_session = dict(
@@ -1535,7 +2016,10 @@ class MaryMobileRuntime:
                             )
                             or {}
                         ),
-                        "delivery_plan": dict(delivery_plan or {}),
+                        "delivery_plan": dict(
+                            delivery_plan
+                            or {}
+                        ),
                         "conversation_lane": getattr(
                             lane.lane,
                             "value",
@@ -1547,9 +2031,18 @@ class MaryMobileRuntime:
                     "character": self.character_state(
                         runtime_status="idle"
                     ),
-                    "engagement": mary.engagement.status(),
-                    "growth": mary.growth.status(),
-                    "realtime": mary.realtime.status(),
+                    "engagement": (
+                        mary.engagement
+                        .status()
+                    ),
+                    "growth": (
+                        mary.growth
+                        .status()
+                    ),
+                    "realtime": (
+                        mary.realtime
+                        .status()
+                    ),
                     "dashboard": self.dashboard_state(
                         runtime_status="idle"
                     ),
@@ -1565,7 +2058,8 @@ class MaryMobileRuntime:
     ) -> dict[str, Any]:
         with self._lock:
             return _json_safe(
-                self.speech.status()
+                self.speech
+                .status()
             )
 
     def synthesize_speech(
@@ -1575,10 +2069,13 @@ class MaryMobileRuntime:
         user_text: str | None = None,
         delivery_plan: dict[str, Any] | None = None,
     ):
-        return self.speech.synthesize(
-            text,
-            user_text=user_text,
-            delivery_plan=delivery_plan,
+        return (
+            self.speech
+            .synthesize(
+                text,
+                user_text=user_text,
+                delivery_plan=delivery_plan,
+            )
         )
 
     def transcribe_audio(
@@ -1588,10 +2085,16 @@ class MaryMobileRuntime:
         filename: str | None = None,
         content_type: str | None = None,
     ) -> dict[str, Any]:
-        mary = self.application.mary
+        mary = (
+            self.application
+            .mary
+        )
 
-        if not mary.realtime.should_accept_audio_input(
-            source="mobile_microphone"
+        if not (
+            mary.realtime
+            .should_accept_audio_input(
+                source="mobile_microphone"
+            )
         ):
             return {
                 "ok": False,
@@ -1608,10 +2111,13 @@ class MaryMobileRuntime:
         )
 
         try:
-            return self.speech.transcribe(
-                audio,
-                filename=filename,
-                content_type=content_type,
+            return (
+                self.speech
+                .transcribe(
+                    audio,
+                    filename=filename,
+                    content_type=content_type,
+                )
             )
 
         finally:
@@ -1641,6 +2147,7 @@ class MaryMobileRuntime:
                     or None
                 ),
             )
+
         except Exception:
             pass
 
@@ -1701,9 +2208,14 @@ class MaryMobileRuntime:
                 }
 
             if name == "setConversationId":
-                self._conversation_id = _clean_conversation_id(
-                    values[0] if values else "creator-primary"
+                self._conversation_id = (
+                    _clean_conversation_id(
+                        values[0]
+                        if values
+                        else "creator-primary"
+                    )
                 )
+
                 return {
                     "conversation_id": self._conversation_id,
                     "authority": "local_development_runtime",
@@ -1946,7 +2458,10 @@ class MaryMobileRuntime:
                 }
 
             if name == "getVoiceLab":
-                return self.voice_lab.public_state()
+                return (
+                    self.voice_lab
+                    .public_state()
+                )
 
             if name == "saveVoiceProfile":
                 label = str(
@@ -1973,23 +2488,13 @@ class MaryMobileRuntime:
                     else VOICE_BASELINE
                 )
 
-                item = self.voice_lab.save_profile(
-                    label,
-                    voice_id,
-                    settings=settings,
-                    select=True,
-                )
-
-                self.speech.apply_voice_profile(
-                    item
-                )
-
-                return self.voice_lab.public_state()
-
-            if name == "selectVoiceProfile":
-                item = self.voice_lab.select(
-                    str(
-                        values[0]
+                item = (
+                    self.voice_lab
+                    .save_profile(
+                        label,
+                        voice_id,
+                        settings=settings,
+                        select=True,
                     )
                 )
 
@@ -1997,7 +2502,29 @@ class MaryMobileRuntime:
                     item
                 )
 
-                return self.voice_lab.public_state()
+                return (
+                    self.voice_lab
+                    .public_state()
+                )
+
+            if name == "selectVoiceProfile":
+                item = (
+                    self.voice_lab
+                    .select(
+                        str(
+                            values[0]
+                        )
+                    )
+                )
+
+                self.speech.apply_voice_profile(
+                    item
+                )
+
+                return (
+                    self.voice_lab
+                    .public_state()
+                )
 
             if name == "deleteVoiceProfile":
                 self.voice_lab.delete(
@@ -2010,42 +2537,54 @@ class MaryMobileRuntime:
                     self.voice_lab.selected()
                 )
 
-                return self.voice_lab.public_state()
+                return (
+                    self.voice_lab
+                    .public_state()
+                )
 
             if name == "resetVoiceBaseline":
-                item = self.voice_lab.selected()
+                item = (
+                    self.voice_lab
+                    .selected()
+                )
 
                 if item is not None:
-                    item = self.voice_lab.save_profile(
-                        str(
-                            item.get(
-                                "label"
-                            )
-                            or "Mary Voice"
-                        ),
-                        str(
-                            item.get(
-                                "voice_id"
-                            )
-                            or ""
-                        ),
-                        settings=dict(
-                            VOICE_BASELINE
-                        ),
-                        profile_id=str(
-                            item.get(
-                                "id"
-                            )
-                            or ""
-                        ),
-                        select=True,
+                    item = (
+                        self.voice_lab
+                        .save_profile(
+                            str(
+                                item.get(
+                                    "label"
+                                )
+                                or "Mary Voice"
+                            ),
+                            str(
+                                item.get(
+                                    "voice_id"
+                                )
+                                or ""
+                            ),
+                            settings=dict(
+                                VOICE_BASELINE
+                            ),
+                            profile_id=str(
+                                item.get(
+                                    "id"
+                                )
+                                or ""
+                            ),
+                            select=True,
+                        )
                     )
 
                     self.speech.apply_voice_profile(
                         item
                     )
 
-                return self.voice_lab.public_state()
+                return (
+                    self.voice_lab
+                    .public_state()
+                )
 
             if name == "rebuildCognitiveReservoir":
                 try:
@@ -2083,9 +2622,14 @@ class MaryMobileRuntime:
                     else "task"
                 )
 
-                item = self.ecosystem.command.add(
-                    title,
-                    kind=kind or "task",
+                item = (
+                    self.ecosystem
+                    .command
+                    .add(
+                        title,
+                        kind=kind
+                        or "task",
+                    )
                 )
 
                 self._publish(
@@ -2105,13 +2649,17 @@ class MaryMobileRuntime:
                 }
 
             if name == "updateCommandStatus":
-                item = self.ecosystem.command.update(
-                    str(
-                        values[0]
-                    ),
-                    status=str(
-                        values[1]
-                    ),
+                item = (
+                    self.ecosystem
+                    .command
+                    .update(
+                        str(
+                            values[0]
+                        ),
+                        status=str(
+                            values[1]
+                        ),
+                    )
                 )
 
                 self._publish(
@@ -2144,14 +2692,21 @@ class MaryMobileRuntime:
                     else ""
                 )
 
-                state = self.ecosystem.focus.start(
-                    minutes,
-                    task=task,
+                state = (
+                    self.ecosystem
+                    .focus
+                    .start(
+                        minutes,
+                        task=task,
+                    )
                 )
 
                 self._publish(
                     PresenceEventType.FOCUS_CHANGED,
-                    f"Focus started for {minutes} minutes",
+                    (
+                        f"Focus started for "
+                        f"{minutes} minutes"
+                    ),
                     active=True,
                     minutes=minutes,
                 )
@@ -2162,7 +2717,11 @@ class MaryMobileRuntime:
                 }
 
             if name == "stopFocus":
-                state = self.ecosystem.focus.stop()
+                state = (
+                    self.ecosystem
+                    .focus
+                    .stop()
+                )
 
                 self._publish(
                     PresenceEventType.FOCUS_CHANGED,
@@ -2176,15 +2735,19 @@ class MaryMobileRuntime:
                 }
 
             if name == "createStudyProject":
-                project = self.ecosystem.study.create_project(
-                    str(
-                        values[0]
-                    ),
-                    objective=str(
-                        values[1]
-                        if len(values) > 1
-                        else ""
-                    ),
+                project = (
+                    self.ecosystem
+                    .study
+                    .create_project(
+                        str(
+                            values[0]
+                        ),
+                        objective=str(
+                            values[1]
+                            if len(values) > 1
+                            else ""
+                        ),
+                    )
                 )
 
                 self._publish(
@@ -2204,16 +2767,20 @@ class MaryMobileRuntime:
                 }
 
             if name == "addStudyCard":
-                card = self.ecosystem.study.add_card(
-                    str(
-                        values[0]
-                    ),
-                    str(
-                        values[1]
-                    ),
-                    str(
-                        values[2]
-                    ),
+                card = (
+                    self.ecosystem
+                    .study
+                    .add_card(
+                        str(
+                            values[0]
+                        ),
+                        str(
+                            values[1]
+                        ),
+                        str(
+                            values[2]
+                        ),
+                    )
                 )
 
                 return {
@@ -2222,16 +2789,20 @@ class MaryMobileRuntime:
                 }
 
             if name == "reviewStudyCard":
-                card = self.ecosystem.study.review(
-                    str(
-                        values[0]
-                    ),
-                    str(
-                        values[1]
-                    ),
-                    int(
-                        values[2]
-                    ),
+                card = (
+                    self.ecosystem
+                    .study
+                    .review(
+                        str(
+                            values[0]
+                        ),
+                        str(
+                            values[1]
+                        ),
+                        int(
+                            values[2]
+                        ),
+                    )
                 )
 
                 return {
@@ -2242,16 +2813,22 @@ class MaryMobileRuntime:
             if name == "personalSearch":
                 return {
                     "ok": True,
-                    "results": self.ecosystem.search.search(
-                        str(
-                            values[0]
+                    "results": (
+                        self.ecosystem
+                        .search
+                        .search(
+                            str(
+                                values[0]
+                            )
                         )
                     ),
                 }
 
             if name == "markNoticeRead":
                 return bool(
-                    self.ecosystem.inbox.mark_read(
+                    self.ecosystem
+                    .inbox
+                    .mark_read(
                         str(
                             values[0]
                         ),
@@ -2260,15 +2837,19 @@ class MaryMobileRuntime:
                 )
 
             if name == "createResearchThread":
-                thread = self.ecosystem.research.create(
-                    str(
-                        values[0]
-                    ),
-                    question=str(
-                        values[1]
-                        if len(values) > 1
-                        else ""
-                    ),
+                thread = (
+                    self.ecosystem
+                    .research
+                    .create(
+                        str(
+                            values[0]
+                        ),
+                        question=str(
+                            values[1]
+                            if len(values) > 1
+                            else ""
+                        ),
+                    )
                 )
 
                 return {
@@ -2279,15 +2860,19 @@ class MaryMobileRuntime:
             if name == "playArcade":
                 return {
                     "ok": True,
-                    **self.ecosystem.arcade.play(
-                        str(
-                            values[0]
-                        ),
-                        str(
-                            values[1]
-                            if len(values) > 1
-                            else ""
-                        ),
+                    **(
+                        self.ecosystem
+                        .arcade
+                        .play(
+                            str(
+                                values[0]
+                            ),
+                            str(
+                                values[1]
+                                if len(values) > 1
+                                else ""
+                            ),
+                        )
                     ),
                 }
 
@@ -2353,16 +2938,20 @@ class MaryMobileRuntime:
                     }
 
             if name == "saveYouTubeToResearch":
-                thread = self.ecosystem.research.create(
-                    str(
-                        values[0]
-                        or "YouTube research"
-                    ),
-                    question=str(
-                        values[1]
-                        if len(values) > 1
-                        else ""
-                    ),
+                thread = (
+                    self.ecosystem
+                    .research
+                    .create(
+                        str(
+                            values[0]
+                            or "YouTube research"
+                        ),
+                        question=str(
+                            values[1]
+                            if len(values) > 1
+                            else ""
+                        ),
+                    )
                 )
 
                 return {
@@ -2400,11 +2989,14 @@ class MaryMobileRuntime:
                 try:
                     return {
                         "ok": True,
-                        **self.creative_workspace.read_text(
-                            str(
-                                values[0]
-                                if values
-                                else ""
+                        **(
+                            self.creative_workspace
+                            .read_text(
+                                str(
+                                    values[0]
+                                    if values
+                                    else ""
+                                )
                             )
                         ),
                     }
@@ -2500,7 +3092,9 @@ class MaryMobileRuntime:
 class MaryMobileRequestHandler(
     SimpleHTTPRequestHandler
 ):
-    server_version = "MaryMobile/1"
+    server_version = (
+        "MaryMobile/1"
+    )
 
     def __init__(
         self,
@@ -2526,7 +3120,11 @@ class MaryMobileRequestHandler(
         *args: Any,
     ) -> None:
         print(
-            f"[MaryMobile] {self.address_string()} - {fmt % args}",
+            (
+                f"[MaryMobile] "
+                f"{self.address_string()} - "
+                f"{fmt % args}"
+            ),
             flush=True,
         )
 
@@ -2581,7 +3179,9 @@ class MaryMobileRequestHandler(
             )
             return
 
-        origin = self._allowed_origin()
+        origin = (
+            self._allowed_origin()
+        )
 
         if (
             self.headers.get(
@@ -2605,7 +3205,10 @@ class MaryMobileRequestHandler(
 
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Authorization, Content-Type, X-Mary-Audio-Filename",
+            (
+                "Authorization, Content-Type, "
+                "X-Mary-Audio-Filename"
+            ),
         )
 
         self.send_header(
@@ -2618,7 +3221,9 @@ class MaryMobileRequestHandler(
     def end_headers(
         self,
     ) -> None:
-        origin = self._allowed_origin()
+        origin = (
+            self._allowed_origin()
+        )
 
         if origin:
             self.send_header(
@@ -2851,6 +3456,7 @@ class MaryMobileRequestHandler(
                     "0",
                 )
             )
+
         except ValueError as exc:
             raise ValueError(
                 "Invalid Content-Length."
@@ -2866,8 +3472,11 @@ class MaryMobileRequestHandler(
                 "Request body is too large."
             )
 
-        return self.rfile.read(
-            length
+        return (
+            self.rfile
+            .read(
+                length
+            )
         )
 
     def _read_json(
@@ -2880,6 +3489,7 @@ class MaryMobileRequestHandler(
                     "0",
                 )
             )
+
         except ValueError as exc:
             raise ValueError(
                 "Invalid Content-Length."
@@ -2893,8 +3503,11 @@ class MaryMobileRequestHandler(
                 "Request body is too large."
             )
 
-        raw = self.rfile.read(
-            length
+        raw = (
+            self.rfile
+            .read(
+                length
+            )
         )
 
         try:
@@ -2903,6 +3516,7 @@ class MaryMobileRequestHandler(
                     "utf-8"
                 )
             )
+
         except Exception as exc:
             raise ValueError(
                 "Request body must be valid JSON."
@@ -2963,6 +3577,7 @@ class MaryMobileRequestHandler(
                     ),
                 }
             )
+
             return
 
         if path == "/api/state":
@@ -2974,6 +3589,7 @@ class MaryMobileRequestHandler(
                 .runtime
                 .dashboard_state()
             )
+
             return
 
         if path == "/api/trace":
@@ -2985,6 +3601,7 @@ class MaryMobileRequestHandler(
                 .runtime
                 .last_turn_trace()
             )
+
             return
 
         if path == "/api/voice/status":
@@ -2994,11 +3611,14 @@ class MaryMobileRequestHandler(
             self._send_json(
                 {
                     "ok": True,
-                    **self.mary_server
-                    .runtime
-                    .voice_status(),
+                    **(
+                        self.mary_server
+                        .runtime
+                        .voice_status()
+                    ),
                 }
             )
+
             return
 
         if path.startswith(
@@ -3011,6 +3631,7 @@ class MaryMobileRequestHandler(
                 },
                 HTTPStatus.NOT_FOUND,
             )
+
             return
 
         # SPA fallback: unknown extensionless routes reopen the Mary UI.
@@ -3022,7 +3643,9 @@ class MaryMobileRequestHandler(
             path != "/"
             and not parsed.suffix
         ):
-            self.path = "/index.html"
+            self.path = (
+                "/index.html"
+            )
 
         return super().do_GET()
 
@@ -3045,6 +3668,7 @@ class MaryMobileRequestHandler(
                 },
                 HTTPStatus.NOT_FOUND,
             )
+
             return
 
         if not self._require_api_auth():
@@ -3076,9 +3700,12 @@ class MaryMobileRequestHandler(
                         **payload,
                     }
                 )
+
                 return
 
-            body = self._read_json()
+            body = (
+                self._read_json()
+            )
 
             if path == "/api/chat":
                 payload = (
@@ -3092,10 +3719,20 @@ class MaryMobileRequestHandler(
                             or ""
                         ),
                         conversation_id=(
-                            str(body.get("conversation_id") or "").strip()
+                            str(
+                                body.get(
+                                    "conversation_id"
+                                )
+                                or ""
+                            ).strip()
                             or None
                         ),
-                        voice_input=bool(body.get("voice_input", False)),
+                        voice_input=bool(
+                            body.get(
+                                "voice_input",
+                                False,
+                            )
+                        ),
                     )
                 )
 
@@ -3105,6 +3742,7 @@ class MaryMobileRequestHandler(
                         **payload,
                     }
                 )
+
                 return
 
             if path == "/api/tts":
@@ -3206,6 +3844,7 @@ class MaryMobileRequestHandler(
                         "result": payload,
                     }
                 )
+
                 return
 
             self._send_json(
@@ -3291,7 +3930,9 @@ class MaryMobileServer(
         static_root: Path,
         auth: MobileAuth,
     ) -> None:
-        self.runtime = runtime
+        self.runtime = (
+            runtime
+        )
 
         self.static_root = (
             Path(
@@ -3300,7 +3941,9 @@ class MaryMobileServer(
             .resolve()
         )
 
-        self.auth = auth
+        self.auth = (
+            auth
+        )
 
         handler = partial(
             MaryMobileRequestHandler,
@@ -3319,6 +3962,7 @@ class MaryMobileServer(
     ) -> None:
         try:
             self.runtime.close()
+
         finally:
             super().server_close()
 
@@ -3391,7 +4035,9 @@ def run_mobile_server(
     port: int | None = None,
     application: MaryApplication | None = None,
 ) -> None:
-    root = _project_root()
+    root = (
+        _project_root()
+    )
 
     resolved_host = (
         host
@@ -3443,8 +4089,10 @@ def run_mobile_server(
         )
 
     else:
-        runtime = MaryMobileRuntime(
-            application
+        runtime = (
+            MaryMobileRuntime(
+                application
+            )
         )
 
         auth_data_root = Path(
@@ -3455,8 +4103,10 @@ def run_mobile_server(
             .data
         )
 
-    static_root = _static_root(
-        root
+    static_root = (
+        _static_root(
+            root
+        )
     )
 
     auth = _resolve_auth(
@@ -3486,8 +4136,7 @@ def run_mobile_server(
     )
 
     print(
-        "="
-        * 68,
+        "=" * 68,
         flush=True,
     )
 
@@ -3497,8 +4146,7 @@ def run_mobile_server(
     )
 
     print(
-        "="
-        * 68,
+        "=" * 68,
         flush=True,
     )
 
@@ -3632,8 +4280,7 @@ def run_mobile_server(
         )
 
     print(
-        "="
-        * 68,
+        "=" * 68,
         flush=True,
     )
 

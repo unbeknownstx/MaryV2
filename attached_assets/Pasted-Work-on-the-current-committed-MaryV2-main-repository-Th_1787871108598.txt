@@ -1,0 +1,255 @@
+Work on the current committed MaryV2 main repository. This is a preservation/reconciliation pass, not a rewrite.
+
+HARD RULES
+
+* Do not modify /data. It is Mary’s preserved true pre-cloud state.
+* Do not deploy.
+* Do not change live Railway/Core state directly.
+* Do not create new memory, relationship, development, agency, or autonomy architectures.
+* Reuse the current canonical systems.
+* Do not delete legacy/predecessor modules in this pass.
+* Do not connect arbitrary external actions or auto-approval.
+* Do not bump to 13.3.
+* Make the smallest changes needed to make existing systems converge.
+
+LIVE OBSERVATIONS TO RECONCILE
+
+The current remote Core/PWA shows:
+
+* Core authority: remote_mary_core
+* Relationship: Established
+* Memories: 21 total / 17 episodic / 4 semantic
+* Experience journal grew from 33 to 38 during testing
+* Meaningful experiences: 10
+* Semantic promotions: 0
+* Preference developments: 0
+* Milestones: 0
+* Continuity screen still shows:
+    * Stage Beginning
+    * Continuity index 0%
+    * Profile records 0
+    * History events 0
+    * Milestones 0
+* Mary’s self/development screen shows no traits, values, likes, dislikes, or development candidates
+* Agency shows active goals 0
+* When explicitly asked what she wanted to work on/learn/ask, Mary answered with generic assistant behavior about following the user’s curiosity instead of expressing grounded curiosity of her own
+* Memory recall for recent shared work was weak and latched onto a malformed recent sentence instead of relevant project history
+
+GOAL
+
+Trace and reconcile the existing chain:
+
+canonical memory
+→ retrieval
+→ relationship continuity
+→ development/growth
+→ curiosity/agency
+→ autonomy proposals
+→ dialogue
+
+Do not force nonzero counters. Fix actual wiring/authority mismatches.
+
+PHASE 1 — INSPECT BEFORE EDITING
+
+Inspect the canonical implementations and all state exporters feeding the mobile UI.
+
+At minimum inspect:
+
+* mary/core/mary.py
+* mary/runtime/application.py
+* TurnMind/cognition dialogue context
+* canonical memory manager/store/retrieval
+* semantic memory promotion logic
+* relationship manager/current relationship state
+* any separate continuity/profile/history representation
+* GrowthEngine/development engine
+* preference development
+* milestones
+* agency
+* curiosity
+* goals
+* autonomy runtime/triggers/scheduler/actions
+* Core state serialization/API
+* mobile state adapter/rendering
+* tests covering all of the above
+
+First produce an internal map of which object is canonical for:
+
+* memory
+* relationship
+* continuity
+* development
+* preferences
+* goals
+* curiosity
+* autonomy
+
+Identify duplicates, predecessor state objects, and cases where the mobile UI reads a noncanonical empty subsystem while the Core owns populated state elsewhere.
+
+PHASE 2 — MEMORY RETRIEVAL
+
+Trace the exact path used when Mary receives a question such as:
+
+What do you remember about what we've been building together recently?
+
+Determine:
+
+* which memories are retrieved
+* how they are ranked
+* whether shared-work/project memory is included
+* whether malformed/recent conversational text is outranking durable relevant memories
+* whether semantic memories participate
+* whether relationship/shared-work context is injected separately
+
+Fix retrieval only if there is a real wiring/ranking problem.
+
+Requirements:
+
+* preserve provenance safeguards
+* Mary’s own previous model output must never become user history without provenance
+* recent raw text should not automatically outrank more relevant durable shared-work memories
+* add a regression test using a recent-project recall question
+
+PHASE 3 — RELATIONSHIP / CONTINUITY CONVERGENCE
+
+Explain exactly why canonical Core reports Established while the continuity screen reports Beginning / 0% / 0 records.
+
+Determine whether:
+
+* two relationship systems exist
+* continuity is uninitialized
+* state export is reading the wrong object
+* migration/adapter wiring is missing
+
+Do not fake values in the UI.
+
+Reconcile the mobile/Core state so the continuity surface reflects the actual canonical relationship model or a clearly derived bounded projection of it.
+
+Add tests proving the relationship stage shown through Core/mobile state is consistent with canonical Mary relationship state.
+
+PHASE 4 — DEVELOPMENT CONVERGENCE
+
+Trace:
+
+experience record
+→ meaningful experience
+→ semantic promotion
+→ preference development
+→ milestone
+
+Do not make these fire artificially.
+
+Determine why 38 experiences and 10 meaningful experiences currently produce 0 semantic promotions/preferences/milestones.
+
+Classify each zero as:
+
+* legitimate threshold not met
+* missing wiring
+* persistence mismatch
+* duplicate state owner
+* promotion bug
+
+Fix only genuine wiring/logic defects.
+
+Add tests proving a qualifying synthetic experience can traverse the intended promotion/development path under controlled conditions.
+
+PHASE 5 — SELF/PREFERENCE PROJECTION
+
+The mobile Growth/Self surface currently shows no traits, values, likes, or dislikes even though Mary has canonical identity/personality/preferences elsewhere.
+
+Determine whether that screen is intended to show:
+
+* canonical traits/values/preferences
+* only newly developed traits/preferences
+* or both
+
+Do not merge conceptually different data just to fill the UI.
+
+If the UI is currently reading the wrong or disconnected source, fix the state contract so it clearly distinguishes:
+
+* canonical identity/personality
+* learned/developed preferences
+
+Add tests for the projection.
+
+PHASE 6 — AGENCY / CURIOSITY / AUTONOMY
+
+Inspect the existing agency, curiosity, goals, and autonomy APIs.
+
+Connect existing curiosity/agency output into the existing autonomy runtime in the narrowest safe way.
+
+Requirements:
+
+* no new autonomy architecture
+* no background thread
+* no external execution
+* no automatic approval
+* no shell/filesystem/network action
+* no fabricated goal merely because a turn occurred
+
+Desired behavior:
+
+* if Mary’s existing curiosity/agency system produces a grounded, eligible internal question/intention, autonomy may create a passive proposal
+* the proposal remains unapproved/unexecuted
+* dialogue may surface a grounded curiosity question when appropriate
+
+Add regression tests showing:
+
+A. generic turns do not invent goals
+B. a controlled grounded curiosity signal can create one passive autonomy proposal
+C. proposal remains unapproved and unexecuted
+D. duplicate proposals are not created every turn
+E. Mary can surface a grounded question from existing curiosity state
+
+PHASE 7 — STATE CONTRACT / MOBILE
+
+Reconcile Core state serialization so the mobile PWA can accurately display:
+
+* canonical relationship stage
+* continuity projection
+* memory counts
+* growth/development counts
+* agency/goals
+* autonomy status/proposals if already supported
+
+Do not redesign the UI in this pass.
+
+PHASE 8 — TESTS
+
+Run focused tests first.
+
+Then run:
+
+python -m pytest tests -q
+
+Then:
+
+python -m scripts.run_release_verification --offline
+
+Also run:
+
+python -m compileall -q mary tests scripts
+
+and:
+
+git diff --check
+
+Do not weaken existing tests to make them pass.
+
+FINAL REPORT
+
+Give me:
+
+1. Exact files changed.
+2. Canonical owner for each subsystem: memory, relationship, continuity, development, preferences, goals, curiosity, autonomy.
+3. Exact cause of the Established vs Beginning/0% mismatch.
+4. Exact cause of weak recent-project memory recall.
+5. Exact reason semantic promotions/preferences/milestones are at zero, separated into legitimate vs broken.
+6. What was changed to connect curiosity/agency to autonomy.
+7. Proof no autonomous external execution or auto-approval was added.
+8. Tests added.
+9. Exact test commands and counts.
+10. Offline release-verifier result.
+11. Confirmation /data unchanged.
+12. git diff --stat.
+13. Do not commit, push, or deploy unless explicitly requested.

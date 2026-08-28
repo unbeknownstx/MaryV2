@@ -1,0 +1,544 @@
+Work on the CURRENT committed MaryV2 repository exactly as it exists now.
+
+Do NOT redesign Mary from scratch.
+Do NOT replace working systems with simpler substitutes.
+Do NOT delete predecessor/dormant systems just because they are not currently wired.
+Do NOT migrate, normalize, rewrite, or delete anything under /data.
+Treat /data as pre-cloud Mary’s historical/canonical state archive and preserve it exactly.
+Do NOT create a second Mary, second relationship manager, second memory owner, second personality owner, second agency owner, or second autonomy owner.
+
+This is a preservation-and-convergence pass.
+
+CURRENT ARCHITECTURAL INTENT
+
+MaryV2 13.2 is a unified-core architecture:
+
+- One long-lived Mary Core owns canonical identity, memory, relationship, growth, cognition, agency, autonomy, ecosystem, etc.
+- Mobile/Replit/Desktop are clients/presentation surfaces.
+- Device nodes can provide capabilities, but they do not own Mary state.
+- GitHub/main is source authority.
+- Replit is currently being used as the active development environment.
+- The user often works from iPhone, so avoid workflows that require hand-editing tiny portions of large files.
+- Prefer full-file edits and clean testable changes.
+- Preserve all old capability unless you can explicitly prove what replaced it.
+
+RECENT AUTONOMY PASS ALREADY DONE
+
+A prior pass connected the existing autonomy runtime to MaryApplication lifecycle.
+
+Commit:
+f77dae8
+“Implement MaryV2 autonomy preservation features and tests”
+
+That pass:
+- reused existing self.mary.autonomy
+- starts it idempotently when stopped
+- cycles exactly once after successful canonical turns
+- does not approve/execute actions
+- does not create background threads
+- does not create network/LLM autonomy work
+- failed turns do not cycle
+- close() stops autonomy
+- did not modify autonomy primitive files
+- did not touch /data
+
+Do NOT undo or rewrite that work.
+
+REMOTE MOBILE DASHBOARD BUG ALREADY IDENTIFIED AND PATCHED
+
+We found a specific cloud migration omission.
+
+The Core already exposes:
+
+GET /v1/dashboard
+-> core.dashboard_status()
+
+MaryClient already exposes:
+client.dashboard()
+
+But MaryRemoteMobileRuntime.dashboard_state() in mary/mobile/server.py was manually reconstructing a reduced payload from:
+- client.state()
+- client.conversation_status()
+- growth
+- nodes
+- mobile
+- core
+- ecosystem
+
+and therefore DROPPED canonical Core dashboard fields like:
+- relationship
+- memory_highlights
+- recent_activities
+- curiosities
+- personality
+- providers
+- agency
+- retrieval
+- perception
+- training_feedback
+- semantics/paths
+- other dashboard state
+
+That caused the PWA to show contradictory state such as:
+- Core card relationship: Established
+- relationship/continuity panel: Beginning / 0%
+- profile records: 0
+- history events: 0
+- milestones: 0
+even though canonical relationship state existed.
+
+We patched remote dashboard_state() so it now starts from:
+
+payload = dict(self.client.dashboard() or {})
+
+and then overlays only mobile/session transport fields such as:
+- character
+- engagement
+- realtime
+- current nodes
+- mobile
+- core
+- ecosystem
+
+This is the correct architectural direction:
+Core dashboard remains authoritative.
+Mobile only projects it.
+
+Tests updated:
+tests/mobile/test_remote_core_mode_13_2.py
+tests/mobile/test_mobile_convergence_13_2.py
+
+Current focused result:
+33 passed, 4 skipped
+for:
+pytest -q tests/mobile tests/protocol
+
+Do NOT regress this.
+
+IMPORTANT: INSPECT CURRENT FILES FIRST
+
+Before changing anything:
+1. git status
+2. git log -5 --oneline
+3. inspect:
+   - mary/mobile/server.py
+   - mary/protocol/client.py
+   - mary/protocol/server.py
+   - mary/core/service.py
+   - mary/desktop/dashboard.py
+   - mary/core/mary.py
+   - mary/runtime/application.py
+   - relevant relationship/memory/growth/agency/autonomy modules
+   - relevant mobile/protocol tests
+
+Confirm the current repository already contains the remote dashboard projection fix.
+Do not reimplement it differently unless there is an actual defect.
+
+PRIMARY GOAL OF THIS PASS
+
+Perform a disciplined “Mary convergence” audit and repair the existing architecture so canonical state actually flows coherently through dialogue and UI.
+
+Target flow:
+
+canonical memory
+→ retrieval
+→ relationship
+→ development/growth
+→ curiosity/agency
+→ autonomy
+→ dialogue
+→ presentation surfaces
+
+The goal is NOT to add lots of new features.
+
+The goal is to prove and connect systems that already exist.
+
+WORK IN THIS ORDER
+
+==================================================
+1. CORE STATE PROJECTION / REMOTE MOBILE VERIFICATION
+==================================================
+
+Verify live/protocol contracts for the full Core dashboard.
+
+Check:
+- MaryCoreService.dashboard_status()
+- build_desktop_dashboard_state()
+- MaryClient.dashboard()
+- MaryRemoteMobileRuntime.dashboard_state()
+- /api/state
+- /api/chat nested dashboard
+- bridge getDashboardState
+
+Ensure remote mobile preserves canonical fields including:
+- relationship
+- memory_highlights
+- recent_activities
+- curiosities
+- personality
+- growth
+- engagement
+- realtime
+- nodes
+- retrieval
+- perception
+- training_feedback
+- providers
+- agency
+- any semantics/paths metadata already present
+
+Do NOT rebuild these fields inside mobile.
+Do NOT duplicate canonical state.
+
+Add regression tests only if coverage is still missing.
+
+==================================================
+2. RELATIONSHIP CONSISTENCY
+==================================================
+
+Audit all relationship representations.
+
+Canonical relationship owner appears to be RelationshipManager in Mary.
+
+Known existing aliases in Mary include:
+- user_model
+- relationship_history
+- relationship_understanding
+- relationship_milestones
+
+Desktop dashboard connection index currently derives from:
+- current profile records
+- relationship history count
+- milestone count
+
+Known score formula in mary/desktop/dashboard.py:
+
+score = min(
+    100,
+    round(
+        (records * 2.0)
+        + (history * 1.2)
+        + (milestones * 8.0)
+    )
+)
+
+labels:
+>=85 Deep continuity
+>=60 Established
+>=30 Developing
+>0 Getting familiar
+else Beginning
+
+Do NOT create another relationship-stage system.
+
+Instead:
+- verify the canonical relationship manager’s durable data is what the dashboard uses
+- verify Core and PWA surfaces project the same underlying state
+- identify any stale alternate relationship stage/index systems
+- preserve old code but do not wire a second owner
+- if a useful predecessor behavior exists, reconcile it into canonical state instead of reviving a duplicate owner
+
+Report exactly why “Established” and “Beginning/0%” could disagree and whether the current dashboard fix resolves it.
+
+==================================================
+3. MEMORY / SHARED-WORK RETRIEVAL
+==================================================
+
+Do NOT rebuild memory.
+
+Existing memory/shared-work capabilities already exist.
+
+Historical behavior includes natural shared-work intents such as:
+- “what have we been building together”
+- “what projects have we worked on together”
+- “what do you remember about our work together”
+
+Audit:
+- intent classification
+- relationship/shared-work query routing
+- memory retrieval
+- relationship history/profile grounding
+- context ranking
+- provenance/speaker metadata
+- TurnMind context injection
+
+Goal:
+If Mary has relevant durable shared-work memory, normal dialogue should retrieve it reliably.
+
+Do NOT fabricate memory.
+Do NOT convert Mary’s own generated text into user history.
+Preserve provenance guards.
+
+If live recall weakness is caused by overly narrow routing or poor ranking, repair that route rather than adding a new memory system.
+
+==================================================
+4. PERSONALITY / DEVELOPED SELF PROJECTION
+==================================================
+
+Audit authored and developed personality/self systems.
+
+Known issue:
+The PWA sometimes looked empty even though canonical authored traits/preferences existed.
+
+First verify whether this was only remote dashboard field loss.
+
+Ensure canonical dashboard surfaces:
+- authored traits
+- developed preferences
+- current personality state
+- any bounded growth/development summary already supported
+
+Do NOT invent fake development just to make counters nonzero.
+
+==================================================
+5. GROWTH / DEVELOPMENT VERIFICATION
+==================================================
+
+Current live observations previously showed:
+- experience journal increasing
+- meaningful experiences present
+- semantic promotions 0
+- preference developments 0
+- milestones 0
+
+Do NOT lower thresholds merely to make numbers move.
+
+Audit the actual intended semantics of:
+- experience capture
+- meaningful experience detection
+- semantic promotion
+- preference development
+- relationship milestones
+- growth/development persistence
+
+Determine:
+- which zeros are expected by design
+- which zeros indicate disconnected pathways
+- whether ordinary conversation is supposed to auto-promote semantic memory in 13.x
+
+Preserve historical guardrails around authored/canonical preferences.
+
+==================================================
+6. CURIOSITY / AGENCY DIALOGUE ROUTING
+==================================================
+
+This is a major confirmed behavioral gap.
+
+Existing architecture already has:
+- persistent curiosity subsystem
+- Agency.load()
+- Agency.evaluate()
+- goals
+- intentions
+- curiosities
+- relationship curiosity logic
+- conversation learning bridge
+- explicit invitation handling for phrases such as “ask me anything” / “you are here to learn”
+
+But when the user asked:
+
+“Is there anything you currently want to work on, learn, or ask me about?”
+
+Mary answered generically:
+“I’m all ears for whatever sparks your curiosity next...”
+
+That means the wording likely fell through to generic conversation instead of invoking existing grounded curiosity/agency.
+
+Do NOT create a new curiosity system.
+
+Extend the existing routing/recognition so natural variants such as:
+- what do you want to learn?
+- is there anything you want to ask me?
+- what are you curious about?
+- is there anything you want to work on?
+- what do you want to know about me?
+- anything you want to ask?
+- anything on your mind?
+can route to the EXISTING grounded curiosity/agency capability.
+
+Requirements:
+- use actual unresolved relationship/knowledge gaps
+- avoid generic “tell me something interesting” prompts
+- do not fabricate personal wants or experiences
+- do not claim a goal exists if none exists
+- if nothing grounded is available, say so plainly
+- preserve Mary’s character while staying provenance-safe
+
+Add natural-language routing tests.
+
+==================================================
+7. AGENCY → AUTONOMY BRIDGE
+==================================================
+
+Autonomy now cycles but often has zero triggers/schedules/actions.
+
+Do NOT give autonomy unrestricted execution.
+
+The next bridge should remain passive/proposal-only.
+
+Explore a bounded path like:
+
+eligible grounded curiosity
+→ agency evaluation/proposal
+→ autonomy trigger/proposal
+→ no execution unless explicitly approved elsewhere
+
+Requirements:
+- no background LLM loop
+- no autonomous web calls
+- no filesystem action
+- no device task execution
+- no automatic action approval
+- no hidden second scheduler
+- no duplicate autonomy object
+
+If this bridge is not yet safe/clear, document it instead of forcing it.
+
+==================================================
+8. REMOTE TRAINING FEEDBACK BUG
+==================================================
+
+Known PWA issue:
+tapping thumbs feedback in remote-core mode gives:
+
+“Bridge method is not available in remote-core mobile mode: recordResponseFeedback”
+
+Audit whether Core already has a canonical training feedback operation/API.
+
+If there is an existing Core-owned method:
+- expose it through protocol/client/runtime action in a typed way
+- make remote mobile bridge call forward to Core
+- do not store training feedback in the mobile proxy
+- add tests
+
+If no canonical Core API exists yet:
+- design the smallest typed Core-owned endpoint/action
+- preserve training_feedback as canonical Core state
+- do not create mobile-local feedback persistence
+
+==================================================
+9. DEVICE NODE / OLLAMA CAPABILITY TRUTH
+==================================================
+
+Known architecture gap from prior audit:
+
+PC/device node could advertise llm.ollama / llm.chat capability,
+but actual executable task allow-list only supported personal_search.
+
+This means Ollama could be advertised without being operationally routable.
+
+Audit:
+- capability descriptors
+- node registration
+- node routing
+- task preview/dispatch
+- device executor allow-list
+- actual Ollama execution route
+
+Do NOT advertise capabilities that cannot execute.
+
+Either:
+A. fully connect an already-existing safe Ollama task path, or
+B. stop advertising unsupported execution capability until connected.
+
+Do not fake readiness.
+
+==================================================
+10. RELEASE / VERIFIER CLEANUP
+==================================================
+
+Previous offline release verifier had 5 failing groups:
+
+1. desktop_alpha
+   likely stale source-string verifier
+2. voice_input
+   likely stale multiline substring verifier
+3. acceptance_efficiency_07
+   REAL issue: normal conversation prompt exceeded desired <11,500 char headroom under 14k ceiling
+4. realtime_cognitive_infrastructure_13_1
+   terminology drift:
+   verifier expects “COMPUTE NODES”
+   current UI uses “DEVICE CAPABILITY NODES”
+5. release_hygiene
+   false positives on synthetic test placeholders like token="secret"
+
+Do not blindly make verifier happy.
+
+Classify each as:
+- real runtime defect
+- architecture terminology drift
+- stale verifier
+- false positive
+
+Fix production only where production is actually wrong.
+
+Prompt efficiency is the one clearly real runtime issue.
+
+Audit TurnMind / character grounding prompt growth.
+Reduce redundant prompt material without removing important identity, provenance, safety, relationship, or memory context.
+Prefer deduplication and bounded summaries over deleting capability.
+
+==================================================
+TESTING POLICY
+==================================================
+
+Work incrementally.
+
+After each focused change:
+- run the smallest relevant test file first
+- then relevant subsystem tests
+
+Before finishing:
+- pytest -q tests/mobile tests/protocol
+- relevant relationship/memory/growth/agency/autonomy tests
+- full pytest if practical
+- python -m scripts.run_release_verification --offline if dependencies permit
+
+Current known mobile/protocol baseline before this pass:
+33 passed, 4 skipped
+
+Do not treat FastAPI-unavailable protocol skips as a code failure if the environment intentionally lacks FastAPI.
+
+==================================================
+DO NOT
+==================================================
+
+Do NOT:
+- delete /data
+- migrate /data
+- wipe old memories
+- create a new canonical state root
+- create a second Mary
+- create duplicate relationship/memory/personality/agency/autonomy owners
+- add background autonomous loops
+- give autonomy unrestricted execution
+- fabricate growth
+- lower memory promotion thresholds just for UI counters
+- silently remove old code
+- “clean up” predecessor modules without a replacement map
+- commit automatically unless explicitly instructed
+
+==================================================
+DELIVERABLE
+==================================================
+
+At the end, give me a concise but complete report with:
+
+1. What was actually broken
+2. What was only a projection/wiring issue
+3. What was preserved
+4. Exact files changed
+5. Exact tests added/changed
+6. Test results
+7. Any unresolved architectural gaps
+8. Any risky dormant/predecessor systems found
+9. Whether /data was untouched
+10. Whether canonical ownership remains one Mary Core
+11. Recommended next step
+
+Most important principle:
+
+PRESERVE FIRST.
+PROVE OWNERSHIP.
+CONNECT EXISTING SYSTEMS.
+ONLY THEN ADD NEW BEHAVIOR.
