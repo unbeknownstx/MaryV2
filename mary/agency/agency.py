@@ -345,6 +345,8 @@ def _explicit_agency_request(
         "what should i do",
         "what should we work on",
         "what do we work on",
+        "what do you want to work on",
+        "what would you like to work on",
         "what next",
         "what should be next",
         "what is next",

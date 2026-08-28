@@ -192,3 +192,24 @@ def test_exploring_parent_remains_highest_priority(tmp_path, monkeypatch):
     assert ranked[0].score == 1.0
     assert any(item.metadata.get("relationship_gap") for item in ranked[1:])
     assert provider.calls == 0
+
+
+def test_natural_curiosity_invitation_wording_routes_to_grounded_gap_without_model(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+    mary.relationship.learn_explicit("my favorite color is blue")
+    mary.relationship.learn_explicit("i am interested in creating stories")
+    mary.relationship.learn_explicit("my main goal is finish MaryV2")
+    mary.relationship.learn_explicit("i prefer you to be direct")
+    mary.relationship_curiosity.sync()
+
+    def fail_if_model_runs(*args, **kwargs):
+        raise AssertionError("grounded curiosity invitation must not call cognition")
+
+    mary.cognition.process = fail_if_model_runs
+    result = mary.process(
+        "Is there anything you currently want to work on, learn, or ask me about?"
+    )
+
+    assert result.metadata["conversation_learning_invitation"]["category"] == "values"
+    assert "what matters most to you" in result.final_response.lower()

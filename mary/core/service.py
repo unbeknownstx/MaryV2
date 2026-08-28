@@ -542,6 +542,30 @@ class MaryCoreService:
                     )
                 )
 
+            if action.action == "training.feedback.status":
+                return _json_safe(self.mary.training_feedback.status())
+
+            if action.action == "training.feedback.record":
+                tags = values.get("tags") or []
+                if not isinstance(tags, (list, tuple)):
+                    raise ValueError("training feedback tags must be a list")
+                record = self.mary.training_feedback.record(
+                    rating=str(values.get("rating") or "neutral"),
+                    user_text=str(values.get("user_text") or ""),
+                    assistant_text=str(values.get("assistant_text") or ""),
+                    provider=str(values.get("provider") or "unknown"),
+                    model=str(values.get("model") or "unknown"),
+                    conversation_mode=str(values.get("conversation_mode") or "adaptive"),
+                    tags=list(tags),
+                    note=str(values.get("note") or ""),
+                    turn_id=str(values.get("turn_id") or ""),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "id": record.id,
+                    "status": self.mary.training_feedback.status(),
+                })
+
         raise ValueError(f"Unsupported runtime action: {action.action}")
 
     def save(self) -> bool:

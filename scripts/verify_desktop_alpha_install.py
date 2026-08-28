@@ -37,6 +37,8 @@ def main() -> int:
         return 1
 
     package = json.loads((root / "desktop" / "package.json").read_text(encoding="utf-8"))
+    bridge_text = (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8")
+    bridge_compact = " ".join(bridge_text.split())
     checks = [
         (package["dependencies"].get("three") == "0.185.1", "Three.js version pinned"),
         (package["dependencies"].get("@pixiv/three-vrm") == "3.5.5", "three-vrm version pinned"),
@@ -53,7 +55,7 @@ def main() -> int:
         ("worker.moveToThread(thread)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop conversation uses a dedicated QThread"),
         ("@Slot(object)" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop completion is marshalled through a Qt slot"),
         ("Avatar presentation is best-effort" in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "avatar presentation cannot swallow a chat response"),
-        ("Mary's desktop worker stopped without returning a response." in (root / "mary" / "desktop" / "bridge.py").read_text(encoding="utf-8"), "desktop releases Thinking on unexpected worker termination"),
+        ("Mary's desktop worker stopped" in bridge_text and "without returning a response." in bridge_text, "desktop releases Thinking on unexpected worker termination"),
         ("timeout=20.0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq interactive request timeout is bounded"),
         ("max_retries=0" in (root / "mary" / "llm" / "providers" / "groq.py").read_text(encoding="utf-8"), "Groq SDK retries do not trap desktop in Thinking"),
         ("MARY_TTS_PROVIDER" in (root / "mary" / "desktop" / "voice.py").read_text(encoding="utf-8"), "desktop voice is explicit opt-in"),

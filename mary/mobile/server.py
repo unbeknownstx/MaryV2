@@ -275,6 +275,11 @@ class MaryRemoteMobileRuntime:
             Any,
         ] = {}
 
+        self._last_feedback_context: dict[
+            str,
+            Any,
+        ] = {}
+
         self._conversation_id = (
             os.getenv(
                 "MARY_CONVERSATION_ID",
@@ -624,6 +629,17 @@ class MaryRemoteMobileRuntime:
 
             with self._lock:
                 self._last_trace = trace
+                self._last_feedback_context = {
+                    "user_text": value,
+                    "assistant_text": str(response.response or ""),
+                    "provider": str(trace.get("provider") or "unknown"),
+                    "model": str(trace.get("model") or "unknown"),
+                    "conversation_mode": str(
+                        getattr(response, "effective_mode", "adaptive")
+                        or "adaptive"
+                    ),
+                    "turn_id": str(response.turn_id or ""),
+                }
 
             conversation = dict(
                 response.conversation_state
@@ -1201,6 +1217,36 @@ class MaryRemoteMobileRuntime:
                     action,
                     payload,
                 )
+            )
+
+        if name == "getTrainingFeedbackState":
+            return self.client.runtime_action(
+                "training.feedback.status"
+            )
+
+        if name == "recordResponseFeedback":
+            values = list(args or [])
+            rating = str(values[0] if values else "neutral")
+            tags = list(
+                values[1]
+                if len(values) > 1 and isinstance(values[1], list)
+                else []
+            )
+            note = str(values[2] if len(values) > 2 else "")
+            with self._lock:
+                context = dict(self._last_feedback_context)
+            if not context:
+                raise ValueError(
+                    "No completed mobile turn is available to rate."
+                )
+            return self.client.runtime_action(
+                "training.feedback.record",
+                {
+                    **context,
+                    "rating": rating,
+                    "tags": tags,
+                    "note": note,
+                },
             )
 
         if name == "reportSpeechStarted":

@@ -37,7 +37,7 @@ PLACEHOLDER_PREFIXES = (
     "changeme", "change_me", "change-me", "placeholder", "dummy_", "dummy-", "test_", "test-",
     "fake_", "fake-", "mock_", "mock-", "secret-test-", "tvly-test-", "<", "${",
 )
-PLACEHOLDER_EXACT = {"", "none", "null", "unset", "disabled", "off", "test-key", "fake-key", "dummy-key"}
+PLACEHOLDER_EXACT = {"", "none", "null", "unset", "disabled", "off", "secret", "test-key", "fake-key", "dummy-key", "use-a-long-random-secret"}
 
 
 def _gitignore_rules() -> set[str]:

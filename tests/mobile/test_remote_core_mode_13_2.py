@@ -15,6 +15,7 @@ class FakeRemoteClient:
         self.base_url = base_url
         self.token = token
         self.device_id = device_id
+        self.runtime_actions = []
 
     def state(self):
         return {
@@ -119,6 +120,7 @@ class FakeRemoteClient:
         return SimpleNamespace(
             response="hello from core",
             turn_id="turn-1",
+            effective_mode="adaptive",
             provenance={
                 "provider": "groq",
             },
@@ -129,6 +131,19 @@ class FakeRemoteClient:
             },
             state_changes={},
         )
+
+    def runtime_action(self, action, args=None):
+        payload = dict(args or {})
+        self.runtime_actions.append((action, payload))
+        if action == "training.feedback.status":
+            return {"records": 0, "persistent": True}
+        if action == "training.feedback.record":
+            return {
+                "ok": True,
+                "id": "feedback-1",
+                "status": {"records": 1, "persistent": True},
+            }
+        return {"ok": True, "action": action}
 
 
 def test_remote_mobile_runtime_does_not_construct_local_mary(
@@ -356,3 +371,30 @@ def test_remote_dashboard_preserves_canonical_core_state(
         ]
         == "Mary"
     )
+
+def test_remote_mobile_feedback_is_forwarded_to_canonical_core(monkeypatch, tmp_path):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+
+    runtime.chat("hi")
+    result = runtime.bridge_call(
+        "recordResponseFeedback",
+        ["positive", ["felt_like_mary"], "good"],
+    )
+
+    assert result["ok"] is True
+    action, payload = runtime.client.runtime_actions[-1]
+    assert action == "training.feedback.record"
+    assert payload["user_text"] == "hi"
+    assert payload["assistant_text"] == "hello from core"
+    assert payload["turn_id"] == "turn-1"
+    assert payload["rating"] == "positive"
+
+    status = runtime.bridge_call("getTrainingFeedbackState")
+    assert status["records"] == 0
+    assert runtime.client.runtime_actions[-1][0] == "training.feedback.status"

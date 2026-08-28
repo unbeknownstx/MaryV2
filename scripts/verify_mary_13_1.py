@@ -77,10 +77,11 @@ def main() -> int:
     native = (ROOT / "mobile_native" / "MaryMobile" / "www" / "app.js").read_text(encoding="utf-8")
     desktop = (ROOT / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
     worker = (ROOT / "mobile_web" / "sw.js").read_text(encoding="utf-8")
-    check("mobile realtime workspace present", all(label in mobile for label in ("REALTIME INTERACTION", "ATTENTION BUS", "HYBRID MEMORY RETRIEVAL", "COMPUTE NODES", "MARY EVALUATION SET")))
+    check("mobile realtime workspace present", all(label in mobile for label in ("REALTIME INTERACTION", "ATTENTION BUS", "HYBRID MEMORY RETRIEVAL", "MARY EVALUATION SET")))
+    check("mobile node workspace present", "COMPUTE NODES" in mobile or "DEVICE CAPABILITY NODES" in mobile)
     check("mobile explicit response feedback present", "recordResponseFeedback" in mobile and "data-response-feedback" in mobile)
     check("native mobile bundle synchronized", mobile == native)
-    check("mobile cache generation 13.1", "maryv2-mobile-shell-v13-1" in worker)
+    check("mobile cache generation is 13.1+", "maryv2-mobile-shell-v13-1" in worker or "maryv2-mobile-shell-v13-2" in worker)
     check("desktop realtime diagnostics present", all(label in desktop for label in ("REALTIME COGNITIVE INFRASTRUCTURE", "Attention Bus", "Hybrid Memory Retrieval", "Compute Nodes")))
 
     env = (ROOT / ".env.example").read_text(encoding="utf-8")

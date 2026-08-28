@@ -142,6 +142,8 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "mind.rebuild_reservoir",
     "mind.maintenance",
     "presence.idle_tick",
+    "training.feedback.status",
+    "training.feedback.record",
 }
 
 

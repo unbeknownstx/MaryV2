@@ -13,6 +13,7 @@ def main() -> int:
     frontend = (root / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
     html = (root / "desktop" / "index.html").read_text(encoding="utf-8")
 
+    bridge_compact = " ".join(bridge.split())
     checks = [
         ("QMediaCaptureSession" in microphone and "QAudioInput" in microphone, "native Qt microphone capture is installed"),
         ("QMediaDevices.audioInputs()" in microphone, "microphone availability is checked before recording"),
@@ -20,7 +21,7 @@ def main() -> int:
         ("client.audio.transcriptions.create" in stt, "recorded audio is transcribed through Groq STT"),
         ("timeout=20.0" in stt and "max_retries=0" in stt, "speech transcription has bounded provider latency"),
         ("def startListening" in bridge and "def stopListening" in bridge, "desktop bridge exposes push-to-talk controls"),
-        ("self.transcriptionReady.emit(value)" in bridge, "successful transcription returns text to the desktop"),
+        ("self.transcriptionReady.emit( value )" in bridge_compact or "self.transcriptionReady.emit(value)" in bridge_compact, "successful transcription returns text to the desktop"),
         ('id="mic-button"' in html, "desktop microphone button is installed"),
         ("stopVoicePlayback({ notifyBridge: false });" in frontend, "Mary's own TTS is stopped before microphone capture"),
         ("bridge.sendMessage(transcript)" in frontend, "spoken transcript enters the canonical Mary conversation path"),

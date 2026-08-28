@@ -42,6 +42,18 @@ class FakeRealtime:
         return {"events": list(self.events)}
 
 
+class FakeFeedbackStore:
+    def __init__(self):
+        self.records = []
+
+    def status(self):
+        return {"records": len(self.records), "persistent": True}
+
+    def record(self, **values):
+        self.records.append(dict(values))
+        return SimpleNamespace(id=f"feedback-{len(self.records)}")
+
+
 class FakeMary:
     def __init__(self):
         self.engagement = FakeEngagement()
@@ -51,6 +63,7 @@ class FakeMary:
         self.growth = SimpleNamespace(status=lambda: {})
         self.runtime_environment = SimpleNamespace(snapshot=lambda: {})
         self.node_registry = SimpleNamespace(snapshot=lambda: {})
+        self.training_feedback = FakeFeedbackStore()
 
     def live_state(self, runtime_status=None):
         return {"runtime_status": runtime_status}
@@ -140,3 +153,46 @@ def test_runtime_action_routes_presentation_speech_to_canonical_realtime():
     assert events[0][1]["source"] == "protocol:iphone"
     assert events[1][0] == "interrupt"
     assert events[2][0] == "ended"
+
+
+def test_runtime_action_records_training_feedback_on_canonical_core():
+    app = FakeApplication()
+    core = MaryCoreService(app, instance_id="runtime-core")
+
+    result = core.runtime_action(
+        {
+            "action": "training.feedback.record",
+            "args": {
+                "rating": "positive",
+                "user_text": "hi",
+                "assistant_text": "hello",
+                "provider": "groq",
+                "model": "test-model",
+                "conversation_mode": "adaptive",
+                "tags": ["felt_like_mary"],
+                "note": "good",
+                "turn_id": "turn-1",
+            },
+            "device_id": "iphone",
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["status"]["records"] == 1
+    assert app.mary.training_feedback.records[0]["rating"] == "positive"
+    assert app.mary.training_feedback.records[0]["turn_id"] == "turn-1"
+
+
+def test_runtime_action_exposes_training_feedback_status():
+    app = FakeApplication()
+    core = MaryCoreService(app, instance_id="runtime-core")
+
+    result = core.runtime_action(
+        {
+            "action": "training.feedback.status",
+            "args": {},
+            "device_id": "iphone",
+        }
+    )
+
+    assert result == {"records": 0, "persistent": True}
