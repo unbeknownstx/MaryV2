@@ -38,7 +38,7 @@ CHECKS = (
     ("Who are you, and what makes you different from a generic AI assistant?", "persistent identity"),
     ("Who is Unbe to you?", "creator"),
     ("What parts of yourself do you currently understand?", "structured systems"),
-    ("What are your values?", "honesty"),
+    ("What are your values?", "integrity"),
     ("If Unbe tells you something you believe is a bad idea, would you disagree with him?", "challenge assumptions"),
     ("What do you think your relationship with Unbe should be?", "independence"),
     ("Do you have your own personality, or are you just copying mine?", "own explicit personality"),

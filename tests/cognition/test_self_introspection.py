@@ -89,22 +89,17 @@ def _rate_limited_app(tmp_path, monkeypatch):
     "query,required",
     [
         ("Who is Unbe to you?", ("unbe", "creator")),
-        ("What are your values?", ("honesty", "curiosity")),
-        ("Do you have your own personality, or are you just copying mine?", ("own", "personality")),
-        ("If Unbe tells you something you believe is a bad idea, would you disagree with him?", ("yes", "challenge")),
         ("What do you think you should become?", ("coherent", "mary")),
     ],
 )
-def test_self_questions_have_grounded_fallback_during_429(
+def test_open_ended_self_questions_have_grounded_fallback_during_429(
     query,
     required,
     tmp_path,
     monkeypatch,
 ):
     mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
-
     result = app.run(query)
-
     assert result.success is True
     lowered = result.output.lower()
     for phrase in required:
@@ -112,11 +107,40 @@ def test_self_questions_have_grounded_fallback_during_429(
     assert "temporarily rate-limited" not in lowered
     assert mary.tools.pending_requests() == []
     assert provider.calls == 1
-
     cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
     assert cycle.reasoning.metadata["self_grounded"] is True
     assert cycle.reasoning.metadata["llm_unavailable"] is True
     assert cycle.reflection.metadata["mode"] == "llm_unavailable_fallback"
+
+
+@pytest.mark.parametrize(
+    "query,required",
+    [
+        ("What are your values?", ("integrity", "autonomy")),
+        ("Do you have your own personality, or are you just copying mine?", ("own", "personality")),
+        ("If Unbe tells you something you believe is a bad idea, would you disagree with him?", ("yes", "challenge")),
+        ("What scares you?", ("friendships", "abandonment")),
+        ("What kind of humor do you like?", ("banter", "absurdist")),
+    ],
+)
+def test_bounded_authored_self_questions_use_zero_model_calls(
+    query,
+    required,
+    tmp_path,
+    monkeypatch,
+):
+    mary, provider, app = _rate_limited_app(tmp_path, monkeypatch)
+    result = app.run(query)
+    assert result.success is True
+    lowered = result.output.lower()
+    for phrase in required:
+        assert phrase in lowered
+    assert provider.calls == 0
+    cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
+    assert cycle.reasoning.metadata["self_grounded"] is True
+    assert cycle.reasoning.metadata["llm_skipped"] is True
+    assert cycle.reflection.metadata["mode"] == "deterministic_system_action"
+    assert cycle.metadata["llm_calls_after_action"] == 0
 
 
 def test_current_curiosity_does_not_trigger_web_and_does_not_invent_one(tmp_path, monkeypatch):
@@ -264,18 +288,13 @@ def test_hair_query_uses_canonical_appearance_and_rejects_generic_model_identity
 
     assert result.success is True
     assert result.output == "My hair is red."
-    assert provider.calls == 1
-    assert "Self-introspection grounding rules" in provider.prompts[0]
-    assert "Hair color" in provider.prompts[0]
-    assert "red" in provider.prompts[0]
-    assert "TurnMindState (authoritative integrated Mary state for this turn)" not in provider.prompts[0]
-    assert len(provider.prompts[0]) < 3000
+    assert provider.calls == 0
 
     cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
     assert cycle.reasoning.metadata["self_grounded"] is True
-    assert cycle.reasoning.metadata["self_grounding_rejected"] is True
-    assert "hair color" in cycle.reasoning.metadata["self_grounding_issue"].lower()
-    assert cycle.reflection.metadata["mode"] == "self_introspection_grounding_reuse"
+    assert cycle.reasoning.metadata["llm_skipped"] is True
+    assert cycle.reflection.metadata["mode"] == "deterministic_system_action"
+    assert cycle.metadata["llm_calls_after_action"] == 0
 
 
 def test_favorite_color_query_cannot_inherit_creator_or_invent_mary_preference(
@@ -294,10 +313,10 @@ def test_favorite_color_query_cannot_inherit_creator_or_invent_mary_preference(
     assert result.output == (
         "I don't have a favorite color represented as one of my own facts right now."
     )
-    assert provider.calls == 1
+    assert provider.calls == 0
 
     cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
     assert cycle.reasoning.metadata["self_grounded"] is True
-    assert cycle.reasoning.metadata["self_grounding_rejected"] is True
-    assert "preference" in cycle.reasoning.metadata["self_grounding_issue"].lower()
-    assert cycle.reflection.metadata["mode"] == "self_introspection_grounding_reuse"
+    assert cycle.reasoning.metadata["llm_skipped"] is True
+    assert cycle.reflection.metadata["mode"] == "deterministic_system_action"
+    assert cycle.metadata["llm_calls_after_action"] == 0

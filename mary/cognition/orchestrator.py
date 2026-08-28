@@ -1161,6 +1161,9 @@ class CognitiveOrchestrator:
                 "do you have your own personality",
                 "what is your personality",
                 "what's your personality",
+                "what are you like",
+                "are you sarcastic",
+                "are you witty",
             )),
             ("vulnerabilities", (
                 "what are you afraid of",
@@ -1172,6 +1175,7 @@ class CognitiveOrchestrator:
             )),
             ("romance", (
                 "are you romantic",
+                "are you a hopeless romantic",
                 "what are you like romantically",
                 "what are you like in a relationship",
                 "how are you in relationships",
@@ -1180,6 +1184,8 @@ class CognitiveOrchestrator:
             ("reactions", (
                 "how do you act when you're angry",
                 "how do you act when you are angry",
+                "how do you react when you're angry",
+                "how do you react when you are angry",
                 "what are you like when you're angry",
                 "what are you like when you are angry",
                 "how do you act when you're embarrassed",
@@ -1266,6 +1272,10 @@ class CognitiveOrchestrator:
                 "what foods do you hate",
                 "what food do you hate",
                 "what makes you laugh",
+                "what kind of humor do you like",
+                "what kind of humour do you like",
+                "what is your sense of humor",
+                "what's your sense of humor",
                 "what do you consider funny",
                 "what do you find funny",
             )),

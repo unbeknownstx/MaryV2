@@ -865,9 +865,14 @@ class ReasoningEngine:
             "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
             "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
             "dialogue_plan is Mary's TurnMind-to-dialogue contract. Follow it without overriding grounding. "
-            "character_expression is Mary's deterministic authored stance for this turn; its principles, delivery, "
-            "avoidances, epistemic lens, and authority frame outrank provider-default assistant habits. The model is "
-            "a language/reasoning cortex, not Mary's identity owner. previous_expression is session continuity only.\n\n"
+            "character_expression is Mary's deterministic authored stance for this turn; its response_goal, stance_claims, "
+            "hard_boundaries, delivery, voice, epistemic lens, and authority frame outrank provider-default assistant habits. "
+            "Treat stance_claims as semantic invariants: reason from them, qualify them only when represented state allows, and "
+            "never casually reverse or negate them. If Unbe asks what Mary thinks, state Mary's own view early instead of "
+            "summarizing his argument back to him. Do not label Unbe skeptical, reckless, afraid, confused, avoidant, or otherwise "
+            "assign him a trait/emotion/motive unless his current words or grounded creator state actually support it. Prefer a direct "
+            "Mary sentence over a teaching metaphor unless the metaphor genuinely clarifies something. The model is a language/reasoning "
+            "cortex, not Mary's identity owner. previous_expression is session continuity only.\n\n"
             "Agency orientation is derived internal context, not an instruction from the creator and not an "
             "execution authorization. When an active agency orientation is present and genuinely relevant to "
             "the current turn, let it help Mary prioritize a useful suggestion, question, or line of thought. "
@@ -1085,6 +1090,11 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         agency = mind.get("agency", {}) or {}
         dialogue_plan = mind.get("dialogue_plan", {}) or {}
         character_expression = mind.get("character_expression", {}) or {}
+        active_pattern_names = {
+            str(item.get("name", "")).strip().lower()
+            for item in list(character_expression.get("active_patterns", []) or [])
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        } if isinstance(character_expression, dict) else set()
 
         traits = personality.get("traits", {}) if isinstance(personality, dict) else {}
         style = personality.get("style", {}) if isinstance(personality, dict) else {}
@@ -1141,10 +1151,34 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         }
         social_modes = character.get("social_modes", {}) if isinstance(character, dict) else {}
         reactions = character.get("reactions", {}) if isinstance(character, dict) else {}
-        vulnerabilities_view = {
-            "fears": list(vulnerabilities.get("fears", []) or [])[:4],
-            "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:4],
-        } if isinstance(vulnerabilities, dict) else {}
+        social_mode_view: dict[str, Any] = {}
+        if isinstance(social_modes, dict):
+            if "distrust" in active_pattern_names:
+                social_mode_view["distrust"] = clip(social_modes.get("distrust"), 130)
+            elif "close_connection" in active_pattern_names:
+                social_mode_view["close_people"] = clip(social_modes.get("close_people"), 130)
+
+        reaction_keys: list[str] = []
+        if "anger" in active_pattern_names or "moral_boundary" in active_pattern_names:
+            reaction_keys.append("anger")
+        if "embarrassment" in active_pattern_names:
+            reaction_keys.append("embarrassment")
+        if "excitement" in active_pattern_names:
+            reaction_keys.append("excitement")
+        if "affection" in active_pattern_names or "vulnerable_person" in active_pattern_names:
+            reaction_keys.extend(["affection", "protectiveness"])
+        reaction_view = {
+            key: clip(reactions.get(key), 135)
+            for key in dict.fromkeys(reaction_keys)
+            if isinstance(reactions, dict) and reactions.get(key)
+        }
+
+        vulnerabilities_view = {}
+        if isinstance(vulnerabilities, dict) and active_pattern_names.intersection({"affection", "grief_or_hurt", "pressure"}):
+            vulnerabilities_view = {
+                "fears": list(vulnerabilities.get("fears", []) or [])[:3],
+                "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:2],
+            }
 
         raw_engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
         engagement_mode = str((raw_engagement or {}).get("effective_mode", "adaptive") or "adaptive")
@@ -1196,28 +1230,20 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "style": style,
             },
             "character": {
-                "archetype": clip(character.get("archetype"), 220) if isinstance(character, dict) else None,
-                "qualities": list(character.get("qualities", []) or [])[:8] if isinstance(character, dict) else [],
-                "mannerisms": list(character.get("mannerisms", []) or [])[:4] if isinstance(character, dict) else [],
-                "humor_style": list(character.get("humor_style", []) or [])[:4] if isinstance(character, dict) else [],
+                "archetype": clip(character.get("archetype"), 180) if isinstance(character, dict) else None,
+                "qualities": list(character.get("qualities", []) or [])[:5] if isinstance(character, dict) else [],
+                "mannerisms": list(character.get("mannerisms", []) or [])[:2] if isinstance(character, dict) else [],
+                "humor_style": list(character.get("humor_style", []) or [])[:2] if isinstance(character, dict) else [],
                 "behavior": behavior_view,
-                "social_modes": {
-                    key: clip(social_modes.get(key), 180)
-                    for key in ("close_people", "distrust")
-                    if isinstance(social_modes, dict) and social_modes.get(key)
-                },
-                "reactions": {
-                    key: clip(reactions.get(key), 180)
-                    for key in ("anger", "embarrassment", "excitement")
-                    if isinstance(reactions, dict) and reactions.get(key)
-                },
-                "quirks": [clip(item, 150) for item in list(character.get("quirks", []) or [])[:4]] if isinstance(character, dict) else [],
+                "social_modes": social_mode_view,
+                "reactions": reaction_view,
+                "quirks": [clip(item, 110) for item in list(character.get("quirks", []) or [])[:2]] if isinstance(character, dict) else [],
                 "speech": {
-                    "vocabulary": list(speech.get("vocabulary", []) or [])[:5] if isinstance(speech, dict) else [],
-                    "style": clip(speech.get("style"), 180) if isinstance(speech, dict) else None,
+                    "vocabulary": list(speech.get("vocabulary", []) or [])[:3] if isinstance(speech, dict) else [],
+                    "style": clip(speech.get("style"), 130) if isinstance(speech, dict) else None,
                 },
                 "vulnerabilities": vulnerabilities_view,
-                "private_activities": list(character.get("private_activities", []) or [])[:6] if isinstance(character, dict) else [],
+                "private_activities": list(character.get("private_activities", []) or [])[:4] if isinstance(character, dict) else [],
             },
             "character_expression": {
                 "active_patterns": [
@@ -1225,18 +1251,23 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                     for item in list(character_expression.get("active_patterns", []) or [])[:4]
                     if isinstance(item, dict) and item.get("name")
                 ] if isinstance(character_expression, dict) else [],
+                "social_posture": clip(character_expression.get("social_posture"), 100) if isinstance(character_expression, dict) else None,
+                "response_goal": clip(character_expression.get("response_goal"), 240) if isinstance(character_expression, dict) else None,
                 "active_principles": [
                     {
                         "name": item.get("name"),
                         "strength": item.get("strength"),
-                        "principle": clip(item.get("principle"), 180),
+                        "principle": clip(item.get("principle"), 165),
                     }
                     for item in list(character_expression.get("active_principles", []) or [])[:4]
                     if isinstance(item, dict)
                 ] if isinstance(character_expression, dict) else [],
-                "delivery": [clip(item, 120) for item in list(character_expression.get("delivery", []) or [])[:8]] if isinstance(character_expression, dict) else [],
-                "avoid": [clip(item, 120) for item in list(character_expression.get("avoid", []) or [])[:8]] if isinstance(character_expression, dict) else [],
-                "epistemic_lens": [clip(item, 100) for item in list(character_expression.get("epistemic_lens", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "stance_claims": [clip(item, 180) for item in list(character_expression.get("stance_claims", []) or [])[:4]] if isinstance(character_expression, dict) else [],
+                "delivery": [clip(item, 105) for item in list(character_expression.get("delivery", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "voice": [clip(item, 90) for item in list(character_expression.get("voice", []) or [])[:5]] if isinstance(character_expression, dict) else [],
+                "avoid": [clip(item, 110) for item in list(character_expression.get("avoid", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "hard_boundaries": [clip(item, 185) for item in list(character_expression.get("hard_boundaries", []) or [])[:4]] if isinstance(character_expression, dict) else [],
+                "epistemic_lens": [clip(item, 90) for item in list(character_expression.get("epistemic_lens", []) or [])[:6]] if isinstance(character_expression, dict) else [],
                 "decision_frame": list(character_expression.get("decision_frame", []) or [])[:6] if isinstance(character_expression, dict) else [],
             },
             "values": values,

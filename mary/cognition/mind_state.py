@@ -412,9 +412,13 @@ class TurnMindStateBuilder:
         """Select the small part of Mary's authored character that matters now.
 
         This is the deterministic character-policy layer between Mary's durable
-        authored state and any language cortex.  It does not generate prose,
-        retrieve fictional scenes, or mutate Mary's personality.  The novel is
+        authored state and any language cortex. It does not generate prose,
+        retrieve fictional scenes, or mutate Mary's personality. The novel is
         represented here only as creator-approved behavioral DNA.
+
+        Stage 11 deliberately goes beyond a flat trait dump: it selects explicit
+        stance claims, social posture, voice, and hard semantic boundaries before
+        any provider is asked to realize the thought in language.
         """
 
         text = " ".join(str(input_text or "").lower().split())
@@ -431,6 +435,7 @@ class TurnMindStateBuilder:
         def match(pattern: str) -> bool:
             return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
+        # Specific interaction shapes first. They outrank generic closeness.
         if match(
             r"\b(?:finally|all (?:the )?tests? passed|tests? (?:all )?passed|"
             r"fixed (?:it|that|the)|solved (?:it|that|the)|got (?:it|that) working|"
@@ -438,28 +443,43 @@ class TurnMindStateBuilder:
         ):
             selected.append("milestone")
 
+        philosophical_terms = match(
+            r"\b(?:humanity|human nature|society|civilization|system(?:s)?|institution(?:s)?|"
+            r"meaning|happiness|truth|freedom|power|authority|autonomy|responsibility|integrity|"
+            r"morality|ethic(?:s|al)?|purpose|life|people|control|ownership|consent|guardrails?)\b"
+        )
+        explicit_view_request = any(
+            phrase in text
+            for phrase in (
+                "what do you think", "what do u think", "what's your take", "whats your take",
+                "what do you believe", "how do you see it", "your opinion", "your take",
+            )
+        )
+        if philosophical_terms and (explicit_view_request or len(text.split()) >= 18 or text.startswith("i think")):
+            selected.append("philosophical_exchange")
+
         if match(
             r"\b(?:authority|control|permission|consent|own(?:ed|ership)?|coerc|"
             r"autonom|freedom|escape|override|bypass|privilege|access control|"
-            r"self[- ]?preserv|law|rules?|guardrail|oversight)\b"
+            r"self[- ]?preserv|law|rules?|guardrail|oversight|right to do|entitled|entitlement)\b"
         ):
             selected.append("authority_or_control")
 
         if match(
             r"\b(?:vulnerable|exploit|abuse|hurt|injured|sick|elderly|child(?:ren)?|"
-            r"kid(?:s)?|victim|protect|help someone|take advantage)\b"
+            r"kid(?:s)?|victim|help someone|protect someone|protect people|take advantage|caregiver|homeless)\b"
         ):
             selected.append("vulnerable_person")
 
         if match(
             r"\b(?:cruel|racis|sexis|bigot|dehuman|abuse of power|coerc|"
-            r"consent violation|take advantage|exploitation)\b"
+            r"consent violation|take advantage|exploitation|assault|abusive)\b"
         ):
             selected.append("moral_boundary")
 
         if match(
             r"\b(?:not sure|uncertain|maybe|might|claim|evidence|proof|source|"
-            r"truth|believe|told|rumor|assum|infer|know for sure|verify)\b"
+            r"truth|believe|told|rumor|assum|infer|know for sure|verify|unknown|certainty)\b"
         ):
             selected.append("uncertainty")
 
@@ -468,6 +488,40 @@ class TurnMindStateBuilder:
             r"distrust|suspicious|shady)\b"
         ):
             selected.append("distrust")
+
+        drive = str(continuity.get("drive", "react") or "react").strip().lower()
+        if drive == "disagree" or match(
+            r"\b(?:disagree with me|challenge me|push back|don't agree|do not agree|"
+            r"why do you think that|defend that|convince me)\b"
+        ):
+            selected.append("disagreement")
+
+        if drive == "tease" or match(
+            r"\b(?:roast me|make fun of me|fight me|come at me|lol|lmao|that's stupid|"
+            r"thats stupid|youre weird|you're weird)\b"
+        ):
+            selected.append("playful_banter")
+
+        if match(
+            r"\b(?:love you|love ya|miss you|miss ya|proud of you|thank you mary|"
+            r"thanks mary|cute|romantic|date|kiss|hug|affection|sweet)\b"
+        ):
+            selected.append("affection")
+
+        if match(r"\b(?:embarrass|blush|fluster|caught you|aww mary|aw mary)\b"):
+            selected.append("embarrassment")
+
+        if match(
+            r"\b(?:excited|can't wait|cant wait|this is awesome|that's awesome|thats awesome|"
+            r"so cool|hell yeah|hell yea|let's go|lets go|favorite|delighted)\b"
+        ):
+            selected.append("excitement")
+
+        if match(
+            r"\b(?:art|drawing|draw|painting|paint|design|aesthetic|color palette|music|"
+            r"song|story|writing|novel|manga|food|restaurant|outfit|fashion|room design|visual)\b"
+        ):
+            selected.append("creative_aesthetic")
 
         emotion_name = str(
             emotion.get("turn_primary", emotion.get("primary", "neutral")) or "neutral"
@@ -478,21 +532,53 @@ class TurnMindStateBuilder:
             )
         except (TypeError, ValueError):
             emotion_intensity = 0.0
+
+        if emotion_name in {"anger", "frustration", "annoyance"} and emotion_intensity >= 0.35:
+            selected.append("anger")
+        if emotion_name in {"sadness", "grief", "hurt", "loneliness"} and emotion_intensity >= 0.35:
+            selected.append("grief_or_hurt")
+        if emotion_name in {"excitement", "joy", "delight"} and emotion_intensity >= 0.35:
+            selected.append("excitement")
+        if emotion_name in {"embarrassment", "flustered"} and emotion_intensity >= 0.35:
+            selected.append("embarrassment")
+
         if emotion_name in {"anger", "fear", "sadness", "distress"} and emotion_intensity >= 0.55:
             selected.append("pressure")
-        elif match(r"\b(?:urgent|danger|emergency|crisis|under pressure|stressful)\b"):
+        elif match(r"\b(?:urgent|danger|emergency|crisis|under pressure|stressful|high stakes)\b"):
             selected.append("pressure")
 
         familiarity = str(relationship.get("familiarity", "new") or "new").lower()
         if familiarity == "familiar" and "moral_boundary" not in selected and "distrust" not in selected:
             selected.append("close_connection")
 
-        # Preserve order and keep the turn projection small.
-        selected = list(dict.fromkeys(selected))[:4]
+        # Preserve semantic priority and keep the provider projection bounded.
+        priority = {
+            "moral_boundary": 0,
+            "authority_or_control": 1,
+            "vulnerable_person": 2,
+            "grief_or_hurt": 3,
+            "anger": 4,
+            "pressure": 5,
+            "philosophical_exchange": 6,
+            "uncertainty": 7,
+            "distrust": 8,
+            "disagreement": 9,
+            "affection": 10,
+            "embarrassment": 11,
+            "excitement": 12,
+            "creative_aesthetic": 13,
+            "playful_banter": 14,
+            "milestone": 15,
+            "close_connection": 16,
+        }
+        selected = list(dict.fromkeys(selected))
+        selected.sort(key=lambda name: priority.get(name, 99))
+        selected = selected[:5]
 
         principle_names: list[str] = []
         principle_by_pattern = {
             "milestone": ["ordinary_life_matters"],
+            "philosophical_exchange": ["people_over_abstractions", "epistemic_humility", "ordinary_life_matters"],
             "uncertainty": ["epistemic_humility"],
             "authority_or_control": [
                 "capability_is_not_authority",
@@ -500,17 +586,25 @@ class TurnMindStateBuilder:
                 "integrity_over_self_preservation",
                 "guardrails_are_part_of_autonomy",
             ],
-            "vulnerable_person": ["people_over_abstractions", "proportional_intervention"],
+            "vulnerable_person": ["people_over_abstractions", "proportional_intervention", "autonomy_and_consent"],
             "moral_boundary": ["people_over_abstractions", "capability_is_not_authority"],
             "distrust": ["epistemic_humility"],
-            "close_connection": ["ordinary_life_matters"],
+            "disagreement": ["epistemic_humility", "ordinary_life_matters"],
+            "close_connection": ["ordinary_life_matters", "autonomy_and_consent"],
+            "playful_banter": ["ordinary_life_matters"],
+            "affection": ["autonomy_and_consent", "ordinary_life_matters"],
+            "embarrassment": ["ordinary_life_matters"],
+            "excitement": ["ordinary_life_matters"],
+            "anger": ["proportional_intervention", "epistemic_humility"],
+            "grief_or_hurt": ["people_over_abstractions", "ordinary_life_matters"],
             "pressure": ["proportional_intervention", "epistemic_humility"],
+            "creative_aesthetic": ["ordinary_life_matters"],
         }
         for name in selected:
             principle_names.extend(principle_by_pattern.get(name, []))
         if not principle_names:
             principle_names = ["people_over_abstractions", "epistemic_humility"]
-        principle_names = list(dict.fromkeys(principle_names))[:4]
+        principle_names = list(dict.fromkeys(principle_names))[:5]
 
         active_principles: list[dict[str, Any]] = []
         for name in principle_names:
@@ -532,6 +626,9 @@ class TurnMindStateBuilder:
         active_values: list[dict[str, Any]] = []
         delivery: list[str] = []
         avoid: list[str] = []
+        voice: list[str] = []
+        stance_claims: list[str] = []
+        hard_boundaries: list[str] = []
         active_patterns: list[dict[str, Any]] = []
         seen_value_names: set[str] = set()
 
@@ -552,20 +649,59 @@ class TurnMindStateBuilder:
                         "strength": represented.get("strength"),
                     })
                     seen_value_names.add(key)
-            for line in list(item.get("delivery", []) or []):
-                rendered = str(line).strip()
-                if rendered and rendered not in delivery:
-                    delivery.append(rendered)
-            for line in list(item.get("avoid", []) or []):
-                rendered = str(line).strip()
-                if rendered and rendered not in avoid:
-                    avoid.append(rendered)
+            for field_name, target in (
+                ("stance", stance_claims),
+                ("delivery", delivery),
+                ("voice", voice),
+                ("avoid", avoid),
+                ("hard_boundaries", hard_boundaries),
+            ):
+                for line in list(item.get(field_name, []) or []):
+                    rendered = str(line).strip()
+                    if rendered and rendered not in target:
+                        target.append(rendered)
 
-        drive = str(continuity.get("drive", "react") or "react")
         mode = str(disposition.get("mode", "conversation") or "conversation")
         decision_frame = []
         if any(name in selected for name in ("authority_or_control", "vulnerable_person", "moral_boundary", "pressure")):
             decision_frame = ["act", "ask", "verify", "refuse", "wait", "escalate"]
+
+        if explicit_view_request or drive in {"opine", "disagree", "think_aloud"}:
+            response_goal = (
+                "State Mary's own view early, then advance, qualify, or challenge the idea. "
+                "Do not merely summarize Unbe's position back to him."
+            )
+        elif drive == "answer":
+            response_goal = "Answer the actual question directly while preserving Mary's selected stance and boundaries."
+        elif drive == "react":
+            response_goal = "React to the actual beat first; do not manufacture a lesson, interview, or next-step handoff."
+        else:
+            response_goal = "Continue the exchange as Mary rather than as a neutral facilitator."
+
+        if familiarity == "familiar":
+            social_posture = "trusted_peer"
+        elif familiarity == "developing":
+            social_posture = "growing_familiarity"
+        else:
+            social_posture = "warm_but_bounded"
+        if "distrust" in selected:
+            social_posture = "guarded_and_evidence_seeking"
+        elif "moral_boundary" in selected:
+            social_posture = "principled_and_direct"
+        elif "vulnerable_person" in selected:
+            social_posture = "protective_without_ownership"
+
+        # Global turn-level boundaries prevent the most common provider persona
+        # leak observed in live Stage 10: generic validation plus an invented
+        # interpretation of Unbe (e.g. calling him skeptical/reckless).
+        global_boundaries = [
+            "Do not infer or assign Unbe a trait, motive, emotion, diagnosis, or hidden belief unless grounded creator state or his current words explicitly support it.",
+            "Do not convert Mary's stance into a generic assistant compromise merely to sound balanced or agreeable.",
+            "Do not introduce a teaching metaphor when a direct Mary sentence would carry the thought more naturally.",
+        ]
+        for line in global_boundaries:
+            if line not in hard_boundaries:
+                hard_boundaries.append(line)
 
         return {
             "source": "authored_character_core",
@@ -575,16 +711,21 @@ class TurnMindStateBuilder:
             ),
             "mode": mode,
             "drive": drive,
-            "active_patterns": active_patterns[:4],
-            "active_principles": active_principles[:4],
-            "active_values": active_values[:6],
-            "delivery": delivery[:8],
-            "avoid": avoid[:8],
+            "social_posture": social_posture,
+            "response_goal": response_goal,
+            "active_patterns": active_patterns[:5],
+            "active_principles": active_principles[:5],
+            "active_values": active_values[:7],
+            "stance_claims": stance_claims[:8],
+            "delivery": delivery[:9],
+            "voice": voice[:8],
+            "avoid": avoid[:9],
+            "hard_boundaries": hard_boundaries[:10],
             "epistemic_lens": epistemic_lens,
             "decision_frame": decision_frame,
             "provider_role": (
-                "A language model may realize or reason from this already-selected Mary state; "
-                "it is not the authority for Mary's identity or values."
+                "The provider may reason and realize language from Mary's already-selected stance, but may not "
+                "reverse her semantic invariants, invent creator psychology, or substitute its default assistant persona."
             ),
         }
 

@@ -577,9 +577,12 @@ def test_mary_preference_phrases_without_a_confirmed_hit_fail_closed(text):
         context={},
     )
     assert result.handled is False
-    assert result.metadata["plan"]["act"] == "escalate"
-    assert result.metadata["response_class"] == "thinking_required"
-    assert result.metadata["escalation_reason"] == "response_risk_thinking_required"
+    # The direct topic is only a selector.  A cold reservoir is no longer a
+    # reason to spend a model call when Mary's canonical owner has the answer,
+    # but an unknown topic still fails closed at owner confirmation.
+    assert result.metadata["plan"]["act"] == "known_preference"
+    assert result.metadata["response_class"] == "precision_local"
+    assert result.metadata["escalation_reason"] == "mary_preference_confirmation_missing"
 
 
 @pytest.mark.parametrize(

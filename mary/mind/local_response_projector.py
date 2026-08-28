@@ -458,38 +458,52 @@ def _project_mary_preference(
     hot_state: Mapping[str, Any],
     owner_confirmations: AuthorityConfirmationBundle,
 ) -> CanonicalResponsePlan:
-    hit = _mapping_or_error(dialogue_plan.slots.get("hit"), "mary_preference_hit_missing")
-    metadata = _mapping_or_error(hit.get("metadata"), "mary_preference_metadata_missing")
-    _require_hit_contract(
-        hit,
-        exact_kind="mary_preference",
-        allowed_authorities={"mary_canonical", "mary_developed"},
-        minimum_confidence=0.7,
-        error_code="mary_preference_provenance_unsupported",
-    )
-    if str(hit.get("subject") or "").strip().lower() != "mary":
-        raise _UnsupportedProjection("mary_preference_subject_is_not_mary")
-    confirmation = _confirmation_or_error(
-        owner_confirmations,
-        hit,
-        owner="mary_preferences",
-    )
+    raw_hit = dialogue_plan.slots.get("hit")
+    hit = raw_hit if isinstance(raw_hit, Mapping) else None
     requested_topic = _semantic_text(
         dialogue_plan.slots.get("topic"),
         "requested Mary preference topic",
         limit=140,
     )
+    if hit is not None:
+        metadata = _mapping_or_error(hit.get("metadata"), "mary_preference_metadata_missing")
+        _require_hit_contract(
+            hit,
+            exact_kind="mary_preference",
+            allowed_authorities={"mary_canonical", "mary_developed"},
+            minimum_confidence=0.7,
+            error_code="mary_preference_provenance_unsupported",
+        )
+        if str(hit.get("subject") or "").strip().lower() != "mary":
+            raise _UnsupportedProjection("mary_preference_subject_is_not_mary")
+        confirmation = _confirmation_or_error(
+            owner_confirmations,
+            hit,
+            owner="mary_preferences",
+        )
+    else:
+        candidates = tuple(
+            item for item in owner_confirmations.items
+            if item.owner == "mary_preferences"
+        )
+        if len(candidates) != 1:
+            raise _UnsupportedProjection("mary_preference_confirmation_missing")
+        confirmation = candidates[0]
+        metadata = {"name": confirmation.value}
     topic = _atomic_semantic_text(
         confirmation.value,
         "Mary preference name",
         limit=140,
     ).replace("_", " ")
-    if not (
-        _semantic_key(topic)
-        == _semantic_key(hit.get("predicate"))
-        == _semantic_key(metadata.get("name"))
-        == _semantic_key(requested_topic)
-    ):
+    if hit is not None:
+        if not (
+            _semantic_key(topic)
+            == _semantic_key(hit.get("predicate"))
+            == _semantic_key(metadata.get("name"))
+            == _semantic_key(requested_topic)
+        ):
+            raise _UnsupportedProjection("mary_preference_predicate_mismatch")
+    elif _semantic_key(topic) != _semantic_key(requested_topic):
         raise _UnsupportedProjection("mary_preference_predicate_mismatch")
     if confirmation.polarity is None:
         raise _UnsupportedProjection("mary_preference_confirmation_incomplete")

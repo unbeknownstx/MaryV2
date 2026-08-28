@@ -183,11 +183,15 @@ def test_large_creator_profile_still_keeps_normal_prompt_well_below_ceiling():
     assert "goal 39" not in combined
 
 
-def test_self_grounded_turn_uses_small_completion_budget():
+def test_dynamic_self_grounded_turn_uses_small_completion_budget():
     router = CharacterAwareFakeRouter()
     mary = _mary(router)
 
-    mary.process("What color is your hair?")
+    # Bounded authored self facts such as hair/preferences/values now stay in
+    # Mary Core with zero model calls.  A dynamic relational self query still
+    # uses the grounded self-introspection language path and keeps its compact
+    # completion budget.
+    mary.process("Who is Unbe to you?")
 
     _messages, kwargs = router.calls[0]
     assert kwargs["max_tokens"] == 500

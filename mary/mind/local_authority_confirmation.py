@@ -107,7 +107,13 @@ def confirm_dialogue_plan_authority(
             return AuthorityConfirmationBundle((item,) if item else ())
         if dialogue_plan.act == DialogueAct.KNOWN_PREFERENCE:
             hit = _mapping(dialogue_plan.slots.get("hit"))
-            item = _confirm_mary_preference(mary, hit)
+            if hit:
+                item = _confirm_mary_preference(mary, hit)
+            else:
+                item = _confirm_mary_preference_topic(
+                    mary,
+                    dialogue_plan.slots.get("topic"),
+                )
             return AuthorityConfirmationBundle((item,) if item else ())
         if dialogue_plan.act == DialogueAct.ANSWER:
             raw_hits = dialogue_plan.slots.get("hits")
@@ -231,6 +237,51 @@ def _confirm_mary_preference(
         confidence=confidence,
         polarity=polarity,
     )
+
+
+def _confirm_mary_preference_topic(
+    mary: Any,
+    topic: Any,
+) -> ConfirmedAuthorityScalar | None:
+    """Confirm a direct preference question against Mary's live owner.
+
+    This path deliberately does not trust the user's topic as a fact and does
+    not require a warm reservoir.  The topic is only a selector.  An exact
+    canonical preference must exist before a bounded scalar is returned.
+    """
+
+    if not isinstance(topic, str):
+        return None
+    requested = _key(topic)
+    if not requested:
+        return None
+    try:
+        preferences = mary.preferences.get_preferences()
+    except Exception:
+        return None
+    for preference in preferences:
+        if not isinstance(preference, Mapping):
+            continue
+        canonical_name = _plain(preference.get("name") or "", limit=140)
+        if _key(canonical_name) != requested:
+            continue
+        polarity = _signed_unit_float(preference.get("polarity", 0.0))
+        confidence = _unit_float(preference.get("confidence", 0.8))
+        source = _plain(preference.get("source") or "preferences", limit=120)
+        record_id = f"mary-preference:{_rid(canonical_name)}"
+        return ConfirmedAuthorityScalar(
+            selector_id=record_id,
+            owner="mary_preferences",
+            subject="mary",
+            predicate=_key(canonical_name).replace(" ", "_"),
+            value=canonical_name.replace("_", " "),
+            kind="mary_preference",
+            source=source,
+            authority="mary_developed",
+            confidence=confidence,
+            polarity=polarity,
+        )
+    return None
 
 
 def _confirm_semantic_memory(

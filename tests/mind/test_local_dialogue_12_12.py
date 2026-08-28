@@ -80,6 +80,37 @@ def test_represented_mary_preference_can_answer_locally():
     assert "blue neon" in local.response.lower()
 
 
+
+
+def test_core_mary_preference_answers_locally_even_when_reservoir_is_cold():
+    from mary.cognition.intent import Intent, IntentType
+
+    mary = Mary()
+    # Do not rebuild the reservoir. The input topic is only a selector; the
+    # local path must confirm it against Mary's live canonical Preferences owner.
+    local = mary.mind.try_respond(
+        "do you like drawing?",
+        intent=Intent(intent_type=IntentType.QUESTION, confidence=1.0),
+        context={},
+    )
+    assert local.handled is True
+    assert "drawing" in local.response.lower()
+    assert "like" in local.response.lower()
+
+
+def test_unknown_direct_mary_preference_still_escalates_when_reservoir_is_cold():
+    from mary.cognition.intent import Intent, IntentType
+
+    mary = Mary()
+    local = mary.mind.try_respond(
+        "do you like fog?",
+        intent=Intent(intent_type=IntentType.QUESTION, confidence=1.0),
+        context={},
+    )
+    assert local.handled is False
+    assert local.metadata["escalation_reason"] == "mary_preference_confirmation_missing"
+
+
 def test_high_confidence_local_knowledge_can_answer_without_model():
     from mary.cognition.intent import Intent, IntentType
 

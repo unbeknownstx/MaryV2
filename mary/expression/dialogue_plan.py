@@ -144,6 +144,7 @@ class DialoguePlanner:
         conversation = _mapping(mind.get("conversation"))
         engagement = _mapping(mind.get("conversation_engagement"))
         initiative = _mapping(mind.get("conversation_initiative"))
+        character_expression = _mapping(mind.get("character_expression"))
 
         drive = str(continuity.get("drive") or "react").strip().lower()
         mode = str(disposition.get("mode") or "conversation")
@@ -172,10 +173,8 @@ class DialoguePlanner:
         theatricality = _clamp(performance.get("theatricality"), 0.35)
 
         allow_question = bool(
-            engagement.get(
-                "allow_follow_up_question",
-                continuity.get("allow_follow_up_question", True),
-            )
+            engagement.get("allow_follow_up_question", True)
+            and continuity.get("allow_follow_up_question", True)
         )
         raw_budget = engagement.get("question_budget")
         try:
@@ -186,12 +185,46 @@ class DialoguePlanner:
             question_budget = 0
 
         stance = self._STANCE_BY_DRIVE.get(drive, "responsive")
+        active_pattern_names = [
+            str(item.get("name", "")).strip().lower()
+            for item in list(character_expression.get("active_patterns", []) or [])
+            if isinstance(item, Mapping) and str(item.get("name", "")).strip()
+        ]
+        if "moral_boundary" in active_pattern_names:
+            stance = "principled_boundary"
+        elif "authority_or_control" in active_pattern_names:
+            stance = "autonomy_guarding_view"
+        elif "vulnerable_person" in active_pattern_names:
+            stance = "protective_human_first"
+        elif "disagreement" in active_pattern_names:
+            stance = "respectful_pushback"
+        elif "philosophical_exchange" in active_pattern_names:
+            stance = "owned_personal_view"
+        elif "uncertainty" in active_pattern_names:
+            stance = "evidence_seeking"
+        elif "affection" in active_pattern_names:
+            stance = "warm_personal_connection"
+        elif "playful_banter" in active_pattern_names:
+            stance = "playful_pushback"
+
         tone = self._tone(
             emotional_color=emotional_color,
             playfulness=playfulness,
             warmth=warmth,
             drive=drive,
         )
+        if "grief_or_hurt" in active_pattern_names:
+            tone = "quiet_grounded"
+        elif "moral_boundary" in active_pattern_names:
+            tone = "clear_serious"
+        elif "anger" in active_pattern_names:
+            tone = "controlled_edge"
+        elif "authority_or_control" in active_pattern_names:
+            tone = "firm_grounded"
+        elif "philosophical_exchange" in active_pattern_names:
+            tone = "thoughtful_direct"
+        elif "excitement" in active_pattern_names:
+            tone = "bright_animated"
 
         previous_expression = _mapping(conversation.get("last_mary_expression"))
         previous_view = {
@@ -257,6 +290,12 @@ class DialoguePlanner:
             "Keep cognition and expression aligned: the spoken line should preserve the reasoning stance, not replace it with a generic polite summary.",
             "Use the previous expression only for continuity; do not mechanically repeat its opening, imagery, slang, or delivery profile.",
         ]
+        response_goal = _clip(character_expression.get("response_goal"), 280)
+        if response_goal:
+            directives.append("Character goal: " + response_goal)
+        social_posture = _clip(character_expression.get("social_posture"), 120)
+        if social_posture:
+            directives.append("Social posture: " + social_posture + ".")
         if milestone_update:
             directives.append(
                 "Acknowledge the specific update in Mary's own words and let it land; do not turn a completion or milestone into an interview about the root cause or next step unless Unbe asked to unpack it."

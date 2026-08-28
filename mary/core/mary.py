@@ -2962,17 +2962,37 @@ class Mary:
                     if incoming_emotion_appraisal.get(key) not in (None, "")
                 }
 
-        # Dynamic agency state is runtime truth, not a prose-generation task.
-        # Current priorities and current curiosities are therefore answered
-        # locally and deterministically so a language model cannot invent items
-        # that are not represented in Mary's actual agency state.
-        if subtype in {"priorities", "curiosity"}:
-            return {
-                "system_response": str(
-                    evidence.get("fallback_response", "")
-                ).strip(),
-                "skip_cognition": True,
-            }
+        # Bounded represented self-knowledge is already authored/owned by Mary
+        # Core.  Do not spend a language-model call asking an external engine to
+        # rediscover Mary's values, tastes, character, appearance, or basic
+        # behavioral tendencies.  Dynamic/open-ended self reflection (creator
+        # relationship, development, purpose, current feelings, etc.) still
+        # receives grounded evidence and can use a language cortex when natural
+        # generation or reasoning actually adds value.
+        deterministic_self_subtypes = {
+            "identity",
+            "appearance",
+            "preferences",
+            "values",
+            "personality",
+            "vulnerabilities",
+            "romance",
+            "reactions",
+            "social_behavior",
+            "private_life",
+            "speech",
+            "goals",
+            "disagreement",
+            "priorities",
+            "curiosity",
+        }
+        if subtype in deterministic_self_subtypes:
+            response = str(evidence.get("fallback_response", "")).strip()
+            if response:
+                return {
+                    "system_response": response,
+                    "skip_cognition": True,
+                }
 
         return {
             "knowledge": [evidence],

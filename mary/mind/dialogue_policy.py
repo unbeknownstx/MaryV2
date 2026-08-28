@@ -111,6 +111,20 @@ class LocalDialoguePolicy:
                         slots={"hit": hit.to_dict(), "topic": topic},
                         target_length="brief",
                     )
+            # The reservoir is a rebuildable selector, not the authority.  A
+            # direct preference question can still be attempted locally when
+            # the selector is cold/empty: owner confirmation below will require
+            # an exact live match in Mary's canonical Preferences object before
+            # any response is allowed. Unknown topics therefore fail closed to
+            # normal cognition instead of being invented.
+            return DialoguePlan(
+                DialogueAct.KNOWN_PREFERENCE,
+                .90,
+                "direct Mary preference question; confirm against canonical owner",
+                local=True,
+                slots={"topic": topic},
+                target_length="brief",
+            )
 
         knowledge = _LOCAL_KNOWLEDGE_RE.search(value)
         if knowledge:

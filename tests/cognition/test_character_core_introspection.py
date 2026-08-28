@@ -94,10 +94,11 @@ def test_wrong_eye_color_is_rejected_and_falls_back_to_blue(tmp_path, monkeypatc
 
     assert result.success is True
     assert result.output == "My eyes are blue."
-    assert provider.calls == 1
+    assert provider.calls == 0
     cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
-    assert cycle.reasoning.metadata["self_grounding_rejected"] is True
-    assert "eye color" in cycle.reasoning.metadata["self_grounding_issue"].lower()
+    assert cycle.reasoning.metadata["self_grounded"] is True
+    assert cycle.reasoning.metadata["llm_skipped"] is True
+    assert cycle.reflection.metadata["mode"] == "deterministic_system_action"
 
 
 def test_provider_cannot_invent_unrepresented_fear(tmp_path, monkeypatch):
@@ -113,9 +114,11 @@ def test_provider_cannot_invent_unrepresented_fear(tmp_path, monkeypatch):
     lowered = result.output.lower()
     assert "abandon" in lowered
     assert "spider" not in lowered
-    assert provider.calls == 1
+    assert provider.calls == 0
     cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
-    assert cycle.reasoning.metadata["self_grounding_rejected"] is True
+    assert cycle.reasoning.metadata["self_grounded"] is True
+    assert cycle.reasoning.metadata["llm_skipped"] is True
+    assert cycle.reflection.metadata["mode"] == "deterministic_system_action"
 
 
 def test_food_dislike_query_grounds_shrimp_and_liver(tmp_path, monkeypatch):
@@ -132,12 +135,13 @@ def test_food_dislike_query_grounds_shrimp_and_liver(tmp_path, monkeypatch):
     assert "shrimp" in lowered
     assert "liver" in lowered
     assert "pizza" not in lowered
-    assert provider.calls == 1
-    assert "shrimp" in provider.prompts[0].lower()
-    assert "liver" in provider.prompts[0].lower()
+    assert provider.calls == 0
+    cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
+    assert cycle.reasoning.metadata["llm_skipped"] is True
+    assert cycle.reflection.metadata["mode"] == "deterministic_system_action"
 
 
-def test_character_self_prompts_stay_compact(tmp_path, monkeypatch):
+def test_bounded_character_self_questions_do_not_build_provider_prompts(tmp_path, monkeypatch):
     _, provider, app = _app(
         tmp_path,
         monkeypatch,
@@ -147,6 +151,6 @@ def test_character_self_prompts_stay_compact(tmp_path, monkeypatch):
     result = app.run("What are you like romantically?")
 
     assert result.success is True
-    assert provider.calls == 1
-    assert len(provider.prompts[0]) < 4000
-    assert "TurnMindState (authoritative integrated Mary state for this turn)" not in provider.prompts[0]
+    assert provider.calls == 0
+    assert provider.prompts == []
+    assert "hopeless romantic" in result.output.lower()

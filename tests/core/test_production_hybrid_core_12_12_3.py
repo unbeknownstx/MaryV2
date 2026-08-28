@@ -202,12 +202,13 @@ def test_response_risk_class_controls_existing_open_and_thinking_routes(
         mary.mind.close()
 
     thinking_meta = thinking.reasoning.metadata
-    assert thinking_meta["response_class"] == "thinking_required"
-    assert thinking_meta["response_engine"] == "task_generation"
-    assert thinking_meta["turn_policy"]["category"] == "response_risk_thinking"
-    assert thinking_meta["routing_purpose"] is None
-    assert thinking_meta["conversation_lane"]["lane"] == "thinking"
-    assert thinking_meta["response_risk_route_applied"] is True
+    assert thinking_meta["response_class"] == "precision_local"
+    assert thinking_meta["response_engine"] is None
+    assert thinking_meta["turn_policy"]["category"] == "personal_conversation"
+    assert thinking_meta["routing_purpose"] == "conversation_fast"
+    assert thinking_meta["conversation_lane"]["lane"] == "conversation"
+    assert thinking_meta["escalation_reason"] == "mary_preference_confirmation_missing"
+    assert thinking_meta["response_risk_route_applied"] is False
 
     open_meta = opened.reasoning.metadata
     assert open_meta["response_class"] == "open_conversation"

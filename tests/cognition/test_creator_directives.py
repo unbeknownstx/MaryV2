@@ -316,12 +316,12 @@ def test_unsupported_self_biography_date_falls_back_to_local_grounding(tmp_path,
     )
 
     result = app.run(
-        "Who are you, and what makes you different from a generic AI assistant?"
+        "What parts of yourself do you currently understand?"
     )
 
     assert result.success is True
     assert "2026-08-17" not in result.output
-    assert "persistent identity" in result.output.lower()
+    assert "structured systems" in result.output.lower()
     assert provider.calls == 1
 
     cycle = result.metadata["pipeline_values"]["cognitive_cycle"]

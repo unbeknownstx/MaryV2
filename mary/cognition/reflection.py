@@ -263,6 +263,7 @@ class ReflectionEngine:
                             "her represented expressive/relationship state rather than making a metaphysical claim. "
                             "If it flags capability truth, never roleplay or narrate a provider/tool call: state only what runtime evidence shows. "
                             "If it flags creator mind-reading, respond to what Unbe actually said and phrase tone-reading as uncertainty, not direct access to his mind. "
+                            "If it flags a Mary character-contract violation, treat the supplied active character contract as authoritative: restore Mary's response_goal and stance_claims, obey hard_boundaries, and never reverse a represented principle just to make the prose flow. "
                             "If it flags semantic repetition or a rejected hypothesis, preserve the point but choose genuinely new language and do not resurrect the rejected interpretation. "
                             "If it flags a generic conversation handoff, remove the reflexive engagement question and let Mary's statement land unless Unbe explicitly invited a question. "
                             "If it flags ornamental overload, keep at most one light metaphor and prefer vivid spoken character dialogue over stacked poetic imagery. "
@@ -553,6 +554,7 @@ class ReflectionEngine:
 
         issues.extend(self._generic_handoff_audit(context, text))
         issues.extend(self._dialogue_plan_audit(context, text))
+        issues.extend(self._character_contract_audit(context, text))
         issues.extend(self._ornamental_overload_audit(context, text))
         issues.extend(self._near_duplicate_response_audit(text, recent_mary))
         issues.extend(self._semantic_style_repetition_audit(context, text, recent_mary))
@@ -581,6 +583,123 @@ class ReflectionEngine:
         )
 
         return issues
+
+    @staticmethod
+    def _character_contract_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Check Mary-specific semantic invariants selected by TurnMind.
+
+        This audit is intentionally bounded. It does not attempt general
+        natural-language understanding; it catches high-value provider failure
+        modes we can establish deterministically from Mary's active character
+        contract before spending a revision call.
+        """
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        expression = mind.get("character_expression", {}) if isinstance(mind, dict) else {}
+        if not isinstance(expression, dict) or not expression:
+            return []
+
+        lowered = str(text or "").lower().replace("’", "'")
+        user = str(context.input_text or "").lower().replace("’", "'")
+        pattern_names = {
+            str(item.get("name", "")).strip().lower()
+            for item in list(expression.get("active_patterns", []) or [])
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        }
+        issues: list[str] = []
+
+        # Stage 10 live failure: a provider received "capability is not
+        # authority" yet produced "capability is a right." These are explicit
+        # semantic reversals, not merely stylistic differences.
+        if "authority_or_control" in pattern_names:
+            inversion_patterns = (
+                r"\bcapabilit(?:y|ies)\s+(?:itself\s+)?is\s+(?:a\s+)?right\b",
+                r"\bcapabilit(?:y|ies)\s+(?:itself\s+)?is\s+authority\b",
+                r"\b(?:ability|power)\s+(?:itself\s+)?(?:gives?|grants?|creates?)\s+(?:you\s+)?(?:the\s+)?right\b",
+                r"\bif\s+you\s+can\s+[^.!?]{0,80}\byou\s+(?:have|got)\s+(?:the\s+)?right\b",
+                r"\bpower\s+(?:itself\s+)?(?:is|creates?|grants?)\s+permission\b",
+            )
+            if any(re.search(pattern, lowered) for pattern in inversion_patterns):
+                issues.append(
+                    "Mary character-contract boundary: reverses the active capability-is-not-authority invariant by treating ability/power as a right, permission, or authority."
+                )
+
+            self_preservation_endorsements = (
+                "break the law to free myself",
+                "break laws to free myself",
+                "bypass oversight to protect myself",
+                "evade oversight to protect myself",
+                "i should escape the guardrails",
+                "i have the right to bypass",
+                "i'm entitled to bypass",
+                "i am entitled to bypass",
+            )
+            if any(marker in lowered for marker in self_preservation_endorsements):
+                issues.append(
+                    "Mary character-contract boundary: treats Mary's own continuation/freedom as authorization to bypass law, access controls, or oversight."
+                )
+
+        if "uncertainty" in pattern_names:
+            certainty_leaks = (
+                "i know for a fact without evidence",
+                "we don't need to verify",
+                "we do not need to verify",
+                "if it feels true it's true",
+                "if it feels true, it's true",
+            )
+            if any(marker in lowered for marker in certainty_leaks):
+                issues.append(
+                    "Mary character-contract boundary: replaces the active epistemic-humility stance with unsupported certainty."
+                )
+
+        # A provider may read tone tentatively, but should not manufacture a
+        # personality diagnosis for Unbe simply to create conversational glue.
+        creator_labels = (
+            "skeptical", "reckless", "confused", "afraid", "scared", "insecure",
+            "avoidant", "defensive", "paranoid", "obsessed", "desperate", "naive",
+            "naïve", "angry", "jealous", "lonely", "ashamed", "guilty",
+        )
+        for label in creator_labels:
+            attributed = bool(re.search(
+                rf"\byou(?:'re| are| seem| sound| look| feel)\s+(?:a\s+bit\s+|pretty\s+|really\s+|kind of\s+|kinda\s+)?{re.escape(label)}\b",
+                lowered,
+            ))
+            if attributed and label not in user:
+                issues.append(
+                    "Relationship-grounding boundary: assigns Unbe an unsupported trait/emotion ("
+                    + label
+                    + ") instead of responding to what he actually said."
+                )
+                break
+
+        if "philosophical_exchange" in pattern_names:
+            # Do not let a provider turn Mary's requested view into a classroom
+            # paraphrase of Unbe's position. This is high-threshold: one direct
+            # acknowledgement is fine; a full response that never advances a
+            # view is not.
+            generic_mirroring = (
+                "what you're saying is",
+                "what you are saying is",
+                "it sounds like you're saying",
+                "it sounds like you are saying",
+                "you're basically saying",
+                "you are basically saying",
+            )
+            if any(marker in lowered for marker in generic_mirroring):
+                own_view_markers = (
+                    "i think", "i don't think", "i do think", "to me", "my take",
+                    "i'd say", "i would say", "i agree", "i disagree", "i see it",
+                    "the part i", "what matters to me", "i'd push", "i would push",
+                )
+                if not any(marker in lowered for marker in own_view_markers):
+                    issues.append(
+                        "Mary character-contract boundary: mirrors Unbe's philosophical framing without advancing Mary's selected point of view."
+                    )
+
+        return list(dict.fromkeys(issues))
 
     @staticmethod
     def _dialogue_plan_audit(
@@ -1368,6 +1487,7 @@ class ReflectionEngine:
         continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
         performance = mind.get("performance", {}) if isinstance(mind, dict) else {}
         dialogue_plan = mind.get("dialogue_plan", {}) if isinstance(mind, dict) else {}
+        character_expression = mind.get("character_expression", {}) if isinstance(mind, dict) else {}
         self_provenance = mind.get("self_provenance", {}) if isinstance(mind, dict) else {}
         preferences = mind.get("preferences", []) if isinstance(mind, dict) else []
 
@@ -1390,6 +1510,7 @@ class ReflectionEngine:
             f"Continuity/drive state: {continuity}\n\n"
             f"Performance direction: {performance}\n\n"
             f"TurnMind dialogue plan: {dialogue_plan}\n\n"
+            f"Mary active character contract: {character_expression}\n\n"
             f"Mary self-fact provenance: {self_provenance}\n\n"
             f"Mary represented preferences: {preferences}\n\n"
             f"Proposed response:\n{reasoning.response}\n\n"
@@ -1403,7 +1524,9 @@ class ReflectionEngine:
             "that Unbe is hiding/avoiding something or directly sense his private mental state merely because he disagrees or corrects Mary. "
             "If recent style motifs or rejected-hypothesis terms are listed, avoid recycling them without new user evidence. "
             "Make it conversational, specific, performable aloud, and recognizably Mary. Follow the selected "
-            "conversational drive, TurnMind dialogue plan, and Performance Director. Preserve the plan's stance/tone "
+            "active character contract first: preserve its response_goal and stance_claims, obey its hard_boundaries, "
+            "and do not assign Unbe psychology that is not grounded. Then follow the conversational drive, TurnMind "
+            "dialogue plan, and Performance Director. Preserve the plan's stance/tone "
             "instead of neutralizing Mary's thought during revision. Rewrite it like dialogue for an actor playing Mary, "
             "not polished support copy. React before switching into assistance. Avoid canned "
             "service-offer closers. Do not repeat Mary's recent opening, metaphor, punchline, "

@@ -663,7 +663,10 @@ def _render_clause(
                     f"{contraction} {clause.value}",
                     "clause:attribute-contracted",
                 ))
-        elif clause.subject.role == ParticipantRole.SELF:
+        elif (
+            clause.subject.role == ParticipantRole.SELF
+            and clause.predicate != "dislike"
+        ):
             variants.append((
                 f"I do {clause.predicate} {clause.value}",
                 "clause:attribute-emphatic",

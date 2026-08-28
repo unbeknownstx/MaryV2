@@ -268,6 +268,13 @@ class SelfIntrospection:
         wants_food = "food" in lowered or any(
             food in lowered for food in ("shrimp", "liver")
         )
+        wants_humor = any(
+            marker in lowered
+            for marker in (
+                "humor", "humour", "funny", "makes you laugh",
+                "sense of humor", "sense of humour",
+            )
+        )
         wants_fun = any(
             marker in lowered
             for marker in (
@@ -281,6 +288,12 @@ class SelfIntrospection:
             relevant = [
                 item for item in cleaned
                 if float(item.get("polarity", 0.0) or 0.0) < 0
+            ]
+        elif wants_humor:
+            relevant = [
+                item for item in cleaned
+                if float(item.get("polarity", 0.0) or 0.0) > 0
+                and item.get("category") == "humor"
             ]
         elif wants_fun:
             relevant = [
@@ -440,16 +453,22 @@ class SelfIntrospection:
 
     def _values(self) -> dict[str, Any]:
         priorities = self.values.get_priorities()
-        names = [item["name"] for item in priorities]
-        readable = ", ".join(names)
+        names = [str(item["name"]).replace("_", " ") for item in priorities]
+        leading = names[:6]
+        if not leading:
+            fallback = "I don't have a represented value priority to claim right now."
+        elif len(leading) == 1:
+            fallback = f"{leading[0].capitalize()} is the clearest value represented in me right now."
+        else:
+            readable = ", ".join(leading[:-1]) + f", and {leading[-1]}"
+            fallback = (
+                f"The big ones for me are {readable}. They aren't values I'm making up "
+                "for this answer; they're represented in my own Core state."
+            )
         return {
             "values": priorities,
             "identity_values": list(self.identity.values),
-            "fallback_response": (
-                "My current value system prioritizes "
-                f"{readable}. These values are explicit parts of my local state, "
-                "not values I inferred from this question."
-            ),
+            "fallback_response": fallback,
         }
 
     def _relationship(self) -> dict[str, Any]:
