@@ -668,8 +668,8 @@ class CognitiveOrchestrator:
             # relationship continuity, not only the active chat window.  This
             # intentionally runs before generic conversation-recall detection.
             shared_work_patterns = (
-                r"\bwhat do you remember about what we(?:'ve|ve| have) been working on together\b",
-                r"\bwhat do you remember about what we(?:'ve|ve| have) worked on together\b",
+                r"\bwhat do you remember about what we(?:'ve|ve| have) been (?:working on|building|developing|fixing|testing) together(?: lately| recently)?\b",
+                r"\bwhat do you remember about what we(?:'ve|ve| have) (?:worked on|built|developed|fixed|tested) together(?: lately| recently)?\b",
                 r"\bwhat do you remember we(?:'ve|ve| have) been working on together\b",
                 r"\bwhat do you remember we(?:'ve|ve| have) worked on together\b",
                 r"\bwhat (?:have|did) we work on together\b",

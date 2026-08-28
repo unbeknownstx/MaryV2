@@ -63,7 +63,7 @@ def test_exact_live_shared_work_wording_uses_shared_work_recall(tmp_path, monkey
     )
 
     calls_before = len(router.calls)
-    result = mary.process("what do you remember weve been working on together?")
+    result = mary.process("What do you remember about what we've been building together lately?")
 
     assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
     assert result.intent.parameters["relationship_query_type"] == "shared_work"
