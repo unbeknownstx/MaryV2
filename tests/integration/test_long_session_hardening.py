@@ -237,6 +237,23 @@ def test_strengths_and_weaknesses_route_to_grounded_self_assessment_before_curre
     assert mary.tools.pending_requests() == []
 
 
+def test_recent_conversation_learnings_stay_on_creator_overview_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    router = SequenceRouter(["This should not be used."])
+    mary = _mary(router)
+    calls_before = len(router.calls)
+
+    result = mary.process(
+        "What have you learned about me from our recent conversations?"
+    )
+
+    assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert result.intent.parameters["relationship_query_type"] == "overview"
+    assert len(router.calls) == calls_before
+    assert mary.tools.pending_requests() == []
+    assert "creator" in result.final_response.lower()
+
+
 def test_relationship_overview_natural_phrase_stays_local_before_current_web_marker():
     router = SequenceRouter(["This should not be used."])
     mary = _mary(router)

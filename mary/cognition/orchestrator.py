@@ -690,6 +690,18 @@ class CognitiveOrchestrator:
                 query_type = "shared_work"
 
         if query_type is None:
+            # Natural questions about what Mary has learned about her creator
+            # from recent conversation still belong to the canonical structured
+            # creator model.  The time qualifier must not demote the question to
+            # generic model-backed dialogue.
+            creator_learning_patterns = (
+                r"\bwhat have you learned about me from (?:our |the )?(?:recent|latest) conversations?\b",
+                r"\bwhat have you learned about me from (?:our |the )?(?:recent|latest) chats?\b",
+            )
+            if any(re.search(pattern, normalized) for pattern in creator_learning_patterns):
+                query_type = "overview"
+
+        if query_type is None:
             # Natural creator-memory phrasing should stay on the local creator
             # model instead of falling through to generic memory or dynamic-web
             # heuristics.  Keep this ownership-specific: "about me" here means

@@ -75,6 +75,43 @@ def test_classifier_label_leakage_is_rejected():
     assert issue.code == "classifier_leakage"
 
 
+def test_classifier_label_block_leakage_is_rejected():
+    issue = inspect_output_quality(
+        "User Safety: safe\nResponse Safety: safe",
+        [LLMMessage(role="user", content="what have you learned about me from our recent conversations?")],
+    )
+    assert issue is not None
+    assert issue.code == "classifier_leakage"
+
+
+def test_classifier_words_inside_real_dialogue_are_not_rejected():
+    issue = inspect_output_quality(
+        "The diagnostic showed User Safety: safe, but that isn't my answer to you.",
+        [LLMMessage(role="user", content="explain the diagnostic output")],
+    )
+    assert issue is None
+
+
+def test_classifier_label_block_leakage_fails_over_before_reaching_mary():
+    config = Config()
+    config.llm.provider = "primary"
+    config.llm.fallback_providers = ["secondary"]
+    config.llm.routing_strategy = "configured"
+    router = LLMRouter(config)
+    leaked = ContentProvider("primary", "User Safety: safe\nResponse Safety: safe")
+    good = ContentProvider("secondary", "You've shared several grounded things with me recently.")
+    router.register_provider("primary", leaked)
+    router.register_provider("secondary", good)
+
+    response = router.generate([
+        LLMMessage(role="user", content="what have you learned about me from our recent conversations?"),
+    ])
+
+    assert response.provider == "secondary"
+    assert response.content == "You've shared several grounded things with me recently."
+    assert router.last_generation_attempts[0]["status"] == "invalid_output"
+
+
 def test_classifier_label_leakage_fails_over_before_reaching_mary():
     config = Config()
     config.llm.provider = "primary"

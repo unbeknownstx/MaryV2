@@ -92,9 +92,18 @@ def inspect_output_quality(
         )
 
     stripped = text.strip()
-    if len(stripped) <= 120 and any(
-        pattern.fullmatch(stripped)
-        for pattern in _CLASSIFIER_LEAK_PATTERNS
+    classifier_lines = [
+        line.strip()
+        for line in stripped.splitlines()
+        if line.strip()
+    ]
+    if (
+        len(stripped) <= 120
+        and classifier_lines
+        and all(
+            any(pattern.fullmatch(line) for pattern in _CLASSIFIER_LEAK_PATTERNS)
+            for line in classifier_lines
+        )
     ):
         return OutputQualityIssue(
             "classifier_leakage",
