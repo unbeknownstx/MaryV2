@@ -240,12 +240,44 @@ class GrowthEngine:
             recent_milestones = self.mary.relationship_milestones.get_recent(limit=6)
         except Exception:
             recent_milestones = []
-        return {
-            "version": self.VERSION,
-            "journal": self.journal.status(),
+
+        try:
+            memory_counts = dict(self.mary.memory.status().get("counts", {}) or {})
+        except Exception:
+            memory_counts = {}
+        try:
+            developed_self = dict(self.mary.developed_self_state.status() or {})
+        except Exception:
+            developed_self = {}
+        try:
+            relationship_milestone_count = len(self.mary.relationship_milestones.get_milestones())
+        except Exception:
+            relationship_milestone_count = 0
+
+        process_counters = {
             "semantic_promotions": self.semantic_promotions,
             "preference_promotions": self.preference_promotions,
             "milestones_created": self.milestones_created,
+        }
+        durable_state = {
+            "semantic_memories": int(memory_counts.get("semantic", 0) or 0),
+            "developed_preferences": int(developed_self.get("preference_overrides", 0) or 0),
+            "developed_personality_traits": int(developed_self.get("personality_overrides", 0) or 0),
+            "relationship_milestones": int(relationship_milestone_count),
+        }
+
+        return {
+            "version": self.VERSION,
+            "journal": self.journal.status(),
+            # Compatibility fields retained for older clients. These counters
+            # describe activity since the current Mary Core process started;
+            # canonical durable totals are projected separately below.
+            "semantic_promotions": self.semantic_promotions,
+            "preference_promotions": self.preference_promotions,
+            "milestones_created": self.milestones_created,
+            "counter_scope": "current_core_process",
+            "process_counters": process_counters,
+            "durable_state": durable_state,
             "last_growth": dict(self.last_growth),
             "preference_candidates": candidates[:12],
             "recent_milestones": [dict(x) for x in recent_milestones],
@@ -255,5 +287,6 @@ class GrowthEngine:
                 "model_dialogue_counts_as_self_evidence": False,
                 "core_values_auto_rewritten": False,
                 "canonical_personality_auto_rewritten": False,
+                "process_counters_are_durable_totals": False,
             },
         }

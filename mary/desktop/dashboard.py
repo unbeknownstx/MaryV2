@@ -264,6 +264,19 @@ def _personality(mary) -> dict[str, Any]:
     trait_items = sorted(traits.items(), key=lambda item: _safe_number(item[1]), reverse=True)[:_MAX_TRAITS]
 
     try:
+        developed_payload = dict(mary.developed_self_state.to_dict() or {})
+    except Exception:
+        developed_payload = {}
+    developed_trait_names = {
+        str(name)
+        for name in dict(developed_payload.get("personality_overrides", {}) or {})
+    }
+    developed_preference_names = {
+        str(name).strip().lower()
+        for name in dict(developed_payload.get("preference_overrides", {}) or {})
+    }
+
+    try:
         values = list(mary.values.get_priorities(limit=_MAX_VALUES))
     except Exception:
         values = []
@@ -291,12 +304,21 @@ def _personality(mary) -> dict[str, Any]:
                 "category": str(item.get("category") or "general"),
                 "polarity": round(_safe_number(item.get("polarity")), 3),
                 "strength": round(_safe_number(item.get("strength"), 0.5), 3),
+                "authority": (
+                    "developed"
+                    if name.strip().lower() in developed_preference_names
+                    else "authored"
+                ),
             }
         )
 
     return {
         "traits": [
-            {"name": str(name), "value": round(_safe_number(value), 3)}
+            {
+                "name": str(name),
+                "value": round(_safe_number(value), 3),
+                "authority": "developed" if str(name) in developed_trait_names else "authored",
+            }
             for name, value in trait_items
         ],
         "values": [
@@ -309,6 +331,10 @@ def _personality(mary) -> dict[str, Any]:
             if isinstance(item, dict)
         ],
         "preferences": safe_preferences,
+        "developed_self": {
+            "personality_traits": len(developed_trait_names),
+            "preferences": len(developed_preference_names),
+        },
     }
 
 

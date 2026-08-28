@@ -54,3 +54,48 @@ def test_growth_auto_promotion_is_stricter_than_candidate_eligibility(tmp_path):
         )
     assert mary.growth._promote_strict_preference_candidates() == ["night drives"]
     assert mary.preferences.get_preference("night drives") is not None
+
+
+def test_growth_status_separates_process_activity_from_durable_state(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = create_application(
+        memory_path=tmp_path / "memory" / "memory.json",
+        developed_self_path=tmp_path / "personality" / "developed.json",
+        preference_promotion_path=tmp_path / "personality" / "promotion.json",
+    )
+    mary = app.mary
+
+    mary.memory.remember_fact(
+        "creator",
+        "favorite_color",
+        "blue",
+        confidence=1.0,
+        source="creator_explicit",
+    )
+    mary.set_developed_preference(
+        "late-night jazz",
+        category="music",
+        strength=0.9,
+        confidence=0.95,
+        source="experience_promotion",
+    )
+    mary.relationship_milestones.add_milestone(
+        title="A durable checkpoint",
+        description="A bounded test milestone.",
+        category="mary_development",
+        importance=0.8,
+    )
+
+    status = mary.growth.status()
+
+    assert status["counter_scope"] == "current_core_process"
+    assert status["process_counters"] == {
+        "semantic_promotions": 0,
+        "preference_promotions": 0,
+        "milestones_created": 0,
+    }
+    assert status["durable_state"]["semantic_memories"] == 1
+    assert status["durable_state"]["developed_preferences"] == 1
+    assert status["durable_state"]["developed_personality_traits"] == 0
+    assert status["durable_state"]["relationship_milestones"] == 1
+    assert status["policy"]["process_counters_are_durable_totals"] is False

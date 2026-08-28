@@ -41,6 +41,28 @@ def test_dashboard_is_a_view_over_canonical_mary_state(tmp_path, monkeypatch) ->
     assert state["paths"]["data_root"] == str(mary.config.paths.data)
 
 
+def test_dashboard_projects_authored_vs_developed_self_provenance(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+    mary.set_developed_preference(
+        "late-night jazz",
+        category="music",
+        strength=1.0,
+        confidence=1.0,
+        source="experience_promotion",
+    )
+
+    state = build_desktop_dashboard_state(mary)
+    personality = state["personality"]
+
+    assert personality["developed_self"]["preferences"] == 1
+    assert personality["developed_self"]["personality_traits"] == 0
+    developed = next(item for item in personality["preferences"] if item["name"] == "late-night jazz")
+    assert developed["authority"] == "developed"
+    assert any(item["authority"] == "authored" for item in personality["preferences"] if item["name"] != "late-night jazz")
+    assert all(item["authority"] in {"authored", "developed"} for item in personality["traits"])
+
+
 def test_dashboard_payload_excludes_test_curiosity_and_secret_names(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     mary = Mary()

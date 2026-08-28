@@ -12,6 +12,10 @@ def test_mobile_13_surface_has_growth_conversation_modes_and_voice_lab():
     assert "saveVoiceProfile" in js
     assert "resetVoiceBaseline" in js
     assert "DISLIKES / AVERSIONS" in js
+    assert "THIS CORE RUN" in js
+    assert "durable_state" in js
+    assert "Developed personality traits" in js
+    assert "Authored Mary remains the baseline" in js
 
 
 def test_mobile_protocol_is_13_generation():
