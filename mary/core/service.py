@@ -78,6 +78,7 @@ class MaryCoreService:
             if turn.requested_mode:
                 self.mary.engagement.set_mode(turn.requested_mode)
 
+            pipeline_started = monotonic()
             result = self.application.run(
                 turn.text,
                 metadata={
@@ -89,6 +90,7 @@ class MaryCoreService:
                     "voice_input": bool(turn.voice_input),
                 },
             )
+            pipeline_ms = (monotonic() - pipeline_started) * 1000.0
             if not result.success:
                 raise RuntimeError(result.error or "Mary's canonical turn pipeline failed.")
 
@@ -106,7 +108,10 @@ class MaryCoreService:
                 provenance=self._provenance(result),
                 state_changes=self._state_changes(before, after),
                 conversation_state=conversation,
-                display_hints=self._display_hints(result),
+                display_hints=self._display_hints(
+                    result,
+                    pipeline_ms=pipeline_ms,
+                ),
             )
 
     def health(self) -> dict[str, Any]:
@@ -606,14 +611,51 @@ class MaryCoreService:
             "finish_reason": metadata.get("finish_reason"),
             "route": metadata.get("route") or metadata.get("generation_purpose"),
             "provider_attempts": metadata.get("provider_attempts", []),
+            "conversation_lane": {
+                "lane": str(
+                    dict(metadata.get("conversation_lane", {}) or {}).get("lane")
+                    or ""
+                ),
+            },
             "self_grounded": bool(metadata.get("self_grounded", False)),
             "usage": metadata.get("usage", {}),
         })
 
-    def _display_hints(self, result: Any) -> dict[str, Any]:
+    def _display_hints(
+        self,
+        result: Any,
+        *,
+        pipeline_ms: float | None = None,
+    ) -> dict[str, Any]:
         values = dict(getattr(result, "metadata", {}).get("pipeline_values", {}) or {})
         cycle = values.get("cognitive_cycle")
         cycle_metadata = dict(getattr(cycle, "metadata", {}) or {})
+        raw_timings = dict(cycle_metadata.get("timings", {}) or {})
+        timings: dict[str, float] = {}
+        for name in (
+            "context_ms",
+            "intent_ms",
+            "reasoning_ms",
+            "reflection_ms",
+            "response_select_ms",
+            "cognition_total_ms",
+        ):
+            try:
+                value = float(raw_timings.get(name))
+            except (TypeError, ValueError):
+                continue
+            if value >= 0.0:
+                timings[name] = round(value, 2)
+
+        measured_pipeline_ms = pipeline_ms
+        if measured_pipeline_ms is None:
+            try:
+                elapsed = getattr(result, "elapsed", None)
+                measured_pipeline_ms = None if elapsed is None else float(elapsed) * 1000.0
+            except (TypeError, ValueError):
+                measured_pipeline_ms = None
+        if measured_pipeline_ms is not None and measured_pipeline_ms >= 0.0:
+            timings["pipeline_ms"] = round(float(measured_pipeline_ms), 2)
         try:
             emotion = self.mary.emotion.snapshot()
         except Exception:
@@ -647,6 +689,7 @@ class MaryCoreService:
         return _json_safe({
             "delivery_plan": cycle_metadata.get("delivery_plan", {}) or result_metadata.get("delivery_plan", {}),
             "dialogue_plan": safe_dialogue_plan,
+            "timings": timings,
             "realtime": result_metadata.get("realtime", {}),
             "emotion": emotion,
             "avatar": avatar,

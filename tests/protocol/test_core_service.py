@@ -78,3 +78,61 @@ def test_core_owns_and_uses_one_application_turn_pipeline():
     assert result.effective_mode == "quick"
     assert app.calls[0][1]["device_id"] == "iphone"
     assert app.calls[0][1]["conversation_id"] == "c1"
+
+
+def test_core_turn_projects_bounded_timing_and_lane_observability():
+    app = FakeApplication()
+    reasoning = SimpleNamespace(metadata={
+        "provider": "groq",
+        "model": "test-model",
+        "provider_attempts": [{"provider": "groq", "status": "success"}],
+        "conversation_lane": {
+            "lane": "conversation",
+            "rationale": "internal policy detail",
+            "latency_target_ms": 3500,
+        },
+    })
+    cycle = SimpleNamespace(
+        reasoning=reasoning,
+        metadata={
+            "timings": {
+                "context_ms": 1.25,
+                "reasoning_ms": 4.5,
+                "cognition_total_ms": 7.75,
+                "private_timing": 999.0,
+            },
+        },
+    )
+
+    def run(text, metadata=None):
+        app.calls.append((text, dict(metadata or {})))
+        return SimpleNamespace(
+            success=True,
+            output="hi",
+            error=None,
+            turn_id="turn-observed",
+            metadata={
+                "pipeline_values": {
+                    "cognitive_cycle": cycle,
+                },
+            },
+        )
+
+    app.run = run
+    core = MaryCoreService(app, instance_id="observability-core")
+    result = core.process_turn(TurnRequest.from_dict({
+        "text": "hello",
+        "conversation_id": "observability",
+        "device_id": "iphone",
+    }))
+
+    assert result.provenance["conversation_lane"] == {"lane": "conversation"}
+    assert result.provenance["provider_attempts"] == [
+        {"provider": "groq", "status": "success"}
+    ]
+    assert result.display_hints["timings"]["context_ms"] == 1.25
+    assert result.display_hints["timings"]["reasoning_ms"] == 4.5
+    assert result.display_hints["timings"]["cognition_total_ms"] == 7.75
+    assert result.display_hints["timings"]["pipeline_ms"] >= 0.0
+    assert "private_timing" not in result.display_hints["timings"]
+    assert "rationale" not in result.provenance["conversation_lane"]

@@ -144,6 +144,9 @@ class _RemoteClient:
             turn_id="turn-1",
             provenance={
                 "provider": "groq",
+                "conversation_lane": {
+                    "lane": "conversation",
+                },
             },
             conversation_state=self.conversation_status(),
             display_hints={
@@ -154,6 +157,11 @@ class _RemoteClient:
                     "drive": "answer",
                     "stance": "responsive",
                     "tone": "warm",
+                },
+                "timings": {
+                    "context_ms": 1.0,
+                    "cognition_total_ms": 6.0,
+                    "pipeline_ms": 8.0,
                 },
             },
             state_changes={},
@@ -322,6 +330,32 @@ def test_mobile_chat_carries_real_conversation_id_and_turnmind(
         ]
         == "project-unbeknownst"
     )
+
+    trace = payload[
+        "runtime"
+    ][
+        "trace"
+    ]
+    assert trace[
+        "timings"
+    ][
+        "pipeline_ms"
+    ] == 8.0
+    assert trace[
+        "timings"
+    ][
+        "cognition_total_ms"
+    ] == 6.0
+    assert trace[
+        "timings"
+    ][
+        "worker_total_ms"
+    ] >= 0.0
+    assert trace[
+        "mobile"
+    ][
+        "lane"
+    ] == "conversation"
 
 
 def test_remote_dashboard_preserves_core_convergence_state(

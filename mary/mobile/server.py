@@ -616,16 +616,55 @@ class MaryRemoteMobileRuntime:
                 - started
             )
 
+            provenance = dict(
+                response.provenance
+                or {}
+            )
+            display_hints = dict(
+                response.display_hints
+                or {}
+            )
+            timings = dict(
+                display_hints.get(
+                    "timings",
+                    {},
+                )
+                or {}
+            )
+            timings[
+                "worker_total_ms"
+            ] = round(
+                elapsed * 1000.0,
+                2,
+            )
+
             trace = {
                 "turn_id": response.turn_id,
                 "elapsed": elapsed,
-                **dict(
-                    response.provenance
-                    or {}
-                ),
+                **provenance,
+                "timings": timings,
                 "authority": "remote_mary_core",
                 "device_id": self.client.device_id,
             }
+
+            lane = str(
+                dict(
+                    provenance.get(
+                        "conversation_lane",
+                        {},
+                    )
+                    or {}
+                ).get(
+                    "lane"
+                )
+                or ""
+            ).strip()
+            if lane:
+                trace[
+                    "mobile"
+                ] = {
+                    "lane": lane,
+                }
 
             with self._lock:
                 self._last_trace = trace
