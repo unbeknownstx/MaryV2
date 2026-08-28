@@ -141,6 +141,7 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "realtime.transcribing",
     "mind.rebuild_reservoir",
     "mind.maintenance",
+    "llm.probe",
     "presence.idle_tick",
     "training.feedback.status",
     "training.feedback.record",

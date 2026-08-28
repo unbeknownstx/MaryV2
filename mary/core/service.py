@@ -17,6 +17,8 @@ from typing import Any
 from uuid import uuid4
 
 from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, preview_capability_task
+from mary.llm.interface import LLMMessage
+from mary.llm.output_quality import inspect_output_quality
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
 from mary.protocol.models import (
     CapabilityRouteRequest,
@@ -553,6 +555,9 @@ class MaryCoreService:
             if action.action == "mind.maintenance":
                 return _json_safe(self.mary.mind.maintenance())
 
+            if action.action == "llm.probe":
+                return _json_safe(self._probe_llm_provider(values))
+
             if action.action == "presence.idle_tick":
                 return _json_safe(
                     self.application.ecosystem.presence.idle_tick(
@@ -585,6 +590,116 @@ class MaryCoreService:
                 })
 
         raise ValueError(f"Unsupported runtime action: {action.action}")
+
+    def _probe_llm_provider(self, values: dict[str, Any]) -> dict[str, Any]:
+        """Run one bounded, non-state-mutating provider diagnostic.
+
+        This intentionally bypasses Mary's turn pipeline so benchmarking an
+        engine never creates relationship history, memories, growth evidence,
+        or conversation state. It uses the exact provider objects owned by the
+        canonical Core, including the connected-device Ollama adapter. Paid
+        OpenAI is deliberately excluded.
+        """
+
+        provider_name = str(values.get("provider") or "").strip().lower()
+        if provider_name not in {"groq", "gemini", "openrouter", "ollama"}:
+            raise ValueError("llm.probe provider must be groq, gemini, openrouter, or ollama")
+
+        purpose = str(values.get("purpose") or "conversation").strip().lower()
+        if purpose not in {"social_instant", "conversation", "general"}:
+            raise ValueError("llm.probe purpose must be social_instant, conversation, or general")
+
+        profile = str(values.get("profile") or "latency").strip().lower()
+        if profile not in {"latency", "conversation"}:
+            raise ValueError("llm.probe profile must be latency or conversation")
+
+        if profile == "conversation":
+            prompt = (
+                "A close collaborator says, 'I finally solved the bug that kept me up late.' "
+                "Reply in exactly two natural sentences: acknowledge the moment and ask one "
+                "grounded follow-up question. Do not mention being an AI or this benchmark."
+            )
+            temperature = 0.45
+            max_tokens = 96
+        else:
+            prompt = "Reply with exactly: MARY ENGINE OK"
+            temperature = 0.0
+            max_tokens = 32
+
+        router = getattr(self.mary, "llm", None)
+        selector = getattr(router, "_get_provider_for_purpose", None)
+        if router is None or not callable(selector):
+            raise RuntimeError("Mary's LLM router is unavailable")
+
+        selected = selector(provider_name, purpose)
+        availability_started = monotonic()
+        try:
+            available = bool(selected.is_available())
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status": "availability_error",
+                "provider": provider_name,
+                "purpose": purpose,
+                "profile": profile,
+                "error_type": type(exc).__name__,
+                "availability_ms": round((monotonic() - availability_started) * 1000.0, 2),
+            }
+
+        availability_ms = (monotonic() - availability_started) * 1000.0
+        if not available:
+            return {
+                "ok": False,
+                "status": "unavailable",
+                "provider": provider_name,
+                "purpose": purpose,
+                "profile": profile,
+                "model": str(selected.model_name() or ""),
+                "availability_ms": round(availability_ms, 2),
+            }
+
+        messages = [LLMMessage(role="user", content=prompt)]
+        generation_started = monotonic()
+        try:
+            response = selected.generate(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status": "generation_error",
+                "provider": provider_name,
+                "purpose": purpose,
+                "profile": profile,
+                "model": str(selected.model_name() or ""),
+                "error_type": type(exc).__name__,
+                "availability_ms": round(availability_ms, 2),
+                "generation_ms": round((monotonic() - generation_started) * 1000.0, 2),
+            }
+
+        generation_ms = (monotonic() - generation_started) * 1000.0
+        content = str(response.content or "").strip()
+        issue = inspect_output_quality(content, messages)
+        return {
+            "ok": issue is None,
+            "status": "ok" if issue is None else "invalid_output",
+            "provider": str(response.provider or provider_name),
+            "model": str(response.model or selected.model_name() or ""),
+            "purpose": purpose,
+            "profile": profile,
+            "availability_ms": round(availability_ms, 2),
+            "generation_ms": round(generation_ms, 2),
+            "usage": dict(response.usage or {}),
+            "finish_reason": str(response.finish_reason or ""),
+            "output_quality": None if issue is None else {
+                "code": issue.code,
+                "description": issue.description,
+            },
+            "content": content[:1200],
+            "canonical_state_changed": False,
+        }
 
     def save(self) -> bool:
         with self._turn_lock:

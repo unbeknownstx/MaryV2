@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from mary.core.service import MaryCoreService
+from mary.llm.interface import LLMResponse
 from mary.protocol.models import RuntimeActionRequest, TurnRequest
 
 
@@ -196,3 +197,88 @@ def test_runtime_action_exposes_training_feedback_status():
     )
 
     assert result == {"records": 0, "persistent": True}
+
+
+class FakeProbeProvider:
+    def __init__(self, *, model="probe-model"):
+        self.model = model
+        self.calls = []
+
+    def is_available(self):
+        return True
+
+    def model_name(self):
+        return self.model
+
+    def generate(self, messages, temperature=0.7, max_tokens=2048):
+        self.calls.append({
+            "messages": [(item.role, item.content) for item in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        })
+        return LLMResponse(
+            content="MARY ENGINE OK",
+            provider="groq",
+            model=self.model,
+            finish_reason="stop",
+            usage={"total_tokens": 9},
+        )
+
+
+class FakeProbeRouter:
+    def __init__(self):
+        self.provider = FakeProbeProvider()
+        self.selections = []
+
+    def _get_provider_for_purpose(self, provider, purpose):
+        self.selections.append((provider, purpose))
+        return self.provider
+
+
+def test_llm_probe_uses_core_provider_without_running_canonical_turn():
+    app = FakeApplication()
+    app.mary.llm = FakeProbeRouter()
+    core = MaryCoreService(app, instance_id="runtime-core")
+    calls_before = list(app.calls)
+
+    result = core.runtime_action({
+        "action": "llm.probe",
+        "args": {
+            "provider": "groq",
+            "purpose": "social_instant",
+            "profile": "latency",
+        },
+        "device_id": "pc",
+    })
+
+    assert result["ok"] is True
+    assert result["status"] == "ok"
+    assert result["provider"] == "groq"
+    assert result["model"] == "probe-model"
+    assert result["content"] == "MARY ENGINE OK"
+    assert result["canonical_state_changed"] is False
+    assert app.mary.llm.selections == [("groq", "social_instant")]
+    assert app.mary.llm.provider.calls[0]["max_tokens"] == 32
+    assert app.calls == calls_before
+
+
+def test_llm_probe_rejects_paid_or_unknown_provider():
+    app = FakeApplication()
+    app.mary.llm = FakeProbeRouter()
+    core = MaryCoreService(app, instance_id="runtime-core")
+
+    with pytest.raises(ValueError, match="provider must be"):
+        core.runtime_action({
+            "action": "llm.probe",
+            "args": {"provider": "openai"},
+            "device_id": "pc",
+        })
+
+
+def test_runtime_action_contract_accepts_only_bounded_llm_probe_action():
+    request = RuntimeActionRequest.from_dict({
+        "action": "llm.probe",
+        "args": {"provider": "ollama", "purpose": "conversation"},
+        "device_id": "pc",
+    })
+    assert request.action == "llm.probe"
