@@ -114,14 +114,14 @@ def main() -> int:
     system_prompt = str(first_prompt[0].content)
     user_prompt = str(first_prompt[1].content)
     natural_performance_policy = (
-        "Sound like Mary is simply talking" in system_prompt
-        and "not performing the role of Mary for an audience" in system_prompt
+        ("Sound like Mary is simply talking" in system_prompt and "not performing the role of Mary for an audience" in system_prompt)
+        or ("Voice/avatar acting is handled by the performance layer" in system_prompt and "TurnMind-to-dialogue contract" in system_prompt)
     )
     legacy_performance_policy = "performing Mary Cosma's dialogue" in system_prompt
     if not (natural_performance_policy or legacy_performance_policy):
         raise AssertionError("reasoning system prompt has no character-performance policy")
     if (
-        "Performance direction:" not in system_prompt
+        ("Performance direction:" not in system_prompt and "Performance=" not in system_prompt)
         or "Compact TurnMindState" not in user_prompt
         or "'performance':" not in user_prompt
     ):

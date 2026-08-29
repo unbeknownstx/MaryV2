@@ -96,6 +96,7 @@ def build_workspace_context(
         "study_due": _bounded_int(counts_source.get("study_due")),
         "study_projects": _bounded_int(counts_source.get("study_projects")),
         "research_open": _bounded_int(counts_source.get("research_open")),
+        "production_projects": _bounded_int(counts_source.get("production_projects")),
         "inbox_unread": _bounded_int(counts_source.get("inbox_unread")),
         "pending_thoughts": _bounded_int(counts_source.get("pending_thoughts")),
     }
@@ -137,6 +138,14 @@ def build_workspace_context(
         integer_fields=("notes",),
     )
 
+    productions = _items(
+        source.get("productions"),
+        limit=3,
+        text_fields={"title": 180},
+        passthrough=("id", "stage", "format"),
+        integer_fields=("shots", "assets"),
+    )
+
     notices = _items(
         source.get("notices"),
         limit=2,
@@ -168,6 +177,7 @@ def build_workspace_context(
         or top_tasks
         or study_projects
         or research_threads
+        or productions
         or notices
         or pending_thoughts
         or curiosities
@@ -187,6 +197,7 @@ def build_workspace_context(
         "top_tasks": top_tasks,
         "study_projects": study_projects,
         "research_threads": research_threads,
+        "productions": productions,
         "notices": notices,
         "pending_thoughts": pending_thoughts,
         "curiosities": curiosities,

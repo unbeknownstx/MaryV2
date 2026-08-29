@@ -11,7 +11,7 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-13.1-realtime-cognitive-infrastructure"
+    VERSION = "v2-breakthrough-13.2-full-pass-production-compute-training-convergence"
 
     AUTHORITY = {
         "character_canon": "mary.character + identity/biography/personality authored state",
@@ -30,6 +30,7 @@ class MarySystemContract:
         "distributed_compute": "NodeRegistry (replaceable capability resources; never identity/state ownership)",
         "semantic_retrieval": "HybridReservoirRetriever + SemanticVectorIndex (derived candidate retrieval only)",
         "response_feedback": "ResponseFeedbackStore (explicit private evaluation/training data; never character-state authority)",
+        "creative_production": "MaryEcosystem/ProductionStudio (canonical project artifacts only; never identity or automatic execution authority)",
         "turn_routing_policy": "TurnPolicyEngine",
         "task_orchestration": "TaskOrchestrator + OrchestrationExecutor",
         "tools": "ToolManager",

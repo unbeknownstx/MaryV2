@@ -29,6 +29,23 @@ class DatasetExportSummary:
 class MaryTrainingDatasetExporter:
     VERSION = "1"
 
+    def preview(self, store: ResponseFeedbackStore) -> dict[str, Any]:
+        """Return export eligibility counts without writing files or training."""
+        records = store.records()
+        positive = sum(item.rating == "positive" for item in records)
+        corrections = sum(bool(item.chosen_text) for item in records)
+        negative = sum(item.rating == "negative" for item in records)
+        return {
+            "source_records": len(records),
+            "sft_candidates": positive + corrections,
+            "preference_candidates": corrections,
+            "rejected_candidates": negative,
+            "eval_candidates": len(records),
+            "writes_files": False,
+            "trains_model": False,
+            "policy": "explicit creator feedback only; preview is read-only",
+        }
+
     def export(self, store: ResponseFeedbackStore, output_dir: str | Path) -> DatasetExportSummary:
         target = Path(output_dir).expanduser().resolve()
         target.mkdir(parents=True, exist_ok=True)

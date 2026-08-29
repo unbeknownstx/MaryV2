@@ -89,6 +89,10 @@ _ALLOWED_WORKSPACE_ACTIONS = {
     "study.review_card",
     "research.create_thread",
     "research.add_note",
+    "production.create",
+    "production.set_stage",
+    "production.add_asset",
+    "production.review",
     "inbox.mark_read",
 }
 
@@ -147,6 +151,9 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "performance.context.status",
     "performance.context.set",
     "training.feedback.status",
+    "training.dataset.preview",
+    "production.jobs.preview",
+    "integration.status",
     "training.feedback.record",
 }
 

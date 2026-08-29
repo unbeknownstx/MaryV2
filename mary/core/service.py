@@ -179,7 +179,26 @@ class MaryCoreService:
                 if callable(getattr(getattr(self.mary, "performance_context", None), "status", None))
                 else {"mode": "private", "enabled": False}
             ),
+            "training": self.mary.training_feedback.status() if hasattr(self.mary, "training_feedback") else {},
+            "production": (
+                self.application.ecosystem.production.snapshot()
+                if hasattr(getattr(self.application, "ecosystem", None), "production")
+                else {}
+            ),
+            "integration": self.integration_status(),
         })
+
+    def integration_status(self) -> dict[str, Any]:
+        """Return executable top-to-bottom Mary architecture connection health."""
+        from mary.runtime.integration_graph import build_integration_graph
+        return _json_safe(build_integration_graph(application=self.application, service=self))
+
+    def production_jobs(self, production_id: str) -> dict[str, Any]:
+        """Compile a canonical production project into non-executing capability jobs."""
+        return _json_safe(self.application.ecosystem.production.jobs(
+            str(production_id or ""),
+            node_registry=getattr(self.mary, "node_registry", None),
+        ))
 
     def compute_fabric_status(self) -> dict[str, Any]:
         """Return one display-safe view of engines, routes, nodes, and task flow.
@@ -241,6 +260,9 @@ class MaryCoreService:
         payload["retrieval"] = state.get("retrieval", {})
         payload["perception"] = state.get("perception", {})
         payload["performance_context"] = state.get("performance_context", {})
+        payload["training"] = state.get("training", {})
+        payload["production"] = state.get("production", {})
+        payload["integration"] = state.get("integration", {})
         return _json_safe(payload)
 
     def memory_status(self) -> dict[str, Any]:
@@ -622,6 +644,16 @@ class MaryCoreService:
 
             if action.action == "training.feedback.status":
                 return _json_safe(self.mary.training_feedback.status())
+
+            if action.action == "training.dataset.preview":
+                from mary.training import MaryTrainingDatasetExporter
+                return _json_safe(MaryTrainingDatasetExporter().preview(self.mary.training_feedback))
+
+            if action.action == "production.jobs.preview":
+                return self.production_jobs(str(values.get("production_id") or ""))
+
+            if action.action == "integration.status":
+                return self.integration_status()
 
             if action.action == "training.feedback.record":
                 tags = values.get("tags") or []

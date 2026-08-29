@@ -58,8 +58,16 @@ def main() -> int:
     checks.append(check("addEventListener('playing'" in js, "lip sync waits for actual playback start"))
 
     reasoning = (ROOT / "mary/cognition/reasoning.py").read_text(encoding="utf-8")
-    checks.append(check("Sound like Mary is simply talking, not performing" in reasoning, "model dialogue receives natural-conversation direction"))
-    checks.append(check("token budget as a ceiling" in reasoning, "ordinary conversation is told not to fill its token budget"))
+    natural_direction = (
+        "Sound like Mary is simply talking, not performing" in reasoning
+        or ("Voice/avatar acting is handled by the performance layer" in reasoning and "Speak naturally as Mary rather than as a helpdesk assistant" in reasoning)
+    )
+    bounded_dialogue = (
+        "token budget as a ceiling" in reasoning
+        or "Ordinary chat is usually one to four sentences" in reasoning
+    )
+    checks.append(check(natural_direction, "model dialogue receives natural-conversation direction"))
+    checks.append(check(bounded_dialogue, "ordinary conversation is explicitly bounded instead of filling its token budget"))
 
     ok = all(checks)
     print("=" * 76)

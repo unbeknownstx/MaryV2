@@ -12,6 +12,7 @@ class Skill:
 SKILLS=(
  Skill("companion","Companion","core",True,False,"Chat, memory, mood, relationship and avatar."),
  Skill("studio","Creative Studio","create",True,False,"Projects, chapters, references and creative-app handoffs."),
+ Skill("production","Production Studio","create",True,False,"Provider-neutral character, storyboard, shot, voice, render, edit and publishing plans."),
  Skill("study","Study Partner","productivity",True,False,"Persistent study projects and spaced repetition."),
  Skill("focus","Focus With Mary","productivity",True,False,"Quiet co-working and timed focus blocks."),
  Skill("command","Command Center","productivity",True,False,"Tasks, projects, goals, waiting threads and ideas."),

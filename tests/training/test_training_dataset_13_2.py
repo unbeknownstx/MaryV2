@@ -73,3 +73,16 @@ def test_mary_initiative_feedback_uses_grounded_context_without_fabricating_crea
     assert row["messages"][0]["role"] == "system"
     assert "not creator-authored speech" in row["messages"][0]["content"]
     assert "Project event" in row["messages"][1]["content"]
+
+
+def test_training_dataset_preview_is_read_only_and_counts_explicit_feedback(tmp_path):
+    store = ResponseFeedbackStore(tmp_path / "feedback_preview.json")
+    store.record(rating="positive", user_text="Hi", assistant_text="Hey.")
+    store.record(rating="negative", user_text="No", assistant_text="Wrong", chosen_text="Better")
+    preview = MaryTrainingDatasetExporter().preview(store)
+    assert preview["source_records"] == 2
+    assert preview["sft_candidates"] == 2
+    assert preview["preference_candidates"] == 1
+    assert preview["rejected_candidates"] == 1
+    assert preview["writes_files"] is False
+    assert preview["trains_model"] is False

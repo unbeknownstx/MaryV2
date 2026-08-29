@@ -62,7 +62,7 @@ def main() -> int:
             check("hybrid retrieval connected", mary.mind.retrieval.status().get("version") == "13.1")
             check("vector index is derived authority", mary.mind.retrieval.status().get("vector_index", {}).get("authority") == "derived retrieval cache only")
             check("perception boundary connected", mary.perception_director.snapshot().get("version") == "13.1")
-            check("explicit feedback dataset connected", mary.training_feedback.status().get("version") == "13.1")
+            check("explicit feedback dataset connected", str(mary.training_feedback.status().get("version") or "").startswith(("13.1", "13.2")))
             authority = mary.system_contract.snapshot(mary).get("authority", {})
             for key in ("realtime_attention", "perception_boundary", "distributed_compute", "semantic_retrieval", "response_feedback"):
                 check(f"system contract declares {key}", key in authority)

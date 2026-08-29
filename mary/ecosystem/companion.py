@@ -56,6 +56,7 @@ def build_companion_pulse(
     focus,
     study,
     research=None,
+    production=None,
     inbox,
     presence,
 ) -> dict[str, Any]:
@@ -71,6 +72,11 @@ def build_companion_pulse(
     research_summary = (
         dict(research.summary() or {})
         if research is not None
+        else {}
+    )
+    production_summary = (
+        dict(production.snapshot() or {})
+        if production is not None
         else {}
     )
     inbox_summary = dict(inbox.summary() or {})
@@ -112,6 +118,21 @@ def build_companion_pulse(
                 "id": str(item.get("id") or ""),
                 "title": _clip(item.get("title"), 180),
                 "notes": int(item.get("notes", 0) or 0),
+            }
+        )
+
+    productions = []
+    for item in list(production_summary.get("recent", []) or [])[:3]:
+        if not isinstance(item, dict):
+            continue
+        productions.append(
+            {
+                "id": str(item.get("production_id") or ""),
+                "title": _clip(item.get("title"), 180),
+                "stage": str(item.get("stage") or "idea"),
+                "format": str(item.get("format") or ""),
+                "shots": int(item.get("shots", 0) or 0),
+                "assets": int(item.get("assets", 0) or 0),
             }
         )
 
@@ -192,6 +213,7 @@ def build_companion_pulse(
             "study_due": due_count,
             "study_projects": int(study_summary.get("projects", 0) or 0),
             "research_open": int(research_summary.get("open", 0) or 0),
+            "production_projects": int(production_summary.get("projects", 0) or 0),
             "inbox_unread": unread,
             "pending_thoughts": len(thoughts),
         },
@@ -205,6 +227,7 @@ def build_companion_pulse(
         "top_tasks": top_tasks,
         "study_projects": study_projects,
         "research_threads": research_threads,
+        "productions": productions,
         "notices": notices,
         "pending_thoughts": thoughts,
         "curiosities": _curiosity_items(mary),

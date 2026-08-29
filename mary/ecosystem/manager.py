@@ -7,6 +7,7 @@ from mary.productivity import CommandCenter, FocusManager, MaryInbox, PersonalSe
 from mary.productivity.research import ResearchNotebook
 from mary.productivity.arcade import MaryArcade
 from mary.study import StudyManager
+from mary.creative import ProductionStudio
 from mary.presence import PresenceManager, PresenceEventType
 from mary.skills import SkillRegistry
 from mary.integrations import twitch_policy_from_environment, obs_policy_from_environment
@@ -25,6 +26,7 @@ class MaryEcosystem:
         self.inbox = MaryInbox(self.root)
         self.study = StudyManager(self.root)
         self.research = ResearchNotebook(self.root)
+        self.production = ProductionStudio(self.root)
         self.arcade = MaryArcade()
         self.metrics = RuntimeMetrics()
         self.skills = SkillRegistry()
@@ -50,6 +52,7 @@ class MaryEcosystem:
             "inbox": self.inbox.summary(),
             "study": {**self.study.summary(), "due_cards": self.study.due_cards(limit=20)},
             "research": {**self.research.summary(), "threads": self.research.list(30)},
+            "production": self.production.snapshot(),
             "arcade": {"games": self.arcade.games()},
             "companion": self.companion_snapshot(),
             "metrics": self.metrics.snapshot(),
@@ -75,6 +78,7 @@ class MaryEcosystem:
             focus=self.focus,
             study=self.study,
             research=self.research,
+            production=self.production,
             inbox=self.inbox,
             presence=self.presence,
         )
@@ -105,6 +109,7 @@ class MaryEcosystem:
                 **self.research.summary(),
                 "threads": self.research.list(30),
             },
+            "production": self.production.snapshot(),
             "companion": self.companion_snapshot(),
             "presence": self.presence.snapshot(),
             "semantics": {
@@ -294,6 +299,72 @@ class MaryEcosystem:
                 },
             )
             return {"ok": True, "note": note}
+
+        if name == "production.create":
+            shots = values.get("shots") or []
+            characters = values.get("characters") or []
+            if not isinstance(shots, list) or not isinstance(characters, list):
+                raise ValueError("production.create shots and characters must be lists")
+            project = self.production.create(
+                title=str(values.get("title") or ""),
+                objective=str(values.get("objective") or ""),
+                shots=shots,
+                characters=characters,
+                format=str(values.get("format") or "short_video"),
+                aspect_ratio=str(values.get("aspect_ratio") or "9:16"),
+                target_seconds=int(values.get("target_seconds", 30) or 30),
+                deliverables=list(values.get("deliverables") or ("master_video", "thumbnail", "caption")),
+                provider_preferences=dict(values.get("provider_preferences") or {}),
+                source=source,
+            )
+            publish(
+                PresenceEventType.PROJECT_CHANGED,
+                f"Production created: {project.get('title', '')}",
+                importance=.6,
+                metadata={"production_id": project.get("production_id"), "stage": project.get("stage")},
+            )
+            return {"ok": True, "production": project}
+
+        if name == "production.set_stage":
+            project = self.production.set_stage(
+                str(values.get("production_id") or ""),
+                str(values.get("stage") or ""),
+            )
+            publish(
+                PresenceEventType.PROJECT_CHANGED,
+                f"Production stage changed: {project.get('title', '')} → {project.get('stage', '')}",
+                importance=.52,
+                metadata={"production_id": project.get("production_id"), "stage": project.get("stage")},
+            )
+            return {"ok": True, "production": project}
+
+        if name == "production.add_asset":
+            asset = self.production.add_asset(
+                str(values.get("production_id") or ""),
+                kind=str(values.get("kind") or ""),
+                uri=str(values.get("uri") or ""),
+                shot_id=str(values.get("shot_id") or ""),
+                provider=str(values.get("provider") or ""),
+                model=str(values.get("model") or ""),
+                status=str(values.get("status") or "candidate"),
+                metadata=values.get("metadata") if isinstance(values.get("metadata"), dict) else {},
+            )
+            publish(
+                PresenceEventType.PROJECT_CHANGED,
+                "A production asset was registered",
+                importance=.46,
+                metadata={"production_id": values.get("production_id"), "asset_id": asset.get("id")},
+            )
+            return {"ok": True, "asset": asset}
+
+        if name == "production.review":
+            review = self.production.review(
+                str(values.get("production_id") or ""),
+                rating=str(values.get("rating") or "neutral"),
+                note=str(values.get("note") or ""),
+                asset_id=str(values.get("asset_id") or ""),
+            )
+            return {"ok": True, "review": review}
 
         if name == "inbox.mark_read":
             notice_id = str(values.get("notice_id") or "")
