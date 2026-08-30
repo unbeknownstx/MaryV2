@@ -11,18 +11,29 @@ from typing import Any
 
 
 class MarySystemContract:
-    VERSION = "v2-breakthrough-12.9-uplift"
+    VERSION = "v2-breakthrough-convergence-character-context-authority-1"
 
     AUTHORITY = {
-        "character_canon": "mary.character + identity/biography/personality authored state",
+        "character_canon": "mary.character bootstrap + CharacterSourcebook creator-authored evidence",
+        "character_evaluation": "MaryEvaluationSet (acceptance evidence only; never identity/memory authority)",
+        "root_authority": "MaryRootAuthority (executable hierarchy/invariants; no mutable state ownership)",
         "creator_relationship": "RelationshipManager/UserModel",
         "memory": "MemoryManager",
         "emotion": "EmotionManager",
         "agency": "Agency",
         "conversation_continuity": "TurnMindState/ConversationContinuity",
+        "conversation_engagement": "ConversationEngagement (depth/initiative policy only; no identity ownership)",
         "relationship_question_continuity": "ConversationLearningBridge (process-local pending question; durable learning remains RelationshipManager)",
+        "experience_development": "GrowthEngine + ExperienceJournal (grounded post-turn development; model dialogue is not durable self-evidence)",
         "provider_routing": "LLMRouter",
         "host_capabilities": "RuntimeEnvironment (process-local; no identity ownership)",
+        "realtime_attention": "RealtimeInteractionCoordinator + AttentionBus (ephemeral priority/interruption state only)",
+        "perception_boundary": "PerceptionDirector (objective environment context; no creator or memory authority)",
+        "distributed_compute": "NodeRegistry (replaceable capability resources; never identity/state ownership)",
+        "semantic_retrieval": "HybridReservoirRetriever + SemanticVectorIndex (derived candidate retrieval only)",
+        "response_feedback": "ResponseFeedbackStore (explicit private evaluation/training data; never character-state authority)",
+        "creative_production": "MaryEcosystem/ProductionStudio (canonical project artifacts only; never identity or automatic execution authority)",
+        "creative_services": "CreativeServiceRegistry (secret-free capability/cost discovery only; no execution/spending authority)",
         "turn_routing_policy": "TurnPolicyEngine",
         "task_orchestration": "TaskOrchestrator + OrchestrationExecutor",
         "tools": "ToolManager",
@@ -42,6 +53,9 @@ class MarySystemContract:
         emotion = getattr(mary, "emotion", None)
         avatar = getattr(mary, "avatar", None)
         runtime_environment = getattr(mary, "runtime_environment", None)
+        sourcebook = getattr(mary, "character_sourcebook", None)
+        character_evaluation = getattr(mary, "character_evaluation", None)
+        root_authority = getattr(mary, "root_authority", None)
 
         shared_router = all(
             item is None or getattr(item, "router", getattr(item, "llm", None)) is router
@@ -85,6 +99,21 @@ class MarySystemContract:
             ),
             "paid_openai_sticky": False,
             "background_browsing": False,
+            "character_sourcebook": (
+                sourcebook.snapshot()
+                if callable(getattr(sourcebook, "snapshot", None))
+                else {"enabled": False}
+            ),
+            "character_evaluation": (
+                character_evaluation.snapshot()
+                if callable(getattr(character_evaluation, "snapshot", None))
+                else {"enabled": False}
+            ),
+            "root_authority": (
+                root_authority.snapshot(mary)
+                if callable(getattr(root_authority, "snapshot", None))
+                else {"version": "missing"}
+            ),
         }
 
     def validate(self, mary: Any) -> list[str]:
@@ -100,4 +129,7 @@ class MarySystemContract:
         task = list(snap.get("task_route", []))
         if task and task[0] == "openai":
             issues.append("paid OpenAI leaked into the normal task route")
-        return issues
+        root = getattr(mary, "root_authority", None)
+        if callable(getattr(root, "validate", None)):
+            issues.extend(str(item) for item in root.validate(mary))
+        return list(dict.fromkeys(issues))

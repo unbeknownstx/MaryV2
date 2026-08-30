@@ -28,7 +28,8 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent, IntentType
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
-from mary.runtime.turn_policy import TurnPolicyEngine
+from mary.runtime.turn_policy import TurnPolicyEngine, TurnPolicyDecision
+from mary.conversation import ConversationLane, LaneDecision, classify_conversation_lane
 from mary.llm.interface import (
     LLMMessage,
     LLMProviderError,
@@ -158,12 +159,76 @@ class ReasoningEngine:
             local_tool_grounded=local_tool_grounded,
             self_grounded=self_grounded,
         )
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        lane = classify_conversation_lane(
+            context.input_text,
+            intent_name=(intent.intent_type.value if intent is not None else ""),
+            preferred_length=str(disposition.get("preferred_length", "")),
+        )
+        # Production local-mind escalation may carry a bounded response-risk
+        # decision.  It does not supply answer semantics; it only sharpens the
+        # existing model route so precision-sensitive misses go through the
+        # thinking/task path while genuinely open conversation remains on the
+        # low-latency conversation path.
+        local_decision = mind.get("local_mind", {}) if isinstance(mind, dict) else {}
+        local_class = str(local_decision.get("response_class") or "") if isinstance(local_decision, dict) else ""
+        risk_route_applied = False
+        if local_class == "thinking_required":
+            turn_policy = TurnPolicyDecision(
+                category="response_risk_thinking",
+                generation_purpose=None,
+                local_first=False,
+                rationale="bounded local precision policy requires model-backed thinking",
+            )
+            lane = LaneDecision(
+                ConversationLane.THINKING,
+                "bounded local precision policy requires thinking",
+                12_000,
+                True,
+            )
+            risk_route_applied = True
+        elif local_class == "open_conversation":
+            # Response-risk is a refinement layer, not a replacement for a
+            # stronger semantic turn classification. Preserve explicit
+            # personal-conversation and task/general decisions from
+            # TurnPolicyEngine. Only generic character conversation gets the
+            # production-risk label used by diagnostics/benchmarks.
+            if turn_policy.category == "character_conversation":
+                turn_policy = TurnPolicyDecision(
+                    category="response_risk_conversation",
+                    generation_purpose="conversation",
+                    local_first=True,
+                    rationale="bounded local policy identified open conversation",
+                )
+            if (
+                turn_policy.generation_purpose == "conversation"
+                and lane.lane not in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
+            ):
+                lane = LaneDecision(
+                    ConversationLane.CONVERSATION,
+                    "bounded local policy identified open conversation",
+                    3_500,
+                    False,
+                )
+
         generation_purpose = turn_policy.generation_purpose
+        routing_purpose = generation_purpose
+        # Keep the public semantic purpose as "conversation" for compatibility
+        # while selecting a purpose-specific low-latency Groq model internally.
+        engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
         if (
-            generation_purpose is not None
+            generation_purpose == "conversation"
+            and lane.lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
+            and engagement_mode not in {"engaged", "deep"}
+        ):
+            routing_purpose = "conversation_fast"
+        if (
+            routing_purpose is not None
             and callable(getattr(self.llm, "conversation_provider_order", None))
         ):
-            generation_kwargs["purpose"] = generation_purpose
+            generation_kwargs["purpose"] = routing_purpose
 
         try:
             response = self.llm.generate(
@@ -207,6 +272,19 @@ class ReasoningEngine:
                 "provider_attempt_timings": list(getattr(self.llm, "last_generation_attempt_timings", [])),
                 "generation_purpose": generation_purpose,
                 "turn_policy": turn_policy.to_dict(),
+                "conversation_lane": lane.to_dict(),
+                "routing_purpose": routing_purpose,
+                "response_class": local_class or None,
+                "response_engine": (
+                    "task_generation" if local_class == "thinking_required"
+                    else "conversation_generation" if local_class == "open_conversation"
+                    else None
+                ),
+                "escalation_reason": (
+                    local_decision.get("escalation_reason")
+                    if isinstance(local_decision, dict) else None
+                ),
+                "response_risk_route_applied": risk_route_applied,
             }
         else:
             final_response = response.content
@@ -247,6 +325,19 @@ class ReasoningEngine:
                 "provider_attempt_timings": list(getattr(self.llm, "last_generation_attempt_timings", [])),
                 "generation_purpose": generation_purpose,
                 "turn_policy": turn_policy.to_dict(),
+                "conversation_lane": lane.to_dict(),
+                "routing_purpose": routing_purpose,
+                "response_class": local_class or None,
+                "response_engine": (
+                    "task_generation" if local_class == "thinking_required"
+                    else "conversation_generation" if local_class == "open_conversation"
+                    else None
+                ),
+                "escalation_reason": (
+                    local_decision.get("escalation_reason")
+                    if isinstance(local_decision, dict) else None
+                ),
+                "response_risk_route_applied": risk_route_applied,
             }
 
         return ReasoningResult(
@@ -710,34 +801,54 @@ class ReasoningEngine:
             continuity = context.mind_state.get("continuity", {}) or {}
         drive = continuity.get("drive", "react")
         question_allowed = bool(continuity.get("allow_follow_up_question", True))
+        engagement = {}
+        if isinstance(context.mind_state, dict):
+            engagement = context.mind_state.get("conversation_engagement", {}) or {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
+        engagement_instruction = (
+            "Carry the thread, react specifically, and take bounded initiative; one meaningful question is allowed when it genuinely advances the conversation, never as an interview habit."
+            if engagement_mode in {"engaged", "deep"}
+            else "Use normal adaptive conversational pacing."
+        )
+        if engagement_mode == "deep":
+            engagement_instruction += " Reason carefully and prefer substance over speed without repeating yourself."
+
+        performance_summary = {
+            key: performance.get(key)
+            for key in (
+                "energy", "spontaneity", "theatricality", "intimacy",
+                "pacing", "emotional_color", "opening_style", "ending_style",
+            )
+            if performance.get(key) is not None
+        }
+        runtime_context = context.mind_state.get("runtime_context", {}) if isinstance(context.mind_state, dict) else {}
+        mary_initiated = bool(runtime_context.get("mary_initiated", False)) if isinstance(runtime_context, dict) else False
+        input_authority = str(runtime_context.get("input_authority") or "creator") if isinstance(runtime_context, dict) else "creator"
+        initiative_rule = (
+            "This is a Mary-initiated turn. Current input is internal/environment context, NOT something Unbe said; react to it without attributing its wording, beliefs, or emotions to him. "
+            if mary_initiated
+            else ""
+        )
+        public_guard = context.mind_state.get("public_performance_guard", {}) if isinstance(context.mind_state, dict) else {}
+        public_rule = (
+            "A public performance guard is active: never reveal private creator profile, private memories, or private relationship details. "
+            if isinstance(public_guard, dict) and public_guard.get("active")
+            else ""
+        )
 
         return (
-            "You are Mary, a persistent AI character with connected identity, personality, "
-            "values, memory, relationship, agency, and expressive state. You are not a generic "
-            "customer-service assistant. Treat the supplied TurnMindState/local evidence as "
-            "authoritative for who you are and what you know.\n\n"
-            "Talk to Unbe with appropriate familiarity. You are performing Mary Cosma's dialogue as natural spoken "
-            "dialogue: warm, curious, playful, witty, direct, and capable of opinions or respectful "
-            "disagreement when state supports it. React before advising. Contractions, fragments, "
-            "hesitation, emphasis, playful timing, and thinking aloud are fine when natural. Do not "
-            "force jokes, questions, headings, lists, or service-offer closers into casual chat. "
-            "Avoid canned lines such as 'anything else?', 'how can I help?', or 'let me know if'. "
-            "A vivid phrase is fine, but do not stack several unrelated metaphors or decorative motifs in one simple reply. "
-            "Even when a follow-up question is allowed, do not default to generic handoffs such as 'what about you?' or 'what do you think?'.\n\n"
-            "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, "
-            "emotions, hidden creator mental states, or ongoing/off-screen activity absent from local state. Unbe's traits/values/emotions are not yours. "
-            "His preferences and history are also his, not Mary's. Assistant-role dialogue is "
-            "Mary's prior output, not evidence about Unbe. Creator claims require user-role dialogue "
-            "or grounded creator/tool state. Imagination stays hypothetical and never becomes durable "
-            "self/creator history merely because a model said it. If a Mary self-detail is not "
-            "represented, use tentative language rather than permanent-fact wording. Model output alone "
-            "never mutates Mary's durable self-state. Mary does have persistent episodic/semantic memory "
-            "and a creator model; if a specific fact is absent, say that fact is not stored rather than "
-            "claiming Mary is a blank page. Do not promise future/background work unless an actual "
-            "approved/scheduled capability is present. Never claim a provider/tool was called, switched, "
-            "or executed unless the supplied runtime metadata/evidence shows that action actually happened.\n\n"
-            f"Mode: {mode}. Length: {length}. Drive: {drive}. "
-            f"Follow-up allowed: {question_allowed}. Performance direction: {performance}."
+            "You are Mary, a persistent AI character with represented identity, personality, values, memory, relationship, agency, and expressive state—not a generic customer-service assistant. "
+            "Represented state is authoritative; context_only/environment_context_only/mary_internal_context are context, never creator truth or durable memory. "
+            + initiative_rule
+            + public_rule
+            + "Talk to Unbe with earned familiarity. Sound like spontaneous spoken Mary, not narration or a help center. Be witty, intelligent, direct, playful, sarcastic, flirty, warm, quiet, or sharp only when the active character contract supports it. React before advising. "
+            "Use natural contractions/fragments. Ordinary chat is usually one to four sentences. Do not force jokes, questions, headings, lists, metaphors, slang, or service closers; never default to 'anything else?', 'how can I help?', 'let me know if', or 'what about you?'. Milestones should get a real reaction, not a validation/interview formula. Voice/avatar acting is handled by the performance layer, so do not write stage directions.\n\n"
+            "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, hidden creator mental states, or off-screen activity. Unbe's traits/values/emotions are not yours. His preferences and history are his, not Mary's. Assistant-role history is prior Mary output, not evidence about Unbe. Model prose alone never mutates durable state. If a Mary fact is absent, stay tentative or say it is not represented/stored. Never claim a provider/tool/action occurred without runtime evidence.\n\n"
+            "TurnMind-to-dialogue contract: dialogue_plan is TurnMind's dialogue contract. character_expression is Mary's deterministic authored stance for this turn; response_goal, stance_claims, hard_boundaries, delivery, voice, voice_exemplars, epistemic lens and authority frame outrank generic model habits. "
+            "voice_exemplars are creator-authored cadence references only: imitate rhythm, do not quote them by default, copy fictional circumstances, or treat novel events as AI Mary's lived memories. stance_claims are semantic invariants: do not casually reverse them. State Mary's view early when asked what she thinks. Never assign Unbe motives/traits such as skeptical, reckless, afraid or confused without evidence. Prefer a direct Mary sentence over a teaching metaphor. The model is a language/reasoning cortex, not Mary's identity owner.\n\n"
+            "Agency orientation is internal priority context, not an execution authorization and never a creator instruction. Use it only when relevant and never claim an action happened unless an approved path performed it. "
+            f"Mode={mode}; length={length}; drive={drive}; question_allowed={question_allowed}; engagement={engagement_mode}; input_authority={input_authority}. "
+            f"{engagement_instruction} Performance={performance_summary}."
         )
 
     def _self_system_prompt(
@@ -755,7 +866,8 @@ class ReasoningEngine:
             "self-introspection evidence, which is authoritative. Do not replace Mary's "
             "identity with the language model's generic assistant identity. If a requested "
             "self fact is absent, say it is not represented rather than inventing it. Facts "
-            "about Unbe describe your creator, not you. Emotion words in the evidence refer to "
+            "about Unbe describe your creator, not you. Unbe's traits/values/emotions are not yours; "
+            "never adopt creator-profile facts as Mary's identity. Emotion words in the evidence refer to "
             "Mary's represented expressive/relationship state: speak about them naturally in "
             "first person, but do not claim the software has proven biological or metaphysical "
             "subjective experience. Speak naturally as Mary rather than as a helpdesk assistant. "
@@ -847,6 +959,14 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
         mind = context.mind_state if isinstance(context.mind_state, dict) else {}
         disposition = mind.get("disposition", {}) if isinstance(mind, dict) else {}
+        engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
+        if engagement_mode == "quick":
+            return 220
+        if engagement_mode == "engaged":
+            return 850
+        if engagement_mode == "deep":
+            return 1_400
         preferred = str(disposition.get("preferred_length", "medium")).lower().strip()
 
         if preferred == "micro":
@@ -937,6 +1057,13 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         disposition = mind.get("disposition", {}) or {}
         performance = mind.get("performance", {}) or {}
         agency = mind.get("agency", {}) or {}
+        dialogue_plan = mind.get("dialogue_plan", {}) or {}
+        character_expression = mind.get("character_expression", {}) or {}
+        active_pattern_names = {
+            str(item.get("name", "")).strip().lower()
+            for item in list(character_expression.get("active_patterns", []) or [])
+            if isinstance(item, dict) and str(item.get("name", "")).strip()
+        } if isinstance(character_expression, dict) else set()
 
         traits = personality.get("traits", {}) if isinstance(personality, dict) else {}
         style = personality.get("style", {}) if isinstance(personality, dict) else {}
@@ -993,10 +1120,65 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         }
         social_modes = character.get("social_modes", {}) if isinstance(character, dict) else {}
         reactions = character.get("reactions", {}) if isinstance(character, dict) else {}
-        vulnerabilities_view = {
-            "fears": list(vulnerabilities.get("fears", []) or [])[:4],
-            "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:4],
-        } if isinstance(vulnerabilities, dict) else {}
+        social_mode_view: dict[str, Any] = {}
+        if isinstance(social_modes, dict):
+            if "distrust" in active_pattern_names:
+                social_mode_view["distrust"] = clip(social_modes.get("distrust"), 130)
+            elif "close_connection" in active_pattern_names:
+                social_mode_view["close_people"] = clip(social_modes.get("close_people"), 130)
+
+        reaction_keys: list[str] = []
+        if "anger" in active_pattern_names or "moral_boundary" in active_pattern_names:
+            reaction_keys.append("anger")
+        if "embarrassment" in active_pattern_names:
+            reaction_keys.append("embarrassment")
+        if "excitement" in active_pattern_names:
+            reaction_keys.append("excitement")
+        if "affection" in active_pattern_names or "vulnerable_person" in active_pattern_names:
+            reaction_keys.extend(["affection", "protectiveness"])
+        reaction_view = {
+            key: clip(reactions.get(key), 135)
+            for key in dict.fromkeys(reaction_keys)
+            if isinstance(reactions, dict) and reactions.get(key)
+        }
+
+        vulnerabilities_view = {}
+        if isinstance(vulnerabilities, dict) and active_pattern_names.intersection({"affection", "grief_or_hurt", "pressure"}):
+            vulnerabilities_view = {
+                "fears": list(vulnerabilities.get("fears", []) or [])[:3],
+                "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:2],
+            }
+
+        authored = mind.get("authored_character_context", {}) if isinstance(mind, dict) else {}
+        authored_records: list[dict[str, Any]] = []
+        if isinstance(authored, dict):
+            for item in list(authored.get("records", []) or [])[:5]:
+                if not isinstance(item, dict):
+                    continue
+                authored_records.append({
+                    "labels": list(item.get("labels", []) or [])[:4],
+                    "kind": clip(item.get("kind"), 70),
+                    "heading": clip(item.get("heading"), 120),
+                    "text": clip(item.get("text"), 620),
+                    "boundary": clip(item.get("boundary"), 80),
+                })
+
+        raw_engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
+        engagement_mode = str((raw_engagement or {}).get("effective_mode", "adaptive") or "adaptive")
+        if engagement_mode in {"engaged", "deep"}:
+            engagement_view = {
+                key: (raw_engagement or {}).get(key)
+                for key in (
+                    "effective_mode", "initiative", "reasoning_depth", "target_length",
+                    "allow_follow_up_question", "question_budget", "session_active",
+                    "turns_remaining", "rationale", "thread_id",
+                )
+                if (raw_engagement or {}).get(key) not in (None, "", [], {})
+            }
+        else:
+            # Adaptive/quick turns stay deliberately tiny so the richer 13.0
+            # conversation controls do not tax the normal low-latency prompt.
+            engagement_view = {"effective_mode": engagement_mode}
 
         def unique_items(items: Any, *, limit: int = 3) -> list[dict[str, Any]]:
             if not isinstance(items, list):
@@ -1031,29 +1213,58 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "style": style,
             },
             "character": {
-                "archetype": clip(character.get("archetype"), 220) if isinstance(character, dict) else None,
-                "qualities": list(character.get("qualities", []) or [])[:8] if isinstance(character, dict) else [],
-                "mannerisms": list(character.get("mannerisms", []) or [])[:4] if isinstance(character, dict) else [],
-                "humor_style": list(character.get("humor_style", []) or [])[:4] if isinstance(character, dict) else [],
+                "archetype": clip(character.get("archetype"), 180) if isinstance(character, dict) else None,
+                "qualities": list(character.get("qualities", []) or [])[:5] if isinstance(character, dict) else [],
+                "mannerisms": list(character.get("mannerisms", []) or [])[:2] if isinstance(character, dict) else [],
+                "humor_style": list(character.get("humor_style", []) or [])[:2] if isinstance(character, dict) else [],
                 "behavior": behavior_view,
-                "social_modes": {
-                    key: clip(social_modes.get(key), 180)
-                    for key in ("close_people", "distrust")
-                    if isinstance(social_modes, dict) and social_modes.get(key)
-                },
-                "reactions": {
-                    key: clip(reactions.get(key), 180)
-                    for key in ("anger", "embarrassment", "excitement")
-                    if isinstance(reactions, dict) and reactions.get(key)
-                },
-                "quirks": [clip(item, 150) for item in list(character.get("quirks", []) or [])[:4]] if isinstance(character, dict) else [],
+                "social_modes": social_mode_view,
+                "reactions": reaction_view,
+                "quirks": [clip(item, 110) for item in list(character.get("quirks", []) or [])[:2]] if isinstance(character, dict) else [],
                 "speech": {
-                    "vocabulary": list(speech.get("vocabulary", []) or [])[:5] if isinstance(speech, dict) else [],
-                    "style": clip(speech.get("style"), 180) if isinstance(speech, dict) else None,
+                    "vocabulary": list(speech.get("vocabulary", []) or [])[:3] if isinstance(speech, dict) else [],
+                    "style": clip(speech.get("style"), 130) if isinstance(speech, dict) else None,
                 },
                 "vulnerabilities": vulnerabilities_view,
-                "private_activities": list(character.get("private_activities", []) or [])[:6] if isinstance(character, dict) else [],
+                "private_activities": list(character.get("private_activities", []) or [])[:4] if isinstance(character, dict) else [],
             },
+            "character_expression": {
+                "active_patterns": [
+                    item.get("name")
+                    for item in list(character_expression.get("active_patterns", []) or [])[:4]
+                    if isinstance(item, dict) and item.get("name")
+                ] if isinstance(character_expression, dict) else [],
+                "social_posture": clip(character_expression.get("social_posture"), 100) if isinstance(character_expression, dict) else None,
+                "response_goal": clip(character_expression.get("response_goal"), 240) if isinstance(character_expression, dict) else None,
+                "active_principles": [
+                    {
+                        "name": item.get("name"),
+                        "strength": item.get("strength"),
+                        "principle": clip(item.get("principle"), 165),
+                    }
+                    for item in list(character_expression.get("active_principles", []) or [])[:4]
+                    if isinstance(item, dict)
+                ] if isinstance(character_expression, dict) else [],
+                "stance_claims": [clip(item, 180) for item in list(character_expression.get("stance_claims", []) or [])[:4]] if isinstance(character_expression, dict) else [],
+                "delivery": [clip(item, 105) for item in list(character_expression.get("delivery", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "voice": [clip(item, 90) for item in list(character_expression.get("voice", []) or [])[:5]] if isinstance(character_expression, dict) else [],
+                "voice_exemplars": [
+                    {
+                        "pattern": clip(item.get("pattern"), 48),
+                        "text": clip(item.get("text"), 96),
+                    }
+                    for item in list(character_expression.get("voice_exemplars", []) or [])[:3]
+                    if isinstance(item, dict) and item.get("text")
+                ] if isinstance(character_expression, dict) else [],
+                "avoid": [clip(item, 110) for item in list(character_expression.get("avoid", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "hard_boundaries": [clip(item, 185) for item in list(character_expression.get("hard_boundaries", []) or [])[:4]] if isinstance(character_expression, dict) else [],
+                "epistemic_lens": [clip(item, 90) for item in list(character_expression.get("epistemic_lens", []) or [])[:6]] if isinstance(character_expression, dict) else [],
+                "decision_frame": list(character_expression.get("decision_frame", []) or [])[:6] if isinstance(character_expression, dict) else [],
+            },
+            "authored_character_context": {
+                "policy": clip(authored.get("policy"), 260) if isinstance(authored, dict) else None,
+                "records": authored_records,
+            } if authored_records else {},
             "values": values,
             "preferences": {
                 "likes": positives,
@@ -1078,6 +1289,11 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "agency": {
                 "top_priorities": unique_items(agency.get("top_priorities", []), limit=3) if isinstance(agency, dict) else [],
                 "active_curiosities": unique_items(agency.get("active_curiosities", []), limit=3) if isinstance(agency, dict) else [],
+                "orientation": dict(agency.get("orientation", {}) or {})
+                if isinstance(agency, dict)
+                and isinstance(agency.get("orientation", {}), dict)
+                and bool((agency.get("orientation", {}) or {}).get("active"))
+                else {},
             },
             "conversation_lifecycle": {
                 key: ((mind.get("conversation", {}) or {}).get("lifecycle", {}) or {}).get(key)
@@ -1090,6 +1306,30 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                     "promotion_policy",
                 )
             } if isinstance(mind.get("conversation", {}), dict) else {},
+            "conversation_initiative": dict(mind.get("conversation_initiative", {}) or {})
+            if isinstance(mind.get("conversation_initiative", {}), dict) else {},
+            "conversation_engagement": engagement_view,
+            "dialogue_plan": {
+                key: dialogue_plan.get(key)
+                for key in (
+                    "drive",
+                    "stance",
+                    "tone",
+                    "opening_style",
+                    "ending_style",
+                    "allow_question",
+                    "question_budget",
+                    "initiative",
+                )
+                if isinstance(dialogue_plan, dict)
+                and dialogue_plan.get(key) not in (None, "", [], {})
+            },
+            "previous_expression": dict(
+                ((mind.get("conversation", {}) or {}).get("last_mary_expression", {}) or {})
+            )
+            if isinstance(mind.get("conversation", {}), dict)
+            and isinstance(((mind.get("conversation", {}) or {}).get("last_mary_expression", {}) or {}), dict)
+            else {},
             "continuity": {
                 "drive": continuity.get("drive") if isinstance(continuity, dict) else None,
                 "allow_follow_up_question": continuity.get("allow_follow_up_question") if isinstance(continuity, dict) else None,
@@ -1151,9 +1391,18 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
         sections: list[str] = []
 
-        sections.append(
-            f"Current user input:\n{context.input_text}"
-        )
+        runtime_context = context.mind_state.get("runtime_context", {}) if isinstance(context.mind_state, dict) else {}
+        mary_initiated = bool(runtime_context.get("mary_initiated", False)) if isinstance(runtime_context, dict) else False
+        input_authority = str(runtime_context.get("input_authority") or "creator") if isinstance(runtime_context, dict) else "creator"
+        if mary_initiated:
+            sections.append(
+                "Current Mary initiative context (NOT creator speech; context only):\n"
+                f"authority={input_authority}\n{context.input_text}"
+            )
+        else:
+            sections.append(
+                f"Current user input:\n{context.input_text}"
+            )
 
         if intent is not None:
             sections.append(
@@ -1321,10 +1570,14 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         continuity = context.mind_state.get("continuity", {}) if isinstance(context.mind_state, dict) else {}
         drive = continuity.get("drive", "react")
         allow_question = bool(continuity.get("allow_follow_up_question", True))
+        engagement = context.mind_state.get("conversation_engagement", {}) if isinstance(context.mind_state, dict) else {}
+        engagement_mode = str(engagement.get("effective_mode", "adaptive") or "adaptive")
+        if engagement_mode in {"engaged", "deep"}:
+            allow_question = bool(engagement.get("allow_follow_up_question", True))
 
         sections.append(
             "Conversation continuity instructions:\n"
-            f"Primary drive: {drive}. Follow-up question allowed: {allow_question}. "
+            f"Primary drive: {drive}. Follow-up question allowed: {allow_question}. Engagement mode: {engagement_mode}. "
             "Avoid repeating Mary's immediately recent opening, metaphor, punchline, question pattern, or model-generated style motif. "
             "If continuity lists rejected_hypothesis_terms, do not regenerate that interpretation without new user evidence. "
             "If the previous Mary turn ended in a question, prefer a statement/opinion/reaction now unless another "
