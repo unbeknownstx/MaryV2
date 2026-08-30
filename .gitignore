@@ -24,6 +24,10 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Generated state audit/reconciliation reports
+/mary_state_*_inventory.json
+/mary_state_reconciliation*.json
+
 # Runtime/benchmark reports and local backups
 runtime_reports/
 backups/

@@ -21,3 +21,19 @@ def test_structure_gate_rejects_repo_local_data(tmp_path):
             path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "data").mkdir()
     assert any("forbidden active root directory: data" in item for item in violations(tmp_path))
+
+
+def test_structure_gate_rejects_generated_state_report_at_root(tmp_path):
+    for rel in (
+        "README.md", "MARY_ROOT.md", "AGENTS.md", "mary", "tests", "scripts",
+        "docs/architecture/SYSTEM_REGISTRY.md", "character_sources/active",
+        "character_sources/drafts", "projects/unbeknownst",
+    ):
+        path = tmp_path / rel
+        if Path(rel).suffix:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("x", encoding="utf-8")
+        else:
+            path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "mary_state_local_inventory.json").write_text("{}", encoding="utf-8")
+    assert any("generated Mary state report" in item for item in violations(tmp_path))

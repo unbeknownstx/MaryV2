@@ -45,6 +45,8 @@ def violations(root: Path = ROOT) -> list[str]:
             errors.append(f"historical root file belongs under docs/history: {item.name}")
         if item.is_file() and (item.suffix.lower() in {".patch", ".diff"} or "HOTFIX" in item.name.upper()):
             errors.append(f"historical patch/hotfix belongs under docs/history: {item.name}")
+        if item.is_file() and item.name.startswith("mary_state_") and item.suffix.lower() == ".json":
+            errors.append(f"generated Mary state report must not live in canonical root: {item.name}")
 
     for base in (root / "mary", root / "tests", root / "scripts"):
         if not base.exists():
