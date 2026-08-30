@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
 
-from .production import CharacterAnchor, ProductionPlan, ProductionStage, Shot, build_production_plan, capability_jobs
+from .production import CharacterAnchor, CreativeReference, ProductionPlan, ProductionStage, Shot, build_production_plan, capability_jobs
 
 
 def _now() -> str:
@@ -28,7 +28,7 @@ def _clip(value: Any, limit: int) -> str:
 class ProductionStudio:
     """Persistent creative-production workspace attached to one MaryEcosystem."""
 
-    VERSION = "1"
+    VERSION = "2"
     _STAGES = {item.value for item in ProductionStage}
 
     def __init__(self, root: str | Path) -> None:
@@ -65,10 +65,15 @@ class ProductionStudio:
         target_seconds: int = 30,
         deliverables: Iterable[str] = ("master_video", "thumbnail", "caption"),
         provider_preferences: dict[str, str] | None = None,
+        references: Iterable[dict[str, Any] | CreativeReference] = (),
+        creative_intent: Iterable[str] = (),
+        style_constraints: Iterable[str] = (),
+        budget_ceiling_usd: float | None = None,
         source: str = "creator_directed",
     ) -> dict[str, Any]:
         shot_items = tuple(self._shot(item, index) for index, item in enumerate(shots, start=1))
         character_items = tuple(self._character(item) for item in characters)
+        reference_items = tuple(self._reference(item) for item in references)
         plan = build_production_plan(
             title=title,
             objective=objective,
@@ -79,6 +84,10 @@ class ProductionStudio:
             target_seconds=target_seconds,
             deliverables=deliverables,
             provider_preferences=provider_preferences,
+            references=reference_items,
+            creative_intent=creative_intent,
+            style_constraints=style_constraints,
+            budget_ceiling_usd=budget_ceiling_usd,
         )
         item = plan.to_dict()
         item.update({
@@ -173,7 +182,13 @@ class ProductionStudio:
         self.save()
         return dict(review)
 
-    def jobs(self, production_id: str, *, node_registry: Any = None) -> dict[str, Any]:
+    def jobs(
+        self,
+        production_id: str,
+        *,
+        node_registry: Any = None,
+        service_registry: Any = None,
+    ) -> dict[str, Any]:
         plan = self._plan_from_dict(self.get(production_id))
         jobs = capability_jobs(plan)
         enriched: list[dict[str, Any]] = []
@@ -187,8 +202,25 @@ class ProductionStudio:
                         route = dict(preview(str(job.get("kind") or "")) or {})
                     except Exception:
                         route = {}
-            row["route"] = route
-            row["available"] = bool(route.get("available"))
+            service_quote: dict[str, Any] = {}
+            if service_registry is not None:
+                quote = getattr(service_registry, "quote_job", None)
+                if callable(quote):
+                    try:
+                        service_quote = dict(quote(row) or {})
+                    except Exception:
+                        service_quote = {}
+            row["route"] = {
+                "node": route,
+                "service": service_quote,
+                "selected_surface": (
+                    "node" if bool(route.get("available"))
+                    else "service" if bool(service_quote.get("available"))
+                    else None
+                ),
+            }
+            row["available"] = bool(route.get("available") or service_quote.get("available"))
+            row["estimated_cost_usd"] = service_quote.get("estimated_cost_usd")
             enriched.append(row)
         return {
             "production_id": production_id,
@@ -247,6 +279,7 @@ class ProductionStudio:
             gesture=_clip(item.get("gesture") or "natural", 120),
             audio_notes=str(item.get("audio_notes") or "")[:800],
             continuity=tuple(str(x)[:240] for x in list(item.get("continuity", []) or [])[:32]),
+            source_refs=tuple(str(x)[:1000] for x in list(item.get("source_refs", []) or [])[:32]),
         )
 
     @staticmethod
@@ -264,6 +297,24 @@ class ProductionStudio:
             behavior_notes=tuple(str(x)[:300] for x in list(item.get("behavior_notes", []) or [])[:32]),
             reference_assets=tuple(str(x)[:1000] for x in list(item.get("reference_assets", []) or [])[:32]),
             provenance=_clip(item.get("provenance") or "creator_authored", 80),
+        )
+
+    @staticmethod
+    def _reference(item: dict[str, Any] | CreativeReference) -> CreativeReference:
+        if isinstance(item, CreativeReference):
+            return item
+        if not isinstance(item, dict):
+            raise ValueError("references must contain objects")
+        uri = str(item.get("uri") or item.get("path") or "")[:2000]
+        kind = _clip(item.get("kind") or "reference", 80)
+        if not uri:
+            raise ValueError("creative reference uri is required")
+        return CreativeReference(
+            uri=uri,
+            kind=kind or "reference",
+            role=_clip(item.get("role") or "reference", 80),
+            provenance=_clip(item.get("provenance") or "creator_authored", 80),
+            notes=str(item.get("notes") or "")[:1000],
         )
 
     @staticmethod
@@ -296,4 +347,11 @@ class ProductionStudio:
             approval_gates=tuple(str(x)[:80] for x in list(item.get("approval_gates", []) or [])),
             provenance=str(item.get("provenance") or "creator_directed"),
             version=str(item.get("version") or "1"),
+            references=tuple(cls._reference(x) for x in list(item.get("references", []) or [])),
+            creative_intent=tuple(str(x)[:500] for x in list(item.get("creative_intent", []) or [])[:32]),
+            style_constraints=tuple(str(x)[:500] for x in list(item.get("style_constraints", []) or [])[:32]),
+            budget_ceiling_usd=(
+                None if item.get("budget_ceiling_usd") is None
+                else max(0.0, float(item.get("budget_ceiling_usd")))
+            ),
         )

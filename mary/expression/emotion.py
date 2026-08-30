@@ -203,6 +203,13 @@ class EmotionalState:
 
     confidence: float = 1.0
 
+    # Emotional momentum is short-lived expressive continuity, not personality.
+    # Strong/repeated events give a state inertia so Mary does not snap back to
+    # neutral on the next mundane turn.
+    momentum: float = 0.0
+
+    resting: Emotion = Emotion.NEUTRAL
+
     secondary: dict[
         Emotion,
         float,
@@ -245,6 +252,13 @@ class EmotionalState:
         self.confidence = _clamp(
             self.confidence
         )
+
+        self.momentum = _clamp(self.momentum)
+        if not isinstance(self.resting, Emotion):
+            try:
+                self.resting = Emotion(str(self.resting))
+            except ValueError:
+                self.resting = Emotion.NEUTRAL
 
         self.secondary = {
             emotion: _clamp(
@@ -290,6 +304,10 @@ class EmotionalState:
                 signal.intensity,
                 weight=0.65,
             )
+            self.momentum = max(
+                self.momentum,
+                _blend(self.momentum, signal.intensity, weight=0.55),
+            )
 
         else:
             self.secondary[
@@ -334,6 +352,7 @@ class EmotionalState:
                 self.intensity = (
                     signal.intensity
                 )
+                self.momentum = max(self.momentum * 0.5, signal.intensity)
 
                 self.secondary.pop(
                     signal.emotion,
@@ -355,63 +374,41 @@ class EmotionalState:
         self,
         amount: float = 0.05,
     ) -> None:
-        """
-        Gradually reduce emotional intensity.
+        """Gradually relax expression while preserving short-lived momentum.
 
-        This prevents temporary emotional signals from becoming
-        permanent states.
-
-        The default decay is intentionally conservative.
+        ``momentum`` is deliberately ephemeral.  It makes a strong state decay
+        more naturally across ordinary turns, but it always decays and never
+        writes personality/developed-self state.
         """
 
-        amount = _clamp(
-            amount
-        )
+        amount = _clamp(amount)
+        previous_momentum = self.momentum
+        self.momentum = max(0.0, self.momentum - (amount * 0.45))
 
-        self.intensity = max(
-            0.0,
-            self.intensity - amount,
-        )
+        # High momentum resists an immediate reset, while a state with no
+        # momentum preserves the legacy decay rate exactly.
+        resistance = 1.0 - (0.65 * previous_momentum)
+        effective_amount = amount * max(0.25, resistance)
+        self.intensity = max(0.0, self.intensity - effective_amount)
 
-        updated_secondary: dict[
-            Emotion,
-            float,
-        ] = {}
+        # A fading but still meaningful emotional residue remains expressible
+        # until momentum itself has relaxed. This avoids primary=neutral after
+        # one or two mundane turns following a strong event.
+        if self.primary != self.resting and self.momentum > 0.03:
+            residue_floor = min(0.16, self.momentum * 0.16)
+            self.intensity = max(self.intensity, residue_floor)
 
-        for emotion, intensity in (
-            self.secondary.items()
-        ):
-            remaining = max(
-                0.0,
-                intensity - amount,
-            )
-
+        updated_secondary: dict[Emotion, float] = {}
+        for emotion, intensity in self.secondary.items():
+            remaining = max(0.0, intensity - amount)
             if remaining > 0.01:
-                updated_secondary[
-                    emotion
-                ] = remaining
+                updated_secondary[emotion] = remaining
+        self.secondary = updated_secondary
 
-        self.secondary = (
-            updated_secondary
-        )
-
-        if (
-            self.intensity
-            <= 0.01
-        ):
+        if self.intensity <= 0.01 and self.momentum <= 0.02:
             self.intensity = 0.0
-
-            if (
-                self.primary
-                != Emotion.NEUTRAL
-            ):
-                self.secondary[
-                    self.primary
-                ] = 0.0
-
-                self.primary = (
-                    Emotion.NEUTRAL
-                )
+            if self.primary != self.resting:
+                self.primary = self.resting
 
         self.updated_at = time()
 
@@ -492,6 +489,8 @@ class EmotionalState:
             "valence": self.valence,
             "arousal": self.arousal,
             "confidence": self.confidence,
+            "momentum": self.momentum,
+            "resting": self.resting.value,
             "secondary": {
                 emotion.value: intensity
                 for emotion, intensity
@@ -570,6 +569,8 @@ class EmotionalState:
                     1.0,
                 )
             ),
+            momentum=float(data.get("momentum", 0.0) or 0.0),
+            resting=Emotion(str(data.get("resting", Emotion.NEUTRAL.value))),
             secondary=secondary,
             updated_at=float(
                 data.get(
@@ -777,7 +778,7 @@ class EmotionManager:
 
         dimension_weight = min(
             1.0,
-            amount * 1.5,
+            amount * 1.5 * (1.0 - 0.55 * self.state.momentum),
         )
 
         self.state.valence = _blend(

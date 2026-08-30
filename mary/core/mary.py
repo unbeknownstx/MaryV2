@@ -78,6 +78,7 @@ from mary.personality.values import Values
 from mary.personality.preferences import Preferences
 from mary.personality.developed_state import DevelopedSelfStateStore
 from mary.personality.preference_promotion import PreferencePromotionSystem
+from mary.character import CharacterSourcebook, MaryEvaluationSet
 
 from mary.relationship.manager import RelationshipManager
 from mary.relationship.directives import CreatorDirectiveSystem
@@ -128,6 +129,7 @@ from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.turn_envelope import attach_turn_envelope
 from mary.runtime.system_contract import MarySystemContract
+from mary.runtime.root_authority import MaryRootAuthority
 from mary.runtime.environment import RuntimeEnvironment
 from mary.realtime import RealtimeInteractionCoordinator
 from mary.distributed import NodeRegistry
@@ -141,6 +143,7 @@ from mary.mind.production_bridge import (
 )
 from mary.development import GrowthEngine
 from mary.training import ResponseFeedbackStore
+from mary.creative import CreativeServiceRegistry
 
 
 class Mary:
@@ -189,6 +192,13 @@ class Mary:
         # ============================================================
 
         self.character = Character()
+
+        # Creator-authored Mary material (Character Bible, corpus, canon,
+        # performance direction) is a read-only authority source.  It enriches
+        # TurnMind without becoming lived memory or a second mutable personality
+        # database. Empty/unconfigured is a valid bootstrap state.
+        self.character_sourcebook = CharacterSourcebook.from_environment()
+        self.character_evaluation = MaryEvaluationSet.from_environment()
 
         # ============================================================
         # VALUES
@@ -316,6 +326,11 @@ class Mary:
         # host only; the same registry is ready for a later secure cloud/home
         # node transport without moving Mary's identity into a machine record.
         self.node_registry = NodeRegistry.with_local_runtime(self.runtime_environment)
+
+        # External image/video/audio generation services are described through
+        # a secret-free registry. It can quote/advertise capabilities but never
+        # executes or authorizes spending by itself.
+        self.creative_services = CreativeServiceRegistry.from_environment()
 
         # Perception providers must describe before Mary interprets. Raw frames
         # are never stored by this boundary and observations enter the same
@@ -607,6 +622,7 @@ class Mary:
             biography=self.biography,
             personality=self.personality,
             character=self.character,
+            character_sourcebook=self.character_sourcebook,
             values=self.values,
             preferences=self.preferences,
             self_provenance=self.self_provenance,
@@ -647,6 +663,7 @@ class Mary:
         # Read-only architecture contract: proves that the subsystems above still
         # share one router/emotion/authority layout after integration changes.
         self.system_contract = MarySystemContract()
+        self.root_authority = MaryRootAuthority()
 
         # Post-turn development closes the loop from grounded experience to
         # safe memory consolidation, milestones, and strictly evidenced self
@@ -4780,6 +4797,12 @@ class Mary:
                 "principle": "bounded_growth_no_unlimited_collection",
             },
             "architecture_contract": self.system_contract.snapshot(self),
+            "root_authority": self.root_authority.snapshot(self),
+            "character_authority": {
+                "sourcebook": self.character_sourcebook.snapshot(),
+                "evaluation": self.character_evaluation.snapshot(),
+            },
+            "creative_services": self.creative_services.snapshot(),
             "runtime_environment": self.runtime_environment.snapshot(),
             "conversation_learning": self.conversation_learning.status(),
             "conversation_sessions": self.dialogue.session_status(),

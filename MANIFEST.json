@@ -1,0 +1,198 @@
+{
+  "name": "MaryV2 Convergence Upgrade",
+  "date": "2026-08-30",
+  "scope": "V2 maturation/convergence; no generic Instance Platform/Everwork expansion",
+  "test_baseline": "1291 passed, 1 skipped, 0 failed on safe Copy(4) source extraction",
+  "files": [
+    {
+      "path": ".env.example",
+      "kind": "modified",
+      "sha256": "1adebb300580da0e419f1f2c3768a4f367eb3f41007b423ca09f12980a20eecf"
+    },
+    {
+      "path": "mary/character/__init__.py",
+      "kind": "modified",
+      "sha256": "227566d50a900b3a5af4dff5286bef0b851a6a5922e4a948dfbf6f767c277223"
+    },
+    {
+      "path": "mary/cognition/mind_state.py",
+      "kind": "modified",
+      "sha256": "442dac1c5093a940f853bb2115cd8688a4a53dc023cde01bba31f259533c7e8b"
+    },
+    {
+      "path": "mary/cognition/reasoning.py",
+      "kind": "modified",
+      "sha256": "23a252ea1cf9bef4d26ab75e622835279b240222244f088c3a2f101d09955926"
+    },
+    {
+      "path": "mary/core/mary.py",
+      "kind": "modified",
+      "sha256": "5df0a95fe66064e8f1d060d211f802e95f85e62823366b157ab94b3fc204704a"
+    },
+    {
+      "path": "mary/core/service.py",
+      "kind": "modified",
+      "sha256": "da88fc4f8a1521eef402372fa4439189412262e830958e4a1407677db13663d6"
+    },
+    {
+      "path": "mary/creative/__init__.py",
+      "kind": "modified",
+      "sha256": "96cbf4b5691e8e493fd89aa768b7a24b19c1c3c3cda1178b46acfa79bde2cb61"
+    },
+    {
+      "path": "mary/creative/production.py",
+      "kind": "modified",
+      "sha256": "83aa7219943e3689a562a8924ad2811f06e28c6a2c7b144daa259b696f7e88d9"
+    },
+    {
+      "path": "mary/creative/studio.py",
+      "kind": "modified",
+      "sha256": "cf29638ac07d394aac300ab0cd3ad44da70f898a952aa04ef5d76f6586e5514b"
+    },
+    {
+      "path": "mary/ecosystem/manager.py",
+      "kind": "modified",
+      "sha256": "89c4b880b2c70c6e6a309be0317f85976eb6df9f526e8b7df73649df8fdfbf3a"
+    },
+    {
+      "path": "mary/expression/emotion.py",
+      "kind": "modified",
+      "sha256": "c0cc2b02ad82a827e7cde9536de71bf46e8c3fcad4e7dfbf39da0dee5c94d12d"
+    },
+    {
+      "path": "mary/runtime/integration_graph.py",
+      "kind": "modified",
+      "sha256": "b8e55d84cb0e8ba6d672e47a09b76d8f1a76cd593c02e6d800f834a8aac7ecfb"
+    },
+    {
+      "path": "mary/runtime/system_contract.py",
+      "kind": "modified",
+      "sha256": "7798fe8f8f99adada111c3b35ebc3596ebb4e16a24346e43a30c1a602ae2c08e"
+    },
+    {
+      "path": "scripts/run_release_verification.py",
+      "kind": "modified",
+      "sha256": "702ddbd201e61de055b617fcd0ac674544d6da457ff0c60153f9bf8fc4f94539"
+    },
+    {
+      "path": "MARY_ROOT.md",
+      "kind": "new",
+      "sha256": "45c8e57928c7985e59e4281a2d39b59e129cd4ab8875703f169655c64e4dc517"
+    },
+    {
+      "path": "MARYV2_CONVERGENCE_UPGRADE.md",
+      "kind": "new",
+      "sha256": "f3284627943486f665460972eb7d70461baa3707fab7d973225376fdb2b8afd3"
+    },
+    {
+      "path": "mary/character/sourcebook.py",
+      "kind": "new",
+      "sha256": "98900fee9fadfb6192f93d73ab983d2a8fb3337806fde7c782624b47410f247a"
+    },
+    {
+      "path": "mary/character/evaluation.py",
+      "kind": "new",
+      "sha256": "6393a316aa797790bf4c5e2aa50b231c5ea87f9fe553b5756467fa0db7d8b4b6"
+    },
+    {
+      "path": "mary/runtime/root_authority.py",
+      "kind": "new",
+      "sha256": "19b6df14717e93e2afa4b597285a341a030a56cf247360c805b4c8cf0b1f9adf"
+    },
+    {
+      "path": "mary/runtime/state_reconciliation.py",
+      "kind": "new",
+      "sha256": "7ebff3ccbf71642de3d80466bd9a96981c8feaae935d872058d81469152e171a"
+    },
+    {
+      "path": "mary/runtime/recovery.py",
+      "kind": "new",
+      "sha256": "bcc883f0ebde58e375ef065d93bfa188a884041c0317268c8d2e7aa5f98b8286"
+    },
+    {
+      "path": "mary/creative/services.py",
+      "kind": "new",
+      "sha256": "e93f4eae9853fe945320ce26f061b427a062ed5e307c275d6abf7bd4f10f93ff"
+    },
+    {
+      "path": "scripts/audit_mary_state_roots.py",
+      "kind": "new",
+      "sha256": "7d4cf7dc82ae1947219b1c887a4d778da5201a1dd9f5d735186a88faa3eeaa1a"
+    },
+    {
+      "path": "scripts/create_mary_recovery_snapshot.py",
+      "kind": "new",
+      "sha256": "1f9bdf5bb03365741bc7885d15a7b12e7499119d649e24249b11cd132d9334fd"
+    },
+    {
+      "path": "scripts/audit_repository_layers.py",
+      "kind": "new",
+      "sha256": "cbb82d8d48303fd693d62b2e7065705fb2e638a214b097e931e0f3a9ae50c6e3"
+    },
+    {
+      "path": "scripts/check_mary_character_authority.py",
+      "kind": "new",
+      "sha256": "4f5d71496f1e691f450ebf8cfe15b5b42867c06ca0f686c5ebf2aa7136455cf4"
+    },
+    {
+      "path": "scripts/verify_maryv2_convergence.py",
+      "kind": "new",
+      "sha256": "cb313fbfcc57d5321535a984c8350076dacc8cd408d3d37dd57030084baac7f2"
+    },
+    {
+      "path": "docs/character/CHARACTER_SOURCEBOOK.md",
+      "kind": "new",
+      "sha256": "c7929b9e591324951bcad30005d5bbb095a505eb986a217729807e5716cea60a"
+    },
+    {
+      "path": "docs/character/MARY_EVALUATION_SCHEMA.md",
+      "kind": "new",
+      "sha256": "bfd3be0fff776adf140e042669fd7e6c418a5ed64da4df024a6f0567e3f843d5"
+    },
+    {
+      "path": "docs/creative/CREATIVE_SERVICE_CATALOG.md",
+      "kind": "new",
+      "sha256": "650c66326b85e8d8b2fac41808fc6c45e529c52ec657e5903812a9f8ae4d4c9b"
+    },
+    {
+      "path": "tests/character/test_sourcebook.py",
+      "kind": "new",
+      "sha256": "b27972b2f22f19ee85f6dac9fb73b3e74899019694d9875da9cc908b2ae17b9e"
+    },
+    {
+      "path": "tests/character/test_evaluation.py",
+      "kind": "new",
+      "sha256": "9218f1338f105e0903989e62fd2e5bd57a801dce0730f21a4149fee1518ecd93"
+    },
+    {
+      "path": "tests/expression/test_emotion_momentum.py",
+      "kind": "new",
+      "sha256": "fba83c2b6cb5ded660a4b1682fd1c1e90cdee249d6b74fa5f6b269a165545111"
+    },
+    {
+      "path": "tests/runtime/test_state_reconciliation.py",
+      "kind": "new",
+      "sha256": "e1681ef04c0850c6917db0cef29fd3c9b5fd717d2f839c0a765e6b3852a1a847"
+    },
+    {
+      "path": "tests/runtime/test_recovery.py",
+      "kind": "new",
+      "sha256": "656586c4b3faca49eddfe01263c3c0dcf30aa67e035de3b9e09c47251ce27fff"
+    },
+    {
+      "path": "tests/runtime/test_root_authority_convergence.py",
+      "kind": "new",
+      "sha256": "7ec3a9ef26edae6f704cb875e8c520697955bf39f8cbea8a727b71ed1c8146f1"
+    },
+    {
+      "path": "tests/creative/test_cross_media_production.py",
+      "kind": "new",
+      "sha256": "3a15c556be8c7b419db49639e01bc65a2ee5c905bce5d98b9ebe2d38b471f1a0"
+    },
+    {
+      "path": "tests/creative/test_service_registry.py",
+      "kind": "new",
+      "sha256": "68538c49a72ff76a4dfed0efcbe5439fa91f4bda04db496ec3b32474ee43d12c"
+    }
+  ]
+}

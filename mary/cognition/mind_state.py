@@ -80,6 +80,7 @@ class TurnMindState:
     personality: dict[str, Any]
     character: dict[str, Any]
     character_expression: dict[str, Any]
+    authored_character_context: dict[str, Any]
     values: list[dict[str, Any]]
     preferences: list[dict[str, Any]]
     self_provenance: dict[str, Any]
@@ -108,6 +109,7 @@ class TurnMindState:
             "personality": dict(self.personality),
             "character": dict(self.character),
             "character_expression": dict(self.character_expression),
+            "authored_character_context": dict(self.authored_character_context),
             "values": [dict(item) for item in self.values],
             "preferences": [dict(item) for item in self.preferences],
             "self_provenance": dict(self.self_provenance),
@@ -136,6 +138,7 @@ class TurnMindState:
             "personality": self.personality,
             "character": self.character,
             "character_expression": self.character_expression,
+            "authored_character_context": self.authored_character_context,
             "values": self.values,
             "preferences": self.preferences,
             "self_provenance": self.self_provenance,
@@ -167,6 +170,7 @@ class TurnMindStateBuilder:
         biography: Any,
         personality: Any,
         character: Any,
+        character_sourcebook: Any | None = None,
         values: Any,
         preferences: Any,
         self_provenance: Any,
@@ -184,6 +188,7 @@ class TurnMindStateBuilder:
         self.biography = biography
         self.personality = personality
         self.character = character
+        self.character_sourcebook = character_sourcebook
         self.values = values
         self.preferences = preferences
         self.self_provenance = self_provenance
@@ -270,6 +275,7 @@ class TurnMindStateBuilder:
             continuity=continuity,
             disposition=disposition.to_dict(),
         )
+        authored_character_context = self._authored_character_context(input_text)
 
         performance = self.performance.plan(
             disposition=disposition.to_dict(),
@@ -285,6 +291,7 @@ class TurnMindStateBuilder:
             personality=personality,
             character=character,
             character_expression=character_expression,
+            authored_character_context=authored_character_context,
             values=values,
             preferences=preferences,
             self_provenance=self._self_provenance_snapshot(),
@@ -320,6 +327,25 @@ class TurnMindStateBuilder:
                 "dialogue_turn": getattr(getattr(self.dialogue, "state", None), "turn_number", 0),
             },
         )
+
+
+    def _authored_character_context(self, input_text: str) -> dict[str, Any]:
+        """Select bounded creator-authored Mary evidence for this turn.
+
+        The sourcebook is optional.  Static Character Core remains Mary's
+        bootstrap when no Bible/corpus has been configured.
+        """
+        sourcebook = self.character_sourcebook
+        select = getattr(sourcebook, "select", None)
+        if not callable(select):
+            return {}
+        try:
+            selection = select(str(input_text or ""), limit=6, max_characters=4200)
+            prompt_view = getattr(selection, "prompt_view", None)
+            return dict(prompt_view() or {}) if callable(prompt_view) else {}
+        except Exception:
+            # Authored source loading/retrieval may never take down Mary.
+            return {}
 
     @staticmethod
     def _workspace_snapshot(

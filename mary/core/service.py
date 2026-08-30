@@ -179,7 +179,29 @@ class MaryCoreService:
                 if callable(getattr(getattr(self.mary, "performance_context", None), "status", None))
                 else {"mode": "private", "enabled": False}
             ),
+            "character": {
+                "sourcebook": (
+                    self.mary.character_sourcebook.snapshot()
+                    if callable(getattr(getattr(self.mary, "character_sourcebook", None), "snapshot", None))
+                    else {"enabled": False}
+                ),
+                "evaluation": (
+                    self.mary.character_evaluation.snapshot()
+                    if callable(getattr(getattr(self.mary, "character_evaluation", None), "snapshot", None))
+                    else {"enabled": False}
+                ),
+            },
+            "root_authority": (
+                self.mary.root_authority.snapshot(self.mary)
+                if callable(getattr(getattr(self.mary, "root_authority", None), "snapshot", None))
+                else {}
+            ),
             "training": self.mary.training_feedback.status() if hasattr(self.mary, "training_feedback") else {},
+            "creative_services": (
+                self.mary.creative_services.snapshot()
+                if callable(getattr(getattr(self.mary, "creative_services", None), "snapshot", None))
+                else {}
+            ),
             "production": (
                 self.application.ecosystem.production.snapshot()
                 if hasattr(getattr(self.application, "ecosystem", None), "production")
@@ -198,6 +220,7 @@ class MaryCoreService:
         return _json_safe(self.application.ecosystem.production.jobs(
             str(production_id or ""),
             node_registry=getattr(self.mary, "node_registry", None),
+            service_registry=getattr(self.mary, "creative_services", None),
         ))
 
     def compute_fabric_status(self) -> dict[str, Any]:

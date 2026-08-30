@@ -303,8 +303,9 @@ class MaryEcosystem:
         if name == "production.create":
             shots = values.get("shots") or []
             characters = values.get("characters") or []
-            if not isinstance(shots, list) or not isinstance(characters, list):
-                raise ValueError("production.create shots and characters must be lists")
+            references = values.get("references") or []
+            if not isinstance(shots, list) or not isinstance(characters, list) or not isinstance(references, list):
+                raise ValueError("production.create shots, characters, and references must be lists")
             project = self.production.create(
                 title=str(values.get("title") or ""),
                 objective=str(values.get("objective") or ""),
@@ -315,6 +316,10 @@ class MaryEcosystem:
                 target_seconds=int(values.get("target_seconds", 30) or 30),
                 deliverables=list(values.get("deliverables") or ("master_video", "thumbnail", "caption")),
                 provider_preferences=dict(values.get("provider_preferences") or {}),
+                references=references,
+                creative_intent=list(values.get("creative_intent") or []),
+                style_constraints=list(values.get("style_constraints") or []),
+                budget_ceiling_usd=values.get("budget_ceiling_usd"),
                 source=source,
             )
             publish(

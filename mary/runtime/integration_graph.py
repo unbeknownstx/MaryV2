@@ -39,6 +39,9 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
         _edge("ecosystem -> canonical Mary", ecosystem is not None and getattr(ecosystem, "mary", None) is mary, owner="MaryEcosystem"),
         _edge("reasoning/reflection/task generation -> one LLM router", bool(contract.get("single_llm_router")), owner="LLMRouter"),
         _edge("TurnMind -> character", turn_mind is not None and getattr(turn_mind, "character", None) is getattr(mary, "character", None), owner="CharacterCore"),
+        _edge("TurnMind -> authored character sourcebook", turn_mind is not None and getattr(turn_mind, "character_sourcebook", None) is getattr(mary, "character_sourcebook", None), owner="CharacterSourcebook"),
+        _edge("root authority -> canonical Mary", getattr(mary, "root_authority", None) is not None, owner="MaryRootAuthority"),
+        _edge("character evaluation -> canonical Mary", getattr(mary, "character_evaluation", None) is not None, owner="MaryEvaluationSet"),
         _edge("TurnMind -> relationship", turn_mind is not None and getattr(turn_mind, "relationship", None) is getattr(mary, "relationship", None), owner="RelationshipManager"),
         _edge("TurnMind -> agency", turn_mind is not None and getattr(turn_mind, "agency", None) is getattr(mary, "agency", None), owner="Agency"),
         _edge("TurnMind -> autonomy", turn_mind is not None and getattr(turn_mind, "autonomy", None) is getattr(mary, "autonomy", None), owner="AutonomyRuntime"),
@@ -47,6 +50,7 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
         _edge("performance director -> TurnMind", turn_mind is not None and getattr(mary, "performance", None) is getattr(turn_mind, "performance", None), owner="PerformanceDirector"),
         _edge("training feedback -> canonical Mary", getattr(mary, "training_feedback", None) is not None, owner="ResponseFeedbackStore"),
         _edge("production workspace -> canonical ecosystem", ecosystem is not None and getattr(ecosystem, "production", None) is not None, owner="ProductionStudio"),
+        _edge("creative service catalog -> canonical Mary", getattr(mary, "creative_services", None) is not None, owner="CreativeServiceRegistry"),
         _edge("compute registry -> canonical Mary", getattr(mary, "node_registry", None) is not None, owner="NodeRegistry"),
     ]
 
@@ -67,6 +71,8 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
         "edges": edges,
         "authority": {
             "identity_relationship_memory_character_agency": "mary_core",
+            "authored_character_evidence": "CharacterSourcebook",
+            "root_hierarchy": "MaryRootAuthority",
             "workspace_artifacts": "MaryEcosystem",
             "production_artifacts": "ProductionStudio",
             "model_policy": "LLMRouter",

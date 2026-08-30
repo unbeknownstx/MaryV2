@@ -1149,6 +1149,20 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "soft_spots": list(vulnerabilities.get("soft_spots", []) or [])[:2],
             }
 
+        authored = mind.get("authored_character_context", {}) if isinstance(mind, dict) else {}
+        authored_records: list[dict[str, Any]] = []
+        if isinstance(authored, dict):
+            for item in list(authored.get("records", []) or [])[:5]:
+                if not isinstance(item, dict):
+                    continue
+                authored_records.append({
+                    "labels": list(item.get("labels", []) or [])[:4],
+                    "kind": clip(item.get("kind"), 70),
+                    "heading": clip(item.get("heading"), 120),
+                    "text": clip(item.get("text"), 620),
+                    "boundary": clip(item.get("boundary"), 80),
+                })
+
         raw_engagement = mind.get("conversation_engagement", {}) if isinstance(mind, dict) else {}
         engagement_mode = str((raw_engagement or {}).get("effective_mode", "adaptive") or "adaptive")
         if engagement_mode in {"engaged", "deep"}:
@@ -1247,6 +1261,10 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "epistemic_lens": [clip(item, 90) for item in list(character_expression.get("epistemic_lens", []) or [])[:6]] if isinstance(character_expression, dict) else [],
                 "decision_frame": list(character_expression.get("decision_frame", []) or [])[:6] if isinstance(character_expression, dict) else [],
             },
+            "authored_character_context": {
+                "policy": clip(authored.get("policy"), 260) if isinstance(authored, dict) else None,
+                "records": authored_records,
+            } if authored_records else {},
             "values": values,
             "preferences": {
                 "likes": positives,
