@@ -25,7 +25,7 @@ def test_full_suite_uses_bounded_system_temp_state_and_restores_environment():
     assert '$env:MARY_RESERVOIR_STORAGE = "memory"' in script
     assert '$env:PYTEST_DEBUG_TEMPROOT = $FullTestPytestTempRoot' in script
     assert '$env:PYTEST_ADDOPTS = "-p no:cacheprovider"' in script
-    assert "tests test_breakthrough_11.py test_breakthrough_12.py -q" in script
+    assert "& $Python -m pytest -q" in script
 
     for previous, environment_name in (
         ("PreviousMaryDataDirectory", "MARY_DATA_DIR"),
@@ -53,7 +53,7 @@ def test_full_suite_uses_bounded_system_temp_state_and_restores_environment():
 
 
 def test_setup_wraps_each_test_or_verifier_except_explicit_read_only_integrity():
-    setup = _read("SETUP_WINDOWS.ps1")
+    setup = _read("scripts/setup_windows.ps1")
 
     assert "function Invoke-IsolatedPythonStage" in setup
     assert "[System.IO.Path]::GetTempPath()" in setup
@@ -82,15 +82,13 @@ def test_setup_wraps_each_test_or_verifier_except_explicit_read_only_integrity()
     assert helper.index("$env:PYTEST_ADDOPTS = $PreviousPytestAddopts") < cleanup
 
     expected_isolated_stages = {
-        "step-4-character-regressions",
-        "step-5-character-runtime",
-        "step-5-natural-conversation",
-        "step-6-connected-companion",
-        "step-7-presence-presentation",
-        "step-7-uplift",
-        "step-8-full-suite",
-        "step-9-release-gate",
-        "step-11-mind-status",
+        "step-5-structure",
+        "step-5-convergence",
+        "step-6-character-runtime",
+        "step-6-natural-conversation",
+        "step-7-full-suite",
+        "step-8-release-gate",
+        "step-9-standalone",
     }
     actual_isolated_stages = set(
         re.findall(r'Invoke-IsolatedPythonStage -StageName "([^"]+)"', setup)
@@ -100,15 +98,10 @@ def test_setup_wraps_each_test_or_verifier_except_explicit_read_only_integrity()
     direct_test_or_verifier_calls = re.findall(
         r"(?m)^\s*& \$Python -m (pytest|scripts\.verify_[A-Za-z0-9_]+)", setup
     )
-    assert direct_test_or_verifier_calls == ["scripts.verify_state_integrity"]
-
-    integrity_step = setup.index('Step 10 "Persistent state integrity"')
-    release_stage = setup.index('StageName "step-9-release-gate"')
-    assert release_stage < integrity_step
-    assert (
-        "-m scripts.verify_state_integrity --data-dir $RepoLocalDataDirectory"
-        in setup[integrity_step:]
-    )
+    assert direct_test_or_verifier_calls == []
+    assert 'StageName "step-8-release-gate"' in setup
+    assert 'StageName "step-9-standalone"' in setup
+    assert "RepoLocalDataDirectory" not in setup
 
 
 def test_fast_check_isolates_pytest_and_verifiers_without_loading_live_config():

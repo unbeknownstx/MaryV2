@@ -1,0 +1,676 @@
+{
+  "moves": [
+    {
+      "from": "CODEX_WORKFLOW.md",
+      "to": "docs/operations/CODEX_WORKFLOW.md"
+    },
+    {
+      "from": "NEURO_REFERENCE_MATRIX_13_1.md",
+      "to": "docs/reference/NEURO_REFERENCE_MATRIX_13_1.md"
+    },
+    {
+      "from": "MARYV2 \u2014 COMPLETE PROJECT SCOPE.docx",
+      "to": "docs/architecture/MARYV2_COMPLETE_PROJECT_SCOPE.docx"
+    },
+    {
+      "from": "Mary_Definitive_Character_Bible_Workbook.docx",
+      "to": "character_sources/drafts/Mary_Definitive_Character_Bible_Workbook.docx"
+    },
+    {
+      "from": "Unbeknownst Chapters/Prologue Chapter.rtf",
+      "to": "projects/unbeknownst/book/source/Prologue Chapter.rtf"
+    },
+    {
+      "from": "attached_assets",
+      "to": "docs/history/development-prompts"
+    },
+    {
+      "from": "MOBILE_PREVIEW_NOW.md",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_PREVIEW_NOW.md"
+    },
+    {
+      "from": "MARYV2_13_1_VERIFICATION.txt",
+      "to": "docs/history/root-archive/misc/MARYV2_13_1_VERIFICATION.txt"
+    },
+    {
+      "from": "README_12_12_1_WINDOWS_RESERVOIR_HOTFIX.txt",
+      "to": "docs/history/root-archive/patches/README_12_12_1_WINDOWS_RESERVOIR_HOTFIX.txt"
+    },
+    {
+      "from": "FINAL_PASS_REPORT.md",
+      "to": "docs/history/root-archive/release-notes/FINAL_PASS_REPORT.md"
+    },
+    {
+      "from": "MARYV2_13_0_ARCHITECTURE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_0_ARCHITECTURE.md"
+    },
+    {
+      "from": "MARYV2_13_2_CUMULATIVE_INTEGRATIONS.md",
+      "to": "docs/history/root-archive/misc/MARYV2_13_2_CUMULATIVE_INTEGRATIONS.md"
+    },
+    {
+      "from": "FINAL_PASS_12_8.md",
+      "to": "docs/history/root-archive/release-notes/FINAL_PASS_12_8.md"
+    },
+    {
+      "from": "ROLLBACK_CONVERGENCE.ps1",
+      "to": "docs/history/root-archive/installers/ROLLBACK_CONVERGENCE.ps1"
+    },
+    {
+      "from": "START_HERE_12_11.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_11.md"
+    },
+    {
+      "from": "STAGE10_CHARACTER_CONSTITUTION.md",
+      "to": "docs/history/root-archive/stages/STAGE10_CHARACTER_CONSTITUTION.md"
+    },
+    {
+      "from": "INSTALL_CONVERGENCE.ps1",
+      "to": "docs/history/root-archive/installers/INSTALL_CONVERGENCE.ps1"
+    },
+    {
+      "from": "PACKAGE_VALIDATION_12_8.txt",
+      "to": "docs/history/root-archive/manifests/PACKAGE_VALIDATION_12_8.txt"
+    },
+    {
+      "from": "PC_HANDOFF.md",
+      "to": "docs/history/root-archive/release-notes/PC_HANDOFF.md"
+    },
+    {
+      "from": "UPDATE_MANIFEST.example.json",
+      "to": "docs/history/root-archive/manifests/UPDATE_MANIFEST.example.json"
+    },
+    {
+      "from": "SETUP_WINDOWS_12_11.ps1",
+      "to": "docs/history/root-archive/installers/SETUP_WINDOWS_12_11.ps1"
+    },
+    {
+      "from": "INSTALL_HOTFIX_05.txt",
+      "to": "docs/history/root-archive/patches/INSTALL_HOTFIX_05.txt"
+    },
+    {
+      "from": "VERIFY_CLEAN_PROJECT.ps1",
+      "to": "docs/history/root-archive/installers/VERIFY_CLEAN_PROJECT.ps1"
+    },
+    {
+      "from": "MOBILE_12_13_VOICE_SETUP.md",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_12_13_VOICE_SETUP.md"
+    },
+    {
+      "from": "TEST_RESULTS_12_10.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_12_10.md"
+    },
+    {
+      "from": "MARYV2_AUTONOMY_PRESERVATION.md",
+      "to": "docs/history/root-archive/misc/MARYV2_AUTONOMY_PRESERVATION.md"
+    },
+    {
+      "from": "MOBILE_NATIVE_BUILD_VERIFICATION.txt",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_NATIVE_BUILD_VERIFICATION.txt"
+    },
+    {
+      "from": "STAGE14_COMPUTE_FABRIC_CONVERGENCE.md",
+      "to": "docs/history/root-archive/stages/STAGE14_COMPUTE_FABRIC_CONVERGENCE.md"
+    },
+    {
+      "from": "START_HERE_12_9.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_9.md"
+    },
+    {
+      "from": "PATCH_PATHS_13_0.txt",
+      "to": "docs/history/root-archive/patches/PATCH_PATHS_13_0.txt"
+    },
+    {
+      "from": "ROLLBACK_12_9.ps1",
+      "to": "docs/history/root-archive/installers/ROLLBACK_12_9.ps1"
+    },
+    {
+      "from": "verify_breakthrough_12.py",
+      "to": "docs/history/root-archive/installers/verify_breakthrough_12.py"
+    },
+    {
+      "from": "MARYV2_13_2_RELEASE_NOTES.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_2_RELEASE_NOTES.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_COMPLETE_VALIDATION.ps1",
+      "to": "docs/history/root-archive/installers/MARYV2_13_1_1_COMPLETE_VALIDATION.ps1"
+    },
+    {
+      "from": "MARYV2_13_1_ARCHITECTURE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_1_ARCHITECTURE.md"
+    },
+    {
+      "from": "START_HERE_13_1_1.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_13_1_1.md"
+    },
+    {
+      "from": "START_HERE_12_8.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_8.md"
+    },
+    {
+      "from": "MARYV2_CONVERGENCE_UPGRADE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_CONVERGENCE_UPGRADE.md"
+    },
+    {
+      "from": "payload_manifest.txt",
+      "to": "docs/history/root-archive/manifests/payload_manifest.txt"
+    },
+    {
+      "from": "test_breakthrough_12.py",
+      "to": "docs/history/root-archive/misc/test_breakthrough_12.py"
+    },
+    {
+      "from": "TEST_RESULTS_CLEAN.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_CLEAN.md"
+    },
+    {
+      "from": "TEST_RESULTS_12_12_2.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_12_12_2.md"
+    },
+    {
+      "from": "CLEAN_PACKAGE_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/CLEAN_PACKAGE_MANIFEST.json"
+    },
+    {
+      "from": "STAGE13_TRUE_CUMULATIVE_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/STAGE13_TRUE_CUMULATIVE_MANIFEST.json"
+    },
+    {
+      "from": "MOBILE_12_13_VERIFICATION.txt",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_12_13_VERIFICATION.txt"
+    },
+    {
+      "from": "MARYV2_IDENTITY_BOUNDARY_ARCHITECTURE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_IDENTITY_BOUNDARY_ARCHITECTURE.md"
+    },
+    {
+      "from": "TEST_RESULTS_12_11.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_12_11.md"
+    },
+    {
+      "from": "MOBILE_BUILD_VERIFICATION.txt",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_BUILD_VERIFICATION.txt"
+    },
+    {
+      "from": "MOBILE_IOS_AUDIO_HOTFIX.md",
+      "to": "docs/history/root-archive/patches/MOBILE_IOS_AUDIO_HOTFIX.md"
+    },
+    {
+      "from": "TEST_RESULTS_12_12.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_12_12.md"
+    },
+    {
+      "from": "PACKAGE_MANIFEST_13_1_1.json",
+      "to": "docs/history/root-archive/manifests/PACKAGE_MANIFEST_13_1_1.json"
+    },
+    {
+      "from": "release_gate_consolidation.patch",
+      "to": "docs/history/root-archive/patches/release_gate_consolidation.patch"
+    },
+    {
+      "from": "RESTORE_PRIVATE_STATE_FROM_BACKUP.ps1",
+      "to": "docs/history/root-archive/installers/RESTORE_PRIVATE_STATE_FROM_BACKUP.ps1"
+    },
+    {
+      "from": "MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/MANIFEST.json"
+    },
+    {
+      "from": "PATCH_PATHS_12_13_2.txt",
+      "to": "docs/history/root-archive/patches/PATCH_PATHS_12_13_2.txt"
+    },
+    {
+      "from": "install_convergence.py",
+      "to": "docs/history/root-archive/installers/install_convergence.py"
+    },
+    {
+      "from": "MOBILE_12_13_BUILD_NOTES.md",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_12_13_BUILD_NOTES.md"
+    },
+    {
+      "from": "COPY_OVER_README.txt",
+      "to": "docs/history/root-archive/misc/COPY_OVER_README.txt"
+    },
+    {
+      "from": "PACKAGE_MANIFEST_13_0.json",
+      "to": "docs/history/root-archive/manifests/PACKAGE_MANIFEST_13_0.json"
+    },
+    {
+      "from": "SETUP_WINDOWS_12_10.ps1",
+      "to": "docs/history/root-archive/installers/SETUP_WINDOWS_12_10.ps1"
+    },
+    {
+      "from": "TEST_RESULTS_12_9.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_12_9.md"
+    },
+    {
+      "from": "CHECKPOINT_OLLAMA_NATIVE_CHAT_2026-08-18.md",
+      "to": "docs/history/root-archive/release-notes/CHECKPOINT_OLLAMA_NATIVE_CHAT_2026-08-18.md"
+    },
+    {
+      "from": "MARYV2_13_2_UNIFIED_CORE.md",
+      "to": "docs/history/root-archive/misc/MARYV2_13_2_UNIFIED_CORE.md"
+    },
+    {
+      "from": "SETUP_WINDOWS.ps1",
+      "to": "docs/history/root-archive/installers/SETUP_WINDOWS.ps1"
+    },
+    {
+      "from": "STAGE13_DROP_IN_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/STAGE13_DROP_IN_MANIFEST.json"
+    },
+    {
+      "from": "MaryV2_12_13_2_REPLIT_LLM_HOTFIX.diff",
+      "to": "docs/history/root-archive/patches/MaryV2_12_13_2_REPLIT_LLM_HOTFIX.diff"
+    },
+    {
+      "from": "PATCH_PATHS_12_13.txt",
+      "to": "docs/history/root-archive/patches/PATCH_PATHS_12_13.txt"
+    },
+    {
+      "from": "START_CANONICAL_WINDOWS.ps1",
+      "to": "docs/history/root-archive/installers/START_CANONICAL_WINDOWS.ps1"
+    },
+    {
+      "from": "MARYV2_13_2_ALL_INTEGRATIONS_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/MARYV2_13_2_ALL_INTEGRATIONS_MANIFEST.json"
+    },
+    {
+      "from": "test_breakthrough_11.py",
+      "to": "docs/history/root-archive/misc/test_breakthrough_11.py"
+    },
+    {
+      "from": "MANIFEST_12_9.json",
+      "to": "docs/history/root-archive/manifests/MANIFEST_12_9.json"
+    },
+    {
+      "from": "DESKTOP_PHASE_12_7.md",
+      "to": "docs/history/root-archive/mobile-desktop/DESKTOP_PHASE_12_7.md"
+    },
+    {
+      "from": "MARYV2_13_0_RELEASE_NOTES.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_0_RELEASE_NOTES.md"
+    },
+    {
+      "from": "IMPLEMENTATION_BOUNDARY.md",
+      "to": "docs/history/root-archive/misc/IMPLEMENTATION_BOUNDARY.md"
+    },
+    {
+      "from": "MIGRATION_13_1_1.md",
+      "to": "docs/history/root-archive/release-notes/MIGRATION_13_1_1.md"
+    },
+    {
+      "from": "INSTALL_12_9.ps1",
+      "to": "docs/history/root-archive/installers/INSTALL_12_9.ps1"
+    },
+    {
+      "from": "MARYV2_13_1_1_VERIFICATION.txt",
+      "to": "docs/history/root-archive/misc/MARYV2_13_1_1_VERIFICATION.txt"
+    },
+    {
+      "from": "STAGE8_README.txt",
+      "to": "docs/history/root-archive/stages/STAGE8_README.txt"
+    },
+    {
+      "from": "START_HERE_12_12.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_12.md"
+    },
+    {
+      "from": "STAGE15_CREATIVE_PRODUCTION_CONVERGENCE.md",
+      "to": "docs/history/root-archive/stages/STAGE15_CREATIVE_PRODUCTION_CONVERGENCE.md"
+    },
+    {
+      "from": "replit.md",
+      "to": "docs/history/root-archive/misc/replit.md"
+    },
+    {
+      "from": "STAGE14_TRUE_CUMULATIVE_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/STAGE14_TRUE_CUMULATIVE_MANIFEST.json"
+    },
+    {
+      "from": "MARYV2_13_2_FULL_PASS_CONVERGENCE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_2_FULL_PASS_CONVERGENCE.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_MEMORY_INTEGRITY_HOTFIX_V2 (1).ps1",
+      "to": "docs/history/root-archive/patches/MARYV2_13_1_1_MEMORY_INTEGRITY_HOTFIX_V2 (1).ps1"
+    },
+    {
+      "from": "MOBILE_REPLIT_13_2_PACKAGE_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/MOBILE_REPLIT_13_2_PACKAGE_MANIFEST.json"
+    },
+    {
+      "from": "PATCH_NOTES.txt",
+      "to": "docs/history/root-archive/patches/PATCH_NOTES.txt"
+    },
+    {
+      "from": "SKILLS_AGENTS_13_1_1.md",
+      "to": "docs/history/root-archive/misc/SKILLS_AGENTS_13_1_1.md"
+    },
+    {
+      "from": "MIGRATION_13_1.md",
+      "to": "docs/history/root-archive/release-notes/MIGRATION_13_1.md"
+    },
+    {
+      "from": "provider_routing_guarantees.patch",
+      "to": "docs/history/root-archive/patches/provider_routing_guarantees.patch"
+    },
+    {
+      "from": "STAGE13_TRUE_CUMULATIVE_README.md",
+      "to": "docs/history/root-archive/stages/STAGE13_TRUE_CUMULATIVE_README.md"
+    },
+    {
+      "from": "README_12_11_2_BOOT_STABILITY.txt",
+      "to": "docs/history/root-archive/misc/README_12_11_2_BOOT_STABILITY.txt"
+    },
+    {
+      "from": "START_HERE_12_12_3.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_12_3.md"
+    },
+    {
+      "from": "START_HERE_13_1.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_13_1.md"
+    },
+    {
+      "from": "rollback_convergence.py",
+      "to": "docs/history/root-archive/installers/rollback_convergence.py"
+    },
+    {
+      "from": "MARYV2_13_1_1_MEMORY_INTEGRITY_HOTFIX_V2 (2).ps1",
+      "to": "docs/history/root-archive/patches/MARYV2_13_1_1_MEMORY_INTEGRITY_HOTFIX_V2 (2).ps1"
+    },
+    {
+      "from": "MaryV2_OpenAI_Expert_Activation_Fix.patch",
+      "to": "docs/history/root-archive/patches/MaryV2_OpenAI_Expert_Activation_Fix.patch"
+    },
+    {
+      "from": "STAGE11_CHARACTER_REALIZATION.md",
+      "to": "docs/history/root-archive/stages/STAGE11_CHARACTER_REALIZATION.md"
+    },
+    {
+      "from": "STAGE13_FULL_SPECTRUM_CONVERGENCE.md",
+      "to": "docs/history/root-archive/stages/STAGE13_FULL_SPECTRUM_CONVERGENCE.md"
+    },
+    {
+      "from": "README_FIRST.md",
+      "to": "docs/history/root-archive/misc/README_FIRST.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_COMPLETE_VALIDATION_V2.ps1",
+      "to": "docs/history/root-archive/installers/MARYV2_13_1_1_COMPLETE_VALIDATION_V2.ps1"
+    },
+    {
+      "from": "V2_FINAL_CONSOLIDATION_REPORT.md",
+      "to": "docs/history/root-archive/misc/V2_FINAL_CONSOLIDATION_REPORT.md"
+    },
+    {
+      "from": "MIGRATION_13_2.md",
+      "to": "docs/history/root-archive/release-notes/MIGRATION_13_2.md"
+    },
+    {
+      "from": "CHECKPOINT_OLLAMA_2026-08-18.md",
+      "to": "docs/history/root-archive/release-notes/CHECKPOINT_OLLAMA_2026-08-18.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_COMPLETE_VALIDATION_V2_README.txt",
+      "to": "docs/history/root-archive/misc/MARYV2_13_1_1_COMPLETE_VALIDATION_V2_README.txt"
+    },
+    {
+      "from": "START_HERE_12_12_2.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_12_2.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_MEMORY_HOTFIX_README.txt",
+      "to": "docs/history/root-archive/patches/MARYV2_13_1_1_MEMORY_HOTFIX_README.txt"
+    },
+    {
+      "from": "run_release_verification.py",
+      "to": "docs/history/root-archive/misc/run_release_verification.py"
+    },
+    {
+      "from": "TEST_RESULTS_12_12_3.md",
+      "to": "docs/history/root-archive/release-notes/TEST_RESULTS_12_12_3.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_RELEASE_NOTES.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_1_1_RELEASE_NOTES.md"
+    },
+    {
+      "from": "PACKAGE_MANIFEST_12_12.json",
+      "to": "docs/history/root-archive/manifests/PACKAGE_MANIFEST_12_12.json"
+    },
+    {
+      "from": "BASELINE_RESTORE_INSTRUCTIONS.txt",
+      "to": "docs/history/root-archive/misc/BASELINE_RESTORE_INSTRUCTIONS.txt"
+    },
+    {
+      "from": "PACKAGE_INFO.json",
+      "to": "docs/history/root-archive/manifests/PACKAGE_INFO.json"
+    },
+    {
+      "from": "START_HERE_13_0.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_13_0.md"
+    },
+    {
+      "from": "REPAIR_12_9_INSTALL.ps1",
+      "to": "docs/history/root-archive/installers/REPAIR_12_9_INSTALL.ps1"
+    },
+    {
+      "from": "MOBILE_COMPANION_README.md",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_COMPANION_README.md"
+    },
+    {
+      "from": "VERIFY_FULL_PASS_WINDOWS.ps1",
+      "to": "docs/history/root-archive/installers/VERIFY_FULL_PASS_WINDOWS.ps1"
+    },
+    {
+      "from": "INSTALL.txt",
+      "to": "docs/history/root-archive/installers/INSTALL.txt"
+    },
+    {
+      "from": "MARYV2_13_1_1_MERGE_REPORT.md",
+      "to": "docs/history/root-archive/misc/MARYV2_13_1_1_MERGE_REPORT.md"
+    },
+    {
+      "from": "DEVELOPMENT_PLAN.md",
+      "to": "docs/history/root-archive/misc/DEVELOPMENT_PLAN.md"
+    },
+    {
+      "from": "MOBILE_REPLIT_13_2_CONVERGENCE.md",
+      "to": "docs/history/root-archive/mobile-desktop/MOBILE_REPLIT_13_2_CONVERGENCE.md"
+    },
+    {
+      "from": "START_HERE_CANONICAL_12_9.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_CANONICAL_12_9.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_COMPLETE_VALIDATION_README.txt",
+      "to": "docs/history/root-archive/misc/MARYV2_13_1_1_COMPLETE_VALIDATION_README.txt"
+    },
+    {
+      "from": "BREAKTHROUGH_10_FILE_MANIFEST.txt",
+      "to": "docs/history/root-archive/manifests/BREAKTHROUGH_10_FILE_MANIFEST.txt"
+    },
+    {
+      "from": "SETUP_WINDOWS_12_12.ps1",
+      "to": "docs/history/root-archive/installers/SETUP_WINDOWS_12_12.ps1"
+    },
+    {
+      "from": "MARYV2_13_1_1_ARCHITECTURE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_1_1_ARCHITECTURE.md"
+    },
+    {
+      "from": "PACKAGE_MANIFEST_12_11.json",
+      "to": "docs/history/root-archive/manifests/PACKAGE_MANIFEST_12_11.json"
+    },
+    {
+      "from": "SHA256SUMS.txt",
+      "to": "docs/history/root-archive/manifests/SHA256SUMS.txt"
+    },
+    {
+      "from": "START_HERE_12_10.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_12_10.md"
+    },
+    {
+      "from": "MARYV2_13_1_1_MEMORY_HOTFIX.ps1",
+      "to": "docs/history/root-archive/patches/MARYV2_13_1_1_MEMORY_HOTFIX.ps1"
+    },
+    {
+      "from": "system_contract.py",
+      "to": "docs/history/root-archive/misc/system_contract.py"
+    },
+    {
+      "from": "STAGE14_TRUE_CUMULATIVE_README.md",
+      "to": "docs/history/root-archive/stages/STAGE14_TRUE_CUMULATIVE_README.md"
+    },
+    {
+      "from": "START_HERE_MOBILE_NATIVE.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_MOBILE_NATIVE.md"
+    },
+    {
+      "from": "START_HERE_13_2.md",
+      "to": "docs/history/root-archive/release-notes/START_HERE_13_2.md"
+    },
+    {
+      "from": "DESKTOP_12_8_ASSETS.md",
+      "to": "docs/history/root-archive/mobile-desktop/DESKTOP_12_8_ASSETS.md"
+    },
+    {
+      "from": "VERIFY_12_9_WINDOWS.ps1",
+      "to": "docs/history/root-archive/installers/VERIFY_12_9_WINDOWS.ps1"
+    },
+    {
+      "from": "end_to_end_acceptance_hotfix.patch",
+      "to": "docs/history/root-archive/patches/end_to_end_acceptance_hotfix.patch"
+    },
+    {
+      "from": "CURRENT_STATE.md",
+      "to": "docs/history/root-archive/release-notes/CURRENT_STATE.md"
+    },
+    {
+      "from": "CLEAN_PROJECT_README.md",
+      "to": "docs/history/root-archive/misc/CLEAN_PROJECT_README.md"
+    },
+    {
+      "from": "FULL_PASS_MANIFEST.json",
+      "to": "docs/history/root-archive/manifests/FULL_PASS_MANIFEST.json"
+    },
+    {
+      "from": "PATCH_PATHS.txt",
+      "to": "docs/history/root-archive/patches/PATCH_PATHS.txt"
+    },
+    {
+      "from": "MARYV2_CREATOR_IDENTITY_BOUNDARY_ARCHITECTURE.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_CREATOR_IDENTITY_BOUNDARY_ARCHITECTURE.md"
+    },
+    {
+      "from": "MIGRATION_13_0.md",
+      "to": "docs/history/root-archive/release-notes/MIGRATION_13_0.md"
+    },
+    {
+      "from": "MARYV2_13_0_VERIFICATION.txt",
+      "to": "docs/history/root-archive/misc/MARYV2_13_0_VERIFICATION.txt"
+    },
+    {
+      "from": "verify_breakthrough_11.py",
+      "to": "docs/history/root-archive/installers/verify_breakthrough_11.py"
+    },
+    {
+      "from": "BREAKTHROUGH_11_FILE_MANIFEST.txt",
+      "to": "docs/history/root-archive/manifests/BREAKTHROUGH_11_FILE_MANIFEST.txt"
+    },
+    {
+      "from": "REPLIT_INSTRUCTIONS.txt",
+      "to": "docs/history/root-archive/misc/REPLIT_INSTRUCTIONS.txt"
+    },
+    {
+      "from": "MARYV2_12_13_2_REPLIT_LLM_HOTFIX.md",
+      "to": "docs/history/root-archive/patches/MARYV2_12_13_2_REPLIT_LLM_HOTFIX.md"
+    },
+    {
+      "from": "ELEVENLABS_TLS_HOTFIX.md",
+      "to": "docs/history/root-archive/patches/ELEVENLABS_TLS_HOTFIX.md"
+    },
+    {
+      "from": "README.txt",
+      "to": "docs/history/root-archive/misc/README.txt"
+    },
+    {
+      "from": "DESKTOP_PHASE_12_8.md",
+      "to": "docs/history/root-archive/mobile-desktop/DESKTOP_PHASE_12_8.md"
+    },
+    {
+      "from": "MARYV2_13_1_RELEASE_NOTES.md",
+      "to": "docs/history/root-archive/release-notes/MARYV2_13_1_RELEASE_NOTES.md"
+    },
+    {
+      "from": "INSTALL_12_8_2.txt",
+      "to": "docs/history/root-archive/installers/INSTALL_12_8_2.txt"
+    },
+    {
+      "from": "docs/active/12_12_3_PRODUCTION_HYBRID_DIALOGUE.md",
+      "to": "docs/history/releases/12.x/12_12_3_PRODUCTION_HYBRID_DIALOGUE.md"
+    },
+    {
+      "from": "docs/active/12_12_2_HYBRID_DIALOGUE_RUNTIME.md",
+      "to": "docs/history/releases/12.x/12_12_2_HYBRID_DIALOGUE_RUNTIME.md"
+    },
+    {
+      "from": "docs/active/12_11_FAST_CONNECTED_DIALOGUE.md",
+      "to": "docs/history/releases/12.x/12_11_FAST_CONNECTED_DIALOGUE.md"
+    },
+    {
+      "from": "docs/active/12_12_COGNITIVE_CHARACTER_RUNTIME.md",
+      "to": "docs/history/releases/12.x/12_12_COGNITIVE_CHARACTER_RUNTIME.md"
+    },
+    {
+      "from": "docs/active/12_12_2_QWEN_MICRO_CORTEX.md",
+      "to": "docs/history/releases/12.x/12_12_2_QWEN_MICRO_CORTEX.md"
+    },
+    {
+      "from": "docs/architecture/V2_BREAKTHROUGH_10.md",
+      "to": "docs/history/architecture/V2_BREAKTHROUGH_10.md"
+    },
+    {
+      "from": "docs/architecture/V2_BREAKTHROUGH_11.md",
+      "to": "docs/history/architecture/V2_BREAKTHROUGH_11.md"
+    },
+    {
+      "from": "docs/architecture/COGNITIVE_RESERVOIR_12_12.md",
+      "to": "docs/history/architecture/COGNITIVE_RESERVOIR_12_12.md"
+    },
+    {
+      "from": "docs/architecture/V2_FINAL_RUNTIME.md",
+      "to": "docs/history/architecture/V2_FINAL_RUNTIME.md"
+    }
+  ],
+  "removed_from_active_tree": [
+    "payload",
+    "upgrade_backups",
+    "data",
+    "desktop/node_modules",
+    "mary/core/mary.py.pre_memory_hotfix_20260825_035340",
+    "mary/core/mary.py.pre_built_detector_fix",
+    "mary/core/mary.py.pre_memory_integrity_v2_20260825_100536",
+    "mary/mind/character_mind.py.pre_phrase_history_bound_fix",
+    "mary/cognition/orchestrator.py.pre_embedded_memory_fix_20260825_023717",
+    "mary/cognition/orchestrator.py.pre_embedded_memory_dedupe_20260825_025126",
+    "mary/cognition/orchestrator.py.pre_embedded_memory_fix_20260825_024741",
+    "mary/cognition/orchestrator.py.pre_memory_hotfix_20260825_035340",
+    "tests/cognition/test_creator_directives.py.pre_embedded_memory_persistence_test_20260825_025219",
+    "tests/cognition/test_creator_directives.py.pre_memory_hotfix_20260825_035340",
+    "tests/cognition/test_creator_directives.py.pre_memory_integrity_v2_20260825_100536",
+    "scripts/test_fast.ps1.pre_13_1_1_realtime_name_fix",
+    "scripts/verify_mary_13_1.py.pre_live_env_fix",
+    "example.env.example",
+    "..env.swp",
+    "gitignore",
+    "character_sources.tmp"
+  ],
+  "policy": [
+    "Historical documents were archived under docs/history rather than left at repository root.",
+    "Duplicate source payloads, upgrade backups, node_modules, repo-local runtime data, and pre-hotfix source copies were removed from the active source tree.",
+    "Git history remains the authoritative recovery record for removed duplicate code; live migration tooling separately backs up repo-local data before removal."
+  ]
+}

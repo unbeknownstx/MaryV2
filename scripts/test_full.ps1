@@ -23,7 +23,7 @@ try {
     $env:MARY_RESERVOIR_STORAGE = "memory"
     $env:PYTEST_DEBUG_TEMPROOT = $FullTestPytestTempRoot
     $env:PYTEST_ADDOPTS = "-p no:cacheprovider"
-    & $Python -m pytest tests test_breakthrough_11.py test_breakthrough_12.py -q
+    & $Python -m pytest -q
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "FULL SUITE PASS" -ForegroundColor Green
 }

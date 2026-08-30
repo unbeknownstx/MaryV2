@@ -34,7 +34,7 @@ def main() -> int:
         "desktop/src/presence.css",
         "tests/integration/test_presence_pathways_12_10.py",
         "tests/desktop/test_presence_presentation_12_10.py",
-        "START_HERE_12_10.md",
+        "docs/history/root-archive/release-notes/START_HERE_12_10.md",
     )
     for relative in required:
         check(f"12.10 surface exists: {relative}", (ROOT / relative).is_file())
@@ -79,7 +79,7 @@ def main() -> int:
         else:
             os.environ["MARY_DATA_DIR"] = old_data
 
-    package = json.loads((ROOT / "PACKAGE_INFO.json").read_text(encoding="utf-8"))
+    package = json.loads((ROOT / "docs/release/PROJECT_INFO.json").read_text(encoding="utf-8"))
     check("package metadata is 12.10 or later", package.get("version") in {"12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1"} and package.get("desktop_phase") in {"presence-presentation", "fast-dialogue-connected-presence", "cognitive-reservoir-character-runtime", "connected-development-evolution", "realtime-cognitive-infrastructure"})
 
     print("=" * 72)

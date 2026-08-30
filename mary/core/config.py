@@ -88,11 +88,17 @@ def _platform_data_base() -> Path:
 
 
 def _default_data_root(resource_root: Path) -> Path:
+    """Return Mary's writable runtime-state root.
+
+    Source checkouts are code, not Mary state containers.  Development runs use
+    the same host-native application-data location as installed builds unless an
+    explicit ``MARY_DATA_DIR`` or portable mode is requested.  This keeps test,
+    conversation, relationship, and cache churn out of the Git working tree.
+    """
+
     explicit = os.getenv("MARY_DATA_DIR", "").strip()
     if explicit:
         return Path(explicit).expanduser().resolve()
-    if not getattr(sys, "frozen", False):
-        return resource_root / "data"
     if _truthy_env("MARY_PORTABLE"):
         return _executable_root() / "data"
     return _platform_data_base() / "MaryV2" / "data"
@@ -187,7 +193,7 @@ class PathConfig:
         explicit = os.getenv("MARY_WORKSPACE_ROOT", "").strip()
         if explicit:
             return Path(explicit).expanduser().resolve()
-        return self.data / "workspace" if getattr(sys, "frozen", False) else self.root
+        return self.data / "workspace"
 
     @property
     def identity(self) -> Path:

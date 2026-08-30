@@ -79,23 +79,18 @@ def test_presence_css_has_laptop_and_low_height_breakpoints():
 
 
 def test_package_metadata_retains_12_10_foundations_in_current_release():
-    package = text("PACKAGE_INFO.json")
-    assert ('"version": "12.10.0"' in package or ('"version": "12.11.0"' in package or ('"version": "12.12.0"' in package or ('"version": "12.12.2"' in package or '"version": "13.0.0"' in package or '"version": "13.1.1"' in package))))
+    package = text("docs/release/PROJECT_INFO.json")
+    assert '"software_version": "13.1.1"' in package
     assert ('"desktop_phase": "presence-presentation"' in package or '"desktop_phase": "fast-dialogue-connected-presence"' in package or ('"desktop_phase": "cognitive-reservoir-character-runtime"' in package or '"desktop_phase": "connected-development-evolution"' in package or '"desktop_phase": "realtime-cognitive-infrastructure"' in package))
 
 
-def test_windows_setup_references_existing_regression_files_only():
-    setup = text("SETUP_WINDOWS_12_10.ps1")
-    referenced = (
-        "tests/desktop/test_desktop_uplift_12_9.py",
-        "tests/llm/test_provider_timing_12_9.py",
-        "tests/voice/test_voice_timing_12_9.py",
-        "tests/desktop/test_presence_presentation_12_10.py",
-        "tests/integration/test_presence_pathways_12_10.py",
-    )
-    for relative in referenced:
-        assert relative in setup
-        assert (ROOT / relative).is_file(), relative
+def test_windows_setup_references_current_regression_gates_only():
+    setup = text("scripts/setup_windows.ps1")
+    assert "scripts.verify_repository_structure" in setup
+    assert "scripts.verify_maryv2_convergence" in setup
+    assert "scripts.verify_character_runtime_12_12" in setup
+    assert "scripts.verify_natural_conversation_12_12_2" in setup
+    assert '"-m","pytest","-q"' in setup
     assert "MIGRATE_PRIVATE_STATE.ps1" not in setup
     assert "MaryV2_12_9_CLEAN_PROJECT" not in setup
 
@@ -103,5 +98,7 @@ def test_windows_setup_references_existing_regression_files_only():
 def test_distributable_no_longer_depends_on_temporary_clean_project_flow():
     assert not (ROOT / "MIGRATE_PRIVATE_STATE.ps1").exists()
     assert not (ROOT / "SETUP_CLEAN_WINDOWS.ps1").exists()
-    assert (ROOT / "SETUP_WINDOWS_12_10.ps1").is_file()
-    assert (ROOT / "SETUP_WINDOWS.ps1").is_file()
+    assert (ROOT / "scripts/setup_windows.ps1").is_file()
+    assert (ROOT / "docs/history/INDEX.md").is_file()
+    assert not (ROOT / "payload").exists()
+    assert not (ROOT / "upgrade_backups").exists()

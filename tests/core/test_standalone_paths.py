@@ -95,3 +95,18 @@ def test_frozen_windows_keeps_existing_side_by_side_env(monkeypatch, tmp_path):
     monkeypatch.delenv("MARY_PORTABLE", raising=False)
 
     assert config_module._dotenv_path() == side_by_side
+
+
+def test_source_checkout_default_state_is_outside_repository(monkeypatch, tmp_path):
+    monkeypatch.setattr(config_module.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(config_module.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
+    monkeypatch.delenv("MARY_DATA_DIR", raising=False)
+    monkeypatch.delenv("MARY_PORTABLE", raising=False)
+    monkeypatch.delenv("MARY_WORKSPACE_ROOT", raising=False)
+
+    paths = config_module.PathConfig(root=tmp_path / "repo")
+
+    assert paths.data == tmp_path / "LocalAppData" / "MaryV2" / "data"
+    assert paths.data != paths.root / "data"
+    assert paths.workspace == paths.data / "workspace"

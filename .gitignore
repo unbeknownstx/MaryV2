@@ -2,10 +2,11 @@
 .env
 .env.*
 !.env.example
-!example.env.example
 
-# Runtime state and personal data
-data/
+# Mutable Mary state and workspaces are not source
+/data/
+.runtime/
+workspace/
 
 # Python environments / caches
 .venv*/
@@ -15,13 +16,24 @@ __pypackages__/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.test-tmp/
+.tmp/
+.venv_*/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-# Local state backups
+# Runtime/benchmark reports and local backups
+runtime_reports/
 backups/
+upgrade_backups/
+payload/
+*.pre_*
+*.bak
+*.bak1
+*.bak2
+*.bak3
 
 # Build / packaging outputs
 build/
@@ -32,21 +44,16 @@ dist/
 desktop/node_modules/
 desktop/dist/
 
-# Personal avatar/model assets
-# Keep source code under desktop/public, but do not source-control local VRM/Vroid models.
+# Personal/generated avatar/model assets
+# Source code and checked-in design references remain allowed.
 desktop/public/models/
 
 # OS/editor noise
 .DS_Store
 __MACOSX/
+*.swp
+*.tmp
+*.log
 .vscode/*
 !.vscode/tasks.json
 .idea/
-
-# Local benchmark / voice-lab reports
-runtime_reports/
-
-# Logs / temporary files
-*.log
-*.tmp
-*.swp

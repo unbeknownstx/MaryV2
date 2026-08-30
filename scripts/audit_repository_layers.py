@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 
-CANONICAL_DIRS = {"mary", "tests", "scripts", "docs", "desktop", "mobile_web", "native", "config"}
-PRIVATE_DIRS = {"data", ".git", ".venv", "node_modules"}
+CANONICAL_DIRS = {"mary", "tests", "scripts", "docs", "desktop", "mobile_web", "mobile_native", "character_sources", "projects"}
+PRIVATE_DIRS = {"data", ".git", ".venv", "node_modules", ".test-tmp", ".tmp"}
 GENERATED_DIRS = {"__pycache__", ".pytest_cache", "dist", "build", "runtime_reports"}
-HISTORY_DIRS = {"upgrade_backups", "payload", "archive", "archives"}
+HISTORY_DIRS = {"archive", "archives"}
 HISTORY_PREFIXES = (
     "START_HERE_", "TEST_RESULTS_", "MIGRATION_", "CHECKPOINT_", "FINAL_PASS_",
     "DESKTOP_PHASE_", "MOBILE_", "STAGE", "MARYV2_12_", "MARYV2_13_",

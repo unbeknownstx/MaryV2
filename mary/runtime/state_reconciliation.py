@@ -46,7 +46,7 @@ class StateReconciliationItem:
 
 
 class StateReconciler:
-    VERSION = "1.0"
+    VERSION = "1.1"
     MAX_FILES_PER_ROOT = 8000
     MAX_HASH_BYTES = 64 * 1024 * 1024
 
@@ -89,10 +89,14 @@ class StateReconciler:
 
         items: list[StateReconciliationItem] = []
         root_count = len(roots)
+        comparison_ready = root_count >= 2
         for relative_path in sorted(grouped):
             copies = tuple(sorted(grouped[relative_path], key=lambda x: x.root_name))
             hashes = {item.sha256 for item in copies}
-            if len(copies) == root_count and len(hashes) == 1:
+            if not comparison_ready:
+                classification = "single_root_inventory"
+                action = "inventory only; add at least one independent state root before comparing or reconciling"
+            elif len(copies) == root_count and len(hashes) == 1:
                 classification = "identical"
                 action = "keep one canonical copy; retain other copies as recovery redundancy if desired"
             elif len(copies) > 1 and len(hashes) == 1:
@@ -112,12 +116,14 @@ class StateReconciler:
         return {
             "version": cls.VERSION,
             "read_only": True,
+            "comparison_ready": comparison_ready,
             "roots": {str(k): str(Path(v).expanduser()) for k, v in roots.items()},
             "inventory_counts": {name: len(rows) for name, rows in inventory.items()},
             "classifications": counts,
             "items": [item.to_dict() for item in items],
             "policy": [
                 "No file is merged, copied, deleted, or promoted by this planner.",
+                "A single-root run is inventory-only and never claims files are identical to another Mary state root.",
                 "Timestamp alone never establishes canonical Mary state.",
                 "State ownership/provenance must be resolved before promotion.",
                 "Test/probe residue should be classified separately from creator-grounded continuity.",

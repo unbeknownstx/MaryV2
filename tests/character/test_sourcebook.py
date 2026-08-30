@@ -54,3 +54,15 @@ def test_mary_turnmind_shares_the_same_sourcebook(monkeypatch, tmp_path: Path):
     )
     assert state.authored_character_context["records"]
     assert "directness" in state.authored_character_context["records"][0]["text"]
+
+
+def test_conventional_active_source_directory_ignores_readme(tmp_path, monkeypatch):
+    active = tmp_path / "character_sources" / "active"
+    active.mkdir(parents=True)
+    (active / "README.md").write_text("Instructions about source organization, not Mary evidence.", encoding="utf-8")
+    monkeypatch.delenv("MARY_CHARACTER_SOURCES", raising=False)
+
+    sourcebook = CharacterSourcebook.from_environment(root=tmp_path)
+
+    assert sourcebook.records == ()
+    assert sourcebook.configured_paths == (str(active),)

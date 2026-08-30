@@ -1,0 +1,26 @@
+{
+  "application": "MaryV2",
+  "software_version": "13.1.1",
+  "architecture": "MaryV2 convergence / one-Mary Core",
+  "channel": "private-v2",
+  "desktop_phase": "realtime-cognitive-infrastructure",
+  "preserved_foundations": [
+    "12.10 presence/presentation",
+    "12.11 connected presence",
+    "12.12 cognitive character runtime",
+    "12.12.3 production hybrid dialogue",
+    "13.0 development/growth",
+    "13.1 realtime/retrieval/nodes",
+    "13.2 unified remote Core",
+    "Stage 14 compute fabric",
+    "Stage 15 creative production"
+  ],
+  "private_runtime_state_in_source": false,
+  "environment_secrets_in_source": false,
+  "source_state_policy": "mutable state external to repository by default",
+  "canonical_setup": "scripts/setup_windows.ps1",
+  "canonical_tests": "python -m pytest -q",
+  "repository_structure_gate": "python -m scripts.verify_repository_structure",
+  "history": "docs/history/INDEX.md",
+  "version": "13.1.1"
+}

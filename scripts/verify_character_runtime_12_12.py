@@ -40,7 +40,7 @@ def main() -> int:
         "scripts/benchmark_local_models.py",
         "scripts/select_local_dialogue_model_windows.ps1",
         "desktop/src/main.js",
-        "START_HERE_12_12.md",
+        "docs/history/root-archive/release-notes/START_HERE_12_12.md",
     ]
     for rel in required:
         checks.append(check((ROOT / rel).exists(), f"12.12 surface exists: {rel}"))
@@ -78,7 +78,7 @@ def main() -> int:
     checks.append(check('data-screen="mind"' in html and "function renderMind()" in js, "Local Mind workspace is visible"))
     checks.append(check("currentDeliveryPlan" in js and "gesture_energy" in js, "voice delivery plan also drives avatar motion"))
 
-    package = json.loads((ROOT / "PACKAGE_INFO.json").read_text(encoding="utf-8"))
+    package = json.loads((ROOT / "docs/release/PROJECT_INFO.json").read_text(encoding="utf-8"))
     checks.append(check((str(package.get("version") or "").startswith("12.12.") or str(package.get("version") or "").startswith("13.")), "package metadata matches 12.12"))
 
     ok = all(checks)

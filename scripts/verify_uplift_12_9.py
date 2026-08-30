@@ -30,7 +30,7 @@ def main() -> int:
         "mary/productivity/metrics.py",
         "desktop/src/runtime/turnTrace.js",
         "desktop/src/uplift.css",
-        "START_HERE_12_9.md",
+        "docs/history/root-archive/release-notes/START_HERE_12_9.md",
     )
     for relative in required:
         check(f"uplift surface exists: {relative}", (ROOT / relative).is_file())
@@ -56,7 +56,7 @@ def main() -> int:
     check("runtime metric trace records", metrics.snapshot().get("pipeline_ms", {}).get("last_ms") == 10.0)
     check("voice timing metadata records while disabled", "timings" in DesktopVoiceEngine().synthesize("hello"))
 
-    package = json.loads((ROOT / "PACKAGE_INFO.json").read_text(encoding="utf-8"))
+    package = json.loads((ROOT / "docs/release/PROJECT_INFO.json").read_text(encoding="utf-8"))
     check("package metadata is 12.9 or later", package.get("version") in {"12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1"})
 
     print("=" * 72)

@@ -28,3 +28,15 @@ def test_reconciliation_ignores_secrets(tmp_path: Path):
     (root / "memory.json").write_text("{}", encoding="utf-8")
     inventory = StateReconciler.inventory({"state": root})["state"]
     assert [item.relative_path for item in inventory] == ["memory.json"]
+
+
+def test_single_root_is_inventory_only_not_identical(tmp_path: Path):
+    local = tmp_path / "local"
+    local.mkdir()
+    (local / "memory.json").write_text('{"test":true}', encoding="utf-8")
+
+    plan = StateReconciler.plan({"local": local})
+
+    assert plan["comparison_ready"] is False
+    assert plan["classifications"] == {"single_root_inventory": 1}
+    assert plan["items"][0]["classification"] == "single_root_inventory"

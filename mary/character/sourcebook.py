@@ -158,6 +158,7 @@ class CharacterSourcebook:
 
     VERSION = "1.0"
     SUPPORTED_SUFFIXES = {".md", ".txt", ".json", ".jsonl", ".docx"}
+    DISCOVERY_IGNORED_NAMES = {"readme.md", ".gitkeep"}
     MAX_FILES = 64
     MAX_RECORDS = 6000
     MAX_RECORD_CHARS = 1800
@@ -194,7 +195,7 @@ class CharacterSourcebook:
             paths.extend(Path(part.strip()).expanduser() for part in parts if part.strip())
         else:
             for candidate in (
-                base / "character_sources",
+                base / "character_sources" / "active",
                 base / "docs" / "character" / "sources",
             ):
                 if candidate.exists():
@@ -214,7 +215,11 @@ class CharacterSourcebook:
                 continue
             if path.is_dir():
                 for child in sorted(path.rglob("*")):
-                    if child.is_file() and child.suffix.lower() in cls.SUPPORTED_SUFFIXES:
+                    if (
+                        child.is_file()
+                        and child.suffix.lower() in cls.SUPPORTED_SUFFIXES
+                        and child.name.lower() not in cls.DISCOVERY_IGNORED_NAMES
+                    ):
                         files.append(child)
                         if len(files) >= cls.MAX_FILES:
                             break
