@@ -36,7 +36,12 @@ def main() -> int:
     consultant = ExpertConsultant(router, workspace)
 
     task = workspace.create_task(
-        "Verify MaryV2's paid expert consultation bridge with minimal context."
+        "Verify MaryV2's paid expert consultation bridge with minimal context.",
+        metadata={
+            "allow_paid": True,
+            "needs_expert": True,
+            "source": "openai_live_smoke",
+        },
     )
     result = consultant.consult(
         task.task_id,
@@ -76,3 +81,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
