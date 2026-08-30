@@ -1,0 +1,15 @@
+diff --git a/scripts/smoke_openai_expert.py b/scripts/smoke_openai_expert.py
+index 8b3a23b..8fb4829 100644
+--- a/scripts/smoke_openai_expert.py
++++ b/scripts/smoke_openai_expert.py
+@@ -45,6 +45,10 @@ def main() -> int:
+             "assumptions instead of trusting a single model response."
+         ),
+         max_tokens=160,
++        # Reaching this line already requires the explicit process-level live
++        # test gate above. Authorize this one task as well so the smoke test
++        # exercises the real paid-expert path without weakening runtime policy.
++        allow_paid=True,
+     )
+ 
+     print("MARYV2 OPENAI EXPERT LIVE SMOKE")
