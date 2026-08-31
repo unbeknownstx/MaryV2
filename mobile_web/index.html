@@ -11,12 +11,14 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" sizes="180x180" href="./assets/mary-icon-180.png" />
   <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./experience.css" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="application-name" content="Mary" />
   <title>Mary</title>
 </head>
 <body>
   <main id="app" data-screen="chat" data-connection="offline">
+    <div class="mary-experience-chrome" aria-hidden="true"><div class="mary-noise"></div></div>
     <section id="boot" class="boot" aria-live="polite">
       <img src="./assets/mary-sigil.svg" alt="" />
       <div class="mary-script">Mary<span>♡</span></div>
@@ -36,6 +38,7 @@
         <div class="chat-stage">
           <div class="stage-grid"></div>
           <div class="stage-header"><div><strong>MARY</strong><span>Your AI Companion</span></div><div id="live-badge" class="live-badge"><i></i>LIVE</div></div>
+          <div id="mary-presence-rail" class="mary-presence-rail" aria-hidden="true"><span class="pulse"></span><span id="mary-presence-context" class="presence-context">Main · adaptive</span><strong id="mary-presence-relationship">Developing</strong></div>
           <div id="conversation-mode-bar" class="conversation-mode-bar glass">
             <button data-conversation-mode="adaptive" class="active">AUTO</button>
             <button data-conversation-mode="engaged">TALK</button>
@@ -46,6 +49,8 @@
             <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
             <img class="portrait" src="./assets/mary-reference.jpeg" alt="Mary Cosma" />
             <div class="avatar-state"><span id="avatar-state-label">IDLE</span><strong id="avatar-mood">Neutral</strong></div>
+            <div id="mary-continuity-chip" class="mary-continuity-chip"><img src="./assets/mary-heart-core.svg" alt="" /><span>continuity online</span></div>
+
           </div>
           <div class="chat-glass glass">
             <div id="messages" class="messages" aria-live="polite"><article class="message mary"><header><strong>Mary</strong><time>now</time></header><p>I'm here.</p></article></div>
@@ -113,5 +118,6 @@
     <div id="toast" class="toast hidden" role="status"></div>
   </main>
   <script src="./app.js" defer></script>
+  <script src="./experience.js" defer></script>
 </body>
 </html>

@@ -9,6 +9,8 @@ import { renderPresenceHome } from './ui/presenceHome.js';
 import { formatMilliseconds, normalizeTurnTrace, providerAttemptSummary, timingValue } from './runtime/turnTrace.js';
 import { createHttpBridge, installMaryPwa } from './runtime/httpBridge.js';
 import './mobile.css';
+import './experience-v2.css';
+import { installExperienceLayer } from './ui/experienceLayer.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -24,6 +26,7 @@ window.addEventListener('error', (event) => {
 });
 
 const app = $('#app');
+installExperienceLayer({ app });
 const canvas = $('#avatar-canvas');
 const fallback = $('#avatar-fallback');
 const messages = $('#messages');
@@ -1428,8 +1431,12 @@ function renderGallery() {
   return `
     <div class="workspace-grid three">
       <div class="workspace-panel accent"><h3>Mary Reference</h3><img src="./assets/mary-reference.jpeg" style="width:100%;height:240px;object-fit:cover;object-position:center 38%;border-radius:10px;opacity:.9" alt="Mary reference" /></div>
+      <div class="workspace-panel"><h3>Neon Reference Study</h3><img src="./assets/gallery/mary-neon-reference-sheet.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.94" alt="Mary neon reference sheet" /><small>Generated concept/reference sheet · visual evidence only.</small></div>
+      <div class="workspace-panel"><h3>Gala Visual Study</h3><img src="./assets/gallery/mary-gala-reference.png" style="width:100%;height:240px;object-fit:cover;object-position:center 30%;border-radius:10px;opacity:.92" alt="Mary gala visual study" /><small>Optional generated visual reference · not autobiographical memory or automatic canon.</small></div>
+      <div class="workspace-panel"><h3>Neon Night Manga Study</h3><img src="./assets/gallery/mary-neon-night-manga.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.92" alt="Mary neon night manga study" /><small>Library visual study preserving Mary's beanie/jacket/skirt palette.</small></div>
+      <div class="workspace-panel"><h3>Stream Room Study</h3><img src="./assets/gallery/mary-stream-room-reference.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.92" alt="Mary stream room visual study" /><small>Library visual study for the streamer/companion environment.</small></div>
       <div class="workspace-panel"><h3>VRM</h3><p>MaryCosma.vrm is connected to the live stage and remains the preferred interactive avatar.</p><div class="data-row"><span>Model</span><strong>MaryCosma.vrm</strong></div><div class="data-row"><span>Renderer</span><strong>Three.js + three-vrm</strong></div></div>
-      <div class="workspace-panel"><h3>Project Gallery</h3><div class="workspace-empty">At home we can bind this to Unbeknownst references, storyboards, generated images, screenshots, and tagged creative assets.</div></div>
+      <div class="workspace-panel"><h3>Project Gallery</h3><div class="workspace-empty">Bind this to Unbeknownst references, storyboards, approved generated images, screenshots, and tagged creative assets while preserving provenance.</div></div>
     </div>
   `;
 }

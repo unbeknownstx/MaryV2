@@ -40,6 +40,7 @@ from mary.runtime.application import MaryApplication, create_application
 from mary.mobile.audio import MobileSpeechService
 from mary.mobile.voice_lab import VoiceLabStore, BASELINE as VOICE_BASELINE
 from mary.protocol.client import MaryClient
+from mary.experience import build_experience_snapshot
 
 
 MOBILE_PROTOCOL_VERSION = "4"
@@ -3885,6 +3886,33 @@ class MaryMobileRequestHandler(
                 self.mary_server
                 .runtime
                 .last_turn_trace()
+            )
+
+            return
+
+        if path == "/api/experience":
+            if not self._require_api_auth():
+                return
+
+            dashboard = (
+                self.mary_server
+                .runtime
+                .dashboard_state()
+            )
+            trace = (
+                self.mary_server
+                .runtime
+                .last_turn_trace()
+            )
+
+            self._send_json(
+                {
+                    "ok": True,
+                    **build_experience_snapshot(
+                        dashboard,
+                        trace,
+                    ),
+                }
             )
 
             return

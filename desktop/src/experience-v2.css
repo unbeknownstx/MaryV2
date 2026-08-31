@@ -1,0 +1,187 @@
+/* MaryV2 Experience Evolution — desktop presentation layer.
+   The DOM may look alive; Mary Core remains the authority. */
+:root {
+  --xp-accent: #ff5aaa;
+  --xp-accent-2: #8f78ff;
+  --xp-glow: #5fe7ff;
+  --xp-ink: #050611;
+  --xp-panel: rgba(8,10,28,.72);
+  --xp-line: rgba(255,94,172,.22);
+  --xp-cyan-line: rgba(95,231,255,.17);
+}
+
+#app {
+  --xp-pointer-x: 50%;
+  --xp-pointer-y: 42%;
+}
+
+#app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at var(--xp-pointer-x) var(--xp-pointer-y), color-mix(in srgb, var(--xp-glow) 7%, transparent), transparent 27%),
+    radial-gradient(circle at 8% 18%, color-mix(in srgb, var(--xp-accent-2) 11%, transparent), transparent 31%),
+    linear-gradient(145deg, rgba(2,3,12,.06), rgba(7,4,18,.28));
+  transition: background .45s ease;
+}
+
+.mary-xp-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.mary-xp-ambient .xp-orb {
+  position: absolute;
+  width: 26vw;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: .09;
+  background: var(--xp-accent);
+  animation: xpFloat 18s ease-in-out infinite alternate;
+}
+
+.mary-xp-ambient .xp-orb:nth-child(1) { left: 12%; top: 3%; }
+.mary-xp-ambient .xp-orb:nth-child(2) { right: 5%; bottom: 8%; background: var(--xp-glow); animation-duration: 25s; }
+.mary-xp-ambient .xp-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(95,231,255,.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,90,170,.1) 1px, transparent 1px);
+  background-size: 52px 52px;
+  opacity: .025;
+  mask-image: radial-gradient(circle at center, black, transparent 78%);
+}
+
+#app[data-xp-state="thinking"] .xp-orb:nth-child(2),
+#app[data-xp-state="responding"] .xp-orb:nth-child(2) { opacity: .16; }
+#app[data-xp-state="speaking"] .xp-orb:nth-child(1) { opacity: .14; }
+
+/* Strengthen the existing game shell without replacing its layout. */
+.titlebar,
+.sidebar,
+.chat-card,
+.inspector-card,
+.workspace-window,
+.launcher-card,
+.command-palette-panel,
+.status-card {
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+}
+
+.sidebar,
+.chat-card,
+.inspector-card,
+.workspace-window,
+.status-card {
+  border-color: color-mix(in srgb, var(--xp-accent) 23%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.025),
+    0 14px 46px rgba(0,0,0,.18),
+    0 0 30px color-mix(in srgb, var(--xp-accent) 3%, transparent);
+}
+
+.main-stage {
+  position: relative;
+  isolation: isolate;
+}
+
+.main-stage::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0;
+  z-index: 2;
+  background: radial-gradient(circle at 50% 43%, transparent 28%, rgba(2,3,12,.18) 78%);
+}
+
+#avatar-canvas,
+#avatar-fallback {
+  filter: saturate(1.03) contrast(1.015);
+  transition: filter .5s ease, transform .55s cubic-bezier(.2,.8,.2,1);
+}
+
+#app[data-xp-state="thinking"] #avatar-canvas,
+#app[data-xp-state="thinking"] #avatar-fallback { filter: saturate(1.07) contrast(1.025) brightness(1.02); }
+
+#messages .message,
+.message-row {
+  animation: xpMessage .22s ease both;
+}
+
+.mary-xp-ribbon {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, 62vw);
+  padding: 7px 11px;
+  border: 1px solid var(--xp-line);
+  border-radius: 999px;
+  background: rgba(7,8,24,.58);
+  backdrop-filter: blur(16px);
+  color: rgba(245,242,255,.74);
+  font-size: 10px;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.mary-xp-ribbon::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--xp-glow);
+  box-shadow: 0 0 11px var(--xp-glow);
+}
+
+.mary-xp-ribbon strong { color: var(--xp-accent); font-weight: 700; }
+.mary-xp-ribbon .xp-ribbon-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.mary-xp-corner {
+  position: fixed;
+  z-index: 10;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--xp-cyan-line);
+  background: rgba(6,10,22,.56);
+  color: rgba(222,247,255,.68);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.mary-xp-corner img { width: 14px; height: 14px; }
+
+#app[data-xp-theme="serious"] { --xp-accent: #f2759d; --xp-accent-2: #8167d8; --xp-glow: #79b9ff; }
+#app[data-xp-theme="soft"] { --xp-accent: #db8eff; --xp-accent-2: #7bbcff; --xp-glow: #f4a8d4; }
+#app[data-xp-theme="bright"] { --xp-accent: #ff67b8; --xp-accent-2: #7d8cff; --xp-glow: #74f0ff; }
+#app[data-xp-theme="focused"] { --xp-accent: #6bdcff; --xp-accent-2: #7e8cff; --xp-glow: #b47cff; }
+
+@keyframes xpMessage { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes xpFloat { from { transform: translate3d(-5%, -4%, 0) scale(.9); } to { transform: translate3d(9%, 8%, 0) scale(1.1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mary-xp-ambient .xp-orb,
+  #messages .message,
+  .message-row { animation: none !important; }
+}
