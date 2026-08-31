@@ -4,7 +4,7 @@
   'use strict';
 
   const STORAGE_SERVER = 'mary.mobileServer';
-  const STORAGE_TOKEN = 'mary.mobileToken';
+  const STORAGE_SESSION_KEY = 'mary.mobileToken';
   const app = document.getElementById('app');
   if (!app) return;
 
@@ -23,7 +23,7 @@
 
   async function getExperience() {
     if (unsupported || document.hidden || app.dataset.connection === 'offline') return;
-    const token = (localStorage.getItem(STORAGE_TOKEN) || '').trim();
+    const token = (localStorage.getItem(STORAGE_SESSION_KEY) || '').trim();
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     try {
       const response = await fetch(`${endpoint()}/api/experience`, { headers, cache: 'no-store' });

@@ -28,14 +28,14 @@ if MARKER in original:
     print("Retrieval Alpha is already installed.")
     raise SystemExit(0)
 
-start_token = "    def select(\n"
-end_token = "    def snapshot("
+start_marker = "    def select(\n"
+end_marker = "    def snapshot("
 
-start = original.find(start_token)
+start = original.find(start_marker)
 if start < 0:
     raise SystemExit("Could not locate CharacterSourcebook.select(); no change made.")
 
-end = original.find(end_token, start)
+end = original.find(end_marker, start)
 if end < 0:
     raise SystemExit("Could not locate CharacterSourcebook.snapshot(); no change made.")
 
