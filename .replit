@@ -37,3 +37,7 @@ args = "python -m scripts.check_mobile_voice"
 [[ports]]
 localPort = 8080
 externalPort = 80
+
+[postMerge]
+path = "scripts/post_merge_setup.sh"
+timeoutMs = 120000
