@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import hashlib
 import json
+import secrets
 from threading import RLock
 from time import monotonic
 import os
@@ -69,7 +71,20 @@ class MaryCoreService:
         self.instance_id = str(instance_id or uuid4())
         self.started_monotonic = monotonic()
         self._turn_lock = RLock()
-        self.device_tasks = DeviceTaskBroker()
+        registry = getattr(self.mary, "node_registry", None)
+        if registry is None:
+            raise RuntimeError("Mary Core requires a canonical node registry.")
+        # Compatibility for narrow non-node test doubles; production registry
+        # always provides this canonical shared lifecycle lock.
+        self._node_lifecycle_lock = getattr(registry, "lifecycle_lock", RLock())
+        self._node_live_validator = getattr(registry, "is_live", lambda _node_id: False)
+        # Digests share the registry/broker lifecycle lock. Raw credentials
+        # never enter registry descriptors, serialized state, or task payloads.
+        self._node_token_digests: dict[str, str] = {}
+        self.device_tasks = DeviceTaskBroker(
+            lifecycle_lock=self._node_lifecycle_lock,
+            live_node=self._node_live_validator,
+        )
         self._device_ollama_provider: DeviceOllamaProvider | None = None
         self._attach_device_ollama_provider()
         self._closed = False
@@ -325,6 +340,8 @@ class MaryCoreService:
     def register_node(
         self,
         request: NodeRegistrationRequest | dict[str, Any],
+        *,
+        node_token: str | None = None,
     ) -> dict[str, Any]:
         """Register or refresh one replaceable device capability node.
 
@@ -341,6 +358,7 @@ class MaryCoreService:
             else NodeRegistrationRequest.from_dict(request)
         )
         capabilities = [CapabilityDescriptor.from_dict(item) for item in model.capabilities]
+        registry = self.mary.node_registry
         descriptor = NodeDescriptor(
             node_id=model.node_id,
             display_name=model.display_name,
@@ -354,16 +372,47 @@ class MaryCoreService:
             trusted=True,
             execution_policy="authorization_required",
         )
-        registered = self.mary.node_registry.register(descriptor)
-        return _json_safe({
+        with self._node_lifecycle_lock:
+            digest = self._node_token_digests.get(model.node_id)
+            valid_existing_token = digest is not None and self._valid_node_token(
+                model.node_id, node_token
+            )
+            if digest is not None and not valid_existing_token and registry.is_live(model.node_id):
+                raise PermissionError("Existing live capability node registration requires its current node token.")
+            # A disconnected/stale descriptor is not an active identity:
+            # expire all prior-session work before atomically revoking its old
+            # digest and issuing recovery credentials.
+            if digest is not None and not valid_existing_token:
+                self.device_tasks.expire_pending_for_node(
+                    model.node_id,
+                    reason=(
+                        "Capability task expired because node enrollment/session "
+                        "was replaced."
+                    ),
+                )
+            raw_token = (
+                None if valid_existing_token
+                else secrets.token_urlsafe(32)
+            )
+            if raw_token is not None:
+                self._node_token_digests[model.node_id] = self._node_token_digest(raw_token)
+            registered = registry.register(descriptor)
+        response = {
             "ok": True,
             "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
             "registry": self.mary.node_registry.snapshot(),
-        })
+        }
+        # This is the sole disclosure point. It is deliberately not embedded in
+        # node/registry objects, diagnostics, tasks, or persisted application state.
+        if raw_token is not None:
+            response["node_token"] = raw_token
+        return _json_safe(response)
 
     def heartbeat_node(
         self,
         request: NodeHeartbeatRequest | dict[str, Any],
+        *,
+        node_token: str | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("Mary Core is closed.")
@@ -372,9 +421,11 @@ class MaryCoreService:
             if isinstance(request, NodeHeartbeatRequest)
             else NodeHeartbeatRequest.from_dict(request)
         )
-        if not self.mary.node_registry.heartbeat(model.node_id):
-            raise KeyError(f"Unknown capability node: {model.node_id}")
-        node = self.mary.node_registry.get(model.node_id)
+        with self._node_lifecycle_lock:
+            self.require_node_token(model.node_id, node_token)
+            if not self.mary.node_registry.heartbeat(model.node_id):
+                raise KeyError(f"Unknown capability node: {model.node_id}")
+            node = self.mary.node_registry.get(model.node_id)
         return _json_safe({
             "ok": True,
             "node": node.to_dict(stale_after=self.mary.node_registry.stale_after) if node else {},
@@ -383,6 +434,8 @@ class MaryCoreService:
     def disconnect_node(
         self,
         request: NodeHeartbeatRequest | dict[str, Any],
+        *,
+        node_token: str | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("Mary Core is closed.")
@@ -391,7 +444,12 @@ class MaryCoreService:
             if isinstance(request, NodeHeartbeatRequest)
             else NodeHeartbeatRequest.from_dict(request)
         )
-        changed = self.mary.node_registry.disconnect(model.node_id)
+        with self._node_lifecycle_lock:
+            self.require_node_token(model.node_id, node_token)
+            changed = self.mary.node_registry.disconnect(model.node_id)
+            self.device_tasks.expire_pending_for_node(
+                model.node_id, reason="Capability node disconnected before task completion."
+            )
         return _json_safe({
             "ok": changed,
             "node_id": model.node_id,
@@ -480,18 +538,28 @@ class MaryCoreService:
     def poll_capability_task(
         self,
         request: NodeTaskPollRequest | dict[str, Any],
+        *,
+        node_token: str | None = None,
     ) -> dict[str, Any]:
         model = (
             request
             if isinstance(request, NodeTaskPollRequest)
             else NodeTaskPollRequest.from_dict(request)
         )
-        node = self.mary.node_registry.get(model.node_id)
-        if node is None:
-            raise KeyError(f"Unknown capability node: {model.node_id}")
+        captured_token = str(node_token or "")
+
+        def authorized_live_node(node_id: str) -> bool:
+            # DeviceTaskBroker invokes this only while holding the shared
+            # lifecycle lock, including after every long-poll wake.
+            return (
+                self._valid_node_token(node_id, captured_token)
+                and self.mary.node_registry.is_live(node_id)
+            )
+
         task = self.device_tasks.poll(
             model.node_id,
             wait_seconds=model.wait_seconds,
+            live_node=authorized_live_node,
         )
         return _json_safe({
             "ok": True,
@@ -501,20 +569,46 @@ class MaryCoreService:
     def complete_capability_task(
         self,
         request: NodeTaskCompletionRequest | dict[str, Any],
+        *,
+        node_token: str | None = None,
     ) -> dict[str, Any]:
         model = (
             request
             if isinstance(request, NodeTaskCompletionRequest)
             else NodeTaskCompletionRequest.from_dict(request)
         )
-        task = self.device_tasks.complete(
-            node_id=model.node_id,
-            task_id=model.task_id,
-            status=model.status,
-            result=model.result,
-            error=model.error,
-        )
+        with self._node_lifecycle_lock:
+            self.require_node_token(model.node_id, node_token)
+            task = self.device_tasks.complete(
+                node_id=model.node_id,
+                task_id=model.task_id,
+                status=model.status,
+                result=model.result,
+                error=model.error,
+            )
         return _json_safe({"ok": True, "task": task.to_dict()})
+
+    @staticmethod
+    def _node_token_digest(token: str) -> str:
+        return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+    def validate_node_token(self, node_id: str, token: str | None) -> bool:
+        """Validate a scoped node credential for protocol transports."""
+        with self._node_lifecycle_lock:
+            return self._valid_node_token(node_id, token)
+
+    def _valid_node_token(self, node_id: str, token: str | None) -> bool:
+        supplied = str(token or "")
+        expected = self._node_token_digests.get(str(node_id))
+        return bool(supplied and expected) and secrets.compare_digest(
+            self._node_token_digest(supplied), expected
+        )
+
+    def require_node_token(self, node_id: str, token: str | None) -> None:
+        """Require the current credential for an explicitly named node."""
+        with self._node_lifecycle_lock:
+            if not self._valid_node_token(node_id, token):
+                raise PermissionError("Valid scoped node token required.")
 
     def capability_task_status(self, task_id: str) -> dict[str, Any]:
         task = self.device_tasks.get(task_id)

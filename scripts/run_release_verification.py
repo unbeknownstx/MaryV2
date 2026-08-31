@@ -38,6 +38,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_LLM_TEST = "tests/conversation/test_live_pipeline.py"
 
+# Support both documented invocation styles:
+# ``python -m scripts.run_release_verification`` and
+# ``python scripts/run_release_verification.py``. The latter otherwise places
+# ``scripts/`` rather than the repository root on sys.path, so in-process
+# diagnostics cannot import the canonical ``mary`` package after pytest exits.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 # The offline release gate must not inherit live provider credentials or
 # developer-specific routing from a local .env.  The real runtime still loads
 # and uses those values normally; these names are stripped only while

@@ -1,0 +1,1 @@
+- [Capability-node session isolation](capability-node-session-isolation.md) — credentials, leases, and task transitions share one boundary; replacements never inherit old work.

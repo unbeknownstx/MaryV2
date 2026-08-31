@@ -32,6 +32,9 @@ class MaryClient:
         self.device_id = str(device_id or "python-client")
         self.surface = str(surface or "client")
         self.timeout = float(timeout)
+        # Ephemeral process-local device credential. It is never included in
+        # request JSON or a client state/snapshot object.
+        self._node_token = ""
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/v1/health", authenticated=False)
@@ -70,15 +73,24 @@ class MaryClient:
             "capabilities": list(capabilities or []),
             "local": bool(local),
         })
-        return self._request("POST", "/v1/nodes/register", model.to_dict(), timeout=min(self.timeout, 3.0))
+        response = self._request(
+            "POST", "/v1/nodes/register", model.to_dict(),
+            timeout=min(self.timeout, 3.0), node_authenticated=bool(self._node_token),
+        )
+        issued = response.get("node_token")
+        if issued is not None:
+            if not isinstance(issued, str) or not issued:
+                raise MaryProtocolError("Mary Core returned an invalid node token.")
+            self._node_token = issued
+        return response
 
     def heartbeat_node(self) -> dict[str, Any]:
         model = NodeHeartbeatRequest.from_dict({"node_id": self.device_id})
-        return self._request("POST", "/v1/nodes/heartbeat", model.to_dict(), timeout=min(self.timeout, 3.0))
+        return self._request("POST", "/v1/nodes/heartbeat", model.to_dict(), timeout=min(self.timeout, 3.0), node_authenticated=True)
 
     def disconnect_node(self) -> dict[str, Any]:
         model = NodeHeartbeatRequest.from_dict({"node_id": self.device_id})
-        return self._request("POST", "/v1/nodes/disconnect", model.to_dict(), timeout=min(self.timeout, 3.0))
+        return self._request("POST", "/v1/nodes/disconnect", model.to_dict(), timeout=min(self.timeout, 3.0), node_authenticated=True)
 
     def route_capability(
         self,
@@ -131,6 +143,7 @@ class MaryClient:
             "/v1/nodes/task/poll",
             model.to_dict(),
             timeout=min(max(self.timeout, request_timeout), 35.0),
+            node_authenticated=True,
         )
 
     def complete_capability_task(
@@ -148,7 +161,7 @@ class MaryClient:
             "result": dict(result or {}),
             "error": error,
         })
-        return self._request("POST", "/v1/nodes/task/complete", model.to_dict(), timeout=min(self.timeout, 5.0))
+        return self._request("POST", "/v1/nodes/task/complete", model.to_dict(), timeout=min(self.timeout, 5.0), node_authenticated=True)
 
     def capability_task_status(self, task_id: str) -> dict[str, Any]:
         clean = str(task_id or "").strip()
@@ -220,6 +233,7 @@ class MaryClient:
         payload: dict[str, Any] | None = None,
         *,
         authenticated: bool = True,
+        node_authenticated: bool = False,
         timeout: float | None = None,
     ) -> dict[str, Any]:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -228,6 +242,10 @@ class MaryClient:
             headers["Content-Type"] = "application/json"
         if authenticated and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        if node_authenticated:
+            if not self._node_token:
+                raise MaryProtocolError("Node registration is required before device-channel calls.")
+            headers["X-Mary-Node-Token"] = self._node_token
         request = Request(self.base_url + path, data=body, headers=headers, method=method)
         try:
             with urlopen(request, timeout=self.timeout if timeout is None else float(timeout)) as response:

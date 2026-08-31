@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from threading import Condition, RLock
 from time import monotonic
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from .nodes import NodeRegistry
@@ -177,11 +177,21 @@ class DeviceTaskBroker:
 
     VERSION = "13.2"
 
-    def __init__(self, *, max_tasks: int = 200, ttl_seconds: float = 300.0) -> None:
+    def __init__(
+        self,
+        *,
+        max_tasks: int = 200,
+        ttl_seconds: float = 300.0,
+        lifecycle_lock: RLock | None = None,
+        live_node: Callable[[str], bool] | None = None,
+    ) -> None:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
-        self._lock = RLock()
+        # Core supplies NodeRegistry.lifecycle_lock so node lifecycle and task
+        # claims/completions share one linearization boundary.
+        self._lock = lifecycle_lock or RLock()
         self._condition = Condition(self._lock)
+        self._live_node = live_node
         self._tasks: dict[str, DeviceCapabilityTask] = {}
         self._order: list[str] = []
 
@@ -198,20 +208,19 @@ class DeviceTaskBroker:
         if normalized not in _ALLOWED_EXECUTION_CAPABILITIES:
             raise ValueError(f"Capability execution is not supported: {normalized}")
 
-        selected = registry.choose(normalized)
-        if selected is None:
-            raise LookupError(f"No connected node supports capability: {normalized}")
-
-        task = DeviceCapabilityTask(
-            task_id=f"capability_task_{uuid4().hex}",
-            capability=normalized,
-            intent=_clean_text(intent, 500),
-            args=_sanitize_task_args(normalized, args),
-            requester_device_id=_clean_text(requester_device_id or "unknown-device", 160),
-            selected_node_id=selected.node_id,
-        )
         with self._condition:
             self._expire_locked()
+            selected = registry.choose(normalized)
+            if selected is None:
+                raise LookupError(f"No connected node supports capability: {normalized}")
+            task = DeviceCapabilityTask(
+                task_id=f"capability_task_{uuid4().hex}",
+                capability=normalized,
+                intent=_clean_text(intent, 500),
+                args=_sanitize_task_args(normalized, args),
+                requester_device_id=_clean_text(requester_device_id or "unknown-device", 160),
+                selected_node_id=selected.node_id,
+            )
             self._tasks[task.task_id] = task
             self._order.append(task.task_id)
             self._trim_locked()
@@ -226,6 +235,7 @@ class DeviceTaskBroker:
         node_id: str,
         *,
         wait_seconds: float = 0.0,
+        live_node: Callable[[str], bool] | None = None,
     ) -> DeviceCapabilityTask | None:
         """Claim the next task for ``node_id``, optionally waiting for one.
 
@@ -246,6 +256,17 @@ class DeviceTaskBroker:
         with self._condition:
             while True:
                 self._expire_locked()
+                validator = live_node or self._live_node
+                if validator is not None and not validator(node_id):
+                    # A per-call validator may also bind a credential. Do not
+                    # let an obsolete credential expire work for a live,
+                    # re-enrolled node.
+                    if self._live_node is None or not self._live_node(node_id):
+                        self._expire_pending_for_node_locked(
+                            node_id,
+                            reason="Capability node became unavailable before task delivery.",
+                        )
+                    raise PermissionError(f"Capability node is not live: {node_id}")
                 for task_id in self._order:
                     task = self._tasks.get(task_id)
                     if task is None:
@@ -272,16 +293,26 @@ class DeviceTaskBroker:
         status: str,
         result: dict[str, Any] | None = None,
         error: str = "",
+        live_node: Callable[[str], bool] | None = None,
     ) -> DeviceCapabilityTask:
         normalized_status = str(status or "").strip().lower()
         if normalized_status not in {"completed", "rejected", "failed"}:
             raise ValueError("Task completion status must be completed, rejected, or failed.")
         with self._lock:
+            self._expire_locked()
             task = self._tasks.get(str(task_id))
             if task is None:
                 raise KeyError(f"Unknown capability task: {task_id}")
             if task.selected_node_id != str(node_id):
                 raise PermissionError("A capability task may only be completed by its selected node.")
+            validator = live_node or self._live_node
+            if validator is not None and not validator(str(node_id)):
+                if self._live_node is None or not self._live_node(str(node_id)):
+                    self._expire_pending_for_node_locked(
+                        str(node_id),
+                        reason="Capability node became unavailable before task completion.",
+                    )
+                raise PermissionError(f"Capability node is not live: {node_id}")
             if task.status in _TERMINAL_STATUSES:
                 return task
             task.status = normalized_status
@@ -295,6 +326,27 @@ class DeviceTaskBroker:
             task.updated_at = _utc_now()
             self._condition.notify_all()
             return task
+
+    def expire_pending_for_node(self, node_id: str, *, reason: str = "Capability node is unavailable.") -> int:
+        """Atomically expire non-terminal work assigned to an unavailable node."""
+        clean_node_id = str(node_id or "").strip()
+        with self._condition:
+            return self._expire_pending_for_node_locked(clean_node_id, reason=reason)
+
+    def _expire_pending_for_node_locked(self, node_id: str, *, reason: str) -> int:
+        """Expire one node's bounded task set while the broker lock is held."""
+        expired = 0
+        for task in self._tasks.values():
+            if task.selected_node_id != node_id or task.status in _TERMINAL_STATUSES:
+                continue
+            task.status = "expired"
+            task.claimed = True
+            task.error = _clean_text(reason, 500)
+            task.updated_at = _utc_now()
+            expired += 1
+        if expired:
+            self._condition.notify_all()
+        return expired
 
     def wait_for_terminal(
         self,
@@ -349,11 +401,17 @@ class DeviceTaskBroker:
         for task in self._tasks.values():
             if task.status in _TERMINAL_STATUSES:
                 continue
-            if now - task.created_monotonic > self.ttl_seconds:
+            unavailable = self._live_node is not None and not self._live_node(task.selected_node_id)
+            if unavailable or now - task.created_monotonic > self.ttl_seconds:
                 task.status = "expired"
                 task.claimed = True
-                task.error = "Capability task expired before completion."
+                task.error = (
+                    "Capability node became unavailable before task completion."
+                    if unavailable
+                    else "Capability task expired before completion."
+                )
                 task.updated_at = _utc_now()
+        self._condition.notify_all()
 
     def _trim_locked(self) -> None:
         while len(self._order) > self.max_tasks:

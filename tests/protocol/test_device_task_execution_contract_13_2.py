@@ -53,6 +53,7 @@ def test_typed_task_dispatch_poll_completion_round_trip(monkeypatch):
             "capabilities": [{"name": "personal_search", "private": True, "local": True}],
         })
         assert reg.status_code == 200
+        node_headers = {"X-Mary-Node-Token": reg.json()["node_token"]}
 
         dispatch = client.post("/v1/nodes/task/dispatch", headers=headers, json={
             "capability": "personal_search",
@@ -65,11 +66,11 @@ def test_typed_task_dispatch_poll_completion_round_trip(monkeypatch):
         assert task["selected_node_id"] == "windows-pc"
         assert dispatch.json()["execution"]["device_permission_required"] is True
 
-        poll = client.post("/v1/nodes/task/poll", headers=headers, json={"node_id": "windows-pc"})
+        poll = client.post("/v1/nodes/task/poll", headers=node_headers, json={"node_id": "windows-pc"})
         assert poll.status_code == 200
         assert poll.json()["task"]["task_id"] == task["task_id"]
 
-        completion = client.post("/v1/nodes/task/complete", headers=headers, json={
+        completion = client.post("/v1/nodes/task/complete", headers=node_headers, json={
             "node_id": "windows-pc",
             "task_id": task["task_id"],
             "status": "completed",
@@ -105,6 +106,66 @@ def test_dispatch_refuses_shell_and_wrong_node_cannot_complete(monkeypatch):
         assert bad.status_code in {409, 422}
 
 
+def test_device_channel_requires_scoped_token_and_expires_unavailable_work(monkeypatch):
+    monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
+    service = MaryCoreService(FakeApplication(), instance_id="task-core")
+    app = create_app(service)
+    creator = {"Authorization": "Bearer task-secret"}
+    registration = {
+        "node_id": "windows-pc",
+        "display_name": "Windows PC",
+        "host_type": "desktop",
+        "platform": "windows",
+        "surface": "desktop",
+        "capabilities": [{"name": "personal_search", "private": True, "local": True}],
+    }
+    with TestClient(app) as client:
+        registered = client.post("/v1/nodes/register", headers=creator, json=registration)
+        assert registered.status_code == 200
+        issued = registered.json()["node_token"]
+        node_headers = {"X-Mary-Node-Token": issued}
+        assert issued not in repr(service.state())
+        assert issued not in repr(service.node_status())
+
+        # Creator authority is deliberately not device-channel authority, and a
+        # second holder of creator access cannot replace this active ID.
+        assert client.post("/v1/nodes/heartbeat", headers=creator, json={"node_id": "windows-pc"}).status_code == 401
+        assert client.post(
+            "/v1/nodes/register", headers=creator,
+            json={**registration, "display_name": "Hijacked"},
+        ).status_code == 401
+        assert service.node_status()["nodes"][0]["display_name"] == "Windows PC"
+        assert client.post(
+            "/v1/nodes/heartbeat",
+            headers={"X-Mary-Node-Token": "wrong-token"},
+            json={"node_id": "windows-pc"},
+        ).status_code == 401
+
+        dispatched = client.post("/v1/nodes/task/dispatch", headers=creator, json={
+            "capability": "personal_search", "intent": "Find", "args": {"query": "draft"},
+        }).json()["task"]
+        node = service.mary.node_registry.get("windows-pc")
+        node.last_heartbeat_monotonic -= service.mary.node_registry.stale_after + 1
+        assert client.post(
+            "/v1/nodes/task/poll", headers=node_headers, json={"node_id": "windows-pc"},
+        ).status_code == 409
+        assert service.capability_task_status(dispatched["task_id"])["task"]["status"] == "expired"
+
+        # Refresh with the same token, then disconnect after enqueue. Both the
+        # broker operation and completion live check deny the now-dead node.
+        refreshed = client.post("/v1/nodes/register", headers={**creator, **node_headers}, json=registration)
+        assert refreshed.status_code == 200
+        assert "node_token" not in refreshed.json()
+        pending = client.post("/v1/nodes/task/dispatch", headers=creator, json={
+            "capability": "personal_search", "intent": "Find", "args": {"query": "draft"},
+        }).json()["task"]
+        assert client.post("/v1/nodes/disconnect", headers=node_headers, json={"node_id": "windows-pc"}).status_code == 200
+        assert service.capability_task_status(pending["task_id"])["task"]["status"] == "expired"
+        assert client.post("/v1/nodes/task/complete", headers=node_headers, json={
+            "node_id": "windows-pc", "task_id": pending["task_id"], "status": "completed",
+        }).status_code == 409
+
+
 def test_ollama_task_uses_same_typed_core_broker_and_sanitizes_completion(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
     service = MaryCoreService(FakeApplication(), instance_id="task-core")
@@ -121,6 +182,7 @@ def test_ollama_task_uses_same_typed_core_broker_and_sanitizes_completion(monkey
             "capabilities": [{"name": "llm.ollama", "private": True, "local": True}],
         })
         assert reg.status_code == 200
+        node_headers = {"X-Mary-Node-Token": reg.json()["node_token"]}
 
         dispatch = client.post("/v1/nodes/task/dispatch", headers=headers, json={
             "capability": "llm.ollama",
@@ -137,11 +199,11 @@ def test_ollama_task_uses_same_typed_core_broker_and_sanitizes_completion(monkey
         assert task["selected_node_id"] == "windows-pc"
         assert task["args"]["max_tokens"] == 80
 
-        poll = client.post("/v1/nodes/task/poll", headers=headers, json={"node_id": "windows-pc"})
+        poll = client.post("/v1/nodes/task/poll", headers=node_headers, json={"node_id": "windows-pc"})
         assert poll.status_code == 200
         assert poll.json()["task"]["capability"] == "llm.ollama"
 
-        completion = client.post("/v1/nodes/task/complete", headers=headers, json={
+        completion = client.post("/v1/nodes/task/complete", headers=node_headers, json={
             "node_id": "windows-pc",
             "task_id": task["task_id"],
             "status": "completed",

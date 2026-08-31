@@ -24,13 +24,39 @@ def test_full_runtime_connection_graph_has_no_required_disconnects(tmp_path):
     try:
         assert graph["healthy"] is True, graph["required_failures"]
         assert graph["required_failures"] == []
-        names = {item["name"] for item in graph["edges"] if item["connected"]}
+        edges = {item["name"]: item for item in graph["edges"]}
+        names = {name for name, item in edges.items() if item["connected"]}
         assert "TurnMind -> character" in names
         assert "TurnMind -> relationship" in names
         assert "TurnMind -> agency" in names
         assert "TurnMind -> autonomy" in names
+        assert "cognition/reasoning/reflection -> shared LLM router" in names
+        assert "MemoryManager retrieval -> canonical memory stores" in names
+        assert "MemoryManager consolidation -> canonical memory and retrieval" in names
+        assert "GrowthEngine -> canonical Mary" in names
+        assert "GrowthEngine -> canonical memory" in names
+        assert "GrowthEngine -> canonical preference promotion" in names
+        assert "ToolManager -> canonical tool registry" in names
+        assert "MaryApplication -> canonical autonomy" in names
+        assert "MaryApplication -> proposal-only autonomy policy" in names
         assert "Presence -> realtime attention bus" in names
         assert "production workspace -> canonical ecosystem" in names
         assert "device task broker -> Core service" in names
+        assert edges["device broker/provider -> canonical node registry"]["connected"] is True
+        assert edges["device broker/provider -> canonical node registry"]["required"] is False
+
+        original_router = mary.reasoning.llm
+        mary.reasoning.llm = object()
+        try:
+            disconnected = build_integration_graph(application=app, service=service)
+            broken_edge = next(
+                item
+                for item in disconnected["edges"]
+                if item["name"] == "cognition/reasoning/reflection -> shared LLM router"
+            )
+            assert broken_edge["connected"] is False
+            assert broken_edge["name"] in disconnected["required_failures"]
+        finally:
+            mary.reasoning.llm = original_router
     finally:
         service.close()

@@ -38,7 +38,7 @@ class FakeApplication:
 
 def test_core_ollama_provider_can_complete_while_canonical_turn_lock_is_held():
     service = MaryCoreService(FakeApplication(), instance_id="bridge-core")
-    service.register_node({
+    registration = service.register_node({
         "node_id": "windows-pc",
         "display_name": "Windows PC",
         "host_type": "desktop",
@@ -51,11 +51,15 @@ def test_core_ollama_provider_can_complete_while_canonical_turn_lock_is_held():
             "metadata": {"general_model": "node-model"},
         }],
     })
+    node_token = registration["node_token"]
     provider = service.mary.llm.get_provider("ollama")
     assert provider.is_available() is True
 
     def device_worker():
-        polled = service.poll_capability_task({"node_id": "windows-pc", "wait_seconds": 1.0})
+        polled = service.poll_capability_task(
+            {"node_id": "windows-pc", "wait_seconds": 1.0},
+            node_token=node_token,
+        )
         task = polled["task"]
         assert task["args"]["role"] == "general"
         service.complete_capability_task({
@@ -67,7 +71,7 @@ def test_core_ollama_provider_can_complete_while_canonical_turn_lock_is_held():
                 "model": "node-model",
                 "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
             },
-        })
+        }, node_token=node_token)
 
     worker = Thread(target=device_worker)
     worker.start()

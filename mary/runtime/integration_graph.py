@@ -26,6 +26,14 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
     presence = getattr(ecosystem, "presence", None)
     router = getattr(mary, "llm", None)
     system_contract = getattr(mary, "system_contract", None)
+    cognition = getattr(mary, "cognition", None)
+    reasoning = getattr(mary, "reasoning", None)
+    reflection = getattr(mary, "reflection", None)
+    memory = getattr(mary, "memory", None)
+    growth = getattr(mary, "growth", None)
+    tools = getattr(mary, "tools", None)
+    autonomy = getattr(mary, "autonomy", None)
+    node_registry = getattr(mary, "node_registry", None)
 
     contract = {}
     if callable(getattr(system_contract, "snapshot", None)):
@@ -38,6 +46,15 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
         _edge("application -> canonical Mary", mary is not None, owner="MaryApplication"),
         _edge("ecosystem -> canonical Mary", ecosystem is not None and getattr(ecosystem, "mary", None) is mary, owner="MaryEcosystem"),
         _edge("reasoning/reflection/task generation -> one LLM router", bool(contract.get("single_llm_router")), owner="LLMRouter"),
+        _edge(
+            "cognition/reasoning/reflection -> shared LLM router",
+            cognition is not None
+            and getattr(cognition, "reasoning_engine", None) is reasoning
+            and getattr(cognition, "reflection_engine", None) is reflection
+            and getattr(reasoning, "llm", None) is router
+            and getattr(reflection, "llm", None) is router,
+            owner="CognitiveOrchestrator/LLMRouter",
+        ),
         _edge("TurnMind -> character", turn_mind is not None and getattr(turn_mind, "character", None) is getattr(mary, "character", None), owner="CharacterCore"),
         _edge("TurnMind -> authored character sourcebook", turn_mind is not None and getattr(turn_mind, "character_sourcebook", None) is getattr(mary, "character_sourcebook", None), owner="CharacterSourcebook"),
         _edge("root authority -> canonical Mary", getattr(mary, "root_authority", None) is not None, owner="MaryRootAuthority"),
@@ -45,13 +62,94 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
         _edge("TurnMind -> relationship", turn_mind is not None and getattr(turn_mind, "relationship", None) is getattr(mary, "relationship", None), owner="RelationshipManager"),
         _edge("TurnMind -> agency", turn_mind is not None and getattr(turn_mind, "agency", None) is getattr(mary, "agency", None), owner="Agency"),
         _edge("TurnMind -> autonomy", turn_mind is not None and getattr(turn_mind, "autonomy", None) is getattr(mary, "autonomy", None), owner="AutonomyRuntime"),
+        _edge(
+            "MemoryManager retrieval -> canonical memory stores",
+            memory is not None
+            and getattr(memory, "retrieval", None) is not None
+            and getattr(memory, "episodic", None) is not None
+            and getattr(memory, "semantic", None) is not None
+            and getattr(memory, "working", None) is not None
+            and getattr(getattr(memory, "retrieval", None), "episodic", None)
+            is getattr(memory, "episodic", None)
+            and getattr(getattr(memory, "retrieval", None), "semantic", None)
+            is getattr(memory, "semantic", None)
+            and getattr(getattr(memory, "retrieval", None), "working", None)
+            is getattr(memory, "working", None),
+            owner="MemoryManager/MemoryRetriever",
+        ),
+        _edge(
+            "MemoryManager consolidation -> canonical memory and retrieval",
+            memory is not None
+            and getattr(memory, "consolidation", None) is not None
+            and getattr(memory, "retrieval", None) is not None
+            and getattr(memory, "episodic", None) is not None
+            and getattr(memory, "semantic", None) is not None
+            and getattr(memory, "working", None) is not None
+            and getattr(getattr(memory, "consolidation", None), "episodic_memory", None)
+            is getattr(memory, "episodic", None)
+            and getattr(getattr(memory, "consolidation", None), "semantic_memory", None)
+            is getattr(memory, "semantic", None)
+            and getattr(getattr(memory, "consolidation", None), "working_memory", None)
+            is getattr(memory, "working", None)
+            and getattr(getattr(memory, "consolidation", None), "retrieval", None)
+            is getattr(memory, "retrieval", None),
+            owner="MemoryManager/MemoryConsolidator",
+        ),
+        _edge(
+            "GrowthEngine -> canonical Mary",
+            growth is not None and getattr(growth, "mary", None) is mary,
+            owner="GrowthEngine",
+        ),
+        _edge(
+            "GrowthEngine -> canonical memory",
+            growth is not None
+            and getattr(growth, "mary", None) is mary
+            and memory is not None
+            and getattr(getattr(growth, "mary", None), "memory", None) is memory,
+            owner="GrowthEngine/MemoryManager",
+        ),
+        _edge(
+            "GrowthEngine -> canonical preference promotion",
+            growth is not None
+            and getattr(growth, "mary", None) is mary
+            and getattr(mary, "preference_promotion", None) is not None
+            and getattr(mary, "preferences", None) is not None
+            and getattr(getattr(growth, "mary", None), "preference_promotion", None)
+            is getattr(mary, "preference_promotion", None)
+            and getattr(getattr(growth, "mary", None), "preferences", None)
+            is getattr(mary, "preferences", None),
+            owner="GrowthEngine/PreferencePromotionSystem",
+        ),
+        _edge(
+            "ToolManager -> canonical tool registry",
+            tools is not None
+            and getattr(tools, "registry", None) is not None
+            and (turn_mind is None or getattr(turn_mind, "tools", None) is tools),
+            owner="ToolManager/ToolRegistry",
+        ),
         _edge("TurnMind -> shared emotion", turn_mind is not None and getattr(turn_mind, "emotion", None) is getattr(mary, "emotion", None), owner="EmotionManager"),
         _edge("Presence -> realtime attention bus", presence is not None and realtime is not None and getattr(presence, "attention", None) is getattr(realtime, "attention", None), owner="AttentionBus/PresenceManager"),
         _edge("performance director -> TurnMind", turn_mind is not None and getattr(mary, "performance", None) is getattr(turn_mind, "performance", None), owner="PerformanceDirector"),
         _edge("training feedback -> canonical Mary", getattr(mary, "training_feedback", None) is not None, owner="ResponseFeedbackStore"),
         _edge("production workspace -> canonical ecosystem", ecosystem is not None and getattr(ecosystem, "production", None) is not None, owner="ProductionStudio"),
         _edge("creative service catalog -> canonical Mary", getattr(mary, "creative_services", None) is not None, owner="CreativeServiceRegistry"),
-        _edge("compute registry -> canonical Mary", getattr(mary, "node_registry", None) is not None, owner="NodeRegistry"),
+        _edge("compute registry -> canonical Mary", node_registry is not None, owner="NodeRegistry"),
+        _edge(
+            "MaryApplication -> canonical autonomy",
+            getattr(application, "mary", None) is mary
+            and autonomy is not None
+            and callable(getattr(application, "_ensure_autonomy_started", None))
+            and callable(getattr(application, "_cycle_autonomy", None)),
+            owner="MaryApplication/AutonomyRuntime",
+        ),
+        _edge(
+            "MaryApplication -> proposal-only autonomy policy",
+            getattr(application, "mary", None) is mary
+            and autonomy is not None
+            and getattr(turn_mind, "autonomy", None) is autonomy
+            and callable(getattr(application, "_agency_autonomy_proposal_trigger", None)),
+            owner="MaryApplication/AutonomyRuntime",
+        ),
     ]
 
     if service is not None:
@@ -60,6 +158,17 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
             _edge("Core service -> canonical Mary", getattr(service, "mary", None) is mary, owner="MaryCoreService"),
             _edge("remote Ollama provider -> shared router", getattr(service, "_device_ollama_provider", None) is not None and router is not None, required=False, owner="DeviceOllamaProvider"),
             _edge("device task broker -> Core service", getattr(service, "device_tasks", None) is not None, owner="DeviceTaskBroker"),
+            _edge(
+                "device broker/provider -> canonical node registry",
+                getattr(service, "mary", None) is mary
+                and getattr(service, "device_tasks", None) is not None
+                and getattr(getattr(service, "_device_ollama_provider", None), "registry", None)
+                is node_registry
+                and getattr(getattr(service, "_device_ollama_provider", None), "broker", None)
+                is getattr(service, "device_tasks", None),
+                required=False,
+                owner="NodeRegistry/DeviceTaskBroker/DeviceOllamaProvider",
+            ),
         ])
 
     required_failures = [item["name"] for item in edges if item["required"] and not item["connected"]]

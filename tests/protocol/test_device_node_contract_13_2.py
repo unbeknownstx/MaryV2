@@ -65,6 +65,7 @@ def test_protocol_register_heartbeat_route_preview_and_disconnect(monkeypatch):
             },
         )
         assert registered.status_code == 200
+        node_headers = {"X-Mary-Node-Token": registered.json()["node_token"]}
         node = registered.json()["node"]
         assert node["node_id"] == "windows-pc"
         assert node["ownership"]["character_identity"] is False
@@ -73,7 +74,7 @@ def test_protocol_register_heartbeat_route_preview_and_disconnect(monkeypatch):
 
         heartbeat = client.post(
             "/v1/nodes/heartbeat",
-            headers=headers,
+            headers=node_headers,
             json={"node_id": "windows-pc"},
         )
         assert heartbeat.status_code == 200
@@ -109,7 +110,7 @@ def test_protocol_register_heartbeat_route_preview_and_disconnect(monkeypatch):
 
         disconnected = client.post(
             "/v1/nodes/disconnect",
-            headers=headers,
+            headers=node_headers,
             json={"node_id": "windows-pc"},
         )
         assert disconnected.status_code == 200

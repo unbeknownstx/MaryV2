@@ -2,6 +2,9 @@
 
 This registry is the current architectural index for MaryV2. Historical stage/release documents live under `docs/history/` and do not override this map.
 
+Companion architecture maps: [data and authority flows](data_flow.md) and
+[13.2 reconciliation inventory](RECONCILIATION_13_2.md).
+
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
 | Composition root | `mary.runtime.application.MaryApplication` | CANONICAL | One in-process Mary composition. |

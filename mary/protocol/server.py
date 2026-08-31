@@ -89,6 +89,13 @@ def create_app(service: MaryCoreService | None = None):
                 detail="Unauthorized",
             )
 
+    async def require_node(request: Request, node_id: str) -> str:
+        """Authenticate device-channel calls independently of creator access."""
+        token = str(request.headers.get("X-Mary-Node-Token") or "")
+        if not core.validate_node_token(node_id, token):
+            raise HTTPException(status_code=401, detail="Valid scoped node token required")
+        return token
+
     @app.get("/v1/health")
     async def health() -> dict[str, Any]:
         # Deliberately minimal and unauthenticated for hosting health checks.
@@ -157,15 +164,23 @@ def create_app(service: MaryCoreService | None = None):
             model = NodeRegistrationRequest.from_dict(
                 await request.json()
             )
+            node_token = request.headers.get("X-Mary-Node-Token")
 
             return await asyncio.to_thread(
                 core.register_node,
                 model,
+                node_token=node_token,
             )
 
         except ValueError as exc:
             raise HTTPException(
                 status_code=422,
+                detail=str(exc),
+            ) from exc
+
+        except PermissionError as exc:
+            raise HTTPException(
+                status_code=401,
                 detail=str(exc),
             ) from exc
 
@@ -177,16 +192,16 @@ def create_app(service: MaryCoreService | None = None):
 
     @app.post("/v1/nodes/heartbeat")
     async def heartbeat_node(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-
         try:
             model = NodeHeartbeatRequest.from_dict(
                 await request.json()
             )
+            node_token = await require_node(request, model.node_id)
 
             return await asyncio.to_thread(
                 core.heartbeat_node,
                 model,
+                node_token=node_token,
             )
 
         except ValueError as exc:
@@ -197,7 +212,7 @@ def create_app(service: MaryCoreService | None = None):
 
         except (
             KeyError,
-            RuntimeError,
+            RuntimeError, PermissionError,
         ) as exc:
             raise HTTPException(
                 status_code=409,
@@ -206,16 +221,16 @@ def create_app(service: MaryCoreService | None = None):
 
     @app.post("/v1/nodes/disconnect")
     async def disconnect_node(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-
         try:
             model = NodeHeartbeatRequest.from_dict(
                 await request.json()
             )
+            node_token = await require_node(request, model.node_id)
 
             return await asyncio.to_thread(
                 core.disconnect_node,
                 model,
+                node_token=node_token,
             )
 
         except ValueError as exc:
@@ -224,7 +239,7 @@ def create_app(service: MaryCoreService | None = None):
                 detail=str(exc),
             ) from exc
 
-        except RuntimeError as exc:
+        except (RuntimeError, PermissionError) as exc:
             raise HTTPException(
                 status_code=409,
                 detail=str(exc),
@@ -301,16 +316,16 @@ def create_app(service: MaryCoreService | None = None):
 
     @app.post("/v1/nodes/task/poll")
     async def poll_capability_task(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-
         try:
             model = NodeTaskPollRequest.from_dict(
                 await request.json()
             )
+            node_token = await require_node(request, model.node_id)
 
             return await asyncio.to_thread(
                 core.poll_capability_task,
                 model,
+                node_token=node_token,
             )
 
         except ValueError as exc:
@@ -321,7 +336,7 @@ def create_app(service: MaryCoreService | None = None):
 
         except (
             KeyError,
-            RuntimeError,
+            RuntimeError, PermissionError,
         ) as exc:
             raise HTTPException(
                 status_code=409,
@@ -330,16 +345,16 @@ def create_app(service: MaryCoreService | None = None):
 
     @app.post("/v1/nodes/task/complete")
     async def complete_capability_task(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-
         try:
             model = NodeTaskCompletionRequest.from_dict(
                 await request.json()
             )
+            node_token = await require_node(request, model.node_id)
 
             return await asyncio.to_thread(
                 core.complete_capability_task,
                 model,
+                node_token=node_token,
             )
 
         except ValueError as exc:

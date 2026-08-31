@@ -81,6 +81,11 @@ class NodeRegistry:
         self._lock = RLock()
         self._nodes: dict[str, NodeDescriptor] = {}
 
+    @property
+    def lifecycle_lock(self) -> RLock:
+        """Shared lock for registry lifecycle and its paired task broker."""
+        return self._lock
+
     def register(self, node: NodeDescriptor) -> NodeDescriptor:
         with self._lock:
             existing = self._nodes.get(node.node_id)
@@ -109,6 +114,16 @@ class NodeRegistry:
                 return False
             node.disconnect()
             return True
+
+    def is_live(self, node_id: str) -> bool:
+        """Return whether a node is presently connected and within its lease."""
+        with self._lock:
+            node = self._nodes.get(str(node_id))
+            return bool(
+                node is not None
+                and node.connected
+                and (monotonic() - node.last_heartbeat_monotonic) <= self.stale_after
+            )
 
     def remove(self, node_id: str) -> bool:
         with self._lock:
