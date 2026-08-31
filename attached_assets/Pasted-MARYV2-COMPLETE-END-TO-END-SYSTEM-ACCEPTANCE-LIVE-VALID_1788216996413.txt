@@ -1,0 +1,1117 @@
+MARYV2 — COMPLETE END-TO-END SYSTEM ACCEPTANCE & LIVE VALIDATION
+
+We have completed a long sequence of MaryV2 architecture, reconciliation, security, observability, lifecycle, distributed-runtime, and preservation work.
+
+This is not another overhaul.
+
+Do not redesign MaryV2.
+
+Do not simplify the architecture.
+
+Do not add speculative features.
+
+Do not make broad changes simply because something could be cleaner.
+
+The purpose of this task is to determine whether the entire current MaryV2 system actually functions coherently as one system in practice.
+
+⸻
+
+PRIMARY QUESTION
+
+Is MaryV2 now functioning correctly as one persistent computational character and assistant from end to end?
+
+I want evidence, not architectural optimism.
+
+Prove actual behavior wherever possible.
+
+Distinguish:
+
+* VERIFIED LIVE
+* VERIFIED BY TEST
+* IMPLEMENTED BUT NOT LIVE-VERIFIED
+* PARTIAL
+* FAILED
+* UNKNOWN
+
+Do not claim a subsystem works merely because classes, tests, or documentation exist.
+
+⸻
+
+IMPORTANT TESTING RULE
+
+Do not submit one enormous conversational audit prompt through Mary’s normal LLM route.
+
+We previously observed a Railway-generated:
+
+502 Application failed to respond
+
+during a large audit request.
+
+Production Turn Failure Observability was subsequently added.
+
+Use:
+
+* repository inspection
+* direct protocol/API checks
+* focused automated tests
+* runtime telemetry
+* small bounded conversational turns
+* actual Core state
+* real Mobile behavior
+* real capability-node behavior where available
+
+Use model-backed Mary turns only when they are required to prove actual conversational behavior.
+
+Keep those turns short.
+
+⸻
+
+CURRENT KNOWN HISTORY
+
+Verify current Git/main rather than blindly trusting these values.
+
+Known milestones include:
+
+Major reconciliation
+
+Task #7:
+
+da90f13d420b5135d5fca1aa33f751761fb9843c
+
+Results included:
+
+* one canonical MaryApplication / Mary Core authority
+* memory, growth, cognition, tools, autonomy, providers, and nodes more thoroughly connected
+* scoped node-session credentials
+* stale/wrong node credentials rejected
+* old-session tasks expired
+* re-enrolled nodes cannot inherit old work
+
+Known functional result at that point:
+
+1,347 passed / 5 skipped
+
+⸻
+
+Release hygiene
+
+Task #9:
+
+72bf9a7db85dece3e34247f4eaef9cc602a5be3a
+
+Included:
+
+* scripts/post_merge_setup.sh
+* .replit setup/workflow reconciliation
+
+⸻
+
+Production observability
+
+Task #12:
+
+300d7094c93e615827979897744b2548e1d3d5b2
+
+Included:
+
+* Mary-owned request correlation
+* hashed upstream IDs
+* bounded sanitized stage timings
+* Core instance/uptime telemetry
+* provider/application/lock/post-processing/auth/validation/serialization failure categories
+* no prompt/output/memory/evidence/credential logging
+* 40-trace Core ring
+* stage-retention bound
+* fixed safe HTTP errors
+
+Known verification:
+
+* focused: 21 passed
+* affected regressions: 490 passed
+* full suite: 1,375 passed / 1 skipped / 1 unrelated root-structure gate failure
+
+Do not assume these are still the latest numbers.
+
+⸻
+
+1. SOURCE AUTHORITY & REPOSITORY STATE
+
+First establish exactly what code is being tested.
+
+Report:
+
+* current branch
+* current HEAD commit
+* whether working tree is clean
+* whether HEAD matches GitHub/main
+* whether any completed task remains uncommitted
+* whether Task #13 and any later tasks have actually merged
+* whether Replit has pending generated changes
+* whether Railway production is running the expected revision if determinable
+* whether Mobile is running the expected revision
+
+Do not test an ambiguous source state.
+
+⸻
+
+2. CANONICAL MARY AUTHORITY
+
+Verify that there is exactly one canonical Mary runtime authority.
+
+Trace:
+
+Mary Core → MaryApplication → identity/state owners
+
+Verify that none of these become another Mary:
+
+* Mary Mobile
+* desktop surface
+* Replit
+* Railway process wrapper
+* Windows capability node
+* macOS capability node
+* Groq
+* Gemini
+* OpenRouter
+* Ollama
+* tools
+* memory stores
+
+Prove that surfaces are clients, providers are cognition resources, and nodes are capability providers.
+
+Report any duplicate state ownership.
+
+⸻
+
+3. CORE HEALTH & PROTOCOL
+
+Verify live production Core where credentials and environment permit.
+
+Test minimally:
+
+* /v1/health
+* /v1/state
+* authenticated access
+* invalid authentication
+* bounded malformed request
+* one small normal turn
+* observability trace corresponding to that turn
+
+Confirm:
+
+* Core responds reliably
+* request correlation works
+* stage timings are produced
+* telemetry is sanitized
+* Core instance/uptime information works
+* failures do not expose internal/private data
+
+Do not intentionally overload production.
+
+⸻
+
+4. COMPLETE NORMAL TURN
+
+Trace one small real creator turn from beginning to end.
+
+Example:
+
+“Mary, give me one sentence confirming you can hear me.”
+
+Trace actual runtime stages:
+
+Surface
+→ Mobile bridge/client
+→ protocol
+→ Core ingress
+→ turn lock
+→ MaryApplication
+→ current state
+→ relationship context
+→ memory retrieval
+→ CharacterSourcebook retrieval
+→ Experience Evolution/context
+→ cognition router
+→ provider selection
+→ generation
+→ response normalization
+→ dialogue persistence
+→ growth processing
+→ autonomy passive processing
+→ serialization
+→ Mobile rendering
+
+For every stage mark:
+
+* LIVE VERIFIED
+* TEST VERIFIED
+* IMPLEMENTED
+* PARTIAL
+* UNKNOWN
+
+Use Task #12 telemetry wherever possible.
+
+⸻
+
+5. PROVIDER ROUTING
+
+Verify current intended routes.
+
+Expected normal/free-first:
+
+Groq → Gemini → OpenRouter → Ollama
+
+Expected local/private:
+
+Ollama only
+
+Confirm current configuration from actual runtime/code.
+
+Test without wasting API capacity:
+
+Normal route
+
+Run one tiny normal turn.
+
+Record:
+
+* selected provider
+* elapsed time
+* fallback attempts if any
+
+Fallback architecture
+
+Use mocks/focused tests wherever possible rather than intentionally exhausting live providers.
+
+Prove:
+
+* Groq failure can fall to Gemini
+* Gemini failure can fall to OpenRouter
+* cloud exhaustion can reach Ollama where permitted
+* private/local mode cannot leak to cloud
+* returning to normal/free-first actually exits local-only mode
+
+Do not deliberately create costly provider failures in production.
+
+⸻
+
+6. IMMEDIATE CONVERSATION CONTINUITY
+
+This is a critical behavioral acceptance test.
+
+We observed a case where Mary asked the creator for preferences, the creator answered, and Mary’s following response said:
+
+“I don’t have a stored memory that answers that.”
+
+That behavior is incorrect if the answer is still present in immediate conversational context.
+
+Test with temporary harmless data, not existing creator facts.
+
+Example:
+
+Turn 1:
+
+“For this test only, remember that my temporary test animal is otter and my temporary test number is 47.”
+
+Turn 2:
+
+“What test animal and number did I just tell you?”
+
+Mary should answer from conversation context, regardless of whether durable memory promotion occurred.
+
+Verify separately:
+
+A. Immediate conversational context works.
+
+B. Durable memory formation is a separate mechanism.
+
+Do not permanently promote these test values if a test isolation mechanism exists.
+
+Determine whether a memory-specific fallback can incorrectly override conversational history.
+
+This is a release-blocking behavioral problem if reproducible.
+
+⸻
+
+7. MEMORY END TO END
+
+Inventory currently active memory types.
+
+For each active store trace:
+
+WRITE → STORE → RETRIEVE → RANK → USE → UPDATE/CONSOLIDATE
+
+Include where applicable:
+
+* working/context memory
+* episodic
+* semantic
+* relationship
+* shared work
+* vector retrieval
+* preference evidence
+* Experience Evolution evidence
+
+Prove at least one safe bounded memory round trip.
+
+Do not contaminate Mary’s real long-term creator memories with arbitrary test facts.
+
+Use test namespaces/fixtures where available.
+
+Check for:
+
+* write-only memory
+* retrieval-only memory
+* duplicated authority
+* unreachable pre-cloud valuable state
+* silent promotion failure
+
+⸻
+
+8. CHARACTER & IDENTITY
+
+Verify CharacterSourcebook is active.
+
+Determine current:
+
+* record count
+* source names
+* loading status
+* retrieval path
+* character-context injection path
+* errors/warnings
+
+Verify the boundary:
+
+CharacterSourcebook ≠ lived memory
+creator ≠ Mary
+provider ≠ Mary
+fictional Mary history ≠ AI runtime lived history
+
+Run a small character consistency test if safe.
+
+Do not rewrite CharacterSourcebook.
+
+Verify ordinary conversation cannot directly mutate foundational character authority.
+
+⸻
+
+9. EXPERIENCE EVOLUTION / GROWTH
+
+Trace the real current loop:
+
+conversation/event
+→ evidence candidate
+→ significance
+→ classification
+→ persistence
+→ reflection/adaptation
+→ future retrieval
+→ behavioral influence
+
+Mark every stage:
+
+* LIVE
+* TESTED
+* PARTIAL
+* MISSING
+
+Test using fixtures/sandbox data wherever possible.
+
+Prove whether negative feedback on an action/recommendation can influence future behavior without rewriting Mary’s fundamental character.
+
+Report whether Experience Evolution is genuinely behavioral or primarily archival today.
+
+⸻
+
+10. RELATIONSHIP STATE
+
+Verify:
+
+* creator relationship state has one authority
+* relationship context reaches normal turns
+* relationship state persists across process reconstruction where designed
+* guest/unknown-speaker statements cannot trivially overwrite creator identity facts
+
+Do not implement Guest Mode here.
+
+Simply report current protection level.
+
+⸻
+
+11. AUTONOMY
+
+Verify current autonomy is still intentionally proposal-only unless a later approved task changed that policy.
+
+Prove:
+
+* ordinary successful turn can request appropriate passive autonomy processing
+* proposals do not automatically become dangerous actions
+* no automatic spending
+* no uncontrolled tool execution
+* no unrestricted background model loop
+* failure of autonomy post-processing does not corrupt the creator turn
+* dedupe/prioritization/persistence work as designed where implemented
+
+Distinguish:
+
+autonomy reasoning
+
+from:
+
+background autonomous execution.
+
+⸻
+
+12. EVENTS / TRIGGERS / ATTENTION
+
+Trace existing event-related primitives.
+
+Determine whether this flow is currently possible:
+
+event → observation → attention/relevance → autonomy proposal
+
+Then determine where it stops before permission/tool execution.
+
+Do not build an Event Bus.
+
+Report whether existing primitives already form its foundation.
+
+⸻
+
+13. CAPABILITIES / TOOLS
+
+Trace:
+
+Mary intent
+→ capability representation
+→ permission check
+→ resolver/dispatcher
+→ local/Core/node execution
+→ result normalization
+→ Mary
+
+Identify actual implementation names.
+
+Verify:
+
+* tools do not bypass permissions
+* capability execution cannot silently become identity authority
+* result handling can feed conversation
+* execution errors are bounded
+* alternate execution paths do not bypass sleep/offline policies if lifecycle is implemented
+
+Determine whether existing architecture is effectively a partial Capability Bus.
+
+Do not build new external integrations.
+
+⸻
+
+14. PERMISSIONS
+
+Test existing permission boundaries.
+
+Include:
+
+* creator authority
+* node permissions
+* scoped session credentials
+* stale credentials
+* old enrollment sessions
+* tool/action confirmation
+* destructive/write operations where existing
+
+Do not execute destructive actions.
+
+Use mocks/focused tests.
+
+Prove that an unauthenticated/random client cannot acquire creator-level execution authority.
+
+⸻
+
+15. CANONICAL SLEEP / WAKE LIFECYCLE
+
+If Task #13 has been implemented, verify it fully.
+
+Expected semantics:
+
+ACTIVE → IDLE → SLEEPING → ACTIVE
+
+with explicit creator/admin:
+
+OFFLINE
+
+Verify distinction among:
+
+* Core online
+* Mary ACTIVE
+* Mary IDLE
+* Mary SLEEPING
+* Mary OFFLINE
+* Core unreachable
+* Railway stopped
+* Mobile closed
+
+Prove:
+
+ACTIVE
+
+Normal cognition works.
+
+IDLE
+
+Mary does not create unnecessary model activity merely because the surface is idle.
+
+SLEEPING
+
+Core remains reachable while:
+
+* provider generation is suppressed
+* autonomy is paused
+* tool execution is blocked
+* new node work is blocked
+* durable Mary state remains preserved
+
+WAKE
+
+Authenticated creator reconnect returns the same canonical Mary to ACTIVE.
+
+OFFLINE
+
+Must require explicit creator/admin authority and must not mean mere network failure.
+
+Surface leases
+
+Verify:
+
+* registration
+* heartbeat
+* visibility
+* background
+* expiration
+* abrupt disappearance
+* multiple surfaces
+* restart clears ephemeral leases
+
+If Task #13 is not yet implemented, mark it clearly rather than pretending these semantics exist.
+
+⸻
+
+16. MOBILE
+
+Verify actual Mary Mobile behavior.
+
+Check:
+
+* remote-Core-only authority
+* no duplicate MaryApplication
+* authentication
+* conversation continuity
+* state rendering
+* provider response rendering
+* errors
+* lifecycle rendering if available
+* reconnect
+* app background/foreground
+* stale connection recovery
+
+Verify UI distinguishes infrastructure status from Mary lifecycle if that feature now exists.
+
+Example conceptual distinction:
+
+Core ONLINE · Mary ACTIVE
+
+vs.
+
+Core ONLINE · Mary SLEEPING
+
+Do not redesign the UI.
+
+⸻
+
+17. WINDOWS CAPABILITY NODE
+
+We previously had a real Windows Mary capability node and successfully completed an Ollama round trip.
+
+It was also intended to start automatically with the PC.
+
+Later Core reported no connected llm.ollama node.
+
+Do not reinstall or duplicate the node blindly.
+
+Determine current state from Core first.
+
+If the real Windows device is available:
+
+Verify:
+
+* existing enrollment
+* startup mechanism
+* current node process
+* current scoped session credential compatibility
+* Core connectivity
+* heartbeat
+* llm.ollama advertisement
+* Ollama availability
+* real round trip
+* disconnect
+* reconnect
+* stale session rejection
+* reboot/autostart if practical
+
+Specifically determine whether Task #7’s session-hardening invalidated an older startup credential or enrollment.
+
+If the PC is unavailable, mark real-device tests:
+
+NOT LIVE-VERIFIED — DEVICE UNAVAILABLE
+
+Do not generate another enrollment merely to make the test green.
+
+⸻
+
+18. DISTRIBUTED FAILURE RESILIENCE
+
+Where real node access exists, validate:
+
+* temporary network loss
+* heartbeat loss
+* task expiration
+* stale result rejection
+* reconnect
+* session replacement
+* no task inheritance after re-enrollment
+* Core remains healthy when node disappears
+* provider routing handles missing Ollama node correctly
+
+Use existing resilience suite first.
+
+Avoid destructive chaos testing against production.
+
+⸻
+
+19. PROCESS RESTART / CONTINUITY
+
+Using safe test infrastructure or an approved restart where appropriate, prove:
+
+Core process reconstruction
+→ same canonical persistent Mary
+→ durable identity/state restored
+→ no duplicated Mary
+→ ephemeral runtime/session state appropriately reset
+
+Verify durable vs ephemeral state explicitly.
+
+Do not conflate continuity with resuming in-flight network requests.
+
+⸻
+
+20. OBSERVABILITY ACCEPTANCE
+
+Verify Task #12 remains intact after all later tasks.
+
+Prove sanitized telemetry can answer:
+
+* where a successful turn spent time
+* which provider was used
+* whether fallback occurred
+* whether post-turn stages completed
+* which failure category occurred
+
+Confirm logs do NOT contain:
+
+* prompts
+* private memories
+* CharacterSourcebook evidence text
+* model outputs
+* credentials
+* raw sensitive tokens
+
+Report ring limits and retention bounds.
+
+⸻
+
+21. FAILURE TEST
+
+Generate one safe controlled application-level failure through tests/mocks—not production abuse.
+
+Verify:
+
+* failure category is correct
+* request is correlated
+* successful preceding stages are visible
+* failed stage is visible
+* user-facing error remains sanitized
+* Core remains usable afterward
+
+Do not intentionally reproduce Railway infrastructure failure.
+
+⸻
+
+22. MOBILE → CORE → PROVIDER → MEMORY ACCEPTANCE
+
+Run one small real conversation proving the primary loop.
+
+Use harmless content.
+
+Prove:
+
+Mobile
+→ authenticated Core
+→ canonical MaryApplication
+→ character/context retrieval
+→ provider
+→ response
+→ dialogue persistence
+→ post-turn memory/experience processing
+→ subsequent conversational continuity
+
+This is the primary Mary acceptance path.
+
+⸻
+
+23. NODE → CORE → MARY ACCEPTANCE
+
+If a real capability node is connected, prove one bounded real capability flow:
+
+Mary/Core
+→ capability dispatch
+→ authenticated scoped node session
+→ Ollama or another already-existing safe capability
+→ result
+→ Core
+→ normalized response/state
+
+No new tool should be introduced for this test.
+
+⸻
+
+24. SECURITY BOUNDARY CHECK
+
+Run existing security tests and inspect critical boundaries.
+
+Verify:
+
+* invalid Core tokens rejected
+* invalid node credentials rejected
+* stale node sessions rejected
+* old task/session ownership rejected
+* surface lease authentication if implemented
+* OFFLINE/wake authorization if implemented
+* sleeping gates cannot be bypassed through alternate tool/provider routes
+* no raw secrets appear in normal diagnostics
+
+Do not conduct destructive penetration testing.
+
+⸻
+
+25. PERFORMANCE SANITY
+
+Collect basic timings for:
+
+* health
+* state
+* tiny normal turn
+* context construction
+* memory retrieval
+* CharacterSourcebook retrieval
+* provider generation
+* post-turn persistence/growth/autonomy
+* node round trip if available
+
+Do not optimize unless a clear regression exists.
+
+Flag pathological latency.
+
+⸻
+
+26. TEST SUITE
+
+Run:
+
+1. newest focused tests for recently completed tasks
+2. affected regression suites
+3. complete functional suite
+
+Report exact:
+
+* passed
+* failed
+* skipped
+* duration
+* known expected exceptions
+
+For every failure classify:
+
+* NEW REGRESSION
+* PRE-EXISTING
+* ENVIRONMENT-DEPENDENT
+* DEVICE-DEPENDENT
+* INTENTIONAL GATE
+* UNKNOWN
+
+Do not hide failures.
+
+The previously known root-directory structure gate must be reported accurately if it still exists.
+
+⸻
+
+27. DOCUMENTATION VS REALITY
+
+Compare current canonical documentation to actual implementation.
+
+Flag documentation that is:
+
+* accurate
+* stale
+* aspirational
+* contradicted by code
+* contradicted by runtime
+
+Do not rewrite every document during this validation.
+
+Only recommend documentation reconciliation where meaningful.
+
+⸻
+
+28. DISCONNECTED SYSTEM SEARCH
+
+Explicitly search for systems that are:
+
+* constructed but never used
+* written but never read
+* read but never written
+* tested but not wired to canonical runtime
+* API-exposed but never invoked
+* bypassed by alternate path
+* only legacy
+* duplicate authority
+* partially integrated
+
+Pay special attention to:
+
+* memory
+* Experience Evolution
+* autonomy
+* triggers
+* attention
+* tools
+* node capabilities
+* permission systems
+* lifecycle
+* shared work
+* relationship state
+
+This is important.
+
+A passing test suite alone does not prove integration.
+
+⸻
+
+29. BEHAVIORAL ACCEPTANCE QUESTIONS
+
+Answer from evidence:
+
+A.
+
+Can Mary understand something the creator said one turn ago without requiring long-term memory?
+
+B.
+
+Can Mary remember meaningful information later through the intended durable-memory path?
+
+C.
+
+Can Mary’s lived experience affect later behavior without rewriting CharacterSourcebook?
+
+D.
+
+Can a model/provider change without changing Mary’s canonical identity?
+
+E.
+
+Can Mobile disappear without destroying Mary?
+
+F.
+
+Can Mary sleep without shutting down Railway?
+
+G.
+
+Can Mary wake as the same Mary?
+
+H.
+
+Can a Windows node disappear without damaging Core?
+
+I.
+
+Can that node later reconnect securely?
+
+J.
+
+Can Mary propose autonomous activity without automatically executing dangerous actions?
+
+K.
+
+Can a tool result become part of future experience/memory where designed?
+
+L.
+
+Can production failures now identify where the turn failed?
+
+⸻
+
+30. DO NOT FIX EVERYTHING DURING VALIDATION
+
+This is primarily a validation task.
+
+If you discover a defect:
+
+1. reproduce it
+2. isolate it
+3. classify severity
+4. identify likely owner/subsystem
+5. recommend the smallest fix
+
+Do not immediately launch another broad reconciliation.
+
+You may fix only a trivial validation blocker if absolutely required and clearly document it.
+
+For substantive defects, stop and report them first.
+
+⸻
+
+31. FINAL VERDICT SCALE
+
+Give MaryV2 one of these verdicts:
+
+PASS — COHERENT SYSTEM
+
+All critical paths function and remaining issues are bounded/non-blocking.
+
+PASS WITH CONDITIONS
+
+Core system works, but one or more important behaviors require bounded fixes.
+
+PARTIAL
+
+Major architecture exists but important end-to-end loops are still broken.
+
+FAIL
+
+Canonical behavior cannot currently be trusted.
+
+Do not give PASS merely because automated tests pass.
+
+⸻
+
+32. FINAL REPORT FORMAT
+
+Return exactly these sections:
+
+A. Executive Verdict
+
+B. Source / Deployment State
+
+C. Canonical Authority
+
+D. Core Health
+
+E. Normal Turn Trace
+
+F. Provider Routing
+
+G. Immediate Conversation Continuity
+
+H. Memory
+
+I. Character / Identity
+
+J. Experience Evolution
+
+K. Relationship State
+
+L. Autonomy
+
+M. Events / Attention
+
+N. Capabilities / Tools
+
+O. Permissions
+
+P. Sleep / Wake Lifecycle
+
+Q. Mobile
+
+R. Windows Capability Node
+
+S. Distributed Resilience
+
+T. Persistence / Restart Continuity
+
+U. Observability
+
+V. Security
+
+W. Performance
+
+X. Automated Test Results
+
+Y. Disconnected / Partially Wired Systems
+
+Z. Documentation Accuracy
+
+Then:
+
+RELEASE BLOCKERS
+
+List only genuine blockers.
+
+NON-BLOCKING GAPS
+
+List bounded remaining work.
+
+TOP 10 VERIFIED CAPABILITIES
+
+Only things proven to actually work.
+
+TOP 10 LATENT CAPABILITIES
+
+Things mostly built but not yet user-visible.
+
+FINAL SYSTEM MAP
+
+Show the actual current MaryV2 system.
+
+FINAL ANSWERS
+
+Answer plainly:
+
+1. Is there only one Mary?
+2. Is her identity independent of providers?
+3. Does immediate conversation continuity work?
+4. Does durable memory work?
+5. Does Experience Evolution actually affect later behavior?
+6. Is CharacterSourcebook protected from ordinary learning?
+7. Does autonomy work as designed?
+8. Are tools/capabilities properly permissioned?
+9. Does lifecycle sleep/wake work?
+10. Does Mobile behave as a true surface rather than another Mary?
+11. Does the capability-node architecture work?
+12. Does node autostart/reconnect work on the real PC?
+13. Can Mary survive provider failure?
+14. Can Mary survive node failure?
+15. Can Mary survive Core process restart while preserving durable identity/state?
+16. Can failures now be diagnosed?
+17. Are there any important systems that exist but still do not influence actual behavior?
+18. What is the single largest remaining behavioral weakness?
+19. What is the single highest-leverage next feature after stabilization?
+20. Is MaryV2 ready to begin external integrations such as GitHub, Google Workspace, and computer control?
+
+Finally provide:
+
+FINAL MARYV2 VERDICT
+
+One paragraph, with no hype.
+
+State what MaryV2 actually is today, based on evidence.
