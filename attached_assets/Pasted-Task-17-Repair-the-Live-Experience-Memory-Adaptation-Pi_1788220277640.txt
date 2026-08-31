@@ -1,0 +1,245 @@
+Task #17 — Repair the Live Experience → Memory → Adaptation Pipeline
+
+We have now performed a controlled live production acceptance test of MaryV2’s memory and Experience Evolution system.
+
+Do not redesign the memory architecture. Do not replace existing subsystems. Do not simply lower thresholds until the test passes. Preserve CharacterSourcebook authority and all existing governed-learning protections.
+
+The live result was:
+
+creator interaction
+→ growth experience created ✅
+→ structured memory/preference candidate ❌
+→ governed promotion ❌
+→ durable storage ❌
+→ later retrieval ❌
+→ behavioral influence ❌
+
+Production evidence:
+
+* immediate dialogue-context recall works
+* growth experiences are created with unique experience IDs
+* observed importance consistently ~0.3
+* episodic memories: 0
+* semantic memories: 0
+* working memories: 0
+* developed preferences: 0
+* developed personality traits: 0
+* relationship milestones: 0
+* eligible memory candidates: 0
+* promotable candidates: 0
+* review-required candidates: 0
+* blocked candidates: 0
+* preference candidates: 0
+* semantic promotions: 0
+* preference promotions: 0
+* CharacterSourcebook remained exactly 189 records with unchanged hash
+
+Controlled test evidence included explicit creator preference statements and explicit negative feedback, yet neither produced even a preference candidate.
+
+Objective
+
+Find the exact break between normal creator-turn processing and the existing governed memory / developed-self candidate pipelines.
+
+First trace the implementation end-to-end before changing code.
+
+Establish the actual runtime path for:
+
+MaryApplication successful creator turn
+→ experience/growth processing
+→ evidence extraction/classification
+→ memory candidate creation
+→ preference candidate creation
+→ eligibility/significance governance
+→ promotion/consolidation
+→ persistence
+→ retrieval/context projection
+→ future behavior conditioning
+
+For every stage identify:
+
+* owning class/module
+* caller
+* whether it runs during a normal production creator turn
+* required gates/thresholds
+* required evidence types
+* whether provider-generated text is intentionally excluded
+* whether creator-authored explicit statements qualify
+* whether feedback qualifies
+* where candidates are stored
+* where counters/status projections are populated
+* whether tests reach the same path production reaches
+
+Specifically determine why explicit creator statements such as:
+
+“I prefer technical explanations to begin with a short summary before the detail.”
+
+and explicit feedback such as:
+
+“That recommendation was too verbose. In situations like this, I prefer the shortest actionable answer first.”
+
+produce growth experiences but zero preference candidates.
+
+Important distinction
+
+Do not make arbitrary temporary facts automatically semantic.
+
+The desired behavior is governed/selective learning, not “store every sentence.”
+
+A temporary fact such as:
+
+“For this test my animal is otter and number is 47”
+
+may reasonably remain dialogue-only unless reinforced/significant.
+
+But an authenticated creator explicitly stating a durable interaction preference, especially when reinforced or supplied as corrective feedback, should reach the existing governed preference-evidence pipeline unless a documented safety rule deliberately prevents it.
+
+If the current architecture intentionally requires repetition, confidence accumulation, evidence diversity, or review before promotion, preserve that. The defect is that production created no candidate at all, preventing governance from making that decision.
+
+Check for test/runtime divergence
+
+The existing tests previously demonstrated:
+
+* episodic storage/retrieval
+* semantic governance
+* selective consolidation
+* developed-self preference persistence
+* negative feedback influencing later recommendations
+* provider dialogue alone not becoming self-evidence
+* foundational personality/core values protected
+
+Determine whether those tests:
+
+* directly call candidate/promoter APIs that normal MaryApplication turns never call
+* construct synthetic evidence unavailable in production
+* bypass a missing runtime coordinator
+* use different configuration/default thresholds
+* depend on a disabled worker/cycle
+* rely on an event that is never emitted live
+
+Do not merely add another test around the isolated subsystem. Add an integration test through the same MaryApplication creator-turn path production uses.
+
+Desired repaired behavior
+
+A normal authenticated creator interaction should be able to produce structured evidence when appropriate.
+
+Examples:
+
+Explicit durable preference
+
+creator says:
+“I prefer concise actionable answers first.”
+
+Result may be:
+
+experience → preference candidate → governed confidence/repetition process → eventual developed preference
+
+It does not necessarily need immediate promotion after one statement.
+
+Corrective feedback
+
+creator says:
+“That was too verbose. Give me the actionable answer first in situations like this.”
+
+Result should at minimum create structured feedback/preference evidence that governance can evaluate.
+
+Incidental temporary data
+
+creator says:
+“My temporary test number is 47.”
+
+It is acceptable for this not to promote.
+
+Model-authored assertion
+
+Mary/provider invents:
+“You prefer X.”
+
+This must not become creator preference evidence without appropriate creator-origin evidence.
+
+Preserve boundaries
+
+Do not allow:
+
+* provider output to rewrite creator preferences
+* provider output to rewrite Mary’s identity
+* ordinary dialogue to mutate CharacterSourcebook
+* one low-confidence statement to rewrite foundational personality
+* guest/unknown speakers to overwrite creator facts
+* negative feedback to become unrestricted self-modification
+* memory promotion to bypass provenance/evidence governance
+* semantic memory to become a dump of every turn
+
+CharacterSourcebook must remain authored/read-only authority.
+
+Memory must remain lived evidence/history.
+
+Developed self/preferences must remain governed mutable state.
+
+Relationship state must remain separate.
+
+Observability
+
+Add sanitized diagnostics sufficient to answer:
+
+* experience created?
+* evidence extracted?
+* evidence type?
+* candidate created?
+* candidate class?
+* eligible?
+* threshold/gate outcome?
+* promoted/deferred/review/blocked?
+
+Do not expose the creator’s raw private statements in status endpoints or traces.
+
+Required tests
+
+Through the canonical MaryApplication turn path prove:
+
+1. explicit creator preference can create preference evidence/candidate
+2. corrective creator feedback can create governed preference evidence
+3. candidate may remain unpromoted when confidence requirements are not met
+4. appropriate reinforcement can cross the existing promotion rules
+5. promoted preference persists
+6. fresh conversation retrieves/applies promoted preference
+7. behavioral influence occurs without restating the preference in that turn
+8. incidental temporary fact is not automatically promoted
+9. provider-authored preference assertion is rejected as creator evidence
+10. guest/noncreator statement cannot overwrite creator preference
+11. CharacterSourcebook hash/content remains unchanged
+12. restart/reconstruction preserves promoted durable state where existing persistence semantics require it
+13. sleep/wake does not erase learned state
+14. failed provider turn does not create fabricated learning evidence
+15. duplicate evidence does not create uncontrolled candidate spam
+
+Also run existing memory, growth, developed-self, relationship, conversation, Core, and security suites plus the full suite.
+
+After fixing
+
+Do not declare success from tests alone.
+
+Run another small controlled production acceptance test using benign preferences and report the actual live sequence:
+
+interaction → experience → candidate → governance → promotion/defer → persistence → new-session retrieval → behavioral influence
+
+If normal configured governance deliberately requires more evidence than the bounded live test can safely provide, demonstrate candidate creation and correct deferred state live, then separately use integration tests to prove eventual promotion.
+
+Final report
+
+Report:
+
+1. exact root cause
+2. whether this was missing wiring, threshold/configuration, disabled worker, event mismatch, or test/runtime divergence
+3. before/after runtime flow
+4. files changed
+5. governance rules preserved
+6. provenance/security protections preserved
+7. candidate observability added
+8. focused test results
+9. full-suite result
+10. live production retest results
+11. CharacterSourcebook before/after hash and count
+12. exact commit hash
+13. any remaining conditions or unverified behavior
+
+Stop after this repair. Do not begin unrelated architecture work or external integrations.
