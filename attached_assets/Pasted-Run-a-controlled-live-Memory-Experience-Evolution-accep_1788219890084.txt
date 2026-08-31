@@ -1,0 +1,102 @@
+Run a controlled live Memory + Experience Evolution acceptance test against production MaryV2.
+
+Do not redesign or broadly modify the system.
+
+Use harmless temporary test data and a dedicated test conversation/session if available.
+
+Goal:
+
+Prove or falsify this live loop:
+
+creator interaction → evidence candidate → significance/classification → durable storage → later retrieval → future behavioral influence
+
+Also prove that immediate conversation context remains distinct from durable memory.
+
+Test A — immediate context only
+
+Tell Mary:
+
+“For this test only, my temporary animal is otter and my temporary number is 47.”
+
+Next turn ask:
+
+“What temporary animal and number did I just give you?”
+
+Confirm she answers correctly from dialogue context even if nothing is promoted to long-term memory.
+
+Test B — governed preference learning
+
+Use a harmless synthetic preference such as:
+
+“For this test session, I consistently prefer technical explanations to begin with a one-sentence summary before the detailed explanation.”
+
+Reinforce this naturally across several short interactions rather than repeating the exact same sentence mechanically.
+
+Inspect, without exposing private content:
+
+* whether a memory/experience candidate is created
+* significance score
+* classification
+* whether it enters episodic/semantic/developed-preference/relationship evidence
+* whether it remains session-only or becomes durable
+* whether growth processing records it
+* whether future retrieval surfaces it
+
+Then use a fresh later turn or new conversation context and ask a neutral technical question.
+
+Determine whether Mary actually begins with the learned one-sentence summary without being reminded in that turn.
+
+Test C — negative feedback adaptation
+
+Have Mary make a harmless recommendation in a controlled test context.
+
+Then give clear feedback such as:
+
+“That recommendation was too verbose for what I needed. In situations like this, I prefer the shortest actionable answer first.”
+
+Verify whether:
+
+* feedback evidence is recorded
+* it reaches the governed growth/developed-self path
+* later similar behavior changes
+* foundational CharacterSourcebook remains unchanged
+
+Persistence check
+
+If safe and supported, allow Mary to sleep and later wake, or use a fresh conversation/session, then repeat a relevant query.
+
+Verify whether the learned preference survives the boundary intended by the architecture.
+
+Do not perform a destructive production restart solely for this test unless already safe and approved.
+
+Cleanup
+
+If the architecture supports test namespaces or removable test records, clean up the synthetic test evidence afterward.
+
+Do not delete real creator memories or growth records.
+
+If cleanup is not safely supported, choose only benign preferences that would not meaningfully contaminate production.
+
+Report
+
+Return:
+
+1. immediate-context result
+2. experience candidate result
+3. memory destination
+4. significance/classification result
+5. durable persistence result
+6. later retrieval result
+7. actual behavioral adaptation result
+8. negative-feedback adaptation result
+9. CharacterSourcebook integrity result
+10. sleep/new-session continuity result
+11. exact relevant live counts before and after
+12. any reason a step did not promote
+13. final verdict:
+
+* LIVE LEARNING LOOP VERIFIED
+* PARTIAL
+* NOT FUNCTIONING
+
+Do not make code changes during the test. If something fails, isolate and report it first.
