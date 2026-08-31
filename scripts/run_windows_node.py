@@ -21,8 +21,8 @@ def main() -> int:
     if not core_url:
         print("MARY_CORE_URL is not configured. The headless node requires remote Mary Core.")
         return 2
-    if not os.getenv("MARY_CORE_TOKEN", "").strip():
-        print("MARY_CORE_TOKEN is not configured.")
+    if not os.getenv("MARY_NODE_ENROLLMENT_GRANT", "").strip():
+        print("MARY_NODE_ENROLLMENT_GRANT is not configured.")
         return 2
 
     permissions = DeviceExecutionPermissions()
@@ -46,6 +46,7 @@ def main() -> int:
         application=None,
         device_id=device_id,
         surface="windows_node",
+        node_only=True,
     )
     if not isinstance(gateway, RemoteMaryGateway):
         print("Headless node did not resolve remote Mary Core authority.")

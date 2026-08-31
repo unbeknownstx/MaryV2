@@ -82,7 +82,7 @@ Capability availability never means permission. `MaryCoreService.preview_capabil
 
 ```text
 capability node (Windows/Mac/future compute)
-   │ creator-authorized enrollment + advertised capability
+   │ node-scoped enrollment grant + advertised capability
    ▼
 NodeRegistry in canonical Mary ─► route preview / selected node
    │                                      │
@@ -95,7 +95,7 @@ NodeRegistry in canonical Mary ─► route preview / selected node
                                            completion/result to Core
 ```
 
-A headless Windows node can advertise local Ollama while Desktop is closed. Initial enrollment requires creator/Core authorization and returns one process-local node session credential; only its digest is retained by Core. Heartbeat, disconnect, task polling, and task completion require that scoped credential bound to the enrolled node ID. The creator bearer does not satisfy the node task channel, and node credentials are absent from snapshots, diagnostics, task payloads, and persisted Mary state. A live node ID cannot be replaced without its current credential. After that node is disconnected or its lease becomes stale, creator-authorized re-enrollment first expires all nonterminal work from the old session, then revokes the old digest and issues a new credential. This lets the stable device ID recover without making raw credentials durable Core state or exposing prior-session task context to its replacement.
+A headless Windows node can advertise local Ollama while Desktop is closed. Creator access mints an expiring, use-limited enrollment grant scoped to one node ID; the capability node stores that grant instead of `MARY_CORE_TOKEN`. Core persists only the grant digest, use/expiry metadata, and bounded audit events. Enrollment returns one process-local node session credential. Heartbeat, disconnect, task polling, and task completion require that credential, which is bound to the enrolled node ID and current session generation. Neither grant nor node credential authorizes creator turn, state, workspace, or runtime endpoints, and raw credentials are absent from snapshots, diagnostics, tasks, and persisted Core state. A live node ID cannot be replaced without its current node credential. After disconnect or lease expiry, heartbeat refuses revival; grant-authorized re-enrollment expires all nonterminal prior-session work, revokes the old credential, advances the session generation, and issues a replacement.
 
 `DeviceOllamaProvider` makes the enrolled resource available to the shared router; it does not create a second router or transfer authority from Core. Registry leases and broker task transitions share one synchronization boundary. A disconnected or stale node is removed from routing, cannot claim or complete queued work, and causes its pending tasks to expire when Core observes the unavailable lease through normal broker/status activity. No background loop is created. Loss of a node never promotes a local copy of Mary into an authority.
 

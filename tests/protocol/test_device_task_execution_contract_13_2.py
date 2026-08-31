@@ -151,11 +151,13 @@ def test_device_channel_requires_scoped_token_and_expires_unavailable_work(monke
         ).status_code == 409
         assert service.capability_task_status(dispatched["task_id"])["task"]["status"] == "expired"
 
-        # Refresh with the same token, then disconnect after enqueue. Both the
-        # broker operation and completion live check deny the now-dead node.
+        # Recovery rotates the stale session token, then disconnect after
+        # enqueue. Both broker and completion checks deny the now-dead node.
         refreshed = client.post("/v1/nodes/register", headers={**creator, **node_headers}, json=registration)
         assert refreshed.status_code == 200
-        assert "node_token" not in refreshed.json()
+        replacement = refreshed.json()["node_token"]
+        assert replacement != issued
+        node_headers = {"X-Mary-Node-Token": replacement}
         pending = client.post("/v1/nodes/task/dispatch", headers=creator, json={
             "capability": "personal_search", "intent": "Find", "args": {"query": "draft"},
         }).json()["task"]

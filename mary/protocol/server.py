@@ -158,18 +158,22 @@ def create_app(service: MaryCoreService | None = None):
 
     @app.post("/v1/nodes/register")
     async def register_node(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-
         try:
+            creator_authorized = _authorized(request.headers.get("Authorization"))
+            enrollment_grant = request.headers.get("X-Mary-Enrollment-Grant")
+            node_token = request.headers.get("X-Mary-Node-Token")
+            if not creator_authorized and not enrollment_grant and not node_token:
+                raise HTTPException(status_code=401, detail="Node token or scoped enrollment grant required")
             model = NodeRegistrationRequest.from_dict(
                 await request.json()
             )
-            node_token = request.headers.get("X-Mary-Node-Token")
 
             return await asyncio.to_thread(
                 core.register_node,
                 model,
                 node_token=node_token,
+                enrollment_grant=enrollment_grant,
+                creator_authorized=creator_authorized,
             )
 
         except ValueError as exc:
@@ -189,6 +193,25 @@ def create_app(service: MaryCoreService | None = None):
                 status_code=409,
                 detail=str(exc),
             ) from exc
+
+    @app.post("/v1/nodes/enrollment-grants")
+    async def issue_node_enrollment_grant(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            payload = await request.json()
+            return await asyncio.to_thread(
+                core.issue_enrollment_grant,
+                str(payload.get("node_id") or ""),
+                expires_in_seconds=float(payload.get("expires_in_seconds", 900)),
+                max_uses=int(payload.get("max_uses", 10)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/nodes/enrollment-grants")
+    async def node_enrollment_grants(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        return core.enrollment_grant_status()
 
     @app.post("/v1/nodes/heartbeat")
     async def heartbeat_node(request: Request) -> dict[str, Any]:

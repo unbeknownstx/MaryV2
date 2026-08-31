@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 import json
+from pathlib import Path
 import secrets
 from threading import RLock
-from time import monotonic
+from time import monotonic, time
 import os
 from typing import Any
 from uuid import uuid4
@@ -37,6 +39,7 @@ from mary.protocol.models import (
     WorkspaceActionRequest,
 )
 from mary.runtime.application import MaryApplication, create_application
+from mary.runtime.persistence import atomic_write_json, load_json_recovering
 
 
 def _json_safe(value: Any) -> Any:
@@ -48,6 +51,18 @@ class CoreIdentity:
     service: str = "mary-core"
     protocol_version: str = "1"
     mary_architecture: str = "13.2"
+
+
+@dataclass
+class _EnrollmentGrant:
+    node_id: str
+    digest: str
+    expires_monotonic: float
+    expires_at_epoch: float
+    expires_at: str
+    remaining_uses: int
+    issued_at: str
+    grant_id: str
 
 
 class MaryCoreService:
@@ -64,6 +79,7 @@ class MaryCoreService:
         application: MaryApplication | None = None,
         *,
         instance_id: str | None = None,
+        enrollment_state_path: str | Path | None = None,
     ) -> None:
         self.application = application or create_application(name="mary_core")
         self.mary = self.application.mary
@@ -81,6 +97,19 @@ class MaryCoreService:
         # Digests share the registry/broker lifecycle lock. Raw credentials
         # never enter registry descriptors, serialized state, or task payloads.
         self._node_token_digests: dict[str, str] = {}
+        self._node_session_generations: dict[str, int] = {}
+        self._enrollment_grants: dict[str, _EnrollmentGrant] = {}
+        self._enrollment_audit: list[dict[str, Any]] = []
+        configured_path = enrollment_state_path
+        if configured_path is None:
+            paths = getattr(getattr(self.mary, "config", None), "paths", None)
+            runtime_path = getattr(paths, "runtime", None)
+            if runtime_path is not None:
+                configured_path = Path(runtime_path) / "node_enrollment.json"
+        self._enrollment_state_path = (
+            Path(configured_path) if configured_path is not None else None
+        )
+        self._load_enrollment_state()
         self.device_tasks = DeviceTaskBroker(
             lifecycle_lock=self._node_lifecycle_lock,
             live_node=self._node_live_validator,
@@ -342,6 +371,8 @@ class MaryCoreService:
         request: NodeRegistrationRequest | dict[str, Any],
         *,
         node_token: str | None = None,
+        enrollment_grant: str | None = None,
+        creator_authorized: bool = True,
     ) -> dict[str, Any]:
         """Register or refresh one replaceable device capability node.
 
@@ -377,12 +408,26 @@ class MaryCoreService:
             valid_existing_token = digest is not None and self._valid_node_token(
                 model.node_id, node_token
             )
-            if digest is not None and not valid_existing_token and registry.is_live(model.node_id):
-                raise PermissionError("Existing live capability node registration requires its current node token.")
+            node_is_live = registry.is_live(model.node_id)
+            continuing_live_session = bool(
+                digest is not None and valid_existing_token and node_is_live
+            )
+            if digest is not None and node_is_live and not valid_existing_token:
+                self._audit_rejected_live_grant(
+                    model.node_id,
+                    enrollment_grant,
+                )
+                raise PermissionError(
+                    "Existing live capability node registration requires its current node token."
+                )
+            if not continuing_live_session and not creator_authorized:
+                if enrollment_grant is None:
+                    raise PermissionError("Valid scoped enrollment grant required.")
+                self._consume_enrollment_grant(model.node_id, enrollment_grant)
             # A disconnected/stale descriptor is not an active identity:
             # expire all prior-session work before atomically revoking its old
             # digest and issuing recovery credentials.
-            if digest is not None and not valid_existing_token:
+            if digest is not None and not continuing_live_session:
                 self.device_tasks.expire_pending_for_node(
                     model.node_id,
                     reason=(
@@ -391,22 +436,210 @@ class MaryCoreService:
                     ),
                 )
             raw_token = (
-                None if valid_existing_token
+                None if continuing_live_session
                 else secrets.token_urlsafe(32)
             )
             if raw_token is not None:
                 self._node_token_digests[model.node_id] = self._node_token_digest(raw_token)
+                self._node_session_generations[model.node_id] = (
+                    self._node_session_generations.get(model.node_id, 0) + 1
+                )
             registered = registry.register(descriptor)
+            if raw_token is not None:
+                self._save_enrollment_state()
         response = {
             "ok": True,
             "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
             "registry": self.mary.node_registry.snapshot(),
+            "session_generation": self._node_session_generations.get(model.node_id, 0),
         }
         # This is the sole disclosure point. It is deliberately not embedded in
         # node/registry objects, diagnostics, tasks, or persisted application state.
         if raw_token is not None:
             response["node_token"] = raw_token
         return _json_safe(response)
+
+    def issue_enrollment_grant(
+        self,
+        node_id: str,
+        *,
+        expires_in_seconds: float = 900.0,
+        max_uses: int = 10,
+    ) -> dict[str, Any]:
+        """Mint a narrow bearer usable only to enroll one named capability node."""
+        clean_node_id = NodeRegistrationRequest.from_dict({
+            "node_id": node_id,
+            "capabilities": [],
+        }).node_id
+        ttl = max(30.0, min(86400.0, float(expires_in_seconds)))
+        uses = max(1, min(20, int(max_uses)))
+        raw = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        grant = _EnrollmentGrant(
+            node_id=clean_node_id,
+            digest=self._node_token_digest(raw),
+            expires_monotonic=monotonic() + ttl,
+            expires_at_epoch=time() + ttl,
+            expires_at=datetime.fromtimestamp(now.timestamp() + ttl, timezone.utc).isoformat(),
+            remaining_uses=uses,
+            issued_at=now.isoformat(),
+            grant_id=f"enroll_{uuid4().hex[:16]}",
+        )
+        with self._node_lifecycle_lock:
+            self._enrollment_grants[grant.grant_id] = grant
+            self._record_enrollment_audit("issued", grant)
+            self._save_enrollment_state()
+        return _json_safe({
+            "ok": True,
+            "enrollment_grant": raw,
+            "grant": self._grant_public(grant),
+        })
+
+    def enrollment_grant_status(self) -> dict[str, Any]:
+        with self._node_lifecycle_lock:
+            self._prune_enrollment_grants()
+            grants = [self._grant_public(item) for item in self._enrollment_grants.values()]
+            audit = list(self._enrollment_audit)
+        return _json_safe({"grants": grants, "audit": audit})
+
+    def _consume_enrollment_grant(self, node_id: str, raw: str | None) -> None:
+        self._prune_enrollment_grants()
+        matched = self._matching_enrollment_grant(node_id, raw)
+        if matched is None:
+            raise PermissionError("Valid scoped enrollment grant required.")
+        # Preserve active-ID takeover protection without burning the grant.
+        if self.mary.node_registry.is_live(node_id):
+            self._record_enrollment_audit("rejected_live_node", matched)
+            self._save_enrollment_state()
+            raise PermissionError("Existing live capability node registration requires its current node token.")
+        matched.remaining_uses -= 1
+        self._record_enrollment_audit("consumed", matched)
+        if matched.remaining_uses <= 0:
+            self._enrollment_grants.pop(matched.grant_id, None)
+        self._save_enrollment_state()
+
+    def _audit_rejected_live_grant(
+        self,
+        node_id: str,
+        raw: str | None,
+    ) -> None:
+        if raw is None:
+            return
+        self._prune_enrollment_grants()
+        matched = self._matching_enrollment_grant(node_id, raw)
+        if matched is None:
+            return
+        self._record_enrollment_audit("rejected_live_node", matched)
+        self._save_enrollment_state()
+
+    def _matching_enrollment_grant(
+        self,
+        node_id: str,
+        raw: str | None,
+    ) -> _EnrollmentGrant | None:
+        supplied_digest = self._node_token_digest(str(raw or ""))
+        return next((
+            item for item in self._enrollment_grants.values()
+            if item.node_id == str(node_id)
+            and secrets.compare_digest(item.digest, supplied_digest)
+        ), None)
+
+    def _prune_enrollment_grants(self) -> None:
+        now = monotonic()
+        changed = False
+        for grant_id, grant in list(self._enrollment_grants.items()):
+            if grant.expires_monotonic <= now or grant.expires_at_epoch <= time():
+                self._record_enrollment_audit("expired", grant)
+                self._enrollment_grants.pop(grant_id, None)
+                changed = True
+        if changed:
+            self._save_enrollment_state()
+
+    def _record_enrollment_audit(self, event: str, grant: _EnrollmentGrant) -> None:
+        self._enrollment_audit.append({
+            "event": event,
+            "grant_id": grant.grant_id,
+            "node_id": grant.node_id,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "remaining_uses": grant.remaining_uses,
+        })
+        del self._enrollment_audit[:-200]
+
+    def _load_enrollment_state(self) -> None:
+        path = self._enrollment_state_path
+        if path is None:
+            return
+        payload, _ = load_json_recovering(path, backup_generations=3)
+        if not isinstance(payload, dict):
+            return
+        now_epoch = time()
+        now_monotonic = monotonic()
+        for item in list(payload.get("grants") or []):
+            if not isinstance(item, dict):
+                continue
+            try:
+                expires_epoch = float(item["expires_at_epoch"])
+                if expires_epoch <= now_epoch:
+                    continue
+                grant = _EnrollmentGrant(
+                    node_id=str(item["node_id"]),
+                    digest=str(item["digest"]),
+                    expires_monotonic=now_monotonic + (expires_epoch - now_epoch),
+                    expires_at_epoch=expires_epoch,
+                    expires_at=str(item["expires_at"]),
+                    remaining_uses=max(1, int(item["remaining_uses"])),
+                    issued_at=str(item["issued_at"]),
+                    grant_id=str(item["grant_id"]),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            self._enrollment_grants[grant.grant_id] = grant
+        self._enrollment_audit = [
+            dict(item) for item in list(payload.get("audit") or [])[-200:]
+            if isinstance(item, dict)
+        ]
+        self._node_session_generations = {
+            str(node_id): max(0, int(generation))
+            for node_id, generation in dict(
+                payload.get("session_generations") or {}
+            ).items()
+        }
+
+    def _save_enrollment_state(self) -> None:
+        path = self._enrollment_state_path
+        if path is None:
+            return
+        payload = {
+            "version": 1,
+            "grants": [
+                {
+                    "grant_id": item.grant_id,
+                    "node_id": item.node_id,
+                    "digest": item.digest,
+                    "issued_at": item.issued_at,
+                    "expires_at": item.expires_at,
+                    "expires_at_epoch": item.expires_at_epoch,
+                    "remaining_uses": item.remaining_uses,
+                    "scope": ["node.enroll"],
+                }
+                for item in self._enrollment_grants.values()
+            ],
+            "audit": list(self._enrollment_audit),
+            "session_generations": dict(self._node_session_generations),
+        }
+        if not atomic_write_json(path, payload, backup_generations=3, indent=2):
+            raise RuntimeError("Could not persist node enrollment grant state.")
+
+    @staticmethod
+    def _grant_public(grant: _EnrollmentGrant) -> dict[str, Any]:
+        return {
+            "grant_id": grant.grant_id,
+            "node_id": grant.node_id,
+            "issued_at": grant.issued_at,
+            "expires_at": grant.expires_at,
+            "remaining_uses": grant.remaining_uses,
+            "scope": ["node.enroll"],
+        }
 
     def heartbeat_node(
         self,
@@ -423,6 +656,10 @@ class MaryCoreService:
         )
         with self._node_lifecycle_lock:
             self.require_node_token(model.node_id, node_token)
+            if not self.mary.node_registry.is_live(model.node_id):
+                raise RuntimeError(
+                    "Capability node lease is stale or disconnected; re-enrollment is required."
+                )
             if not self.mary.node_registry.heartbeat(model.node_id):
                 raise KeyError(f"Unknown capability node: {model.node_id}")
             node = self.mary.node_registry.get(model.node_id)

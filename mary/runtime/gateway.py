@@ -491,11 +491,13 @@ def gateway_from_environment(
     application: MaryApplication | None = None,
     device_id: str = "python-client",
     surface: str = "client",
+    node_only: bool = False,
 ) -> MaryRuntimeGateway:
     """Resolve remote vs explicit standalone authority without constructing Mary."""
 
     core_url = os.getenv("MARY_CORE_URL", "").strip()
     core_token = os.getenv("MARY_CORE_TOKEN", "").strip()
+    enrollment_grant = os.getenv("MARY_NODE_ENROLLMENT_GRANT", "").strip()
 
     if core_url:
         if application is not None:
@@ -503,12 +505,20 @@ def gateway_from_environment(
                 "MARY_CORE_URL selects remote client mode; do not supply a local "
                 "MaryApplication because that would create ambiguous authority."
             )
-        if not core_token:
-            raise RuntimeError("MARY_CORE_TOKEN is required when MARY_CORE_URL is configured.")
+        if node_only and not enrollment_grant:
+            raise RuntimeError(
+                "MARY_NODE_ENROLLMENT_GRANT is required for a node-only gateway."
+            )
+        if not node_only and not core_token and not enrollment_grant:
+            raise RuntimeError(
+                "MARY_CORE_TOKEN or MARY_NODE_ENROLLMENT_GRANT is required when "
+                "MARY_CORE_URL is configured."
+            )
         return RemoteMaryGateway(
             MaryClient(
                 core_url,
-                token=core_token,
+                token="" if node_only else core_token,
+                enrollment_grant=enrollment_grant,
                 device_id=device_id,
                 surface=surface,
             ),

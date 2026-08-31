@@ -26,9 +26,10 @@ class MaryProtocolError(RuntimeError):
 
 
 class MaryClient:
-    def __init__(self, base_url: str, *, token: str, device_id: str = "python-client", surface: str = "client", timeout: float = 120.0) -> None:
+    def __init__(self, base_url: str, *, token: str = "", enrollment_grant: str = "", device_id: str = "python-client", surface: str = "client", timeout: float = 120.0) -> None:
         self.base_url = str(base_url).rstrip("/")
         self.token = str(token or "")
+        self.enrollment_grant = str(enrollment_grant or "")
         self.device_id = str(device_id or "python-client")
         self.surface = str(surface or "client")
         self.timeout = float(timeout)
@@ -75,7 +76,10 @@ class MaryClient:
         })
         response = self._request(
             "POST", "/v1/nodes/register", model.to_dict(),
-            timeout=min(self.timeout, 3.0), node_authenticated=bool(self._node_token),
+            timeout=min(self.timeout, 3.0),
+            authenticated=bool(self.token),
+            node_authenticated=bool(self._node_token),
+            enrollment_authenticated=bool(self.enrollment_grant),
         )
         issued = response.get("node_token")
         if issued is not None:
@@ -234,6 +238,7 @@ class MaryClient:
         *,
         authenticated: bool = True,
         node_authenticated: bool = False,
+        enrollment_authenticated: bool = False,
         timeout: float | None = None,
     ) -> dict[str, Any]:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -246,6 +251,8 @@ class MaryClient:
             if not self._node_token:
                 raise MaryProtocolError("Node registration is required before device-channel calls.")
             headers["X-Mary-Node-Token"] = self._node_token
+        if enrollment_authenticated:
+            headers["X-Mary-Enrollment-Grant"] = self.enrollment_grant
         request = Request(self.base_url + path, data=body, headers=headers, method=method)
         try:
             with urlopen(request, timeout=self.timeout if timeout is None else float(timeout)) as response:

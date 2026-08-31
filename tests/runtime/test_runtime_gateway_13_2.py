@@ -77,3 +77,17 @@ def test_gateway_environment_never_implicitly_constructs_standalone(monkeypatch)
             device_id="pc",
             surface="desktop",
         )
+
+
+def test_node_only_gateway_requires_grant_and_suppresses_creator_token(monkeypatch):
+    monkeypatch.setenv("MARY_CORE_URL", "https://core.example")
+    monkeypatch.setenv("MARY_CORE_TOKEN", "creator-secret")
+    monkeypatch.setenv("MARY_NODE_ENROLLMENT_GRANT", "node-grant")
+
+    gateway = gateway_from_environment(
+        device_id="pc",
+        surface="windows_node",
+        node_only=True,
+    )
+    assert gateway.client.token == ""
+    assert gateway.client.enrollment_grant == "node-grant"
