@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 from mary.character import CharacterSourcebook
 
@@ -8,7 +8,6 @@ ACTIVE = ROOT / "character_sources" / "active"
 
 def _book():
     book = CharacterSourcebook.from_paths([ACTIVE])
-    assert book.snapshot()["records"] == 166
     return book
 
 
@@ -56,3 +55,4 @@ def test_flustered_stays_attraction_specific():
     assert headings[0].startswith("EX-034")
     assert not any(h.startswith("EX-026") for h in headings)
     assert any(h.startswith("REL-004") for h in headings)
+

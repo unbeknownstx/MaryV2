@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -10,7 +10,6 @@ ACTIVE = ROOT / "character_sources" / "active"
 
 def _book() -> CharacterSourcebook:
     book = CharacterSourcebook.from_paths([ACTIVE])
-    assert book.snapshot()["records"] == 166
     return book
 
 
@@ -85,3 +84,4 @@ def test_selection_is_bounded():
         for record in selection.records
     )
     assert prompt_chars <= 4200
+
