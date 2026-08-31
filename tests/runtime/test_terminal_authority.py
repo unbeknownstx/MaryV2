@@ -15,6 +15,8 @@ class _FakeRemoteGateway(RemoteMaryGateway):
         self.device_id = "terminal-test"
         self.surface = "terminal"
         self.client = _FakeClient()
+        self.connect_count = 0
+        self.close_count = 0
 
     def state(self):
         return {"core": {"service": "mary-core", "architecture": "13.2"}, "mary": {"name": "Mary"}}
@@ -38,6 +40,13 @@ class _FakeRemoteGateway(RemoteMaryGateway):
             effective_mode="adaptive",
             provenance={"authority": "remote_mary_core"},
         )
+
+    def connect_surface(self):
+        self.connect_count += 1
+        return {"state": "ACTIVE", "surface_id": "terminal-test-surface"}
+
+    def close(self):
+        self.close_count += 1
 
 
 def test_terminal_remote_core_never_constructs_local_mary(monkeypatch):
@@ -68,3 +77,13 @@ def test_terminal_standalone_constructs_one_local_application_when_core_absent(m
     terminal.run_terminal()
 
     assert seen["application"] is app
+
+
+def test_terminal_remote_session_connects_and_disconnects_surface(monkeypatch):
+    gateway = _FakeRemoteGateway()
+    monkeypatch.setattr("builtins.input", lambda _prompt: "exit")
+
+    terminal.run_remote_interactive(gateway)
+
+    assert gateway.connect_count == 1
+    assert gateway.close_count == 1

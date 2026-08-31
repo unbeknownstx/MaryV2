@@ -422,6 +422,7 @@ class RemoteMaryApplicationView:
         conversation_id: str = "creator-primary",
     ) -> None:
         self.gateway = gateway
+        self.gateway.connect_surface()
         self.device_id = gateway.device_id
         self.project_root = Path(project_root).resolve()
         self.conversation_id = str(conversation_id or "creator-primary")
@@ -509,4 +510,4 @@ class RemoteMaryApplicationView:
 
     def close(self) -> None:
         # Closing a client must never shut down canonical Mary Core.
-        return None
+        self.gateway.close()

@@ -47,6 +47,17 @@ session-scoped ID per browser tab/native web view and sends it on every
 lifecycle operation. Closing one tab therefore cannot retire another tab's
 lease.
 
+Remote Terminal and Desktop presentations use the shared `RemoteMaryGateway`
+lease owner. Each gateway instance creates one bounded process-local surface
+ID, registers when the presentation opens, renews with non-activity
+heartbeats, and registers/wakes immediately before a turn. Clean shutdown
+disconnects only that gateway's lease. The complete turn lifecycle is
+serialized against close: close waits for an accepted in-flight turn and then
+disconnects last, so work is not interrupted and cannot recreate an ownerless
+lease.
+
+Node-only gateways never register creator-surface leases.
+
 ## Runtime behavior
 
 - Lease expiry is evaluated by a Core-owned daemon timer, not only when another

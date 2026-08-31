@@ -16,6 +16,23 @@ class FakeClient:
         self.turns = []
         self.actions = []
         self.workspace_actions = []
+        self.surface_calls = []
+
+    def surface_register(self, **payload):
+        self.surface_calls.append(("register", dict(payload)))
+        return {"state": "ACTIVE", "surface_id": payload["surface_id"]}
+
+    def surface_renew(self, **payload):
+        self.surface_calls.append(("renew", dict(payload)))
+        return {"state": "ACTIVE", "surface_id": payload["surface_id"]}
+
+    def surface_wake(self, **payload):
+        self.surface_calls.append(("wake", dict(payload)))
+        return {"state": "ACTIVE", "surface_id": payload["surface_id"]}
+
+    def surface_disconnect(self, **payload):
+        self.surface_calls.append(("disconnect", dict(payload)))
+        return {"state": "SLEEPING", "surface_id": payload["surface_id"]}
 
     def turn(self, text, *, conversation_id=None, requested_mode=None, voice_input=False):
         self.turns.append(
@@ -114,8 +131,14 @@ def test_remote_desktop_application_routes_turn_without_local_mary(tmp_path):
     assert result.success is True
     assert result.output == "Remote Mary response"
     assert result.turn_id == "turn-remote-1"
+    assert [name for name, _ in gateway.client.surface_calls[:3]] == [
+        "register",
+        "register",
+        "wake",
+    ]
     assert gateway.client.turns[0]["conversation_id"] == "creator-primary"
     assert view.mary.live_state()["character"]["name"] == "Mary"
+    view.close()
 
 
 def test_remote_desktop_workspace_routes_to_core(tmp_path):
@@ -135,6 +158,10 @@ def test_remote_desktop_close_does_not_close_core(tmp_path):
 
     assert view.close() is None
     assert gateway.client.actions == []
+    assert [name for name, _ in gateway.client.surface_calls] == [
+        "register",
+        "disconnect",
+    ]
 
 
 def test_desktop_resolver_prefers_remote_core_without_constructing_local_mary(

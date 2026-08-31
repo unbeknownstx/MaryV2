@@ -77,6 +77,7 @@ def run_remote_interactive(gateway: MaryRuntimeGateway) -> None:
 
     conversation_id = os.getenv("MARY_CONVERSATION_ID", "creator-primary").strip() or "creator-primary"
     try:
+        gateway.connect_surface()
         initial = gateway.state()
         core = dict(initial.get("core", {}) or {})
         mary = dict(initial.get("mary", {}) or {})
@@ -91,38 +92,42 @@ def run_remote_interactive(gateway: MaryRuntimeGateway) -> None:
         print("=" * 64)
     except Exception as exc:
         print(f"Mary Core connection failed: {type(exc).__name__}: {exc}")
+        gateway.close()
         return
 
     last: dict[str, Any] | None = None
-    while True:
-        try:
-            text = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        if not text:
-            continue
-        if text.lower() in {"exit", "quit"}:
-            break
-        if text.startswith("/"):
-            rendered = _remote_command(gateway, text.lower(), last)
-            print(rendered if rendered is not None else "Unknown remote command. Type /help.")
-            continue
-        try:
-            response = gateway.turn(
-                text,
-                conversation_id=conversation_id,
-                requested_mode=None,
-                voice_input=False,
-            )
-            last = {
-                "turn_id": response.turn_id,
-                "effective_mode": response.effective_mode,
-                "provenance": dict(response.provenance or {}),
-            }
-            print(f"Mary: {response.text}")
-        except Exception as exc:
-            print(f"[Mary Core Error] {type(exc).__name__}: {exc}")
+    try:
+        while True:
+            try:
+                text = input("You: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
+            if not text:
+                continue
+            if text.lower() in {"exit", "quit"}:
+                break
+            if text.startswith("/"):
+                rendered = _remote_command(gateway, text.lower(), last)
+                print(rendered if rendered is not None else "Unknown remote command. Type /help.")
+                continue
+            try:
+                response = gateway.turn(
+                    text,
+                    conversation_id=conversation_id,
+                    requested_mode=None,
+                    voice_input=False,
+                )
+                last = {
+                    "turn_id": response.turn_id,
+                    "effective_mode": response.effective_mode,
+                    "provenance": dict(response.provenance or {}),
+                }
+                print(f"Mary: {response.text}")
+            except Exception as exc:
+                print(f"[Mary Core Error] {type(exc).__name__}: {exc}")
+    finally:
+        gateway.close()
 
 
 def run_terminal() -> None:

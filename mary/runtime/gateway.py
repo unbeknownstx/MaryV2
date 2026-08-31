@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import os
+import secrets
+from threading import RLock, Timer
 from typing import Any, Protocol
 
 from mary.distributed import CapabilityDescriptor, NodeDescriptor, preview_capability_task
@@ -88,6 +90,8 @@ class MaryRuntimeGateway(Protocol):
     def poll_capability_task(self, *, wait_seconds: float = 0.0) -> dict[str, Any]: ...
     def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]: ...
     def capability_task_status(self, task_id: str) -> dict[str, Any]: ...
+    def connect_surface(self) -> dict[str, Any]: ...
+    def close(self) -> None: ...
 
 
 class LocalMaryGateway:
@@ -359,6 +363,12 @@ class LocalMaryGateway:
     def capability_task_status(self, task_id: str) -> dict[str, Any]:
         raise RuntimeError("Device task status is a remote-Core capability; standalone mode has no device broker.")
 
+    def connect_surface(self) -> dict[str, Any]:
+        return {"state": "ACTIVE", "authority": self.authority}
+
+    def close(self) -> None:
+        return None
+
 
 class RemoteMaryGateway:
     """Gateway backed only by Mary Protocol; it owns no MaryApplication."""
@@ -370,10 +380,106 @@ class RemoteMaryGateway:
         client: MaryClient,
         *,
         surface: str = "client",
+        creator_surface: bool = True,
+        lease_seconds: int = 90,
+        renew_interval_seconds: float = 45.0,
     ) -> None:
         self.client = client
         self.device_id = client.device_id
         self.surface = str(surface or "client")
+        self.creator_surface = bool(creator_surface)
+        self._surface_id = self._new_surface_id()
+        self._lease_seconds = max(15, min(300, int(lease_seconds)))
+        self._renew_interval_seconds = max(
+            1.0,
+            min(float(renew_interval_seconds), self._lease_seconds / 2.0),
+        )
+        self._surface_lock = RLock()
+        self._surface_timer: Timer | None = None
+        self._surface_connected = False
+        self._closed = False
+
+    def _new_surface_id(self) -> str:
+        prefix = f"{self.surface}-{self.device_id}"
+        cleaned = "".join(
+            char if (char.isalnum() or char in "._:-") else "-"
+            for char in prefix
+        ).strip("-._:")
+        return f"{cleaned[:130]}-{secrets.token_hex(12)}"[:160]
+
+    def connect_surface(self) -> dict[str, Any]:
+        """Establish this presentation's lease without creating Mary state."""
+        if not self.creator_surface:
+            return {"state": "UNSUPPORTED", "surface_id": self._surface_id}
+        with self._surface_lock:
+            if self._closed:
+                raise RuntimeError("Remote Mary gateway is closed.")
+            payload = dict(
+                self.client.surface_register(
+                    surface_id=self._surface_id,
+                    visible=True,
+                    foreground=True,
+                    lease_seconds=self._lease_seconds,
+                )
+                or {}
+            )
+            self._surface_connected = True
+            self._schedule_surface_renewal_locked()
+            return payload
+
+    def _schedule_surface_renewal_locked(self) -> None:
+        if self._surface_timer is not None:
+            self._surface_timer.cancel()
+            self._surface_timer = None
+        if self._closed or not self._surface_connected:
+            return
+        timer = Timer(
+            self._renew_interval_seconds,
+            self._renew_creator_surface,
+        )
+        timer.daemon = True
+        self._surface_timer = timer
+        timer.start()
+
+    def _renew_creator_surface(self) -> None:
+        with self._surface_lock:
+            if self._closed or not self._surface_connected:
+                return
+            try:
+                self.client.surface_renew(
+                    surface_id=self._surface_id,
+                    visible=True,
+                    foreground=True,
+                    activity=False,
+                )
+            except Exception:
+                try:
+                    self.client.surface_register(
+                        surface_id=self._surface_id,
+                        visible=True,
+                        foreground=True,
+                        lease_seconds=self._lease_seconds,
+                    )
+                except Exception:
+                    pass
+            self._schedule_surface_renewal_locked()
+
+    def close(self) -> None:
+        """Retire only this presentation lease; never close canonical Core."""
+        with self._surface_lock:
+            if self._closed:
+                return
+            self._closed = True
+            connected = self._surface_connected
+            self._surface_connected = False
+            if self._surface_timer is not None:
+                self._surface_timer.cancel()
+                self._surface_timer = None
+        if connected and self.creator_surface:
+            try:
+                self.client.surface_disconnect(surface_id=self._surface_id)
+            except Exception:
+                pass
 
     def turn(
         self,
@@ -383,15 +489,21 @@ class RemoteMaryGateway:
         requested_mode: str | None = None,
         voice_input: bool = False,
     ) -> GatewayTurnResult:
-        # Mary Protocol currently derives voice/device context at the transport
-        # surface. Keep the argument in the common interface for Desktop/native
-        # parity without inventing a second state owner here.
-        response = self.client.turn(
-            text,
-            conversation_id=conversation_id,
-            requested_mode=requested_mode,
-            voice_input=bool(voice_input),
-        )
+        with self._surface_lock:
+            if self._closed:
+                raise RuntimeError("Remote Mary gateway is closed.")
+            if self.creator_surface:
+                self.connect_surface()
+                self.client.surface_wake(surface_id=self._surface_id)
+            # Hold the surface boundary through the accepted turn. Closing a
+            # presentation waits for in-flight work, then disconnects last, so
+            # the turn cannot resurrect an ownerless creator lease.
+            response = self.client.turn(
+                text,
+                conversation_id=conversation_id,
+                requested_mode=requested_mode,
+                voice_input=bool(voice_input),
+            )
         return GatewayTurnResult(
             text=response.response,
             conversation_id=response.conversation_id,
@@ -523,6 +635,7 @@ def gateway_from_environment(
                 surface=surface,
             ),
             surface=surface,
+            creator_surface=not node_only,
         )
 
     if application is None:

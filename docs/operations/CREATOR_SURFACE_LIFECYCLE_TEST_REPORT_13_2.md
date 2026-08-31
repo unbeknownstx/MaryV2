@@ -25,15 +25,26 @@ Focused groups covered:
 
 Result across the final review-focused groups: **58 passed**.
 
+The completion review additionally required remote Terminal/Desktop
+presentation coverage. The dedicated gateway, Terminal authority, Desktop
+remote-Core, and node-only authority group passed **15 tests**, including:
+
+- first remote turn from an initially sleeping presentation path;
+- register and wake ordering before turn dispatch;
+- stable bounded gateway surface identity;
+- heartbeat renewal that does not report creator activity;
+- clean Terminal/Desktop disconnect;
+- node-only gateway exclusion; and
+- deterministic turn/close serialization with disconnect last.
+
 ## Affected regression verification
 
-Protocol, runtime, distributed execution, provider routing, tool integration,
-Mobile, native packaging, and canonical lifecycle groups passed:
+The final combined runtime, Desktop, protocol, Mobile, canonical lifecycle,
+distributed execution, provider routing, and tool integration regression
+passed:
 
 ```text
-63 passed
-43 passed
-22 passed
+300 passed
 ```
 
 Compilation and static hygiene also passed:
@@ -53,7 +64,7 @@ Command:
 python -m pytest -q
 ```
 
-Result: **1,403 passed, 1 skipped, 1 failed**.
+Result: **1,405 passed, 1 skipped, 1 failed**.
 
 The sole failure is the known unrelated repository-structure gate detecting
 the active root directories `attached_assets/` and legacy `data/`. Neither is
@@ -76,5 +87,8 @@ An independent architecture/security review checked:
 
 The first review identified timer, multi-surface identity, proactive idle,
 transition serialization, and nested tool-registry wiring gaps. All were fixed
-and covered by regression tests. The follow-up review result was **PASS** with
-no blocking or high-severity findings.
+and covered by regression tests. Completion review then identified missing
+Terminal/Desktop lease ownership, and follow-up review identified a concurrent
+turn/close lease-resurrection race. The shared remote gateway now owns those
+leases and serializes accepted turns against close; both findings have
+deterministic regression coverage.
