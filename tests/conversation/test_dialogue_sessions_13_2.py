@@ -183,6 +183,7 @@ def test_core_reports_dialogue_sessions_around_one_application(
         app,
         instance_id="session-test-core",
     )
+    core.register_creator_surface({"surface_id": "test-creator"})
 
     first = core.process_turn(
         TurnRequest(

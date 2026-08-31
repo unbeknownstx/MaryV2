@@ -55,6 +55,58 @@ def test_broker_routes_typed_task_and_only_selected_node_can_complete():
     assert broker.get(task.task_id).result == {"count": 1}
 
 
+def test_execution_policy_blocks_enqueue_and_claim_but_not_completion():
+    registry = _registry()
+
+    def deny(kind: str) -> None:
+        raise RuntimeError(f"denied: {kind}")
+
+    broker = DeviceTaskBroker(execution_policy=deny)
+    with pytest.raises(RuntimeError, match="denied: device_task.enqueue"):
+        broker.enqueue(
+            registry,
+            capability="personal_search",
+            intent="Find manuscript",
+            args={"query": "Unbeknownst"},
+            requester_device_id="iphone",
+        )
+    assert broker.snapshot()["tasks"] == []
+
+    broker.set_execution_policy(None)
+    task = broker.enqueue(
+        registry,
+        capability="personal_search",
+        intent="Find manuscript",
+        args={"query": "Unbeknownst"},
+        requester_device_id="iphone",
+    )
+    broker.set_execution_policy(deny)
+    with pytest.raises(RuntimeError, match="denied: device_task.claim"):
+        broker.poll("windows-pc")
+    assert broker.get(task.task_id).status == "queued"
+
+    # Completing work already executing does not invoke the execution gate.
+    task.claimed = True
+    task.status = "claimed"
+    completed = broker.complete(
+        node_id="windows-pc",
+        task_id=task.task_id,
+        status="completed",
+        result={"count": 1},
+    )
+    assert completed.status == "completed"
+
+    broker.set_execution_policy(None)
+    follow_up = broker.enqueue(
+        registry,
+        capability="personal_search",
+        intent="Find notes",
+        args={"query": "notes"},
+        requester_device_id="iphone",
+    )
+    assert broker.poll("windows-pc").task_id == follow_up.task_id
+
+
 def test_broker_has_no_shell_execution_contract():
     broker = DeviceTaskBroker()
     with pytest.raises(ValueError):

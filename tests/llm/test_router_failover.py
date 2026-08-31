@@ -132,6 +132,50 @@ def test_clear_provider_cooldown_reenables_provider():
 
     assert router._cooldown_remaining("primary") == 0
 
+
+def test_execution_policy_blocks_provider_availability_and_generation_then_allows():
+    config = Config()
+    config.llm.provider = "primary"
+    router = LLMRouter(config)
+
+    class TrackingProvider(GoodProvider):
+        def __init__(self):
+            super().__init__("primary")
+            self.availability_calls = 0
+            self.generation_calls = 0
+
+        def is_available(self):
+            self.availability_calls += 1
+            return True
+
+        def generate(self, messages, temperature=0.7, max_tokens=2048):
+            self.generation_calls += 1
+            return super().generate(messages, temperature, max_tokens)
+
+    provider = TrackingProvider()
+    router.register_provider("primary", provider)
+
+    def deny(kind: str) -> None:
+        assert kind == "llm.generate"
+        raise RuntimeError("creator surface is unavailable")
+
+    router.set_execution_policy(deny)
+    try:
+        router.generate([LLMMessage(role="user", content="hello")])
+        assert False, "denied generation must raise"
+    except RuntimeError as exc:
+        assert str(exc) == "creator surface is unavailable"
+
+    assert provider.availability_calls == 0
+    assert provider.generation_calls == 0
+
+    router.set_execution_policy(None)
+    response = router.generate([LLMMessage(role="user", content="hello")])
+    assert response.provider == "primary"
+    assert provider.availability_calls == 1
+    assert provider.generation_calls == 1
+
+
 class OversizeProvider(LLMInterface):
     def __init__(self, name: str = "primary"):
         self.name = name

@@ -1,9 +1,12 @@
 import UIKit
 import WebKit
+import Network
 
 final class MaryViewController: UIViewController, WKNavigationDelegate {
     private var webView: WKWebView!
     private var nativeBridge: MaryNativeBridge!
+    private let networkMonitor = NWPathMonitor()
+    private let networkQueue = DispatchQueue(label: "mary.mobile.network")
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 
@@ -30,6 +33,26 @@ final class MaryViewController: UIViewController, WKNavigationDelegate {
 
         nativeBridge = MaryNativeBridge(webView: webView)
         contentController.add(nativeBridge, name: MaryNativeBridge.handlerName)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.nativeBridge?.emitLifecycle(
+                    path.status == .satisfied ? "networkOnline" : "networkOffline"
+                )
+            }
+        }
+        networkMonitor.start(queue: networkQueue)
 
         view.addSubview(webView)
         NSLayoutConstraint.activate([
@@ -50,8 +73,18 @@ final class MaryViewController: UIViewController, WKNavigationDelegate {
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
+        networkMonitor.cancel()
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: MaryNativeBridge.handlerName)
         nativeBridge?.shutdown()
+    }
+
+    @objc private func appDidBecomeActive() {
+        nativeBridge?.emitLifecycle("appForeground")
+    }
+
+    @objc private func appWillResignActive() {
+        nativeBridge?.emitLifecycle("appBackground")
     }
 
     func webView(

@@ -18,6 +18,18 @@ def test_http_contract_requires_creator_auth(monkeypatch):
         assert client.get("/v1/state").status_code == 401
         headers = {"Authorization": "Bearer test-secret"}
         assert client.get("/v1/state", headers=headers).status_code == 200
+        assert client.get("/v1/creator-surfaces/status").status_code == 401
+        registered = client.post(
+            "/v1/creator-surfaces/register",
+            headers=headers,
+            json={
+                "surface_id": "iphone",
+                "visible": True,
+                "foreground": True,
+            },
+        )
+        assert registered.status_code == 200
+        assert registered.json()["state"] == "ACTIVE"
         response = client.post(
             "/v1/turn",
             headers=headers,
@@ -32,6 +44,13 @@ def test_websocket_contract_first_frame_auth(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "test-secret")
     app = create_app(MaryCoreService(FakeApplication(), instance_id="server-test"))
     with TestClient(app) as client:
+        headers = {"Authorization": "Bearer test-secret"}
+        registered = client.post(
+            "/v1/creator-surfaces/register",
+            headers=headers,
+            json={"surface_id": "iphone"},
+        )
+        assert registered.status_code == 200
         with client.websocket_connect("/v1/realtime") as websocket:
             websocket.send_json({"type": "auth", "token": "test-secret"})
             ready = websocket.receive_json()

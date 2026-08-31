@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any
+from typing import Any, Callable
 
 from mary.core.config import Config
 from mary.governance.resource import ResourceGovernor
@@ -72,6 +72,8 @@ _CONVERSATION_PURPOSES = {
     "social_instant",
 }
 
+ExecutionPolicy = Callable[[str], None]
+
 
 class LLMRouter:
     """Route generation through Mary's configured language-model providers."""
@@ -97,6 +99,22 @@ class LLMRouter:
 
         # Provider name -> monotonic time when the local cooldown expires.
         self._rate_limit_until: dict[str, float] = {}
+        # An embedding application may install a process-local execution gate.
+        # It is deliberately unset by default so the router remains usable as a
+        # standalone component.
+        self._execution_policy: ExecutionPolicy | None = None
+
+    def set_execution_policy(
+        self,
+        policy: ExecutionPolicy | None,
+    ) -> None:
+        """Set the process-local gate invoked before provider interaction.
+
+        ``policy`` receives ``"llm.generate"`` and may raise ``RuntimeError``
+        to deny the generation before a provider is even checked.
+        """
+
+        self._execution_policy = policy
 
     # ============================================================
     # PROVIDERS
@@ -652,6 +670,9 @@ class LLMRouter:
         purpose: str | None = None,
     ) -> LLMResponse:
         """Generate through the first healthy provider in Mary's route."""
+
+        if self._execution_policy is not None:
+            self._execution_policy("llm.generate")
 
         self.last_generation_attempts = []
         self.last_generation_attempt_timings = []

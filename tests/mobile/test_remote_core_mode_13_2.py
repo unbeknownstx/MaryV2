@@ -16,6 +16,26 @@ class FakeRemoteClient:
         self.token = token
         self.device_id = device_id
         self.runtime_actions = []
+        self.surface_calls = []
+
+    def surface_register(self, **payload):
+        self.surface_calls.append(("register", payload))
+        return {"surface_id": "ios-surface"}
+
+    def surface_renew(self, **payload):
+        self.surface_calls.append(("renew", payload))
+        return {"surface_id": payload["surface_id"], "awake": True}
+
+    def surface_disconnect(self, **payload):
+        self.surface_calls.append(("disconnect", payload))
+        return {"disconnected": True}
+
+    def surface_wake(self, **payload):
+        self.surface_calls.append(("wake", payload))
+        return {"awake": True}
+
+    def lifecycle_status(self):
+        return {"awake": True, "connected_surfaces": 1}
 
     def state(self):
         return {
@@ -398,3 +418,22 @@ def test_remote_mobile_feedback_is_forwarded_to_canonical_core(monkeypatch, tmp_
     status = runtime.bridge_call("getTrainingFeedbackState")
     assert status["records"] == 0
     assert runtime.client.runtime_actions[-1][0] == "training.feedback.status"
+
+
+def test_remote_mobile_surface_lifecycle_uses_bounded_process_surface_id(monkeypatch, tmp_path):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example", token="secret", device_id="iphone"
+    )
+
+    runtime.surface_register(surface_id="ios surface!" * 30, lease_seconds=999)
+    runtime.surface_renew(visible=False, foreground=False, activity="background")
+    runtime.surface_wake()
+    runtime.surface_disconnect()
+
+    register = runtime.client.surface_calls[0][1]
+    assert len(register["surface_id"]) <= 160
+    assert register["lease_seconds"] == 300
+    assert runtime.client.surface_calls[1][1]["surface_id"] == "ios-surface"
+    assert runtime.lifecycle_status()["connected_surfaces"] == 1

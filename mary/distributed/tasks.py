@@ -18,6 +18,7 @@ from .nodes import NodeRegistry
 
 _ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama"}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
+ExecutionPolicy = Callable[[str], None]
 
 
 def _utc_now() -> str:
@@ -184,6 +185,7 @@ class DeviceTaskBroker:
         ttl_seconds: float = 300.0,
         lifecycle_lock: RLock | None = None,
         live_node: Callable[[str], bool] | None = None,
+        execution_policy: ExecutionPolicy | None = None,
     ) -> None:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
@@ -192,8 +194,27 @@ class DeviceTaskBroker:
         self._lock = lifecycle_lock or RLock()
         self._condition = Condition(self._lock)
         self._live_node = live_node
+        self._execution_policy = execution_policy
         self._tasks: dict[str, DeviceCapabilityTask] = {}
         self._order: list[str] = []
+
+    def set_execution_policy(self, policy: ExecutionPolicy | None) -> None:
+        """Set the process-local gate for task enqueueing and claiming.
+
+        The policy is evaluated while the broker's lifecycle lock is held, so
+        a denial cannot race a task claim. It receives ``"device_task.enqueue"``
+        or ``"device_task.claim"`` and may raise ``RuntimeError``.
+        """
+
+        with self._condition:
+            self._execution_policy = policy
+            # A waiting node must re-evaluate the new policy before it can
+            # claim work.
+            self._condition.notify_all()
+
+    def _enforce_execution_policy(self, kind: str) -> None:
+        if self._execution_policy is not None:
+            self._execution_policy(kind)
 
     def enqueue(
         self,
@@ -209,6 +230,7 @@ class DeviceTaskBroker:
             raise ValueError(f"Capability execution is not supported: {normalized}")
 
         with self._condition:
+            self._enforce_execution_policy("device_task.enqueue")
             self._expire_locked()
             selected = registry.choose(normalized)
             if selected is None:
@@ -255,6 +277,10 @@ class DeviceTaskBroker:
 
         with self._condition:
             while True:
+                # This is intentionally inside the loop: a long-poll is gated
+                # again after every condition wake, immediately before it can
+                # inspect and claim queued work.
+                self._enforce_execution_policy("device_task.claim")
                 self._expire_locked()
                 validator = live_node or self._live_node
                 if validator is not None and not validator(node_id):

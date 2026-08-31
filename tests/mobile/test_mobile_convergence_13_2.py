@@ -752,6 +752,12 @@ def test_mobile_web_is_a_13_2_first_class_core_client():
         in js
     )
 
+    assert "lifecycle('register'" in js
+    assert "sessionStorage.getItem(key)" in js
+    assert "surface_id:creatorSurfaceId()" in js
+    assert "sendBeacon" in js
+    assert "Core ${core.architecture||'13.2'} reachable" in js
+
     assert (
         "maryv2-mobile-shell-v13-2-unified"
         in sw

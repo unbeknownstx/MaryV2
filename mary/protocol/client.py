@@ -10,6 +10,8 @@ from .models import (
     CapabilityRouteRequest,
     CapabilityTaskDispatchRequest,
     CapabilityTaskPreviewRequest,
+    CreatorOfflineRequest,
+    CreatorSurfaceRequest,
     NodeHeartbeatRequest,
     NodeRegistrationRequest,
     NodeTaskCompletionRequest,
@@ -42,6 +44,47 @@ class MaryClient:
 
     def state(self) -> dict[str, Any]:
         return self._request("GET", "/v1/state")
+
+    def lifecycle_status(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/creator-surfaces/status")
+
+    def surface_register(self, surface_id: str | None = None, *, visible: bool = True, foreground: bool = True, lease_seconds: float | None = None) -> dict[str, Any]:
+        model = CreatorSurfaceRequest.from_dict({
+            "surface_id": surface_id or self.device_id,
+            "visible": visible,
+            "foreground": foreground,
+            "lease_seconds": lease_seconds,
+        })
+        return self._request("POST", "/v1/creator-surfaces/register", model.to_dict())
+
+    def surface_renew(self, surface_id: str | None = None, *, visible: bool | None = None, foreground: bool | None = None, activity: bool = False, lease_seconds: float | None = None) -> dict[str, Any]:
+        model = CreatorSurfaceRequest.from_dict({
+            "surface_id": surface_id or self.device_id,
+            "visible": visible,
+            "foreground": foreground,
+            "activity": activity,
+            "lease_seconds": lease_seconds,
+        })
+        return self._request("POST", "/v1/creator-surfaces/renew", model.to_dict())
+
+    def surface_disconnect(self, surface_id: str | None = None) -> dict[str, Any]:
+        model = CreatorSurfaceRequest.from_dict({"surface_id": surface_id or self.device_id})
+        return self._request("POST", "/v1/creator-surfaces/disconnect", model.to_dict())
+
+    def surface_wake(self, surface_id: str | None = None) -> dict[str, Any]:
+        model = CreatorSurfaceRequest.from_dict({"surface_id": surface_id or self.device_id})
+        return self._request("POST", "/v1/creator-surfaces/wake", model.to_dict())
+
+    # Explicit aliases keep the creator-oriented protocol vocabulary available.
+    creator_lifecycle_status = lifecycle_status
+    register_creator_surface = surface_register
+    renew_creator_surface = surface_renew
+    disconnect_creator_surface = surface_disconnect
+    wake_creator_surfaces = surface_wake
+
+    def set_creator_offline(self, offline: bool = True) -> dict[str, Any]:
+        model = CreatorOfflineRequest(offline=bool(offline))
+        return self._request("POST", "/v1/creator-surfaces/offline", model.to_dict())
 
     def memory_status(self) -> dict[str, Any]:
         return self._request("GET", "/v1/memory/status")

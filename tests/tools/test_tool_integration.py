@@ -6,6 +6,7 @@ from mary.core.mary import Mary
 from mary.learning.researcher import Researcher
 from mary.tools.manager import ToolManager
 from mary.tools.web import SearchResult
+from mary.tools.registry import PermissionLevel, ToolRegistry
 
 
 class FakeSearchProvider:
@@ -69,6 +70,38 @@ def test_explicit_creator_request_uses_scoped_approval(tmp_path):
         request.request_id
     )
     assert second_execution.success is False
+
+
+def test_execution_policy_blocks_tool_without_consuming_approval_then_allows():
+    registry = ToolRegistry()
+    calls: list[str] = []
+    registry.register(
+        "sensitive_action",
+        "A mutation requiring creator approval.",
+        lambda: calls.append("called"),
+        permission_level=PermissionLevel.APPROVAL_REQUIRED,
+    )
+    request = registry.request_execution("sensitive_action")
+    token = registry.approve_request(request.request_id)
+    assert token is not None
+
+    def deny(kind: str) -> None:
+        assert kind == "tool.execute"
+        raise RuntimeError("execution is asleep")
+
+    registry.set_execution_policy(deny)
+    denied = registry.execute("sensitive_action", approval_token=token)
+    assert denied.success is False
+    assert denied.error == "Tool execution denied by policy: execution is asleep"
+    assert denied.metadata["denied_by_policy"] is True
+    assert calls == []
+    assert token.token_id not in registry._used_tokens
+
+    registry.set_execution_policy(None)
+    allowed = registry.execute("sensitive_action", approval_token=token)
+    assert allowed.success is True
+    assert calls == ["called"]
+    assert token.token_id in registry._used_tokens
 
 
 def test_researcher_normalizes_search_result_objects():

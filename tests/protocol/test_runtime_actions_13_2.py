@@ -88,9 +88,15 @@ class FakeApplication:
         return True
 
 
+def _active_core(app):
+    core = MaryCoreService(app, instance_id="runtime-core")
+    core.register_creator_surface({"surface_id": "test-creator"})
+    return core
+
+
 def test_turn_request_carries_surface_and_voice_context_to_core():
     app = FakeApplication()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
 
     core.process_turn(
         TurnRequest.from_dict(
@@ -113,7 +119,7 @@ def test_turn_request_carries_surface_and_voice_context_to_core():
 
 def test_runtime_action_controls_conversation_without_new_mary():
     app = FakeApplication()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
 
     result = core.runtime_action(
         {
@@ -130,7 +136,7 @@ def test_runtime_action_controls_conversation_without_new_mary():
 
 def test_runtime_action_routes_presentation_speech_to_canonical_realtime():
     app = FakeApplication()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
 
     core.runtime_action(
         RuntimeActionRequest.from_dict(
@@ -158,7 +164,7 @@ def test_runtime_action_routes_presentation_speech_to_canonical_realtime():
 
 def test_runtime_action_records_training_feedback_on_canonical_core():
     app = FakeApplication()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
 
     result = core.runtime_action(
         {
@@ -186,7 +192,7 @@ def test_runtime_action_records_training_feedback_on_canonical_core():
 
 def test_runtime_action_exposes_training_feedback_status():
     app = FakeApplication()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
 
     result = core.runtime_action(
         {
@@ -238,7 +244,7 @@ class FakeProbeRouter:
 def test_llm_probe_uses_core_provider_without_running_canonical_turn():
     app = FakeApplication()
     app.mary.llm = FakeProbeRouter()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
     calls_before = list(app.calls)
 
     result = core.runtime_action({
@@ -265,7 +271,7 @@ def test_llm_probe_uses_core_provider_without_running_canonical_turn():
 def test_llm_probe_rejects_paid_or_unknown_provider():
     app = FakeApplication()
     app.mary.llm = FakeProbeRouter()
-    core = MaryCoreService(app, instance_id="runtime-core")
+    core = _active_core(app)
 
     with pytest.raises(ValueError, match="provider must be"):
         core.runtime_action({

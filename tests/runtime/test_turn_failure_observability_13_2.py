@@ -204,6 +204,7 @@ def test_turn_lock_wait_is_measured_without_changing_lock_scope():
             return None
 
     core = MaryCoreService(FakeApplication(), instance_id="lock-core")
+    core.register_creator_surface({"surface_id": "test-creator"})
     core._turn_lock = DelayedLock()
     trace = _recorder()
     token = bind_turn_trace(trace)
@@ -230,6 +231,7 @@ def test_http_turn_correlates_request_and_keeps_failure_responses_sanitized(monk
 
     monkeypatch.setenv("MARY_CORE_TOKEN", SECRET_TOKEN)
     core = MaryCoreService(FakeApplication(), instance_id="http-core")
+    core.register_creator_surface({"surface_id": "test-creator"})
     with TestClient(create_app(core)) as client:
         response = client.post(
             "/v1/turn",
@@ -269,6 +271,7 @@ def test_serialization_failure_returns_request_id_and_records_safe_failure(monke
 
     monkeypatch.setenv("MARY_CORE_TOKEN", SECRET_TOKEN)
     core = MaryCoreService(FakeApplication(), instance_id="serialization-core")
+    core.register_creator_surface({"surface_id": "test-creator"})
 
     def fail_serialization(self):
         raise RuntimeError(f"{PRIVATE_OUTPUT} {SECRET_TOKEN}")

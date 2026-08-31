@@ -40,6 +40,7 @@ class FakeApplication:
 def test_typed_task_dispatch_poll_completion_round_trip(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
     service = MaryCoreService(FakeApplication(), instance_id="task-core")
+    service.register_creator_surface({"surface_id": "test-creator"})
     app = create_app(service)
     headers = {"Authorization": "Bearer task-secret"}
 
@@ -94,6 +95,7 @@ def test_typed_task_dispatch_poll_completion_round_trip(monkeypatch):
 def test_dispatch_refuses_shell_and_wrong_node_cannot_complete(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
     service = MaryCoreService(FakeApplication(), instance_id="task-core")
+    service.register_creator_surface({"surface_id": "test-creator"})
     app = create_app(service)
     headers = {"Authorization": "Bearer task-secret"}
 
@@ -109,6 +111,7 @@ def test_dispatch_refuses_shell_and_wrong_node_cannot_complete(monkeypatch):
 def test_device_channel_requires_scoped_token_and_expires_unavailable_work(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
     service = MaryCoreService(FakeApplication(), instance_id="task-core")
+    service.register_creator_surface({"surface_id": "test-creator"})
     app = create_app(service)
     creator = {"Authorization": "Bearer task-secret"}
     registration = {
@@ -171,6 +174,7 @@ def test_device_channel_requires_scoped_token_and_expires_unavailable_work(monke
 def test_ollama_task_uses_same_typed_core_broker_and_sanitizes_completion(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "task-secret")
     service = MaryCoreService(FakeApplication(), instance_id="task-core")
+    service.register_creator_surface({"surface_id": "test-creator"})
     app = create_app(service)
     headers = {"Authorization": "Bearer task-secret"}
 

@@ -50,6 +50,7 @@ from uuid import uuid4
 
 
 ToolFunction = Callable[..., Any]
+ExecutionPolicy = Callable[[str], None]
 
 
 class PermissionLevel(str, Enum):
@@ -314,6 +315,21 @@ class ToolRegistry:
         self._used_tokens: set[
             str
         ] = set()
+        # Optional process-local execution boundary.  It is permissive until an
+        # embedding application explicitly installs a policy.
+        self._execution_policy: ExecutionPolicy | None = None
+
+    def set_execution_policy(
+        self,
+        policy: ExecutionPolicy | None,
+    ) -> None:
+        """Set the policy called at the tool execution boundary.
+
+        The callback receives ``"tool.execute"`` and may raise
+        ``RuntimeError`` to deny an execution attempt.
+        """
+
+        self._execution_policy = policy
 
     # ============================================================
     # REGISTRATION
@@ -902,6 +918,19 @@ class ToolRegistry:
                 error=(
                     "Tool is disabled."
                 ),
+            )
+
+        try:
+            if self._execution_policy is not None:
+                self._execution_policy("tool.execute")
+        except RuntimeError as exc:
+            # Do not call the tool or consume a one-shot approval token when
+            # process-local execution has been suspended.
+            return ToolResult(
+                success=False,
+                tool_name=tool.name,
+                error=f"Tool execution denied by policy: {exc}",
+                metadata={"denied_by_policy": True},
             )
 
         permission_error = (

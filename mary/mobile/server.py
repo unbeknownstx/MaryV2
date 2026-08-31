@@ -289,6 +289,11 @@ class MaryRemoteMobileRuntime:
             or "creator-primary"
         )
 
+        # The mobile HTTP process represents one browser/native surface to
+        # Core. Keep only the bounded identifier returned by Core; no presence
+        # state is reconstructed or persisted by this proxy.
+        self._surface_id: str | None = None
+
         configured = os.getenv(
             "MARY_MOBILE_PROXY_DATA_DIR",
             "",
@@ -404,6 +409,97 @@ class MaryRemoteMobileRuntime:
                 ),
             }
         )
+
+    @staticmethod
+    def _clean_surface_id(
+        value: Any,
+    ) -> str | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        cleaned = "".join(
+            char if (char.isalnum() or char in "._:-") else "-"
+            for char in raw
+        ).strip("-._:")
+        return cleaned[:160] or None
+
+    def surface_register(
+        self,
+        *,
+        surface_id: str | None = None,
+        visible: bool = True,
+        foreground: bool = True,
+        lease_seconds: int = 90,
+    ) -> dict[str, Any]:
+        requested = self._clean_surface_id(surface_id) or self._surface_id
+        lease = max(15, min(300, int(lease_seconds)))
+        result = self.client.surface_register(
+            surface_id=requested,
+            visible=bool(visible),
+            foreground=bool(foreground),
+            lease_seconds=lease,
+        )
+        payload = dict(result or {})
+        resolved = self._clean_surface_id(
+            payload.get("surface_id") or payload.get("id")
+        )
+        if resolved:
+            self._surface_id = resolved
+        return _json_safe(payload)
+
+    def surface_renew(
+        self,
+        *,
+        surface_id: str | None = None,
+        visible: bool | None = None,
+        foreground: bool | None = None,
+        activity: str = "heartbeat",
+    ) -> dict[str, Any]:
+        resolved = self._clean_surface_id(surface_id) or self._surface_id
+        result = self.client.surface_renew(
+            surface_id=resolved,
+            visible=visible,
+            foreground=foreground,
+            activity=str(activity or "heartbeat").lower() in {
+                "activity",
+                "foreground",
+                "interaction",
+                "wake",
+            },
+        )
+        payload = dict(result or {})
+        returned = self._clean_surface_id(
+            payload.get("surface_id") or payload.get("id")
+        )
+        if returned:
+            self._surface_id = returned
+        return _json_safe(payload)
+
+    def surface_disconnect(
+        self,
+        *,
+        surface_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved = self._clean_surface_id(surface_id) or self._surface_id
+        result = self.client.surface_disconnect(surface_id=resolved)
+        if resolved == self._surface_id:
+            self._surface_id = None
+        return _json_safe(dict(result or {}))
+
+    def surface_wake(
+        self,
+        *,
+        surface_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved = self._clean_surface_id(surface_id) or self._surface_id
+        return _json_safe(
+            dict(self.client.surface_wake(surface_id=resolved) or {})
+        )
+
+    def lifecycle_status(
+        self,
+    ) -> dict[str, Any]:
+        return _json_safe(dict(self.client.lifecycle_status() or {}))
 
     def character_state(
         self,
@@ -1550,6 +1646,31 @@ class MaryMobileRuntime:
 
         except Exception:
             pass
+
+    @staticmethod
+    def _local_lifecycle_unavailable() -> None:
+        """Local legacy runtime has no Core surface lifecycle authority."""
+        raise RuntimeError(
+            "Surface lifecycle requires a configured remote Mary Core."
+        )
+
+    def surface_register(self, **_: Any) -> dict[str, Any]:
+        self._local_lifecycle_unavailable()
+
+    def surface_renew(self, **_: Any) -> dict[str, Any]:
+        self._local_lifecycle_unavailable()
+
+    def surface_disconnect(self, **_: Any) -> dict[str, Any]:
+        self._local_lifecycle_unavailable()
+
+    def surface_wake(self, **_: Any) -> dict[str, Any]:
+        self._local_lifecycle_unavailable()
+
+    def lifecycle_status(self) -> dict[str, Any]:
+        return {
+            "supported": False,
+            "reason": "remote_mary_core_required",
+        }
 
     @property
     def busy(
@@ -3934,6 +4055,23 @@ class MaryMobileRequestHandler(
 
             return
 
+        if path == "/api/lifecycle/status":
+            if not self._require_api_auth():
+                return
+
+            self._send_json(
+                {
+                    "ok": True,
+                    "lifecycle": (
+                        self.mary_server
+                        .runtime
+                        .lifecycle_status()
+                    ),
+                }
+            )
+
+            return
+
         if path.startswith(
             "/api/"
         ):
@@ -4019,6 +4157,46 @@ class MaryMobileRequestHandler(
             body = (
                 self._read_json()
             )
+
+            if path == "/api/lifecycle/register":
+                payload = self.mary_server.runtime.surface_register(
+                    surface_id=body.get("surface_id"),
+                    visible=bool(body.get("visible", True)),
+                    foreground=bool(body.get("foreground", True)),
+                    lease_seconds=body.get("lease_seconds", 90),
+                )
+                self._send_json({"ok": True, "lifecycle": payload})
+                return
+
+            if path == "/api/lifecycle/renew":
+                visible = body.get("visible")
+                foreground = body.get("foreground")
+                if visible is not None and not isinstance(visible, bool):
+                    raise ValueError("visible must be a boolean.")
+                if foreground is not None and not isinstance(foreground, bool):
+                    raise ValueError("foreground must be a boolean.")
+                payload = self.mary_server.runtime.surface_renew(
+                    surface_id=body.get("surface_id"),
+                    visible=visible,
+                    foreground=foreground,
+                    activity=str(body.get("activity") or "heartbeat"),
+                )
+                self._send_json({"ok": True, "lifecycle": payload})
+                return
+
+            if path == "/api/lifecycle/disconnect":
+                payload = self.mary_server.runtime.surface_disconnect(
+                    surface_id=body.get("surface_id"),
+                )
+                self._send_json({"ok": True, "lifecycle": payload})
+                return
+
+            if path == "/api/lifecycle/wake":
+                payload = self.mary_server.runtime.surface_wake(
+                    surface_id=body.get("surface_id"),
+                )
+                self._send_json({"ok": True, "lifecycle": payload})
+                return
 
             if path == "/api/chat":
                 payload = (

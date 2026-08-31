@@ -55,6 +55,10 @@ final class MaryNativeBridge: NSObject, WKScriptMessageHandler, AVSpeechSynthesi
         synthesizer.stopSpeaking(at: .immediate)
     }
 
+    func emitLifecycle(_ type: String) {
+        emit(["type": type])
+    }
+
     private func haptic(style: String) {
         switch style.lowercased() {
         case "success":

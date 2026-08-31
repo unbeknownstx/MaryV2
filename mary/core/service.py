@@ -13,15 +13,17 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import secrets
-from threading import RLock
+from threading import RLock, Timer
 from time import monotonic, time
 import os
 from typing import Any
 from uuid import uuid4
 
+from mary.core.creator_surface import CreatorSurfaceCoordinator
 from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, preview_capability_task
 from mary.llm.interface import LLMMessage
 from mary.llm.output_quality import inspect_output_quality
@@ -30,6 +32,8 @@ from mary.protocol.models import (
     CapabilityRouteRequest,
     CapabilityTaskDispatchRequest,
     CapabilityTaskPreviewRequest,
+    CreatorOfflineRequest,
+    CreatorSurfaceRequest,
     NodeHeartbeatRequest,
     NodeRegistrationRequest,
     NodeTaskCompletionRequest,
@@ -86,6 +90,10 @@ class MaryCoreService:
         *,
         instance_id: str | None = None,
         enrollment_state_path: str | Path | None = None,
+        creator_idle_seconds: float = 60.0,
+        creator_sleep_seconds: float = 300.0,
+        creator_lease_ttl_seconds: float = 90.0,
+        creator_surface_coordinator: CreatorSurfaceCoordinator | None = None,
     ) -> None:
         self.application = application or create_application(name="mary_core")
         self.mary = self.application.mary
@@ -94,6 +102,15 @@ class MaryCoreService:
         self.started_monotonic = monotonic()
         self._turn_lock = RLock()
         self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
+        self.creator_surfaces = creator_surface_coordinator or CreatorSurfaceCoordinator(
+            idle_seconds=creator_idle_seconds,
+            sleep_seconds=creator_sleep_seconds,
+            lease_ttl_seconds=creator_lease_ttl_seconds,
+        )
+        self._creator_lifecycle_lock = RLock()
+        self._creator_lifecycle_timer: Timer | None = None
+        self._autonomy_paused_by_sleep = False
+        self._closed = False
         emit_core_started(self.instance_id)
         registry = getattr(self.mary, "node_registry", None)
         if registry is None:
@@ -118,13 +135,17 @@ class MaryCoreService:
             Path(configured_path) if configured_path is not None else None
         )
         self._load_enrollment_state()
-        self.device_tasks = DeviceTaskBroker(
-            lifecycle_lock=self._node_lifecycle_lock,
-            live_node=self._node_live_validator,
-        )
+        broker_kwargs = {
+            "lifecycle_lock": self._node_lifecycle_lock,
+            "live_node": self._node_live_validator,
+        }
+        if "execution_policy" in inspect.signature(DeviceTaskBroker).parameters:
+            broker_kwargs["execution_policy"] = self.enforce_execution_policy
+        self.device_tasks = DeviceTaskBroker(**broker_kwargs)
+        self._install_execution_policy()
         self._device_ollama_provider: DeviceOllamaProvider | None = None
         self._attach_device_ollama_provider()
-        self._closed = False
+        self._sync_creator_lifecycle()
 
     def _attach_device_ollama_provider(self) -> None:
         """Let remote Core treat a connected Ollama node as provider ``ollama``.
@@ -146,6 +167,8 @@ class MaryCoreService:
         if self._closed:
             raise RuntimeError("Mary Core is closed.")
         turn = request if isinstance(request, TurnRequest) else TurnRequest.from_dict(request)
+        if not self.execution_allowed():
+            raise RuntimeError("Mary Core is sleeping or offline; wake a creator surface first.")
 
         with observe_turn_stage(
             "turn_lock_acquisition",
@@ -153,6 +176,9 @@ class MaryCoreService:
         ):
             self._turn_lock.acquire()
         try:
+            # A lease can expire while a turn waits for the canonical writer
+            # lock, so re-check at the actual application execution boundary.
+            self.enforce_execution_policy("turn.execute")
             before = self._state_fingerprint()
             if turn.requested_mode:
                 self.mary.engagement.set_mode(turn.requested_mode)
@@ -218,6 +244,136 @@ class MaryCoreService:
             "uptime_seconds": round(max(0.0, monotonic() - self.started_monotonic), 2),
         }
 
+    def execution_allowed(self, *_args: Any, **_kwargs: Any) -> bool:
+        """Policy callback for optional execution owners; identity stays in Core."""
+        return not self._closed and self.creator_lifecycle_status()["state"] in {"ACTIVE", "IDLE"}
+
+    def enforce_execution_policy(self, *_args: Any, **_kwargs: Any) -> None:
+        """Raise at optional LLM/tool/task execution boundaries when gated."""
+        if not self.execution_allowed():
+            raise RuntimeError("Mary Core is sleeping or offline; wake a creator surface first.")
+
+    def _install_execution_policy(self) -> None:
+        tools = getattr(self.mary, "tools", None)
+        for owner in (
+            getattr(self.mary, "llm", None),
+            getattr(tools, "registry", tools),
+        ):
+            for name in ("set_execution_policy", "set_execution_policy_callback"):
+                setter = getattr(owner, name, None)
+                if callable(setter):
+                    setter(self.enforce_execution_policy)
+                    break
+
+    def _sync_creator_lifecycle(self) -> dict[str, Any]:
+        with self._creator_lifecycle_lock:
+            lifecycle = self.creator_surfaces.status()
+            autonomy = getattr(self.mary, "autonomy", None)
+            autonomy_status = getattr(autonomy, "status", None)
+            autonomy_status_value = str(
+                getattr(autonomy_status, "value", autonomy_status or "")
+            ).lower()
+            gated = lifecycle["state"] in {"SLEEPING", "OFFLINE"}
+            if (
+                gated
+                and not self._autonomy_paused_by_sleep
+                and autonomy_status_value == "running"
+            ):
+                pause = getattr(autonomy, "pause", None)
+                if callable(pause):
+                    pause()
+                    self._autonomy_paused_by_sleep = True
+            elif not gated and self._autonomy_paused_by_sleep:
+                resume = getattr(autonomy, "resume", None)
+                if callable(resume) and autonomy_status_value == "paused":
+                    resume()
+                self._autonomy_paused_by_sleep = False
+            lifecycle["autonomy_paused_by_sleep"] = self._autonomy_paused_by_sleep
+            self._schedule_creator_lifecycle_check_locked(
+                lifecycle.get("next_transition_seconds")
+            )
+            return lifecycle
+
+    def _schedule_creator_lifecycle_check_locked(
+        self,
+        delay_seconds: float | None,
+    ) -> None:
+        current = self._creator_lifecycle_timer
+        if current is not None:
+            current.cancel()
+            self._creator_lifecycle_timer = None
+        if self._closed or delay_seconds is None:
+            return
+        timer = Timer(
+            max(0.01, float(delay_seconds) + 0.005),
+            self._scheduled_creator_lifecycle_check,
+        )
+        timer.daemon = True
+        self._creator_lifecycle_timer = timer
+        timer.start()
+
+    def _scheduled_creator_lifecycle_check(self) -> None:
+        try:
+            self._sync_creator_lifecycle()
+        except Exception:
+            # The timer is a best-effort state observer. Execution boundaries
+            # still synchronously enforce the same lifecycle policy.
+            return
+
+    def creator_lifecycle_status(self) -> dict[str, Any]:
+        return _json_safe(self._sync_creator_lifecycle())
+
+    def register_creator_surface(self, request: CreatorSurfaceRequest | dict[str, Any]) -> dict[str, Any]:
+        model = request if isinstance(request, CreatorSurfaceRequest) else CreatorSurfaceRequest.from_dict(request)
+        self.creator_surfaces.register(
+            model.surface_id,
+            visible=True if model.visible is None else model.visible,
+            foreground=True if model.foreground is None else model.foreground,
+            lease_seconds=model.lease_seconds,
+        )
+        return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
+
+    def renew_creator_surface(self, request: CreatorSurfaceRequest | dict[str, Any]) -> dict[str, Any]:
+        model = request if isinstance(request, CreatorSurfaceRequest) else CreatorSurfaceRequest.from_dict(request)
+        self.creator_surfaces.renew(
+            model.surface_id,
+            visible=model.visible,
+            foreground=model.foreground,
+            activity=model.activity,
+            lease_seconds=model.lease_seconds,
+        )
+        return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
+
+    def update_creator_visibility(self, request: CreatorSurfaceRequest | dict[str, Any]) -> dict[str, Any]:
+        model = request if isinstance(request, CreatorSurfaceRequest) else CreatorSurfaceRequest.from_dict(request)
+        if model.visible is None:
+            raise ValueError("visible is required.")
+        self.creator_surfaces.update_visibility(
+            model.surface_id,
+            model.visible,
+            foreground=model.foreground,
+        )
+        return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
+
+    def disconnect_creator_surface(self, request: CreatorSurfaceRequest | dict[str, Any]) -> dict[str, Any]:
+        model = request if isinstance(request, CreatorSurfaceRequest) else CreatorSurfaceRequest.from_dict(request)
+        self.creator_surfaces.disconnect(model.surface_id)
+        return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
+
+    def wake_creator_surfaces(self, request: CreatorSurfaceRequest | dict[str, Any]) -> dict[str, Any]:
+        model = request if isinstance(request, CreatorSurfaceRequest) else CreatorSurfaceRequest.from_dict(request)
+        self.creator_surfaces.wake(model.surface_id)
+        return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
+
+    def set_creator_offline(self, request: CreatorOfflineRequest | dict[str, Any] | bool = True) -> dict[str, Any]:
+        if isinstance(request, bool):
+            offline = request
+        else:
+            model = request if isinstance(request, CreatorOfflineRequest) else CreatorOfflineRequest.from_dict(request)
+            offline = model.offline
+        self.creator_surfaces.set_offline(offline)
+        return self.creator_lifecycle_status()
+
     def state(self) -> dict[str, Any]:
         mind = getattr(self.mary, "mind", None)
         retrieval = getattr(mind, "retrieval", None)
@@ -226,6 +382,8 @@ class MaryCoreService:
         compute_fabric = self.compute_fabric_status()
         return _json_safe({
             "core": self.health(),
+            "mary_lifecycle": self.creator_lifecycle_status(),
+            "creator_lifecycle": self.creator_lifecycle_status(),
             "mary": self.mary.live_state(runtime_status="idle"),
             "runtime": self.application.state.to_dict(),
             "environment": self.mary.runtime_environment.snapshot(),
@@ -358,6 +516,8 @@ class MaryCoreService:
         payload["training"] = state.get("training", {})
         payload["production"] = state.get("production", {})
         payload["integration"] = state.get("integration", {})
+        payload["mary_lifecycle"] = state.get("mary_lifecycle", {})
+        payload["creator_lifecycle"] = state.get("creator_lifecycle", {})
         return _json_safe(payload)
 
     def memory_status(self) -> dict[str, Any]:
@@ -1005,6 +1165,7 @@ class MaryCoreService:
                 return _json_safe(self._probe_llm_provider(values))
 
             if action.action == "presence.idle_tick":
+                self.enforce_execution_policy("presence.idle_tick")
                 return _json_safe(
                     self.application.ecosystem.presence.idle_tick(
                         focus_active=bool(values.get("focus_active", False))
@@ -1076,6 +1237,7 @@ class MaryCoreService:
         display/provenance/state-change projections for remote clients.
         """
 
+        self.enforce_execution_policy("presence.pulse")
         before = self._state_fingerprint()
         pulse = dict(
             self.application.presence_pulse(
@@ -1143,6 +1305,7 @@ class MaryCoreService:
         OpenAI is deliberately excluded.
         """
 
+        self.enforce_execution_policy("llm.probe")
         provider_name = str(values.get("provider") or "").strip().lower()
         if provider_name not in {"groq", "gemini", "openrouter", "ollama"}:
             raise ValueError("llm.probe provider must be groq, gemini, openrouter, or ollama")
@@ -1253,6 +1416,10 @@ class MaryCoreService:
                 return True
             saved = bool(self.application.close())
             self._closed = True
+            with self._creator_lifecycle_lock:
+                if self._creator_lifecycle_timer is not None:
+                    self._creator_lifecycle_timer.cancel()
+                    self._creator_lifecycle_timer = None
             return saved
 
     def _state_fingerprint(self) -> dict[str, Any]:

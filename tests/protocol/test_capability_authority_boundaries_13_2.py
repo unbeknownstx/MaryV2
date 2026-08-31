@@ -62,7 +62,9 @@ def _register(service, node_id, *, local=True):
 
 
 def _service():
-    return MaryCoreService(_BoundaryApplication(), instance_id="boundary-core")
+    service = MaryCoreService(_BoundaryApplication(), instance_id="boundary-core")
+    service.register_creator_surface({"surface_id": "test-creator"})
+    return service
 
 
 def test_preview_never_executes_and_dispatch_only_queues_a_typed_unapproved_task():

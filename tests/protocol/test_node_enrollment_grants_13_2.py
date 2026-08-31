@@ -33,6 +33,12 @@ class _Application:
         return True
 
 
+def _service(**kwargs):
+    service = MaryCoreService(_Application(), **kwargs)
+    service.register_creator_surface({"surface_id": "test-creator"})
+    return service
+
+
 def _registration(node_id="device-a"):
     return {
         "node_id": node_id,
@@ -46,7 +52,7 @@ def _registration(node_id="device-a"):
 
 def test_scoped_grant_enrolls_and_recovers_without_creator_bearer(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "creator-secret")
-    service = MaryCoreService(_Application())
+    service = _service()
     with TestClient(create_app(service)) as client:
         issued = client.post(
             "/v1/nodes/enrollment-grants",
@@ -101,7 +107,7 @@ def test_scoped_grant_enrolls_and_recovers_without_creator_bearer(monkeypatch):
 
 
 def test_grant_is_node_bound_use_limited_and_cannot_take_over_live_id():
-    service = MaryCoreService(_Application())
+    service = _service()
     grant = service.issue_enrollment_grant("device-a", max_uses=2)["enrollment_grant"]
 
     with pytest.raises(PermissionError, match="scoped enrollment"):
@@ -131,7 +137,7 @@ def test_grant_is_node_bound_use_limited_and_cannot_take_over_live_id():
 
 def test_grant_digest_and_audit_survive_core_restart_without_raw_grant(tmp_path):
     path = tmp_path / "node-enrollment.json"
-    first = MaryCoreService(_Application(), enrollment_state_path=path)
+    first = _service(enrollment_state_path=path)
     grant = first.issue_enrollment_grant("device-a", max_uses=2)["enrollment_grant"]
     first.register_node(
         _registration(), enrollment_grant=grant, creator_authorized=False,
@@ -139,7 +145,7 @@ def test_grant_digest_and_audit_survive_core_restart_without_raw_grant(tmp_path)
 
     persisted = path.read_text(encoding="utf-8")
     assert grant not in persisted
-    second = MaryCoreService(_Application(), enrollment_state_path=path)
+    second = _service(enrollment_state_path=path)
     recovered = second.register_node(
         _registration(), enrollment_grant=grant, creator_authorized=False,
     )
@@ -153,7 +159,7 @@ def test_grant_digest_and_audit_survive_core_restart_without_raw_grant(tmp_path)
 
 def test_junk_node_token_cannot_bootstrap_unknown_node(monkeypatch):
     monkeypatch.setenv("MARY_CORE_TOKEN", "creator-secret")
-    service = MaryCoreService(_Application())
+    service = _service()
     with TestClient(create_app(service)) as client:
         response = client.post(
             "/v1/nodes/register",
@@ -202,7 +208,7 @@ def test_client_sends_grant_alongside_stale_node_token(monkeypatch):
 
 
 def test_stale_heartbeat_requires_grant_recovery_and_expires_prior_work():
-    service = MaryCoreService(_Application())
+    service = _service()
     grant = service.issue_enrollment_grant("device-a", max_uses=2)["enrollment_grant"]
     enrolled = service.register_node(
         _registration(), enrollment_grant=grant, creator_authorized=False,

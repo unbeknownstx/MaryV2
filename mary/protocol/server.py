@@ -18,6 +18,8 @@ from mary.protocol.models import (
     CapabilityRouteRequest,
     CapabilityTaskDispatchRequest,
     CapabilityTaskPreviewRequest,
+    CreatorOfflineRequest,
+    CreatorSurfaceRequest,
     NodeHeartbeatRequest,
     NodeRegistrationRequest,
     NodeTaskCompletionRequest,
@@ -218,6 +220,65 @@ def create_app(service: MaryCoreService | None = None):
     async def state(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.state()
+
+    @app.get("/v1/creator-surfaces/status")
+    async def creator_surface_status(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        return core.creator_lifecycle_status()
+
+    @app.post("/v1/creator-surfaces/register")
+    async def register_creator_surface(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CreatorSurfaceRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.register_creator_surface, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/creator-surfaces/renew")
+    async def renew_creator_surface(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CreatorSurfaceRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.renew_creator_surface, model)
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/creator-surfaces/visibility")
+    async def update_creator_visibility(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CreatorSurfaceRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.update_creator_visibility, model)
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/creator-surfaces/disconnect")
+    async def disconnect_creator_surface(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CreatorSurfaceRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.disconnect_creator_surface, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/creator-surfaces/wake")
+    async def wake_creator_surfaces(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CreatorSurfaceRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.wake_creator_surfaces, model)
+        except (ValueError, KeyError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/creator-surfaces/offline")
+    async def set_creator_offline(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            model = CreatorOfflineRequest.from_dict(await request.json())
+            return await asyncio.to_thread(core.set_creator_offline, model)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/v1/memory/status")
     async def memory_status(request: Request) -> dict[str, Any]:

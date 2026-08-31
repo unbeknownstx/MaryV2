@@ -65,6 +65,7 @@ class FakeApplication:
 def test_core_owns_and_uses_one_application_turn_pipeline():
     app = FakeApplication()
     core = MaryCoreService(app, instance_id="test-core")
+    core.register_creator_surface({"surface_id": "iphone"})
     result = core.process_turn(TurnRequest.from_dict({
         "text": "hello",
         "conversation_id": "c1",
@@ -120,6 +121,7 @@ def test_core_turn_projects_bounded_timing_and_lane_observability():
 
     app.run = run
     core = MaryCoreService(app, instance_id="observability-core")
+    core.register_creator_surface({"surface_id": "iphone"})
     result = core.process_turn(TurnRequest.from_dict({
         "text": "hello",
         "conversation_id": "observability",

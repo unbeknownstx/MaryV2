@@ -26,6 +26,66 @@ def _capability_name(value: Any) -> str:
 
 
 @dataclass(frozen=True)
+class CreatorSurfaceRequest:
+    surface_id: str
+    visible: bool | None = None
+    foreground: bool | None = None
+    activity: bool = False
+    lease_seconds: float | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CreatorSurfaceRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Creator surface request must be a JSON object.")
+        surface_id = str(payload.get("surface_id") or "").strip()
+        if not surface_id or len(surface_id) > 160:
+            raise ValueError("surface_id is required and must be at most 160 characters.")
+        raw_lease = payload.get("lease_seconds")
+        try:
+            lease = float(raw_lease) if raw_lease is not None else None
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lease_seconds must be numeric.") from exc
+        if lease is not None and lease <= 0:
+            raise ValueError("lease_seconds must be positive.")
+        visible = payload.get("visible")
+        foreground = payload.get("foreground")
+        activity = payload.get("activity", False)
+        if visible is not None and not isinstance(visible, bool):
+            raise ValueError("visible must be a boolean.")
+        if foreground is not None and not isinstance(foreground, bool):
+            raise ValueError("foreground must be a boolean.")
+        if not isinstance(activity, bool):
+            raise ValueError("activity must be a boolean.")
+        return cls(
+            surface_id=surface_id,
+            visible=visible,
+            foreground=foreground,
+            activity=activity,
+            lease_seconds=lease,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class CreatorOfflineRequest:
+    offline: bool = True
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CreatorOfflineRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("Creator offline request must be a JSON object.")
+        offline = payload.get("offline", True)
+        if not isinstance(offline, bool):
+            raise ValueError("offline must be a boolean.")
+        return cls(offline=offline)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class TurnRequest:
     text: str
     conversation_id: str = field(default_factory=lambda: f"conversation_{uuid4().hex}")

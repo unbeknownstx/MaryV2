@@ -38,6 +38,7 @@ class FakeApplication:
 
 def test_core_ollama_provider_can_complete_while_canonical_turn_lock_is_held():
     service = MaryCoreService(FakeApplication(), instance_id="bridge-core")
+    service.register_creator_surface({"surface_id": "test-creator"})
     registration = service.register_node({
         "node_id": "windows-pc",
         "display_name": "Windows PC",
