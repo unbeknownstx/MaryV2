@@ -64,3 +64,6 @@ __MACOSX/
 
 # Local personal/archive folder
 /new sort this/
+
+# Prevent generated ChatGPT images at repository root
+/ChatGPT Image*.png
