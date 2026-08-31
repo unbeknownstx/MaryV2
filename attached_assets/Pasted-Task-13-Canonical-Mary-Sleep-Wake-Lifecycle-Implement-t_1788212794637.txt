@@ -1,0 +1,232 @@
+Task #13 — Canonical Mary Sleep / Wake Lifecycle
+
+Implement the smallest safe lifecycle coordination layer using the primitives already identified in the investigation.
+
+Do not create a second lifecycle authority, identity owner, memory owner, presence system, or autonomy system. Extend the existing canonical MaryApplication / Mary Core architecture.
+
+Desired lifecycle
+
+ACTIVE → IDLE → SLEEPING → ACTIVE
+
+plus an explicit creator/admin-controlled:
+
+OFFLINE
+
+OFFLINE must remain semantically distinct from:
+
+* Core unreachable
+* network failure
+* Railway stopped
+* Mobile closed
+* zero connected surfaces
+
+Creator-surface leases
+
+Add a small Core-owned ephemeral creator-surface lease registry using existing protocol/presence/runtime primitives wherever possible.
+
+A lease should contain only bounded non-sensitive runtime metadata such as:
+
+* device ID
+* surface type
+* connected timestamp
+* last heartbeat
+* visibility
+* foreground/background state if useful
+
+Do not persist these leases as relationship truth or durable identity state.
+
+Support:
+
+* authenticated surface registration
+* heartbeat/lease renewal
+* visibility/background updates
+* disconnect where deliverable
+* automatic lease expiration when disconnect cannot be delivered
+
+A killed phone/browser must not leave Mary permanently active.
+
+Derived state
+
+Prefer policy derived from live creator presence rather than surfaces directly mutating Mary’s state.
+
+Desired semantics:
+
+ACTIVE
+
+* at least one authenticated visible creator surface
+* normal conversation/cognition allowed
+
+IDLE
+
+* live creator surface exists but no recent meaningful creator activity
+* normal creator requests still work immediately
+* do not generate unnecessary cognition merely because Mary is idle
+
+SLEEPING
+
+* no qualifying live/visible creator lease after a bounded grace period
+* Core remains online
+* canonical identity and durable state remain intact
+
+OFFLINE
+
+* explicit creator/admin lifecycle state
+* must not be inferred from network failures
+* must require appropriate authority to enter/leave
+
+Sleeping policy
+
+When Mary transitions to SLEEPING:
+
+* keep Railway/Core reachable
+* preserve canonical identity
+* preserve memory
+* preserve relationship state
+* preserve Experience Evolution/growth state
+* preserve durable/shared work
+* pause AutonomyRuntime using its existing lifecycle controls
+* suppress new provider generation
+* block tool execution
+* block new distributed node task dispatch/claim where appropriate
+* do not destroy or reconstruct MaryApplication
+
+Continue allowing the minimum control plane necessary for:
+
+* health
+* authentication
+* lifecycle/state inspection
+* creator-surface registration
+* wake
+* creator/admin commands
+
+Be careful not to block the very request required to wake Mary.
+
+Wake behavior
+
+On authenticated creator return:
+
+* register/renew the creator surface
+* wake the existing canonical Mary
+* SLEEPING → ACTIVE
+* resume only subsystems paused by sleep
+* preserve conversation continuity and durable state
+* do not construct a second Mary
+
+If necessary, distinguish surface registration/wake from ordinary cognition requests so the wake path cannot be rejected by the sleep gate.
+
+Process restart semantics
+
+On Core process restart:
+
+* load canonical durable Mary state normally
+* do not restore stale surface leases
+* begin with no assumed connected creator surfaces
+* previous browser/mobile sessions must re-establish leases
+* do not confuse process restart with Mary identity loss
+
+Determine the safest initial lifecycle state after restart based on the architecture. Prefer sleeping until authenticated creator presence is established unless existing requirements prove otherwise.
+
+Mobile behavior
+
+Reuse existing Mobile visibility/client lifecycle events where possible.
+
+Verify behavior for:
+
+* app opened foreground
+* app backgrounded
+* app returned to foreground
+* app closed/swiped away
+* phone/network disappears without clean disconnect
+* multiple creator surfaces simultaneously connected
+
+Mobile closing must not shut Railway down.
+
+UI semantics
+
+Separate infrastructure status from Mary lifecycle status.
+
+Conceptually support distinctions such as:
+
+Core ONLINE · Mary ACTIVE
+
+Core ONLINE · Mary IDLE
+
+Core ONLINE · Mary SLEEPING
+
+Core ONLINE · Mary OFFLINE
+
+Core UNREACHABLE
+
+Do not make “LIVE” ambiguously mean both network reachability and Mary’s cognitive lifecycle.
+
+Keep visual changes minimal and consistent with the existing interface.
+
+Security and correctness
+
+* leases must be authenticated
+* a random client must not wake Mary
+* stale leases must expire
+* reconnect must not duplicate identity/runtime
+* sleep must not discard durable state
+* sleep must not accidentally permit tools/providers through an alternate route
+* administrative OFFLINE must not be cleared by arbitrary requests
+* node ownership/session security from Task #7 must remain intact
+* observability from Task #12 must remain intact
+
+Testing
+
+Add focused tests proving:
+
+* ACTIVE → IDLE
+* IDLE → SLEEPING
+* SLEEPING → ACTIVE
+* explicit OFFLINE authorization
+* stale lease expiration
+* abrupt surface disappearance
+* multiple surfaces
+* Core restart with no stale presence resurrection
+* provider generation denied while sleeping
+* autonomy paused while sleeping
+* tools denied while sleeping
+* node work denied while sleeping
+* health/state/wake remain available while sleeping
+* same canonical Mary resumes after wake
+* existing normal turns still work while ACTIVE
+
+Run affected regression suites and, if practical, the full suite.
+
+Preserve the known unrelated root-directory structure-gate exception unless separately instructed to clean it.
+
+Documentation
+
+Document:
+
+* lifecycle states
+* transitions
+* surface lease semantics
+* sleep gates
+* wake behavior
+* restart behavior
+* difference between sleeping Mary and stopping Railway
+* difference between OFFLINE and network/Core failure
+
+Final report
+
+Report:
+
+1. exact architecture used
+2. existing primitives reused
+3. files changed
+4. lifecycle transition table
+5. sleep gates
+6. Mobile behavior
+7. Core behavior
+8. restart semantics
+9. security protections
+10. focused test results
+11. affected/full-suite results
+12. independent-review findings
+13. commit hash
+14. anything not live-verified
+
+Do not begin the four-part Mary architecture audit or external integrations after completing this task. Stop and report.
