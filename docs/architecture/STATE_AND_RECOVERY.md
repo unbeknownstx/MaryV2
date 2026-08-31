@@ -43,11 +43,12 @@ canonical data directory as `data.before_repo_migration_<timestamp>`. The
 repository source remains in place unless `--remove-source` is also explicitly
 requested after review. Explicit cleanup begins only after the canonical copy
 passes final verification. It first retires the legacy directory by an atomic
-same-parent rename; if physical deletion cannot finish, the command reports
-the hidden quarantine path instead of treating the verified migration as
-failed or risking the canonical state. Windows intentionally stops at this
-quarantine step for `--remove-source`; review and delete the reported retired
-directory manually after confirming Mary uses the canonical destination.
+same-parent rename, takes a fresh snapshot, and compares that snapshot with the
+installed manifest. It never physically deletes the retired state
+automatically. If a late write is detected, the command returns a warning and
+retains that write in the reported hidden quarantine. Review and delete the
+reported retired directory manually only after confirming Mary uses the
+canonical destination and no newer state needs reconciliation.
 
 Windows users may continue using
 `scripts\migrate_repo_state_windows.ps1`; it delegates to the same Python

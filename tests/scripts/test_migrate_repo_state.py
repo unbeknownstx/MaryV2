@@ -361,12 +361,14 @@ def test_explicit_remove_source_runs_only_after_successful_install(tmp_path):
 
     assert report["source_removed"] is True
     assert not source.exists()
+    assert report["source_cleanup_pending"].is_dir()
+    assert report["source_cleanup_error"] == ""
     assert json.loads((destination / "state.json").read_text()) == {
         "value": "legacy"
     }
 
 
-def test_source_cleanup_failure_is_separate_from_verified_migration(
+def test_write_after_copy_is_retained_in_quarantine_and_reported(
     tmp_path,
     monkeypatch,
 ):
@@ -374,19 +376,16 @@ def test_source_cleanup_failure_is_separate_from_verified_migration(
     source = repository / "data"
     destination = tmp_path / "canonical" / "data"
     _write_state(source, value="legacy")
-    real_rmtree = migration.shutil.rmtree
+    real_retire = migration._retire_source
 
-    def fail_retirement_cleanup(path, *args, **kwargs):
-        if ".data.migration-removal_" in str(path):
-            raise OSError("simulated cleanup failure")
-        return real_rmtree(path, *args, **kwargs)
+    def write_then_retire(path, moment, **kwargs):
+        (path / "late-write.json").write_text(
+            json.dumps({"created": "after-copy"}),
+            encoding="utf-8",
+        )
+        return real_retire(path, moment, **kwargs)
 
-    fail_retirement_cleanup.avoids_symlink_attacks = getattr(
-        real_rmtree,
-        "avoids_symlink_attacks",
-        False,
-    )
-    monkeypatch.setattr(migration.shutil, "rmtree", fail_retirement_cleanup)
+    monkeypatch.setattr(migration, "_retire_source", write_then_retire)
     report = migrate_repo_state(
         source,
         destination,
@@ -398,9 +397,13 @@ def test_source_cleanup_failure_is_separate_from_verified_migration(
 
     assert report["applied"] is True
     assert report["source_removed"] is True
-    assert report["source_cleanup_error"] == "OSError"
+    assert report["source_cleanup_error"] == "SourceChangedAfterCopy"
     assert report["source_cleanup_pending"].exists()
     assert not source.exists()
+    assert json.loads(
+        (report["source_cleanup_pending"] / "late-write.json").read_text()
+    ) == {"created": "after-copy"}
+    assert not (destination / "late-write.json").exists()
     assert json.loads((destination / "state.json").read_text()) == {
         "value": "legacy"
     }
@@ -439,6 +442,7 @@ def test_source_parent_swap_cannot_redirect_explicit_cleanup(
         MOMENT,
         expected_parent=(parent_details.st_dev, parent_details.st_ino),
         expected_source=(source_details.st_dev, source_details.st_ino),
+        expected_records=migration._inventory(source)[0],
     )
 
     assert removed is True
@@ -454,20 +458,11 @@ def test_source_parent_swap_cannot_redirect_explicit_cleanup(
     }
 
 
-def test_cleanup_uses_quarantine_when_safe_recursive_delete_is_unavailable(
-    tmp_path,
-    monkeypatch,
-):
+def test_cleanup_always_retains_verified_quarantine_for_manual_review(tmp_path):
     repository = tmp_path / "repo"
     source = repository / "data"
     destination = tmp_path / "canonical" / "data"
     _write_state(source)
-    monkeypatch.setattr(
-        migration.shutil.rmtree,
-        "avoids_symlink_attacks",
-        False,
-    )
-
     report = migrate_repo_state(
         source,
         destination,
@@ -479,7 +474,7 @@ def test_cleanup_uses_quarantine_when_safe_recursive_delete_is_unavailable(
 
     assert report["applied"] is True
     assert report["source_removed"] is True
-    assert report["source_cleanup_error"] == "ManualCleanupRequired"
+    assert report["source_cleanup_error"] == ""
     assert report["source_cleanup_pending"].is_dir()
     assert not source.exists()
     assert (destination / "state.json").exists()

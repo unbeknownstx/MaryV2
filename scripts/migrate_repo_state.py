@@ -119,8 +119,18 @@ class _ParentGuard:
             self.assert_current()
         source_guard.child_identity(source_name)
         if (
-            os.name != "nt"
-            and source_guard._descriptor is not None
+            os.name == "nt"
+            and source_guard._windows_handle is not None
+            and self._windows_handle is not None
+        ):
+            _windows_replace_relative(
+                source_guard,
+                source_name,
+                self,
+                destination_name,
+            )
+        elif (
+            source_guard._descriptor is not None
             and self._descriptor is not None
         ):
             os.replace(
@@ -130,10 +140,7 @@ class _ParentGuard:
                 dst_dir_fd=self._descriptor,
             )
         else:
-            os.replace(
-                source_guard.path / source_name,
-                self.path / destination_name,
-            )
+            raise RuntimeError("No safe directory-relative replacement is available.")
 
 
 def _open_windows_directory_guard(path: Path) -> int:
@@ -152,6 +159,7 @@ def _open_windows_directory_guard(path: Path) -> int:
         wintypes.HANDLE,
     ]
     create_file.restype = wintypes.HANDLE
+    file_list_directory = 0x0001
     file_read_attributes = 0x0080
     share_read_write = 0x00000001 | 0x00000002
     open_existing = 3
@@ -159,7 +167,7 @@ def _open_windows_directory_guard(path: Path) -> int:
     open_reparse_point = 0x00200000
     handle = create_file(
         str(path),
-        file_read_attributes,
+        file_list_directory | file_read_attributes,
         share_read_write,
         None,
         open_existing,
@@ -170,6 +178,139 @@ def _open_windows_directory_guard(path: Path) -> int:
     if handle == invalid:
         raise OSError(ctypes.get_last_error(), "Could not lock transaction parent.")
     return int(handle)
+
+
+def _windows_replace_relative(
+    source_guard: _ParentGuard,
+    source_name: str,
+    destination_guard: _ParentGuard,
+    destination_name: str,
+) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    if (
+        source_guard._windows_handle is None
+        or destination_guard._windows_handle is None
+    ):
+        raise RuntimeError("Windows transaction parent handles are not open.")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    delete_access = 0x00010000
+    file_read_attributes = 0x0080
+    share_all = 0x00000001 | 0x00000002 | 0x00000004
+    open_existing = 3
+    backup_semantics = 0x02000000
+    open_reparse_point = 0x00200000
+    source_handle = create_file(
+        str(source_guard.path / source_name),
+        delete_access | file_read_attributes,
+        share_all,
+        None,
+        open_existing,
+        backup_semantics | open_reparse_point,
+        None,
+    )
+    invalid = wintypes.HANDLE(-1).value
+    if source_handle == invalid:
+        raise OSError(
+            ctypes.get_last_error(),
+            "Could not open transaction child for relative replacement.",
+        )
+
+    class FileRenameInfo(ctypes.Structure):
+        _fields_ = [
+            ("ReplaceIfExists", ctypes.c_ubyte),
+            ("RootDirectory", wintypes.HANDLE),
+            ("FileNameLength", wintypes.DWORD),
+            ("FileName", wintypes.WCHAR * 1),
+        ]
+
+    class ByHandleFileInformation(ctypes.Structure):
+        _fields_ = [
+            ("FileAttributes", wintypes.DWORD),
+            ("CreationTime", wintypes.FILETIME),
+            ("LastAccessTime", wintypes.FILETIME),
+            ("LastWriteTime", wintypes.FILETIME),
+            ("VolumeSerialNumber", wintypes.DWORD),
+            ("FileSizeHigh", wintypes.DWORD),
+            ("FileSizeLow", wintypes.DWORD),
+            ("NumberOfLinks", wintypes.DWORD),
+            ("FileIndexHigh", wintypes.DWORD),
+            ("FileIndexLow", wintypes.DWORD),
+        ]
+
+    try:
+        expected = source_guard.child_identity(source_name)
+        get_information = kernel32.GetFileInformationByHandle
+        get_information.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(ByHandleFileInformation),
+        ]
+        get_information.restype = wintypes.BOOL
+        opened = ByHandleFileInformation()
+        if not get_information(source_handle, ctypes.byref(opened)):
+            raise OSError(
+                ctypes.get_last_error(),
+                "Could not verify Windows transaction child identity.",
+            )
+        opened_index = (opened.FileIndexHigh << 32) | opened.FileIndexLow
+        if (
+            opened.FileAttributes & _WINDOWS_REPARSE_POINT
+            or expected.st_ino == 0
+            or opened_index != expected.st_ino
+        ):
+            raise ValueError(
+                "Windows transaction child changed or is a reparse point."
+            )
+        encoded_name = destination_name.encode("utf-16-le")
+        buffer_size = max(
+            ctypes.sizeof(FileRenameInfo),
+            FileRenameInfo.FileName.offset + len(encoded_name),
+        )
+        buffer = ctypes.create_string_buffer(buffer_size)
+        rename_info = FileRenameInfo.from_buffer(buffer)
+        rename_info.ReplaceIfExists = 0
+        rename_info.RootDirectory = wintypes.HANDLE(
+            destination_guard._windows_handle
+        )
+        rename_info.FileNameLength = len(encoded_name)
+        ctypes.memmove(
+            ctypes.addressof(buffer) + FileRenameInfo.FileName.offset,
+            encoded_name,
+            len(encoded_name),
+        )
+        set_information = kernel32.SetFileInformationByHandle
+        set_information.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+        ]
+        set_information.restype = wintypes.BOOL
+        file_rename_info_class = 3
+        if not set_information(
+            source_handle,
+            file_rename_info_class,
+            buffer,
+            buffer_size,
+        ):
+            raise OSError(
+                ctypes.get_last_error(),
+                "Windows directory-relative replacement failed.",
+            )
+    finally:
+        _close_windows_handle(int(source_handle))
 
 
 def _close_windows_handle(handle: int) -> None:
@@ -311,6 +452,7 @@ def _retire_source(
     *,
     expected_parent: tuple[int, int],
     expected_source: tuple[int, int],
+    expected_records: dict[Path, FileRecord],
 ) -> tuple[bool, Path | None, str]:
     retirement = _retirement_path(source, moment)
     with _ParentGuard(source.parent) as source_guard:
@@ -334,21 +476,9 @@ def _retire_source(
             source_guard.assert_current()
         except (OSError, ValueError) as exc:
             return True, None, type(exc).__name__
-
-        if os.name == "nt" or not getattr(
-            shutil.rmtree,
-            "avoids_symlink_attacks",
-            False,
-        ):
-            return True, retirement, "ManualCleanupRequired"
-        try:
-            shutil.rmtree(
-                retirement.name,
-                dir_fd=source_guard._descriptor,
-            )
-        except OSError as exc:
-            return True, retirement, type(exc).__name__
-    return True, None, ""
+    if _snapshot_matches(retirement, expected_records):
+        return True, retirement, ""
+    return True, retirement, "SourceChangedAfterCopy"
 
 
 def _is_secret_path(relative: Path) -> bool:
@@ -513,6 +643,37 @@ def _verify_tree(root: Path, expected: dict[Path, FileRecord]) -> None:
             )
         if expected_record.sqlite:
             _sqlite_integrity(root / relative)
+
+
+def _records_match(
+    left: dict[Path, FileRecord],
+    right: dict[Path, FileRecord],
+) -> bool:
+    if set(left) != set(right):
+        return False
+    return all(
+        left[path].size == right[path].size
+        and left[path].sha256 == right[path].sha256
+        and left[path].sqlite == right[path].sqlite
+        for path in left
+    )
+
+
+def _snapshot_matches(
+    source: Path,
+    expected: dict[Path, FileRecord],
+) -> bool:
+    try:
+        current, _, _ = _inventory(source)
+        with tempfile.TemporaryDirectory(
+            prefix="maryv2_source_recheck_",
+        ) as temporary:
+            snapshot = Path(temporary) / "data"
+            copied = _copy_to_staging(source, snapshot, current)
+            _verify_tree(snapshot, copied)
+        return _records_match(copied, expected)
+    except (OSError, ValueError, sqlite3.Error):
+        return False
 
 
 def _preservation_path(destination: Path, moment: datetime) -> Path:
@@ -744,6 +905,7 @@ def migrate_repo_state(
             moment,
             expected_parent=source_parent_identity,
             expected_source=source_identity,
+            expected_records=staged_records,
         )
         report["source_removed"] = removed
         report["source_cleanup_pending"] = pending
