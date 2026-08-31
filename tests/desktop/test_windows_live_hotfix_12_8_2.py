@@ -36,9 +36,11 @@ def test_launcher_centers_inside_available_screen():
     assert "show_centered()" in source
 
 
-def test_state_migration_is_dry_run_by_default_and_preserves_current_desktop_state():
+def test_windows_state_migration_delegates_to_cross_platform_safety_tool():
     source = _text("scripts/migrate_repo_state_windows.ps1")
     assert "DRY RUN ONLY" in source
-    assert "data.before_repo_migration_" in source
-    assert "Move-Item" in source
-    assert "Copy-Item" in source
+    assert "scripts.migrate_repo_state" in source
+    assert '"--apply"' in source
+    assert '"--remove-source"' in source
+    assert "Move-Item" not in source
+    assert "Copy-Item" not in source
