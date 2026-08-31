@@ -1,0 +1,1122 @@
+MaryV2 — COMPLETE SYSTEM RECONCILIATION, INTEGRATION, AND HARDENING PASS
+
+We are beginning a comprehensive overhaul of the CURRENT MaryV2 repository.
+
+This is NOT a rewrite.
+
+This is NOT a simplification exercise.
+
+This is NOT permission to flatten Mary into a generic chatbot architecture.
+
+The objective is to make the entire existing MaryV2 system operate as one coherent, deeply connected organism.
+
+You should inspect the ENTIRE repository and improve it comprehensively while preserving valuable complexity, character architecture, persistence, distributed execution, autonomy, memory, and compatibility.
+
+The governing principle is:
+
+Preserve useful complexity. Remove accidental complexity. Strengthen connections. Complete partial systems. Reconcile duplicated concepts. Add missing glue. Harden the whole runtime.
+
+⸻
+
+1. CORE OBJECTIVE
+
+Perform a complete repository-wide architectural reconciliation and improvement pass.
+
+MaryV2 has grown through many iterations and contains systems for:
+
+* persistent identity
+* CharacterSourcebook
+* character authority
+* relationship state
+* memory
+* shared work
+* semantic/episodic memory
+* Experience Evolution
+* autonomy
+* attention
+* perception
+* cognition/provider routing
+* cloud and local models
+* distributed capability nodes
+* Core
+* mobile/PWA
+* desktop
+* voice
+* STT/TTS
+* provider routing
+* protocol
+* tools/capabilities
+* permissions
+* state
+* distributed compute
+* vector retrieval
+* feedback
+* runtime compatibility
+* legacy/pre-cloud behavior
+* testing
+* diagnostics
+* configuration
+* persistence
+
+The goal is not merely to ensure these modules exist.
+
+The goal is to ensure they are actually CONNECTED.
+
+⸻
+
+2. DO NOT REDESIGN BLINDLY
+
+Before changing any subsystem, determine:
+
+1. What exists.
+2. Why it exists.
+3. Whether it is active.
+4. What depends on it.
+5. Whether another subsystem duplicates its responsibility.
+6. Whether it represents historical compatibility.
+7. Whether it contains valuable behavior not present elsewhere.
+8. Whether it is fully wired into runtime.
+9. Whether tests cover actual behavior or only construction/imports.
+10. Whether it should be:
+
+* preserved
+* strengthened
+* merged
+* promoted
+* adapted
+* deprecated
+* retired
+
+Do not delete systems simply because they look old.
+
+Do not preserve systems simply because they exist.
+
+⸻
+
+3. BUILD A COMPLETE ARCHITECTURE INVENTORY FIRST
+
+Before major modifications, inventory the entire repository.
+
+Create a map of major systems and classify each as:
+
+* CANONICAL / ACTIVE
+* ACTIVE SUPPORT SYSTEM
+* PARTIALLY WIRED
+* COMPATIBILITY
+* SEMANTIC PREDECESSOR
+* DORMANT
+* GENERATED
+* OBSOLETE
+* UNKNOWN
+
+Map:
+
+Identity
+
+* canonical Mary identity
+* runtime instance identity
+* device/surface identity
+* conversation identity
+
+Character
+
+* CharacterSourcebook
+* source ingestion
+* retrieval
+* character authority
+* relationship lenses
+* negative examples
+* anti-drift behavior
+
+Memory
+
+* working
+* episodic
+* semantic
+* shared work
+* relationship
+* archival
+* vector retrieval
+* promotion/consolidation
+* persistence
+
+Experience Evolution
+
+* experience ingestion
+* significance
+* evidence
+* reflection
+* adaptation
+* preference evolution
+* relationship adaptation
+* drift protection
+* contradictions
+* provenance
+
+Autonomy
+
+* cycles
+* triggers
+* attention
+* curiosity
+* reflection
+* goals
+* follow-ups
+* self-generated tasks
+* suppression/do-nothing logic
+
+Cognition
+
+* orchestration
+* provider routing
+* Groq
+* Gemini
+* OpenRouter
+* OpenAI
+* Ollama
+* local models
+* specialist models
+* fallback behavior
+* local-only behavior
+
+Distributed Runtime
+
+* Mary Core
+* capability nodes
+* Windows node
+* node registration
+* heartbeats
+* task dispatch
+* result return
+* permissions
+* failure handling
+
+Capabilities / Tools
+
+* registries
+* dispatch
+* execution
+* tool schemas
+* capability advertisement
+* node-specific capabilities
+
+Perception
+
+* microphone
+* screen
+* camera
+* files
+* environment
+* system state
+* application state
+
+Voice
+
+* STT
+* TTS
+* ElevenLabs
+* Groq Whisper
+* browser/device fallbacks
+* prosody/expression
+
+Surfaces
+
+* Mobile/PWA
+* Desktop
+* Mac/native support
+* Replit surface behavior
+* protocol clients
+
+Infrastructure
+
+* Railway
+* Replit
+* GitHub
+* config
+* secrets
+* environment
+* persistence
+* deployment
+
+Diagnostics
+
+* provider trace
+* state
+* memory status
+* node status
+* logs
+* health
+* protocol diagnostics
+
+Tests
+
+* unit
+* integration
+* distributed
+* live
+* provider
+* persistence
+* regression
+
+Produce this map before broad edits.
+
+⸻
+
+4. CONNECTION AUDIT
+
+For every major subsystem, inspect its INPUTS and OUTPUTS.
+
+Do not merely ask:
+
+“Does this class exist?”
+
+Ask:
+
+Does information flow through it?
+
+Trace real flows such as:
+
+Conversation flow
+
+User
+→ Surface
+→ Protocol
+→ Core
+→ Context assembly
+→ Character
+→ Memory retrieval
+→ Relationship state
+→ Experience context
+→ Cognition router
+→ Provider
+→ Response
+→ Memory write
+→ Experience processing
+→ Autonomy cycle
+→ State update
+
+Verify each boundary.
+
+Experience flow
+
+Event/conversation
+→ experience candidate
+→ significance
+→ provenance
+→ storage
+→ reflection
+→ adaptation
+→ future retrieval/use
+
+Find where this loop stops, if anywhere.
+
+Memory flow
+
+Write
+→ persist
+→ retrieve
+→ rank
+→ inject
+→ influence response
+→ update/consolidate
+
+Find write-only memory systems.
+
+Autonomy flow
+
+Trigger
+→ attention
+→ relevance
+→ plan
+→ permission
+→ action
+→ result
+→ memory/experience
+
+Find autonomy components that never receive real triggers.
+
+Distributed capability flow
+
+Core
+→ capability request
+→ node selection
+→ permission
+→ node execution
+→ result
+→ Core
+→ Mary context/state
+
+Verify this is robust.
+
+⸻
+
+5. FIND DISCONNECTED ISLANDS
+
+Search specifically for systems that are:
+
+* instantiated but unused
+* written but never read
+* read but never updated
+* exposed by API but never called
+* tested only in isolation
+* duplicated elsewhere
+* bypassed by newer code
+* missing from Core
+* missing from context assembly
+* not visible to autonomy
+* not visible to experience
+* not persisted
+* not surfaced diagnostically
+
+Create a disconnected-systems list.
+
+Prioritize reconnecting useful systems over creating new ones.
+
+⸻
+
+6. CHARACTER / IDENTITY HARDENING
+
+Strengthen the separation between:
+
+Character authority
+
+Who Mary fundamentally is.
+
+Runtime experience
+
+What has happened to this Mary.
+
+Relationship state
+
+How Mary relates to a specific person.
+
+Current state
+
+Mood, attention, goals, energy, context.
+
+Cognition provider
+
+The replaceable language/reasoning engine.
+
+Ensure the architecture cannot accidentally turn:
+
+* provider behavior
+* random conversation content
+* fictional canon
+* temporary mood
+* bad memory
+* hallucinated information
+
+into permanent character authority.
+
+Add provenance where needed.
+
+Add tests where boundaries are weak.
+
+⸻
+
+7. EXPERIENCE EVOLUTION — COMPLETE THE LOOP
+
+Perform a deep audit of Experience Evolution.
+
+If portions are only structural, wire them properly.
+
+The desired loop is:
+
+Experience
+→ significance
+→ evidence
+→ classification
+→ storage
+→ reflection
+→ bounded adaptation
+→ future retrieval
+→ behavioral influence
+
+Ensure growth does NOT mean uncontrolled personality drift.
+
+Look for opportunities to strengthen:
+
+* evidence confidence
+* contradiction handling
+* supersession
+* relationship-specific learning
+* preference evolution
+* decay
+* reinforcement
+* repeated-pattern detection
+* reflection summaries
+* behavior influence
+* provenance
+
+Do not invent pseudo-learning just to claim completion.
+
+⸻
+
+8. MEMORY RECONCILIATION
+
+Audit all memory systems together rather than independently.
+
+Determine whether overlapping memory systems should:
+
+* remain distinct
+* share retrieval
+* share indexing
+* share provenance
+* feed consolidation
+* expose unified queries
+
+Do not merge fundamentally different memory types just for convenience.
+
+Make memory behavior coherent across devices and Core.
+
+Ensure old valuable pre-cloud data is either:
+
+* accessible
+* migrated
+* clearly archived
+* explicitly unsupported
+
+Do not silently orphan it.
+
+⸻
+
+9. AUTONOMY IMPROVEMENT
+
+Strengthen autonomy without making it reckless.
+
+Mary should increasingly be able to:
+
+* notice
+* evaluate
+* remember
+* reflect
+* initiate
+* ask
+* defer
+* ignore
+* act within permissions
+
+Audit whether autonomy currently has meaningful inputs beyond direct user turns.
+
+If the existing system has trigger/event/attention primitives, connect them more strongly.
+
+Do NOT create a parallel autonomy framework if one already exists.
+
+Improve:
+
+* bounded cycles
+* relevance thresholds
+* rate limiting
+* permission checks
+* anti-loop safeguards
+* task deduplication
+* suppression
+* continuity
+* persistence
+* observability
+
+⸻
+
+10. GENERALIZE CAPABILITY ARCHITECTURE
+
+We are considering a Capability Bus.
+
+Do NOT build a duplicate if current architecture already contains:
+
+* tool registry
+* capability registry
+* node capability advertisement
+* distributed dispatch
+* action router
+* provider/tool abstractions
+
+Instead, evolve the strongest existing primitive.
+
+Desired conceptual interface:
+
+Mary requests:
+
+capability
+parameters
+context
+permission requirement
+execution preference
+
+System resolves:
+
+local?
+cloud?
+node?
+provider?
+available?
+permitted?
+
+Then returns a normalized result.
+
+Potential namespace examples:
+
+communication.email.read
+communication.email.send
+calendar.read
+calendar.create
+files.search
+files.read
+development.git.status
+development.test
+cognition.local
+cognition.cloud
+browser.navigate
+computer.shell
+media.music
+perception.screen
+
+Do not implement every external API now.
+
+Build/evolve the architectural foundation only where justified by current code.
+
+⸻
+
+11. EVENT ARCHITECTURE
+
+Audit the repository for existing:
+
+* events
+* triggers
+* observations
+* perception events
+* autonomy signals
+* attention events
+* internal notifications
+* node events
+
+If suitable primitives already exist, unify/promote them.
+
+Desired conceptual flow:
+
+External/Internal event
+→ normalized event
+→ significance/relevance
+→ attention/autonomy
+→ optional action
+→ memory/experience
+
+Possible future sources:
+
+* GitHub
+* Calendar
+* Gmail
+* Twitch
+* Discord
+* device state
+* file changes
+* node connectivity
+* system state
+
+Do not wire every future service now.
+
+Build the reusable backbone only if missing.
+
+⸻
+
+12. PERMISSION SYSTEM GENERALIZATION
+
+We already have node permissions.
+
+Inspect them deeply.
+
+Determine whether they should become the foundation for system-wide capability permissions.
+
+Potential levels:
+
+DENIED
+READ
+ACT_WITH_CONFIRMATION
+BOUNDED_AUTONOMOUS
+FULL
+
+Do not blindly introduce these exact names if an equivalent structure already exists.
+
+Unify where possible.
+
+Permissions should be enforceable at execution time, not merely advisory prompts.
+
+⸻
+
+13. PROVIDER / COGNITION HARDENING
+
+Preserve the now-restored route.
+
+Current verified normal route:
+
+Groq
+→ Gemini
+→ OpenRouter
+→ Ollama
+
+Do not disturb it without evidence.
+
+Improve where appropriate:
+
+* health state
+* failure telemetry
+* model validation
+* timeout behavior
+* retry/fallback
+* route switching
+* local-only state
+* recovery after failure
+* provider-specific normalization
+* diagnostics
+
+Ensure provider failure never damages Mary identity/state.
+
+⸻
+
+14. DISTRIBUTED NODE HARDENING
+
+Audit:
+
+* node registration
+* node capability advertisement
+* heartbeats
+* disconnect/reconnect
+* task dispatch
+* timeouts
+* retries
+* permissions
+* stale node cleanup
+* result correlation
+* task idempotency
+* security
+
+Ensure the Windows node can remain a proper capability node for:
+
+* Ollama
+* filesystem
+* compute
+* future screen/computer control
+* local tools
+
+Do not make the node authoritative for Mary identity.
+
+⸻
+
+15. SURFACE CONSISTENCY
+
+Compare Mobile/PWA and Desktop behavior.
+
+Ensure both surfaces expose the same canonical Mary state where appropriate.
+
+Audit:
+
+* mode changes
+* provider route state
+* conversation identity
+* protocol behavior
+* voice behavior
+* continuity indicators
+* errors
+* diagnostics
+
+Do not force visual redesign.
+
+Only improve UI where it exposes system truth more accurately.
+
+⸻
+
+16. DIAGNOSTICS / OBSERVABILITY
+
+MaryV2 is now complex enough that silent failures are dangerous.
+
+Improve observability.
+
+Provide clear structured diagnostics for:
+
+* provider selected
+* route attempted
+* latency
+* provider failures
+* node used
+* capability used
+* memory retrieval
+* experience updates
+* autonomy cycle
+* character source retrieval
+* permission decisions
+
+Avoid exposing secrets.
+
+Prefer structured internal traces over verbose production logging.
+
+⸻
+
+17. CONFIGURATION RECONCILIATION
+
+Audit all configuration sources:
+
+* env
+* .env
+* Railway env
+* Replit secrets
+* local node config
+* defaults
+* settings files
+
+Prevent silent divergence.
+
+Identify:
+
+* duplicated config
+* dead config
+* conflicting config
+* hidden defaults
+* stale provider names
+* unsafe fallbacks
+
+Centralize carefully where beneficial.
+
+Do not break environment-specific behavior.
+
+⸻
+
+18. REMOVE ACCIDENTAL COMPLEXITY ONLY
+
+Look for:
+
+* duplicate wrappers
+* redundant aliases
+* obsolete compatibility bridges
+* duplicated routers
+* duplicated state
+* unused helpers
+* dead imports
+* unreachable code
+
+Remove only when safe.
+
+Every deletion must have a justification.
+
+Preserve semantic predecessors until their replacement is proven.
+
+⸻
+
+19. ADD NEW CONNECTIONS WHERE THEY CREATE REAL VALUE
+
+You MAY add new internal connections when they strengthen coherence.
+
+Examples:
+
+* events → autonomy
+* autonomy → capabilities
+* capabilities → permissions
+* capability results → experience
+* experience → memory
+* memory → character-safe adaptation
+* node events → Core state
+* provider telemetry → diagnostics
+* relationship state → context assembly
+* sourcebook → retrieval trace
+* shared work → project continuity
+
+Prefer these over adding random new APIs.
+
+⸻
+
+20. DO NOT ADD A MASSIVE EXTERNAL API CATALOG YET
+
+Do NOT connect every possible service in this overhaul.
+
+Do not add:
+
+* Gmail
+* Calendar
+* Spotify
+* Twitch
+* Discord
+* Home Assistant
+* Twilio
+
+unless the repository ALREADY contains partial integrations that should be completed or a tiny adapter is essential to prove the architecture.
+
+We will add external integrations after the internal architecture is coherent.
+
+⸻
+
+21. TESTING STANDARD
+
+Every meaningful change needs tests.
+
+Add tests for:
+
+* real data flow
+* regression
+* failure handling
+* persistence
+* distributed behavior
+* context isolation
+* permission enforcement
+* route fallback
+* event/autonomy linkage
+* experience flow
+
+Do not write meaningless existence tests.
+
+Prefer tests that prove behavior.
+
+⸻
+
+22. FULL SUITE
+
+Run:
+
+1. targeted tests during development
+2. subsystem integration tests
+3. distributed tests where possible
+4. final complete test suite
+
+Current known clean baseline:
+
+1,338 passed / 5 skipped
+
+Do not accept regressions casually.
+
+If the final count changes, explain exactly why.
+
+⸻
+
+23. PERFORMANCE
+
+Do not make Mary dramatically slower in exchange for theoretical elegance.
+
+Profile or inspect hot paths:
+
+* context assembly
+* memory retrieval
+* sourcebook retrieval
+* provider routing
+* serialization
+* network calls
+* autonomy cycles
+
+Cache only where safe.
+
+Avoid giant context assembly.
+
+⸻
+
+24. SECURITY
+
+Inspect:
+
+* bearer tokens
+* node auth
+* API keys
+* secret handling
+* logs
+* shell capabilities
+* file access
+* future capability boundaries
+
+Never expose secrets.
+
+Do not weaken existing security to make integration easier.
+
+⸻
+
+25. DOCUMENT THE FINAL CANONICAL ARCHITECTURE
+
+Create/update a canonical architecture document that describes the ACTUAL post-overhaul system.
+
+Include:
+
+* identity authority
+* character authority
+* memory
+* experience
+* autonomy
+* cognition
+* providers
+* capabilities
+* permissions
+* events
+* Core
+* nodes
+* surfaces
+* persistence
+* configuration
+* data flow
+
+Do not document aspirations as implemented facts.
+
+⸻
+
+26. CHANGE STRATEGY
+
+Work in deliberate stages.
+
+Stage A — Inventory
+
+No major edits.
+
+Stage B — Connection map
+
+Identify broken/partial flows.
+
+Stage C — Reconciliation plan
+
+Explain what will be changed.
+
+Stage D — High-leverage internal connections
+
+Implement strongest improvements.
+
+Stage E — Hardening
+
+Diagnostics, permissions, failure recovery.
+
+Stage F — Tests
+
+Prove behavior.
+
+Stage G — Full suite
+
+No unexplained regressions.
+
+Stage H — Architecture documentation
+
+Describe final truth.
+
+⸻
+
+27. SCOPE CONTROL
+
+This pass should be broad but coherent.
+
+If you find a massive subsystem that requires its own redesign, do not casually rebuild it inside this overhaul.
+
+Instead:
+
+* stabilize interface
+* document gap
+* isolate next stage
+
+Do not create a 100-file speculative subsystem just because it might be useful someday.
+
+⸻
+
+28. GIT / DEPLOYMENT DISCIPLINE
+
+Do NOT make one giant opaque commit if avoidable.
+
+Prefer logically grouped commits such as:
+
+* reconciliation/inventory
+* memory/experience wiring
+* autonomy/events
+* capability/permission integration
+* diagnostics
+* tests/docs
+
+Do not push until the code is coherent and tests pass.
+
+Do not deploy production until the final state is verified.
+
+Do not modify unrelated assets.
+
+Ignore attached_assets/ unless required.
+
+⸻
+
+29. FINAL DELIVERABLE
+
+When finished, report:
+
+A. Executive Summary
+
+What fundamentally improved?
+
+B. Architecture Before vs After
+
+What became more coherent?
+
+C. Systems Strengthened
+
+Every major subsystem changed.
+
+D. Connections Added
+
+List meaningful new data/control flows.
+
+E. Partial Systems Completed
+
+What previously existed but was not truly wired?
+
+F. Duplicate/Legacy Systems Reconciled
+
+What was preserved, merged, deprecated, or retired?
+
+G. New Internal Infrastructure
+
+Any generalized capability/event/permission foundation added.
+
+H. Character Safety
+
+How Mary can grow without losing identity.
+
+I. Memory / Experience
+
+What now completes the loop better.
+
+J. Autonomy
+
+What now operates more meaningfully.
+
+K. Distributed Architecture
+
+What improved in Core/node communication.
+
+L. Provider Architecture
+
+Confirm the cloud/local route remains healthy.
+
+M. Diagnostics
+
+What can now be inspected.
+
+N. Files Changed
+
+Complete list grouped by purpose.
+
+O. Tests
+
+Exact final pass/fail/skip counts.
+
+P. Performance
+
+Any meaningful change.
+
+Q. Remaining Gaps
+
+What still genuinely needs future work.
+
+R. Next Recommended Stage
+
+What should happen AFTER this overhaul.
+
+S. Final Verdict
+
+Answer plainly:
+
+1. Is MaryV2 now more internally coherent?
+2. Are previously disconnected systems more strongly connected?
+3. Was valuable complexity preserved?
+4. Did any significant behavior get removed?
+5. Is Mary still one canonical identity across surfaces?
+6. Can Mary now gain future capabilities more safely?
+7. Is the system ready for the comprehensive Mary self-audit?
+8. Is the system ready for external API expansion?
+
+Do not claim completion based merely on passing tests.
+
+Verify architecture and runtime behavior wherever possible.
