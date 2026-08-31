@@ -51,6 +51,12 @@ class FakeRemoteClient:
             "mary": {
                 "name": "Mary",
             },
+            "character": {
+                "sourcebook": {
+                    "records": 189,
+                    "source_names": ["PRIVATE_AUTHORED_SOURCE"],
+                },
+            },
             "nodes": {
                 "nodes": [],
             },
@@ -238,6 +244,9 @@ def test_remote_mobile_runtime_does_not_construct_local_mary(
         ]
         == "remote_mary_core"
     )
+    dashboard = runtime.dashboard_state()
+    assert dashboard["character_sourcebook"] == {"records": 189}
+    assert "PRIVATE_AUTHORED_SOURCE" not in repr(dashboard["character_sourcebook"])
 
 
 def test_remote_mobile_retains_safe_core_request_id_on_turn_failure(

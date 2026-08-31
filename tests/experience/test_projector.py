@@ -76,3 +76,21 @@ def test_projector_accepts_current_live_dashboard_shape():
     assert snapshot["active_task"] == "Character pass"
     assert snapshot["relationship_strength"] == 0.64
     assert snapshot["theme"]["name"] == "bright"
+
+
+def test_projector_reads_canonical_sourcebook_count_without_evidence():
+    dashboard = {
+        "character": {
+            "sourcebook": {
+                "records": 189,
+                "source_names": ["PRIVATE_AUTHORED_SOURCE"],
+                "records_preview": ["PRIVATE_AUTHORED_EVIDENCE"],
+            },
+        },
+    }
+
+    snapshot = build_experience_snapshot(dashboard, {})
+
+    assert snapshot["metadata"]["character_records"] == 189
+    assert "PRIVATE_AUTHORED_SOURCE" not in repr(snapshot)
+    assert "PRIVATE_AUTHORED_EVIDENCE" not in repr(snapshot)

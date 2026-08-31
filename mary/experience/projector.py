@@ -78,6 +78,20 @@ def _memory_count(dashboard: Mapping[str, Any]) -> int:
     return 0
 
 
+def _character_record_count(dashboard: Mapping[str, Any]) -> int:
+    """Read only the bounded Sourcebook inventory count from known projections."""
+
+    for parts in (
+        ("character_sourcebook", "records"),
+        ("character", "sourcebook", "records"),
+        ("root_authority", "character_sourcebook", "records"),
+    ):
+        value = _path(dashboard, *parts)
+        if value is not None:
+            return max(0, min(_int(value), 1_000_000))
+    return 0
+
+
 def _relationship(dashboard: Mapping[str, Any]) -> tuple[str, float]:
     relationship = _map(dashboard.get("relationship"))
     label = _text(
@@ -196,7 +210,7 @@ def build_experience_snapshot(
             "architecture": _text(core.get("architecture"), default="13.2"),
             "core_online": core.get("ok", True) is not False,
             "mobile_authority": _text(mobile.get("authority"), default="mary_core"),
-            "character_records": _int(_path(dashboard, "character_sourcebook", "records", default=0)),
+            "character_records": _character_record_count(dashboard),
         },
     )
     return snapshot.to_dict()

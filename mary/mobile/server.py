@@ -86,6 +86,35 @@ def _json_safe(
     )
 
 
+def _character_sourcebook_inventory(
+    value: Any,
+) -> dict[str, int]:
+    """Return the bounded count-only Sourcebook projection used by Mobile."""
+
+    sourcebook = dict(
+        value
+        or {}
+    )
+    try:
+        records = max(
+            0,
+            min(
+                int(
+                    sourcebook.get(
+                        "records",
+                        0,
+                    )
+                ),
+                1_000_000,
+            ),
+        )
+    except (TypeError, ValueError):
+        records = 0
+    return {
+        "records": records,
+    }
+
+
 def _is_loopback(
     host: str,
 ) -> bool:
@@ -556,6 +585,37 @@ class MaryRemoteMobileRuntime:
         payload = dict(
             self.client.dashboard()
             or {}
+        )
+
+        # The PWA's top-level ``character`` field is a presentation shape and
+        # intentionally replaces Core's character-system projection below.
+        # Preserve only the bounded Sourcebook inventory count needed by the
+        # experience projector; never forward authored evidence or source text.
+        sourcebook = dict(
+            dict(
+                state.get(
+                    "character",
+                    {},
+                )
+                or {}
+            ).get(
+                "sourcebook",
+                {},
+            )
+            or {}
+        )
+        if not sourcebook:
+            sourcebook = dict(
+                payload.get(
+                    "character_sourcebook",
+                    {},
+                )
+                or {}
+            )
+        payload[
+            "character_sourcebook"
+        ] = _character_sourcebook_inventory(
+            sourcebook
         )
 
         # Preserve the current PWA character shape and allow the presentation
@@ -1934,6 +1994,31 @@ class MaryMobileRuntime:
                     self.application.mary,
                     runtime_status=resolved_status,
                 )
+            )
+
+            sourcebook = getattr(
+                self.application.mary,
+                "character_sourcebook",
+                None,
+            )
+            try:
+                sourcebook_state = (
+                    sourcebook.snapshot()
+                    if callable(
+                        getattr(
+                            sourcebook,
+                            "snapshot",
+                            None,
+                        )
+                    )
+                    else {}
+                )
+            except Exception:
+                sourcebook_state = {}
+            payload[
+                "character_sourcebook"
+            ] = _character_sourcebook_inventory(
+                sourcebook_state
             )
 
             payload[
