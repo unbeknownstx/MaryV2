@@ -1,0 +1,34 @@
+Investigate only — do not redesign or broadly modify MaryV2 yet.
+
+Mary Mobile is rendering and reports Core 13.2 LIVE/continuity online, but submitting the first bounded post-overhaul audit resulted in:
+
+Mary Core returned HTTP 502: {"status":"error","code":502,"message":"Application failed to respond", ...}
+
+First determine the exact cause of this 502. Check Railway/Core logs, request duration, provider invocation, timeout boundaries, request size, context construction, memory/character retrieval, post-turn processing, and whether the request reached MaryApplication. Determine whether this was a provider failure, application timeout, Core crash/restart, proxy timeout, or another cause. Do not assume token limits without evidence.
+
+Also audit Mary’s current runtime lifecycle/presence behavior. I realized that closing Mary Mobile does not mean Mary herself shuts down; the remote Core remains running. Determine what lifecycle/presence primitives already exist before proposing anything new.
+
+I ultimately want these semantics:
+
+ACTIVE → IDLE → SLEEPING → ACTIVE
+
+with an optional explicit administrative OFFLINE state.
+
+Sleeping Mary should preserve canonical identity, memory, relationship state, experience state, and durable work, while preventing unnecessary cognition/provider calls, autonomy cycles, tool execution, and node work. Reopening/waking Mary should resume the same canonical Mary rather than create another instance.
+
+Determine:
+
+1. What happens today when Mobile is opened?
+2. What happens today when Mobile is closed/swiped away?
+3. Does Core know whether any creator surface is connected?
+4. Does Mary have active/idle/sleep/presence concepts already?
+5. What background work continues with no surfaces connected?
+6. Are provider calls possible while nobody is using Mary?
+7. Are autonomy cycles possible while nobody is using Mary?
+8. What state is already durably persisted before/after a process restart?
+9. Could lifecycle control be added by extending existing primitives rather than creating another subsystem?
+10. Would sleeping Core logically be different from actually stopping the Railway service?
+
+Do not implement lifecycle changes yet.
+
+Report the 502 root cause first, then current lifecycle behavior, existing reusable primitives, missing pieces, and the smallest recommended architecture change. If the 502 has a small obvious regression fix, explain it before changing anything.
