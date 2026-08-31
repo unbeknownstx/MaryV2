@@ -5,12 +5,13 @@ import asyncio
 from contextlib import asynccontextmanager
 import os
 import secrets
+from time import monotonic
 from typing import Any
 
 try:
-    from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+    from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 except ImportError:  # pragma: no cover - handled by create_app/run_server
-    FastAPI = HTTPException = Request = WebSocket = WebSocketDisconnect = None
+    FastAPI = HTTPException = Request = Response = WebSocket = WebSocketDisconnect = None
 
 from mary.core.service import MaryCoreService
 from mary.protocol.models import (
@@ -24,6 +25,14 @@ from mary.protocol.models import (
     RuntimeActionRequest,
     TurnRequest,
     WorkspaceActionRequest,
+)
+from mary.runtime.turn_observability import (
+    TurnTraceRecorder,
+    bind_turn_trace,
+    bounded_identifier,
+    classify_failure,
+    reset_turn_trace,
+    upstream_request_hash,
 )
 
 
@@ -102,34 +111,108 @@ def create_app(service: MaryCoreService | None = None):
         return core.health()
 
     @app.post("/v1/turn")
-    async def turn(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-
+    async def turn(request: Request, response: Response) -> dict[str, Any]:
+        supplied_request_id = (
+            request.headers.get("X-Request-ID")
+            or request.headers.get("X-Railway-Request-ID")
+            or request.headers.get("X-Correlation-ID")
+        )
+        trace = TurnTraceRecorder(
+            request_id=bounded_identifier(None),
+            core_instance_id=core.instance_id,
+            core_uptime_ms=lambda: (monotonic() - core.started_monotonic) * 1000.0,
+            sink=core.record_turn_trace,
+            upstream_request_hash=upstream_request_hash(supplied_request_id),
+        )
+        token = bind_turn_trace(trace)
+        response.headers["X-Mary-Request-ID"] = trace.request_id
         try:
-            payload = await request.json()
+            with trace.stage(
+                "core_ingress",
+                failure_kind="invalid_request",
+            ):
+                await require_creator(request)
+                payload = await request.json()
+                model = TurnRequest.from_dict(payload)
 
-            model = TurnRequest.from_dict(
-                payload
-            )
-
-            response = await asyncio.to_thread(
+            turn_response = await asyncio.to_thread(
                 core.process_turn,
                 model,
             )
 
-            return response.to_dict()
+            with trace.stage(
+                "response_serialization",
+                failure_kind="serialization_failure",
+            ):
+                serialized = turn_response.to_dict()
+            trace.finish(outcome="success")
+            return serialized
+
+        except HTTPException as exc:
+            failure_kind = (
+                "authentication_failure"
+                if int(exc.status_code) in {401, 403}
+                else "invalid_request"
+            )
+            trace.finish(
+                outcome="failure",
+                failure_kind=failure_kind,
+                error=exc,
+            )
+            headers = dict(exc.headers or {})
+            headers["X-Mary-Request-ID"] = trace.request_id
+            exc.headers = headers
+            raise
 
         except ValueError as exc:
+            trace.finish(
+                outcome="failure",
+                failure_kind="invalid_request",
+                error=exc,
+            )
             raise HTTPException(
                 status_code=422,
-                detail=str(exc),
+                detail="Invalid Mary Core turn request.",
+                headers={"X-Mary-Request-ID": trace.request_id},
             ) from exc
 
         except RuntimeError as exc:
+            failure_kind = trace.latest_failure_kind(
+                classify_failure(
+                    exc,
+                    default="application_exception",
+                )
+            )
+            trace.finish(
+                outcome="failure",
+                failure_kind=failure_kind,
+                error=exc,
+            )
             raise HTTPException(
-                status_code=409,
-                detail=str(exc),
+                status_code=500 if failure_kind == "serialization_failure" else 409,
+                detail=(
+                    "Mary Core response serialization failed."
+                    if failure_kind == "serialization_failure"
+                    else "Mary Core turn failed."
+                ),
+                headers={"X-Mary-Request-ID": trace.request_id},
             ) from exc
+        except Exception as exc:
+            trace.finish(
+                outcome="failure",
+                failure_kind=classify_failure(
+                    exc,
+                    default="application_exception",
+                ),
+                error=exc,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Mary Core turn failed.",
+                headers={"X-Mary-Request-ID": trace.request_id},
+            ) from exc
+        finally:
+            reset_turn_trace(token)
 
     @app.get("/v1/state")
     async def state(request: Request) -> dict[str, Any]:

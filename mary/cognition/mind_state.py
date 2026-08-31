@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 import re
 from typing import Any
 
+from mary.runtime.turn_observability import observe_turn_stage
+
 from mary.cognition.intent import Intent, IntentType
 from mary.relationship.provenance import conversation_profile
 from mary.cognition.continuity import ConversationContinuity
@@ -340,9 +342,10 @@ class TurnMindStateBuilder:
         if not callable(select):
             return {}
         try:
-            selection = select(str(input_text or ""), limit=6, max_characters=4200)
-            prompt_view = getattr(selection, "prompt_view", None)
-            return dict(prompt_view() or {}) if callable(prompt_view) else {}
+            with observe_turn_stage("character_sourcebook_retrieval"):
+                selection = select(str(input_text or ""), limit=6, max_characters=4200)
+                prompt_view = getattr(selection, "prompt_view", None)
+                return dict(prompt_view() or {}) if callable(prompt_view) else {}
         except Exception:
             # Authored source loading/retrieval may never take down Mary.
             return {}

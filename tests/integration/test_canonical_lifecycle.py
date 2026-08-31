@@ -9,6 +9,11 @@ from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.runtime.application import create_application
 from mary.runtime.pipeline import PipelineResult, PipelineStatus
+from mary.runtime.turn_observability import (
+    TurnTraceRecorder,
+    bind_turn_trace,
+    reset_turn_trace,
+)
 
 
 class LifecycleFakeLLM(LLMInterface):
@@ -151,3 +156,71 @@ def test_provider_response_cannot_rewrite_authoritative_state(
     assert result.success is True
     assert result.output == provider_claim
     assert _authoritative_state(app.mary) == before
+
+
+def test_canonical_turn_emits_every_internal_observability_stage_without_content(
+    tmp_path,
+    monkeypatch,
+):
+    app = _application(tmp_path, monkeypatch)
+    trace = TurnTraceRecorder(
+        request_id="canonical-observability-request",
+        core_instance_id="canonical-observability-core",
+    )
+    token = bind_turn_trace(trace)
+    try:
+        result = app.run("private bounded audit prompt")
+        trace.set_turn_id(result.turn_id)
+        trace.finish(outcome="success")
+    finally:
+        reset_turn_trace(token)
+
+    stages = trace.snapshot()["stages"]
+    assert {
+        "context_construction",
+        "character_sourcebook_retrieval",
+        "memory_retrieval",
+        "provider_availability",
+        "provider_generation",
+        "provider_fallback",
+        "dialogue_persistence",
+        "growth_processing",
+        "autonomy_processing",
+    }.issubset({item["stage"] for item in stages})
+    serialized = str(trace.snapshot())
+    assert "private bounded audit prompt" not in serialized
+    assert "A deterministic Mary response." not in serialized
+
+
+def test_growth_failure_is_visible_as_post_processing_without_losing_response(
+    tmp_path,
+    monkeypatch,
+):
+    app = _application(tmp_path, monkeypatch)
+
+    def fail_growth(*args, **kwargs):
+        raise RuntimeError("private growth state must not be logged")
+
+    monkeypatch.setattr(app.mary.growth, "observe_turn", fail_growth)
+    trace = TurnTraceRecorder(
+        request_id="growth-failure-request",
+        core_instance_id="growth-failure-core",
+    )
+    token = bind_turn_trace(trace)
+    try:
+        result = app.run("Hello, Mary.")
+        trace.finish(outcome="success")
+    finally:
+        reset_turn_trace(token)
+
+    assert result.success is True
+    assert result.output == "A deterministic Mary response."
+    growth = next(
+        item
+        for item in trace.snapshot()["stages"]
+        if item["stage"] == "growth_processing"
+    )
+    assert growth["status"] == "failure"
+    assert growth["failure_kind"] == "post_processing_failure"
+    assert growth["error_type"] == "RuntimeError"
+    assert "private growth state" not in str(trace.snapshot())

@@ -27,6 +27,11 @@ from typing import Any
 
 from mary.core.config import Config
 from mary.governance.resource import ResourceGovernor
+from mary.runtime.turn_observability import (
+    classify_failure,
+    observe_turn_stage,
+    record_turn_stage,
+)
 
 from .output_quality import inspect_output_quality
 
@@ -688,7 +693,8 @@ class LLMRouter:
             order=order,
         )
 
-        for provider_name in order:
+        fallback_recorded = False
+        for attempt_number, provider_name in enumerate(order, start=1):
             attempt_started = time.monotonic()
             cooldown = self._cooldown_remaining(
                 provider_name
@@ -708,10 +714,34 @@ class LLMRouter:
                     "elapsed_ms": round((time.monotonic() - attempt_started) * 1000.0, 2),
                 })
                 self.resource_governor.record_attempt(provider_name, "cooldown")
+                record_turn_stage(
+                    "provider_availability",
+                    status="skipped",
+                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="cooldown",
+                )
+                record_turn_stage(
+                    "provider_fallback",
+                    status="success",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="cooldown",
+                )
+                fallback_recorded = True
                 continue
 
             try:
-                selected = self._get_provider_for_purpose(provider_name, effective_purpose)
+                with observe_turn_stage(
+                    "provider_availability",
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    failure_kind="provider_error",
+                ):
+                    selected = self._get_provider_for_purpose(provider_name, effective_purpose)
+                    available = selected.is_available()
             except Exception as exc:
                 error = self._normalize_error(
                     exc,
@@ -729,27 +759,15 @@ class LLMRouter:
                     "elapsed_ms": round((time.monotonic() - attempt_started) * 1000.0, 2),
                 })
                 self.resource_governor.record_attempt(provider_name, "unavailable")
-                continue
-
-            try:
-                available = selected.is_available()
-            except Exception as exc:
-                error = self._normalize_error(
-                    exc,
-                    provider_name,
+                record_turn_stage(
+                    "provider_fallback",
+                    status="success",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="unavailable",
                 )
-                self.last_generation_attempts.append({
-                    "provider": provider_name,
-                    "status": "unavailable",
-                    "error": str(error),
-                })
-                last_error = error
-                self.last_generation_attempt_timings.append({
-                    "provider": provider_name,
-                    "status": "unavailable",
-                    "elapsed_ms": round((time.monotonic() - attempt_started) * 1000.0, 2),
-                })
-                self.resource_governor.record_attempt(provider_name, "unavailable")
+                fallback_recorded = True
                 continue
 
             if not available:
@@ -766,23 +784,38 @@ class LLMRouter:
                     "elapsed_ms": round((time.monotonic() - attempt_started) * 1000.0, 2),
                 })
                 self.resource_governor.record_attempt(provider_name, "not_configured")
+                record_turn_stage(
+                    "provider_fallback",
+                    status="success",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="not_configured",
+                )
+                fallback_recorded = True
                 continue
 
             provider_call_started = time.monotonic()
             try:
-                response = selected.generate(
-                    messages=messages,
-                    temperature=(
-                        temperature
-                        if temperature is not None
-                        else self.config.llm.temperature
-                    ),
-                    max_tokens=(
-                        max_tokens
-                        if max_tokens is not None
-                        else self.config.llm.max_tokens
-                    ),
-                )
+                with observe_turn_stage(
+                    "provider_generation",
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    failure_kind="provider_error",
+                ):
+                    response = selected.generate(
+                        messages=messages,
+                        temperature=(
+                            temperature
+                            if temperature is not None
+                            else self.config.llm.temperature
+                        ),
+                        max_tokens=(
+                            max_tokens
+                            if max_tokens is not None
+                            else self.config.llm.max_tokens
+                        ),
+                    )
             except Exception as exc:
                 provider_call_ms = round((time.monotonic() - provider_call_started) * 1000.0, 2)
                 error = self._normalize_error(
@@ -812,6 +845,15 @@ class LLMRouter:
                 })
                 last_error = error
                 self.resource_governor.record_attempt(provider_name, "failed")
+                record_turn_stage(
+                    "provider_fallback",
+                    status="success",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome=classify_failure(exc, default="provider_error"),
+                )
+                fallback_recorded = True
                 continue
 
             provider_call_ms = round((time.monotonic() - provider_call_started) * 1000.0, 2)
@@ -838,6 +880,15 @@ class LLMRouter:
                 })
                 last_error = error
                 self.resource_governor.record_attempt(provider_name, "invalid_output")
+                record_turn_stage(
+                    "provider_fallback",
+                    status="success",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="invalid_output",
+                )
+                fallback_recorded = True
                 continue
 
             finish_reason = str(
@@ -869,6 +920,15 @@ class LLMRouter:
                 })
                 last_error = error
                 self.resource_governor.record_attempt(provider_name, "incomplete")
+                record_turn_stage(
+                    "provider_fallback",
+                    status="success",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="incomplete",
+                )
+                fallback_recorded = True
                 continue
 
             self.clear_provider_cooldown(
@@ -892,10 +952,29 @@ class LLMRouter:
                 "selected_model": str(response.model or selected.model_name()),
                 "status": "success",
             })
+            if not fallback_recorded:
+                record_turn_stage(
+                    "provider_fallback",
+                    status="skipped",
+                    elapsed_ms=0.0,
+                    provider=provider_name,
+                    attempt=attempt_number,
+                    outcome="not_needed",
+                )
             return response
 
         if last_error is not None:
             self.last_generation_route["status"] = "failed"
+            record_turn_stage(
+                "provider_fallback",
+                status="failure",
+                elapsed_ms=0.0,
+                provider=getattr(last_error, "provider", None),
+                attempt=max(1, len(order)),
+                outcome="exhausted",
+                failure_kind="provider_exhausted",
+                error=last_error,
+            )
             raise last_error
 
         primary = (
@@ -903,11 +982,22 @@ class LLMRouter:
             if order
             else self.provider_name(effective_provider)
         )
-        raise LLMProviderError(
+        error = LLMProviderError(
             "No configured language-model provider is currently available.",
             provider=primary,
             retryable=True,
         )
+        record_turn_stage(
+            "provider_fallback",
+            status="failure",
+            elapsed_ms=0.0,
+            provider=primary,
+            attempt=max(1, len(order)),
+            outcome="exhausted",
+            failure_kind="provider_exhausted",
+            error=error,
+        )
+        raise error
 
     # ============================================================
     # STATUS

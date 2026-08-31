@@ -74,6 +74,7 @@ class TurnResponse:
     state_changes: dict[str, Any] = field(default_factory=dict)
     conversation_state: dict[str, Any] = field(default_factory=dict)
     display_hints: dict[str, Any] = field(default_factory=dict)
+    request_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

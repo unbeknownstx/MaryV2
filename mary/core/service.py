@@ -9,6 +9,7 @@ existing cognition, memory, relationship, growth, routing, or realtime systems.
 from __future__ import annotations
 
 from copy import deepcopy
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -40,6 +41,11 @@ from mary.protocol.models import (
 )
 from mary.runtime.application import MaryApplication, create_application
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
+from mary.runtime.turn_observability import (
+    current_turn_trace,
+    emit_core_started,
+    observe_turn_stage,
+)
 
 
 def _json_safe(value: Any) -> Any:
@@ -87,6 +93,8 @@ class MaryCoreService:
         self.instance_id = str(instance_id or uuid4())
         self.started_monotonic = monotonic()
         self._turn_lock = RLock()
+        self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
+        emit_core_started(self.instance_id)
         registry = getattr(self.mary, "node_registry", None)
         if registry is None:
             raise RuntimeError("Mary Core requires a canonical node registry.")
@@ -139,23 +147,32 @@ class MaryCoreService:
             raise RuntimeError("Mary Core is closed.")
         turn = request if isinstance(request, TurnRequest) else TurnRequest.from_dict(request)
 
-        with self._turn_lock:
+        with observe_turn_stage(
+            "turn_lock_acquisition",
+            failure_kind="lock_failure",
+        ):
+            self._turn_lock.acquire()
+        try:
             before = self._state_fingerprint()
             if turn.requested_mode:
                 self.mary.engagement.set_mode(turn.requested_mode)
 
             pipeline_started = monotonic()
-            result = self.application.run(
-                turn.text,
-                metadata={
-                    "surface": turn.surface or "client",
-                    "transport": "core",
-                    "conversation_id": turn.conversation_id,
-                    "device_id": turn.device_id,
-                    "requested_mode": turn.requested_mode,
-                    "voice_input": bool(turn.voice_input),
-                },
-            )
+            with observe_turn_stage("application_turn"):
+                result = self.application.run(
+                    turn.text,
+                    metadata={
+                        "surface": turn.surface or "client",
+                        "transport": "core",
+                        "conversation_id": turn.conversation_id,
+                        "device_id": turn.device_id,
+                        "requested_mode": turn.requested_mode,
+                        "voice_input": bool(turn.voice_input),
+                    },
+                )
+            trace = current_turn_trace()
+            if trace is not None:
+                trace.set_turn_id(result.turn_id)
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
             if not result.success:
                 raise RuntimeError(result.error or "Mary's canonical turn pipeline failed.")
@@ -170,6 +187,7 @@ class MaryCoreService:
                 response=response_text,
                 conversation_id=turn.conversation_id,
                 turn_id=str(result.turn_id or ""),
+                request_id=trace.request_id if trace is not None else "",
                 effective_mode=str(last_plan.get("effective_mode") or engagement.get("mode") or "adaptive"),
                 provenance=self._provenance(result),
                 state_changes=self._state_changes(before, after),
@@ -179,6 +197,16 @@ class MaryCoreService:
                     pipeline_ms=pipeline_ms,
                 ),
             )
+        finally:
+            self._turn_lock.release()
+
+    def record_turn_trace(self, trace: dict[str, Any]) -> None:
+        """Retain a small content-free diagnostic window for this Core process."""
+
+        self._recent_turn_traces.append(_json_safe(trace))
+
+    def recent_turn_traces(self) -> list[dict[str, Any]]:
+        return [deepcopy(item) for item in self._recent_turn_traces]
 
     def health(self) -> dict[str, Any]:
         return {

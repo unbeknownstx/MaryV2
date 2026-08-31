@@ -36,6 +36,8 @@ from mary.runtime.mary_stage import MaryStage
 from mary.runtime.pipeline import Pipeline, PipelineResult
 from mary.runtime.state import RuntimeState
 from mary.runtime.turn_envelope import build_turn_envelope
+from mary.runtime.turn_observability import observe_turn_stage
+from mary.runtime.turn_observability import record_turn_stage
 from mary.runtime.workspace_context import build_workspace_context
 
 
@@ -963,7 +965,11 @@ class MaryApplication:
             status = autonomy.status
 
             if status == AutonomyRuntimeStatus.STOPPED:
-                autonomy.start()
+                with observe_turn_stage(
+                    "autonomy_processing",
+                    failure_kind="post_processing_failure",
+                ):
+                    autonomy.start()
                 return None
 
             if status in {
@@ -971,6 +977,12 @@ class MaryApplication:
                 AutonomyRuntimeStatus.PAUSED,
                 AutonomyRuntimeStatus.ERROR,
             }:
+                record_turn_stage(
+                    "autonomy_processing",
+                    status="skipped",
+                    elapsed_ms=0.0,
+                    outcome="already_started",
+                )
                 return None
 
             return (
@@ -1284,6 +1296,14 @@ class MaryApplication:
             return
 
         if startup_error:
+            record_turn_stage(
+                "autonomy_processing",
+                status="failure",
+                elapsed_ms=0.0,
+                outcome="startup_failed",
+                failure_kind="post_processing_failure",
+                error="AutonomyStartupError",
+            )
             result.metadata["autonomy"] = self._autonomy_record(
                 errors=(startup_error,),
             )
@@ -1301,6 +1321,12 @@ class MaryApplication:
                     f"autonomy cycle skipped: runtime is {status}",
                 ),
             )
+            record_turn_stage(
+                "autonomy_processing",
+                status="skipped",
+                elapsed_ms=0.0,
+                outcome="not_running",
+            )
             return
 
         proposal_trigger = None
@@ -1311,15 +1337,19 @@ class MaryApplication:
             if proposal_trigger is not None:
                 autonomy.triggers.register(proposal_trigger)
 
-            cycle_result = autonomy.cycle(
-                self._build_autonomy_context(
-                    input_text=input_text,
-                    result=result,
-                    surface=surface,
-                    transport=transport,
-                    voice_input=voice_input,
+            with observe_turn_stage(
+                "autonomy_processing",
+                failure_kind="post_processing_failure",
+            ):
+                cycle_result = autonomy.cycle(
+                    self._build_autonomy_context(
+                        input_text=input_text,
+                        result=result,
+                        surface=surface,
+                        transport=transport,
+                        voice_input=voice_input,
+                    )
                 )
-            )
         except Exception as exc:
             result.metadata["autonomy"] = self._autonomy_record(
                 errors=(
@@ -1411,9 +1441,7 @@ class MaryApplication:
         meta["transport"] = transport
         meta["voice_input"] = voice
 
-        autonomy_startup_error = (
-            self._ensure_autonomy_started()
-        )
+        autonomy_startup_error = self._ensure_autonomy_started()
 
         # Workspace context is always produced by this application's own
         # ecosystem. Client-provided values are discarded so a remote caller

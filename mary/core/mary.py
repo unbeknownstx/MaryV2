@@ -128,6 +128,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.turn_envelope import attach_turn_envelope
+from mary.runtime.turn_observability import observe_turn_stage
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.root_authority import MaryRootAuthority
 from mary.runtime.environment import RuntimeEnvironment
@@ -812,13 +813,14 @@ class Mary:
         except Exception:
             attention_events = []
 
-        context = self._build_context(
-            input_text,
-            intent=intent,
-            recent_conversation=session_history,
-            incoming_emotion_appraisal=incoming_emotion_payload,
-            workspace_context=workspace_context,
-        )
+        with observe_turn_stage("context_construction"):
+            context = self._build_context(
+                input_text,
+                intent=intent,
+                recent_conversation=session_history,
+                incoming_emotion_appraisal=incoming_emotion_payload,
+                workspace_context=workspace_context,
+            )
 
         stage_context = self.performance_context.current
         if stage_context.public:
@@ -1543,8 +1545,12 @@ class Mary:
                     ),
                 },
             )
-            self.expression.record_response(response)
-            self.dialogue.finish_turn()
+            with observe_turn_stage(
+                "dialogue_persistence",
+                failure_kind="post_processing_failure",
+            ):
+                self.expression.record_response(response)
+                self.dialogue.finish_turn()
             result.metadata["dialogue_turn"] = self.dialogue.state.turn_number
             result.metadata["conversation_id"] = conversation_id
             result.metadata["dialogue_session_count"] = self.dialogue.session_count
@@ -1603,10 +1609,14 @@ class Mary:
                 result.metadata["conversation_engagement_error"] = f"{type(exc).__name__}: {exc}"
 
             try:
-                result.metadata["growth"] = self.growth.observe_turn(
-                    input_text=input_text,
-                    result=result,
-                )
+                with observe_turn_stage(
+                    "growth_processing",
+                    failure_kind="post_processing_failure",
+                ):
+                    result.metadata["growth"] = self.growth.observe_turn(
+                        input_text=input_text,
+                        result=result,
+                    )
             except Exception as exc:
                 result.metadata["growth_error"] = f"{type(exc).__name__}: {exc}"
         else:
@@ -1684,9 +1694,10 @@ class Mary:
     ) -> dict[str, Any]:
         """Build one integrated cognitive context from Mary's real subsystems."""
 
-        memory_context = self.memory.build_context(
-            input_text
-        )
+        with observe_turn_stage("memory_retrieval"):
+            memory_context = self.memory.build_context(
+                input_text
+            )
 
         lifecycle_window = self.context_lifecycle.select(
             recent_conversation or []
