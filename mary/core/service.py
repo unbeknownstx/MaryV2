@@ -1442,12 +1442,33 @@ class MaryCoreService:
         cycle = values.get("cognitive_cycle")
         reasoning = getattr(cycle, "reasoning", None)
         metadata = dict(getattr(reasoning, "metadata", {}) or {})
+        safe_attempts: list[dict[str, str]] = []
+        for raw in list(metadata.get("provider_attempts", []) or [])[:12]:
+            if not isinstance(raw, dict):
+                continue
+            provider = str(raw.get("provider") or "")[:64]
+            status = str(raw.get("status") or "")[:32]
+            safe_attempts.append({
+                "provider": provider,
+                "status": status,
+            })
+        usage: dict[str, int] = {}
+        raw_usage = dict(metadata.get("usage", {}) or {})
+        for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            try:
+                usage[name] = max(0, min(int(raw_usage[name]), 10_000_000))
+            except (KeyError, TypeError, ValueError):
+                continue
         return _json_safe({
-            "provider": metadata.get("provider") or "local/system",
-            "model": metadata.get("model"),
-            "finish_reason": metadata.get("finish_reason"),
-            "route": metadata.get("route") or metadata.get("generation_purpose"),
-            "provider_attempts": metadata.get("provider_attempts", []),
+            "provider": str(metadata.get("provider") or "local/system")[:64],
+            "model": str(metadata.get("model") or "")[:128],
+            "finish_reason": str(metadata.get("finish_reason") or "")[:64],
+            "route": str(
+                metadata.get("route")
+                or metadata.get("generation_purpose")
+                or ""
+            )[:64],
+            "provider_attempts": safe_attempts,
             "conversation_lane": {
                 "lane": str(
                     dict(metadata.get("conversation_lane", {}) or {}).get("lane")
@@ -1455,7 +1476,7 @@ class MaryCoreService:
                 ),
             },
             "self_grounded": bool(metadata.get("self_grounded", False)),
-            "usage": metadata.get("usage", {}),
+            "usage": usage,
         })
 
     def _display_hints(
@@ -1482,7 +1503,7 @@ class MaryCoreService:
             except (TypeError, ValueError):
                 continue
             if value >= 0.0:
-                timings[name] = round(value, 2)
+                timings[name] = round(min(value, 86_400_000.0), 2)
 
         measured_pipeline_ms = pipeline_ms
         if measured_pipeline_ms is None:
@@ -1492,7 +1513,10 @@ class MaryCoreService:
             except (TypeError, ValueError):
                 measured_pipeline_ms = None
         if measured_pipeline_ms is not None and measured_pipeline_ms >= 0.0:
-            timings["pipeline_ms"] = round(float(measured_pipeline_ms), 2)
+            timings["pipeline_ms"] = round(
+                min(float(measured_pipeline_ms), 86_400_000.0),
+                2,
+            )
         try:
             emotion = self.mary.emotion.snapshot()
         except Exception:

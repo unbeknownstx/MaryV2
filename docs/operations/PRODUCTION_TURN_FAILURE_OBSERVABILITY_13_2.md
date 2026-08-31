@@ -21,6 +21,11 @@ Every HTTP turn receives a Mary-owned `request_id`. The same value is:
 - returned in `TurnResponse.request_id`; and
 - retained in Core's bounded recent-trace ring.
 
+The Python protocol client preserves a validated `X-Mary-Request-ID` on HTTP
+failures without retaining the response body. Remote Mobile retains that safe
+ID in its bounded success or failure trace, so a creator-visible failure can be
+correlated with Core and provider-stage records.
+
 If Railway or another proxy supplies `X-Request-ID`,
 `X-Railway-Request-ID`, or `X-Correlation-ID`, Mary records only a 24-character
 SHA-256 `upstream_request_hash`. The caller-controlled header is never logged
@@ -79,6 +84,7 @@ recorded.
 | `lock_failure` | Canonical turn-lock acquisition failed |
 | `post_processing_failure` | Dialogue, growth, or autonomy failed after/beside generation |
 | `serialization_failure` | The Core response could not be converted to its HTTP payload |
+| `upstream_disconnect` | The ASGI request was cancelled while Core work was active |
 | `authentication_failure` | Creator authentication failed at ingress |
 | `invalid_request` | Request parsing or validation failed |
 
@@ -96,8 +102,21 @@ visible without changing the successful response.
 - Core retains the 40 most recent completed trace snapshots in memory.
 - Identifiers, labels, provider names, attempt numbers, exception class names,
   durations, and outcome values are length/range bounded.
+- Stage and total durations are capped at 24 hours. Mobile's seconds and
+  milliseconds totals use the same ceiling.
 - Traces are process-local diagnostics and are not written into Mary's
   canonical durable state.
+
+Core provenance and Mobile retained traces use explicit allowlists. Provider
+attempts retain only bounded provider and status labels; provider exception
+messages, response bodies, arbitrary provenance keys, and non-diagnostic
+timings are discarded.
+
+When an upstream request disconnects, Core records one terminal
+`upstream_disconnect` completion. The already-running worker is not forcibly
+interrupted, but its copied trace context cannot append stages after that
+terminal completion. Health remains on the event loop and responds
+independently while a turn worker is active.
 
 ## Sanitized examples
 

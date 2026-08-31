@@ -25,6 +25,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import secrets
 from threading import RLock
 from time import monotonic, sleep
@@ -39,13 +40,14 @@ from mary.presence import PresenceEventType
 from mary.runtime.application import MaryApplication, create_application
 from mary.mobile.audio import MobileSpeechService
 from mary.mobile.voice_lab import VoiceLabStore, BASELINE as VOICE_BASELINE
-from mary.protocol.client import MaryClient
+from mary.protocol.client import MaryClient, MaryProtocolError
 from mary.experience import build_experience_snapshot
 
 
 MOBILE_PROTOCOL_VERSION = "4"
 MAX_REQUEST_BYTES = 256_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
+_SAFE_TRACE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
 
 
 def _clean_conversation_id(
@@ -721,41 +723,82 @@ class MaryRemoteMobileRuntime:
                 response.display_hints
                 or {}
             )
-            timings = dict(
+            raw_timings = dict(
                 display_hints.get(
                     "timings",
                     {},
                 )
                 or {}
             )
+            timings: dict[str, float] = {}
+            for name in (
+                "context_ms",
+                "intent_ms",
+                "reasoning_ms",
+                "reflection_ms",
+                "response_select_ms",
+                "cognition_total_ms",
+                "pipeline_ms",
+            ):
+                try:
+                    duration = float(raw_timings[name])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if duration >= 0.0:
+                    timings[name] = round(
+                        min(duration, 86_400_000.0),
+                        2,
+                    )
             timings[
                 "worker_total_ms"
             ] = round(
-                elapsed * 1000.0,
+                min(elapsed * 1000.0, 86_400_000.0),
                 2,
             )
 
+            def safe_identifier(value: Any, limit: int = 128) -> str:
+                candidate = str(value or "").strip()[:limit]
+                return (
+                    candidate
+                    if _SAFE_TRACE_IDENTIFIER.fullmatch(candidate)
+                    else ""
+                )
+
+            safe_attempts: list[dict[str, str]] = []
+            for raw in list(provenance.get("provider_attempts", []) or [])[:12]:
+                if not isinstance(raw, dict):
+                    continue
+                safe_attempts.append({
+                    "provider": safe_identifier(raw.get("provider"), 64),
+                    "status": safe_identifier(raw.get("status"), 32),
+                })
+            lane = safe_identifier(
+                dict(provenance.get("conversation_lane", {}) or {}).get("lane"),
+                32,
+            )
+
             trace = {
-                "turn_id": response.turn_id,
-                "elapsed": elapsed,
-                **provenance,
+                "request_id": safe_identifier(
+                    getattr(response, "request_id", ""),
+                ),
+                "turn_id": safe_identifier(response.turn_id),
+                "elapsed": round(
+                    max(0.0, min(elapsed, 86_400.0)),
+                    6,
+                ),
+                "provider": safe_identifier(provenance.get("provider"), 64),
+                "model": safe_identifier(provenance.get("model"), 128),
+                "finish_reason": safe_identifier(
+                    provenance.get("finish_reason"),
+                    64,
+                ),
+                "route": safe_identifier(provenance.get("route"), 64),
+                "provider_attempts": safe_attempts,
                 "timings": timings,
                 "authority": "remote_mary_core",
                 "device_id": self.client.device_id,
             }
 
-            lane = str(
-                dict(
-                    provenance.get(
-                        "conversation_lane",
-                        {},
-                    )
-                    or {}
-                ).get(
-                    "lane"
-                )
-                or ""
-            ).strip()
             if lane:
                 trace[
                     "mobile"
@@ -875,6 +918,22 @@ class MaryRemoteMobileRuntime:
                     ),
                 }
             )
+
+        except MaryProtocolError as exc:
+            with self._lock:
+                self._last_trace = {
+                    "request_id": str(exc.request_id or "")[:128],
+                    "outcome": "failure",
+                    "failure_kind": (
+                        "core_http_failure"
+                        if exc.status_code is not None
+                        else "upstream_disconnect"
+                    ),
+                    "error_type": type(exc).__name__,
+                    "authority": "remote_mary_core",
+                    "device_id": self.client.device_id,
+                }
+            raise
 
         finally:
             with self._lock:

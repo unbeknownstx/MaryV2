@@ -150,6 +150,17 @@ def create_app(service: MaryCoreService | None = None):
             trace.finish(outcome="success")
             return serialized
 
+        except asyncio.CancelledError as exc:
+            # ASGI cancellation is the strongest application-level evidence
+            # that the upstream requester disconnected. The worker thread may
+            # finish independently, but this request trace terminates here.
+            trace.finish(
+                outcome="failure",
+                failure_kind="upstream_disconnect",
+                error=exc,
+            )
+            raise
+
         except HTTPException as exc:
             failure_kind = (
                 "authentication_failure"

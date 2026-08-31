@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
+from email.message import Message
+from io import BytesIO
 import json
+from threading import Event
 from time import sleep
+from urllib.error import HTTPError
 
 import pytest
 
@@ -10,6 +16,8 @@ from mary.core.service import MaryCoreService
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.protocol.models import TurnRequest, TurnResponse
+from mary.protocol.client import MaryClient, MaryProtocolError
+from mary.protocol import client as protocol_client
 from mary.runtime.turn_observability import (
     TurnTraceRecorder,
     bind_turn_trace,
@@ -165,6 +173,58 @@ def test_provider_timeout_and_successful_fallback_are_distinguishable_and_saniti
     _assert_private_content_absent(_trace_json(trace))
 
 
+def test_finished_trace_rejects_late_worker_stages():
+    trace = _recorder()
+    trace.record("core_ingress", status="success", elapsed_ms=1)
+    finished = trace.finish(
+        outcome="failure",
+        failure_kind="upstream_disconnect",
+    )
+    assert trace.record(
+        "application_turn",
+        status="success",
+        elapsed_ms=1,
+    ) == {}
+    assert trace.snapshot()["stages"] == finished["stages"]
+
+
+def test_total_elapsed_time_is_bounded():
+    trace = _recorder()
+    trace.started -= 100_000_000.0
+    finished = trace.finish(outcome="success")
+    assert finished["total_elapsed_ms"] == 86_400_000.0
+
+
+def test_client_preserves_only_safe_core_request_id_on_http_failure(monkeypatch):
+    headers = Message()
+    headers["X-Mary-Request-ID"] = "request_safe_failure"
+
+    def fail_request(*_args, **_kwargs):
+        raise HTTPError(
+            "https://core.example/v1/turn",
+            500,
+            "private upstream detail",
+            headers,
+            BytesIO(f"{PRIVATE_OUTPUT} {SECRET_TOKEN}".encode()),
+        )
+
+    monkeypatch.setattr(protocol_client, "urlopen", fail_request)
+    client = MaryClient(
+        "https://core.example",
+        token="secret",
+        device_id="mobile",
+        surface="mobile",
+    )
+    with pytest.raises(MaryProtocolError) as caught:
+        client.turn(PRIVATE_PROMPT)
+
+    assert caught.value.request_id == "request_safe_failure"
+    assert caught.value.status_code == 500
+    serialized = str(caught.value)
+    assert "request_safe_failure" in serialized
+    _assert_private_content_absent(serialized)
+
+
 def test_provider_exhaustion_has_a_distinct_terminal_fallback_failure():
     config = Config()
     config.llm.provider = "primary"
@@ -260,6 +320,79 @@ def test_http_turn_correlates_request_and_keeps_failure_responses_sanitized(monk
         "application_turn",
         "response_serialization",
     }.issubset({item["stage"] for item in trace["stages"]})
+    _assert_private_content_absent(json.dumps(trace, sort_keys=True))
+
+
+def test_health_stays_responsive_and_cancelled_request_records_upstream_disconnect(
+    monkeypatch,
+):
+    fastapi = pytest.importorskip("fastapi")
+    httpx = pytest.importorskip("httpx")
+    del fastapi
+    from mary.protocol.server import create_app
+
+    class BlockingApplication(FakeApplication):
+        def __init__(self):
+            super().__init__()
+            self.started = Event()
+            self.release = Event()
+
+        def run(self, text, metadata=None):
+            self.started.set()
+            assert self.release.wait(timeout=2)
+            return super().run(text, metadata=metadata)
+
+    application = BlockingApplication()
+    core = MaryCoreService(application, instance_id="disconnect-core")
+    core.register_creator_surface({"surface_id": "test-creator"})
+    monkeypatch.setenv("MARY_CORE_TOKEN", SECRET_TOKEN)
+    app = create_app(core)
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            turn_task = asyncio.create_task(
+                client.post(
+                    "/v1/turn",
+                    headers={
+                        "Authorization": f"Bearer {SECRET_TOKEN}",
+                        "X-Request-ID": "upstream-disconnect-test",
+                    },
+                    json={"text": PRIVATE_PROMPT},
+                )
+            )
+            deadline = asyncio.get_running_loop().time() + 1
+            while (
+                not application.started.is_set()
+                and asyncio.get_running_loop().time() < deadline
+            ):
+                await asyncio.sleep(0.005)
+            assert application.started.is_set()
+
+            health = await client.get("/v1/health")
+            assert health.status_code == 200
+            assert health.json()["ok"] is True
+
+            turn_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await turn_task
+            trace = core.recent_turn_traces()[-1]
+            retained_stage_count = len(trace["stages"])
+            application.release.set()
+            await asyncio.sleep(0.05)
+            await asyncio.to_thread(core.close)
+            return trace, retained_stage_count
+
+    trace, retained_stage_count = asyncio.run(exercise())
+    assert trace["failure_kind"] == "upstream_disconnect"
+    assert trace["error_type"] == "CancelledError"
+    assert trace["upstream_request_hash"] == upstream_request_hash(
+        "upstream-disconnect-test"
+    )
+    assert len(trace["stages"]) == retained_stage_count
     _assert_private_content_absent(json.dumps(trace, sort_keys=True))
 
 

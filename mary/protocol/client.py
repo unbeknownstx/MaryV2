@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -23,8 +24,25 @@ from .models import (
 )
 
 
+_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+
+
 class MaryProtocolError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        request_id: str = "",
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        candidate = str(request_id or "").strip()
+        self.request_id = (
+            candidate
+            if _SAFE_REQUEST_ID.fullmatch(candidate)
+            else ""
+        )
+        self.status_code = status_code
 
 
 class MaryClient:
@@ -301,10 +319,29 @@ class MaryClient:
             with urlopen(request, timeout=self.timeout if timeout is None else float(timeout)) as response:
                 data = response.read()
         except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise MaryProtocolError(f"Mary Core returned HTTP {exc.code}: {detail}") from exc
+            request_id = str(
+                (exc.headers or {}).get("X-Mary-Request-ID")
+                or ""
+            )
+            safe_request_id = (
+                request_id
+                if _SAFE_REQUEST_ID.fullmatch(request_id)
+                else ""
+            )
+            suffix = (
+                f" (request_id={safe_request_id})"
+                if safe_request_id
+                else ""
+            )
+            raise MaryProtocolError(
+                f"Mary Core returned HTTP {exc.code}{suffix}.",
+                request_id=safe_request_id,
+                status_code=int(exc.code),
+            ) from exc
         except OSError as exc:
-            raise MaryProtocolError(f"Could not reach Mary Core: {exc}") from exc
+            raise MaryProtocolError(
+                "Could not reach Mary Core.",
+            ) from exc
         try:
             parsed = json.loads(data.decode("utf-8"))
         except Exception as exc:

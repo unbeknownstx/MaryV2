@@ -40,6 +40,7 @@ _FAILURE_KINDS = {
     "provider_exhausted",
     "provider_timeout",
     "serialization_failure",
+    "upstream_disconnect",
     "unknown",
 }
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -175,6 +176,8 @@ class TurnTraceRecorder:
                 event["error_type"] = bounded_type_name(error)
 
         with self._lock:
+            if self._finished:
+                return {}
             if len(self._stages) >= self.max_stages:
                 self._dropped_stages += 1
                 return {}
@@ -241,7 +244,13 @@ class TurnTraceRecorder:
                 "core_instance_id": self.core_instance_id,
                 "outcome": "success" if outcome == "success" else "failure",
                 "total_elapsed_ms": round(
-                    max(0.0, (monotonic() - self.started) * 1000.0),
+                    max(
+                        0.0,
+                        min(
+                            (monotonic() - self.started) * 1000.0,
+                            86_400_000.0,
+                        ),
+                    ),
                     2,
                 ),
                 "stage_count": len(self._stages),

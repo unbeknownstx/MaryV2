@@ -15,10 +15,13 @@ python -m pytest -q \
   tests/integration/test_canonical_lifecycle.py \
   tests/protocol/test_server_contract.py \
   tests/protocol/test_core_service.py \
-  tests/llm/test_router_failover.py
+  tests/protocol/test_client_contract.py \
+  tests/llm/test_router_failover.py \
+  tests/mobile/test_remote_core_mode_13_2.py
 ```
 
-Result: **21 passed**.
+Result after lifecycle-aware correlation hardening: **33 passed** across the
+final focused observability, Mobile, Core, client, and server selection.
 
 Covered behavior includes:
 
@@ -35,18 +38,25 @@ Covered behavior includes:
 - measured canonical turn-lock wait;
 - fail-soft post-processing telemetry while preserving a successful response;
 - application exception classification with fixed safe HTTP detail;
-- response-serialization failure classification and correlation; and
-- preservation of existing creator-auth HTTP status behavior.
+- response-serialization failure classification and correlation;
+- preservation of existing creator-auth HTTP status behavior;
+- safe Core request-ID retention on Mobile success and HTTP failure;
+- adversarial provider error/provenance removal from Mobile traces;
+- ASGI cancellation classified as `upstream_disconnect`;
+- suppression of late worker stages after disconnect completion;
+- independently responsive health during a blocked active turn; and
+- deterministic stage, total, and Mobile duration bounds.
 
 ## Affected regression verification
 
 Command:
 
 ```text
-python -m pytest -q tests/protocol tests/runtime tests/llm tests/integration
+python -m pytest -q \
+  tests/protocol tests/runtime tests/llm tests/integration tests/mobile
 ```
 
-Result: **490 passed**.
+Result: **527 passed**.
 
 Compilation and diff hygiene:
 
@@ -65,7 +75,7 @@ Command:
 python -m pytest -q
 ```
 
-Result: **1,375 passed, 1 skipped, 1 failed**.
+Result: **1,411 passed, 1 skipped, 1 failed**.
 
 The sole failure is the repository-structure gate detecting the active root
 directories `data/` and `attached_assets/`. Neither directory is part of this
@@ -85,9 +95,13 @@ An independent architecture/security review evaluated:
 - provider order/fallback semantics; and
 - missing required stage/failure coverage.
 
-The first review identified three hardening issues: caller-controlled IDs,
-reflected runtime exception details, and emission beyond the retention cap.
-All three were corrected and received adversarial regression tests.
+The first review identified caller-controlled IDs, reflected runtime exception
+details, and emission beyond the retention cap. Lifecycle-aware follow-up
+review also identified missing upstream-disconnect classification, dropped
+Mobile failure correlation, broad Mobile provenance retention, unvalidated
+success IDs, and unbounded duplicate total durations. All were corrected and
+received adversarial or concurrent regression tests.
 
-The follow-up review result was **PASS**, with no blocking or high-severity
-issue in the explicit HTTP `POST /v1/turn` scope.
+The final independent review result was **PASS**, with no blocking or
+high-severity correctness, privacy, or security issue in the production turn
+observability scope.

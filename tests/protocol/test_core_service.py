@@ -86,7 +86,11 @@ def test_core_turn_projects_bounded_timing_and_lane_observability():
     reasoning = SimpleNamespace(metadata={
         "provider": "groq",
         "model": "test-model",
-        "provider_attempts": [{"provider": "groq", "status": "success"}],
+        "provider_attempts": [{
+            "provider": "groq",
+            "status": "success",
+            "error": "private provider exception text",
+        }],
         "conversation_lane": {
             "lane": "conversation",
             "rationale": "internal policy detail",

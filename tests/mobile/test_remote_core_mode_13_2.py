@@ -1,6 +1,10 @@
+import json
 from types import SimpleNamespace
 
+import pytest
+
 import mary.mobile.server as mobile_server
+from mary.protocol.client import MaryProtocolError
 
 
 class FakeRemoteClient:
@@ -139,6 +143,7 @@ class FakeRemoteClient:
     ):
         return SimpleNamespace(
             response="hello from core",
+            request_id="request_mobile_safe",
             turn_id="turn-1",
             effective_mode="adaptive",
             provenance={
@@ -223,6 +228,7 @@ def test_remote_mobile_runtime_does_not_construct_local_mary(
         ]
         == "remote_mary_core"
     )
+    assert payload["runtime"]["trace"]["request_id"] == "request_mobile_safe"
 
     assert (
         runtime.status()[
@@ -232,6 +238,84 @@ def test_remote_mobile_runtime_does_not_construct_local_mary(
         ]
         == "remote_mary_core"
     )
+
+
+def test_remote_mobile_retains_safe_core_request_id_on_turn_failure(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+
+    def fail_turn(*_args, **_kwargs):
+        raise MaryProtocolError(
+            "Mary Core returned HTTP 500.",
+            request_id="request_mobile_failure",
+            status_code=500,
+        )
+
+    runtime.client.turn = fail_turn
+    with pytest.raises(MaryProtocolError):
+        runtime.chat("private message")
+
+    assert runtime.last_turn_trace() == {
+        "request_id": "request_mobile_failure",
+        "outcome": "failure",
+        "failure_kind": "core_http_failure",
+        "error_type": "MaryProtocolError",
+        "authority": "remote_mary_core",
+        "device_id": "iphone",
+    }
+
+
+def test_remote_mobile_success_trace_drops_private_provenance_and_bad_id(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+    original_turn = runtime.client.turn
+
+    def adversarial_turn(*args, **kwargs):
+        response = original_turn(*args, **kwargs)
+        response.request_id = "secret request id with private prose"
+        response.provenance = {
+            "provider": "groq",
+            "model": "safe-model",
+            "provider_attempts": [{
+                "provider": "groq",
+                "status": "failure",
+                "error": "PRIVATE_PROVIDER_EXCEPTION_OUTPUT",
+            }],
+            "private": "PRIVATE_MEMORY_EVIDENCE",
+        }
+        response.display_hints["timings"] = {
+            "context_ms": 1.25,
+            "private_timing": "PRIVATE_PROMPT",
+        }
+        return response
+
+    runtime.client.turn = adversarial_turn
+    trace = runtime.chat("hi")["runtime"]["trace"]
+    serialized = json.dumps(trace, sort_keys=True)
+    assert trace["request_id"] == ""
+    assert trace["provider_attempts"] == [{
+        "provider": "groq",
+        "status": "failure",
+    }]
+    assert trace["timings"]["context_ms"] == 1.25
+    assert 0.0 <= trace["elapsed"] <= 86_400.0
+    assert "PRIVATE_" not in serialized
 
 
 def test_remote_dashboard_preserves_canonical_core_state(
