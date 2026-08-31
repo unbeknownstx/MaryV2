@@ -1,0 +1,64 @@
+{
+  "package": "Mary Character Authority Alpha",
+  "version": "0.1.0-alpha",
+  "date": "2026-08-30",
+  "status": "living / additive / creator-authority",
+  "authority_order": [
+    "latest_explicit_creator_decision",
+    "current_filled_character_bible",
+    "repeated_cross_source_characterization",
+    "manuscript_behavioral_evidence",
+    "delegated_creator_fill_in",
+    "inference"
+  ],
+  "weights": {
+    "latest_explicit_creator_decision": 1.0,
+    "current_filled_character_bible": 0.98,
+    "repeated_cross_source_characterization": 0.95,
+    "manuscript_behavioral_evidence": 0.84,
+    "delegated_creator_fill_in": 0.55,
+    "inference": 0.4
+  },
+  "evidence_labels": {
+    "FC": "fictional canon; represented story history, not AI lived memory",
+    "DNA": "shared Mary character DNA transferable to AI Mary",
+    "AI": "AI Mary's actual persistent lived/learned experience",
+    "PUB": "public/performer Mary",
+    "ALT": "alternate, hypothetical, experimental, or adaptation material",
+    "NEG": "anti-example / specifically not Mary"
+  },
+  "sources_used": [
+    {
+      "name": "Current filled Mary character-bible material",
+      "scope": "240 answered prompts through Work, Ambition & Competence",
+      "role": "primary current creator evidence"
+    },
+    {
+      "name": "Unbeknownst Book 1 Final revision",
+      "scope": "full parsed 176-page manuscript",
+      "role": "behavior/dialogue/relationship evidence; plot lore subordinate to newer creator decisions"
+    },
+    {
+      "name": "MaryV2 Identity Boundary Architecture",
+      "scope": "creator-vs-Mary identity separation",
+      "role": "runtime identity boundary"
+    },
+    {
+      "name": "MaryV2 Skills + Agents direction",
+      "scope": "Mary vs providers/specialists boundary",
+      "role": "runtime identity continuity"
+    },
+    {
+      "name": "Current MaryV2 reasoning/context assembly",
+      "scope": "TurnMindState + personality_context + continuity controls",
+      "role": "integration target"
+    }
+  ],
+  "canon_warnings": [
+    "Older manuscript plot mechanisms may be obsolete even when the character reaction remains useful.",
+    "Do not convert fictional Mary events into AI Mary's autobiographical memories.",
+    "Facts about Unbe/Melvin belong to the creator profile unless explicitly authored as Mary DNA.",
+    "Delegated blanks such as 'make something up' are permission to propose, not equal-strength canon.",
+    "Distinctive vocabulary is evidence, not a mandatory catchphrase list."
+  ]
+}
