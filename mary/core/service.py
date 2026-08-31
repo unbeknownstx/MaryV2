@@ -75,6 +75,15 @@ class _EnrollmentGrant:
     grant_id: str
 
 
+@dataclass
+class _TrustedDevice:
+    """Durable, node-scoped proof retained by the Core (never the raw proof)."""
+
+    node_id: str
+    credential_digest: str
+    enrolled_at: str
+
+
 class MaryCoreService:
     """Own exactly one long-lived canonical ``MaryApplication``.
 
@@ -125,6 +134,7 @@ class MaryCoreService:
         self._node_session_generations: dict[str, int] = {}
         self._enrollment_grants: dict[str, _EnrollmentGrant] = {}
         self._enrollment_audit: list[dict[str, Any]] = []
+        self._trusted_devices: dict[str, _TrustedDevice] = {}
         configured_path = enrollment_state_path
         if configured_path is None:
             paths = getattr(getattr(self.mary, "config", None), "paths", None)
@@ -560,6 +570,7 @@ class MaryCoreService:
         *,
         node_token: str | None = None,
         enrollment_grant: str | None = None,
+        device_credential: str | None = None,
         creator_authorized: bool = True,
     ) -> dict[str, Any]:
         """Register or refresh one replaceable device capability node.
@@ -592,6 +603,10 @@ class MaryCoreService:
             execution_policy="authorization_required",
         )
         with self._node_lifecycle_lock:
+            previous_grants = deepcopy(self._enrollment_grants)
+            previous_audit = list(self._enrollment_audit)
+            previous_generations = dict(self._node_session_generations)
+            previous_trusted = dict(self._trusted_devices)
             digest = self._node_token_digests.get(model.node_id)
             valid_existing_token = digest is not None and self._valid_node_token(
                 model.node_id, node_token
@@ -608,33 +623,86 @@ class MaryCoreService:
                 raise PermissionError(
                     "Existing live capability node registration requires its current node token."
                 )
-            if not continuing_live_session and not creator_authorized:
+            trusted = self._trusted_devices.get(model.node_id)
+            valid_durable_proof = self._valid_device_credential(
+                model.node_id, device_credential
+            )
+            explicit_enrollment = False
+            if not continuing_live_session and not (
+                creator_authorized or valid_durable_proof
+            ):
                 if enrollment_grant is None:
-                    raise PermissionError("Valid scoped enrollment grant required.")
-                self._consume_enrollment_grant(model.node_id, enrollment_grant)
-            # A disconnected/stale descriptor is not an active identity:
-            # expire all prior-session work before atomically revoking its old
-            # digest and issuing recovery credentials.
-            if digest is not None and not continuing_live_session:
-                self.device_tasks.expire_pending_for_node(
+                    raise PermissionError(
+                        "Valid scoped enrollment grant or device credential required."
+                    )
+                self._consume_enrollment_grant(
                     model.node_id,
-                    reason=(
-                        "Capability task expired because node enrollment/session "
-                        "was replaced."
-                    ),
+                    enrollment_grant,
+                    persist=False,
                 )
+                explicit_enrollment = True
+            elif (
+                not continuing_live_session
+                and creator_authorized
+                and not valid_durable_proof
+            ):
+                explicit_enrollment = True
             raw_token = (
                 None if continuing_live_session
                 else secrets.token_urlsafe(32)
             )
             if raw_token is not None:
-                self._node_token_digests[model.node_id] = self._node_token_digest(raw_token)
                 self._node_session_generations[model.node_id] = (
                     self._node_session_generations.get(model.node_id, 0) + 1
                 )
+            raw_device_credential = None
+            if (
+                trusted is None
+                and not continuing_live_session
+            ) or explicit_enrollment:
+                # Initial enrollment and deliberate creator/grant re-enrollment
+                # issue a replacement durable proof. Automatic restart recovery
+                # with the current proof leaves it stable.
+                raw_device_credential = secrets.token_urlsafe(32)
+                self._trusted_devices[model.node_id] = _TrustedDevice(
+                    node_id=model.node_id,
+                    credential_digest=self._node_token_digest(raw_device_credential),
+                    enrolled_at=datetime.now(timezone.utc).isoformat(),
+                )
+                self._record_trust_audit(
+                    "trusted" if trusted is None else "reenrolled",
+                    model.node_id,
+                )
+            elif raw_token is not None and valid_durable_proof:
+                self._record_trust_audit(
+                    "reconnected",
+                    model.node_id,
+                )
+            if raw_token is not None or raw_device_credential is not None:
+                try:
+                    self._save_enrollment_state()
+                except Exception:
+                    self._enrollment_grants = previous_grants
+                    self._enrollment_audit = previous_audit
+                    self._node_session_generations = previous_generations
+                    self._trusted_devices = previous_trusted
+                    raise
+                # A disconnected/stale descriptor is not an active identity.
+                # Durable state commits first; only then may process-local work,
+                # credentials, and liveness transition to the new session.
+                if digest is not None and not continuing_live_session:
+                    self.device_tasks.expire_pending_for_node(
+                        model.node_id,
+                        reason=(
+                            "Capability task expired because node enrollment/session "
+                            "was replaced."
+                        ),
+                    )
+                if raw_token is not None:
+                    self._node_token_digests[model.node_id] = (
+                        self._node_token_digest(raw_token)
+                    )
             registered = registry.register(descriptor)
-            if raw_token is not None:
-                self._save_enrollment_state()
         response = {
             "ok": True,
             "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
@@ -645,6 +713,8 @@ class MaryCoreService:
         # node/registry objects, diagnostics, tasks, or persisted application state.
         if raw_token is not None:
             response["node_token"] = raw_token
+        if raw_device_credential is not None:
+            response["device_credential"] = raw_device_credential
         return _json_safe(response)
 
     def issue_enrollment_grant(
@@ -688,10 +758,22 @@ class MaryCoreService:
             self._prune_enrollment_grants()
             grants = [self._grant_public(item) for item in self._enrollment_grants.values()]
             audit = list(self._enrollment_audit)
-        return _json_safe({"grants": grants, "audit": audit})
+            trusted_devices = [
+                self._trusted_device_public(item)
+                for item in self._trusted_devices.values()
+            ]
+        return _json_safe({
+            "grants": grants, "audit": audit, "trusted_devices": trusted_devices,
+        })
 
-    def _consume_enrollment_grant(self, node_id: str, raw: str | None) -> None:
-        self._prune_enrollment_grants()
+    def _consume_enrollment_grant(
+        self,
+        node_id: str,
+        raw: str | None,
+        *,
+        persist: bool = True,
+    ) -> None:
+        self._prune_enrollment_grants(persist=persist)
         matched = self._matching_enrollment_grant(node_id, raw)
         if matched is None:
             raise PermissionError("Valid scoped enrollment grant required.")
@@ -704,7 +786,8 @@ class MaryCoreService:
         self._record_enrollment_audit("consumed", matched)
         if matched.remaining_uses <= 0:
             self._enrollment_grants.pop(matched.grant_id, None)
-        self._save_enrollment_state()
+        if persist:
+            self._save_enrollment_state()
 
     def _audit_rejected_live_grant(
         self,
@@ -732,7 +815,7 @@ class MaryCoreService:
             and secrets.compare_digest(item.digest, supplied_digest)
         ), None)
 
-    def _prune_enrollment_grants(self) -> None:
+    def _prune_enrollment_grants(self, *, persist: bool = True) -> None:
         now = monotonic()
         changed = False
         for grant_id, grant in list(self._enrollment_grants.items()):
@@ -740,7 +823,7 @@ class MaryCoreService:
                 self._record_enrollment_audit("expired", grant)
                 self._enrollment_grants.pop(grant_id, None)
                 changed = True
-        if changed:
+        if changed and persist:
             self._save_enrollment_state()
 
     def _record_enrollment_audit(self, event: str, grant: _EnrollmentGrant) -> None:
@@ -766,39 +849,116 @@ class MaryCoreService:
             if not isinstance(item, dict):
                 continue
             try:
+                node_id = NodeRegistrationRequest.from_dict({
+                    "node_id": item["node_id"], "capabilities": [],
+                }).node_id
+                digest = str(item["digest"])
                 expires_epoch = float(item["expires_at_epoch"])
                 if expires_epoch <= now_epoch:
                     continue
+                if len(digest) != 64 or any(
+                    char not in "0123456789abcdef"
+                    for char in digest
+                ):
+                    continue
                 grant = _EnrollmentGrant(
-                    node_id=str(item["node_id"]),
-                    digest=str(item["digest"]),
+                    node_id=node_id,
+                    digest=digest,
                     expires_monotonic=now_monotonic + (expires_epoch - now_epoch),
                     expires_at_epoch=expires_epoch,
                     expires_at=str(item["expires_at"]),
                     remaining_uses=max(1, int(item["remaining_uses"])),
-                    issued_at=str(item["issued_at"]),
-                    grant_id=str(item["grant_id"]),
+                    issued_at=str(item["issued_at"])[:64],
+                    grant_id=str(item["grant_id"])[:40],
                 )
             except (KeyError, TypeError, ValueError):
                 continue
             self._enrollment_grants[grant.grant_id] = grant
-        self._enrollment_audit = [
-            dict(item) for item in list(payload.get("audit") or [])[-200:]
-            if isinstance(item, dict)
-        ]
-        self._node_session_generations = {
-            str(node_id): max(0, int(generation))
-            for node_id, generation in dict(
-                payload.get("session_generations") or {}
-            ).items()
-        }
+        self._enrollment_audit = []
+        for item in list(payload.get("audit") or [])[-200:]:
+            if not isinstance(item, dict):
+                continue
+            event = str(item.get("event") or "")[:40]
+            if event not in {
+                "issued",
+                "consumed",
+                "expired",
+                "rejected_live_node",
+                "trusted",
+                "reconnected",
+                "reenrolled",
+                "revoked",
+            }:
+                continue
+            try:
+                node_id = NodeRegistrationRequest.from_dict({
+                    "node_id": item.get("node_id"), "capabilities": [],
+                }).node_id
+            except (TypeError, ValueError):
+                continue
+            safe = {
+                "event": event,
+                "node_id": node_id,
+                "at": str(item.get("at") or "")[:64],
+            }
+            if item.get("grant_id") is not None:
+                safe["grant_id"] = str(item.get("grant_id") or "")[:40]
+            if item.get("remaining_uses") is not None:
+                try:
+                    safe["remaining_uses"] = max(
+                        0,
+                        min(20, int(item.get("remaining_uses"))),
+                    )
+                except (TypeError, ValueError):
+                    continue
+            self._enrollment_audit.append(safe)
+        generations = payload.get("session_generations")
+        if isinstance(generations, dict):
+            for node_id, generation in generations.items():
+                try:
+                    clean_node_id = NodeRegistrationRequest.from_dict({
+                        "node_id": node_id, "capabilities": [],
+                    }).node_id
+                    clean_generation = max(
+                        0,
+                        min(1_000_000_000, int(generation)),
+                    )
+                except (TypeError, ValueError):
+                    continue
+                self._node_session_generations[clean_node_id] = clean_generation
+        # v1 persistence deliberately has no durable trust.  Treat malformed
+        # records as untrusted rather than inferring trust from a historical ID.
+        if payload.get("version") != 2:
+            return
+        for item in list(payload.get("trusted_devices") or []):
+            if not isinstance(item, dict):
+                continue
+            try:
+                node_id = NodeRegistrationRequest.from_dict({
+                    "node_id": item["node_id"], "capabilities": [],
+                }).node_id
+                digest = str(item["credential_digest"])
+                enrolled_at = str(item["enrolled_at"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+                continue
+            if len(enrolled_at) > 64:
+                continue
+            try:
+                datetime.fromisoformat(enrolled_at)
+            except ValueError:
+                continue
+            self._trusted_devices[node_id] = _TrustedDevice(
+                node_id=node_id, credential_digest=digest, enrolled_at=enrolled_at,
+            )
 
     def _save_enrollment_state(self) -> None:
         path = self._enrollment_state_path
         if path is None:
             return
         payload = {
-            "version": 1,
+            "version": 2,
             "grants": [
                 {
                     "grant_id": item.grant_id,
@@ -814,6 +974,14 @@ class MaryCoreService:
             ],
             "audit": list(self._enrollment_audit),
             "session_generations": dict(self._node_session_generations),
+            "trusted_devices": [
+                {
+                    "node_id": item.node_id,
+                    "credential_digest": item.credential_digest,
+                    "enrolled_at": item.enrolled_at,
+                }
+                for item in self._trusted_devices.values()
+            ],
         }
         if not atomic_write_json(path, payload, backup_generations=3, indent=2):
             raise RuntimeError("Could not persist node enrollment grant state.")
@@ -828,6 +996,60 @@ class MaryCoreService:
             "remaining_uses": grant.remaining_uses,
             "scope": ["node.enroll"],
         }
+
+    @staticmethod
+    def _trusted_device_public(device: _TrustedDevice) -> dict[str, Any]:
+        return {"node_id": device.node_id, "enrolled_at": device.enrolled_at}
+
+    def _valid_device_credential(self, node_id: str, credential: str | None) -> bool:
+        trusted = self._trusted_devices.get(str(node_id))
+        supplied = str(credential or "")
+        return bool(trusted and supplied) and secrets.compare_digest(
+            self._node_token_digest(supplied), trusted.credential_digest
+        )
+
+    def _record_trust_audit(self, event: str, node_id: str) -> None:
+        self._enrollment_audit.append({
+            "event": str(event)[:40],
+            "node_id": str(node_id)[:160],
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+        del self._enrollment_audit[:-200]
+
+    def revoke_node(self, node_id: str) -> dict[str, Any]:
+        """Forget a device's durable and live enrollment under one lifecycle lock."""
+        clean_node_id = NodeRegistrationRequest.from_dict({
+            "node_id": node_id, "capabilities": [],
+        }).node_id
+        with self._node_lifecycle_lock:
+            previous_trusted = self._trusted_devices.get(clean_node_id)
+            previous_grants = dict(self._enrollment_grants)
+            previous_audit = list(self._enrollment_audit)
+            self._trusted_devices.pop(clean_node_id, None)
+            self._enrollment_grants = {
+                grant_id: grant for grant_id, grant in self._enrollment_grants.items()
+                if grant.node_id != clean_node_id
+            }
+            self._record_trust_audit("revoked", clean_node_id)
+            try:
+                # Durable removal commits before the process-local session and
+                # registry are torn down. A failed save does not pretend that a
+                # revoked device will remain revoked after restart.
+                self._save_enrollment_state()
+            except Exception:
+                if previous_trusted is not None:
+                    self._trusted_devices[clean_node_id] = previous_trusted
+                self._enrollment_grants = previous_grants
+                self._enrollment_audit = previous_audit
+                raise
+            self._node_token_digests.pop(clean_node_id, None)
+            self.device_tasks.expire_pending_for_node(
+                clean_node_id,
+                reason="Capability task expired because node enrollment was revoked.",
+            )
+            self.mary.node_registry.disconnect(clean_node_id)
+            self.mary.node_registry.remove(clean_node_id)
+        return _json_safe({"ok": True, "node_id": clean_node_id, "revoked": True})
 
     def heartbeat_node(
         self,

@@ -82,7 +82,8 @@ Capability availability never means permission. `MaryCoreService.preview_capabil
 
 ```text
 capability node (Windows/Mac/future compute)
-   │ node-scoped enrollment grant + advertised capability
+   │ one-time enrollment grant or durable device proof
+   │ + advertised capability
    ▼
 NodeRegistry in canonical Mary ─► route preview / selected node
    │                                      │
@@ -95,7 +96,11 @@ NodeRegistry in canonical Mary ─► route preview / selected node
                                            completion/result to Core
 ```
 
-A headless Windows node can advertise local Ollama while Desktop is closed. Creator access mints an expiring, use-limited enrollment grant scoped to one node ID; the capability node stores that grant instead of `MARY_CORE_TOKEN`. Core persists only the grant digest, use/expiry metadata, and bounded audit events. Enrollment returns one process-local node session credential. Heartbeat, disconnect, task polling, and task completion require that credential, which is bound to the enrolled node ID and current session generation. Neither grant nor node credential authorizes creator turn, state, workspace, or runtime endpoints, and raw credentials are absent from snapshots, diagnostics, tasks, and persisted Core state. A live node ID cannot be replaced without its current node credential. After disconnect or lease expiry, heartbeat refuses revival; grant-authorized re-enrollment expires all nonterminal prior-session work, revokes the old credential, advances the session generation, and issues a replacement.
+A headless Windows node can advertise local Ollama while Desktop is closed. Creator access mints an expiring, use-limited enrollment grant scoped to one node ID. The first approved registration consumes that grant, creates a durable trusted-device identity, and returns two separate credentials: a durable device proof and an ephemeral session token. Core persists only SHA-256 digests and bounded enrollment metadata; the Windows node protects the durable proof with CurrentUser DPAPI. Session tokens and registry leases remain process-local.
+
+After a Core restart, the node presents its durable proof over HTTPS during registration. Core verifies the proof against the canonical trusted-device record, rejects node-ID-only or mismatched attempts, expires prior-session work, advances the session generation, and returns a fresh process-local token. Heartbeat, disconnect, task polling, and completion accept only that current session token. A durable proof cannot take over a live node. Deliberate grant/creator re-enrollment rotates the durable proof; creator revocation removes durable trust, active grants, the current session, registry presence, and pending work.
+
+Neither enrollment grants, durable proofs, nor node session tokens authorize creator turn, state, workspace, or runtime endpoints. Raw credentials are absent from snapshots, diagnostics, tasks, Mobile responses, logs, and persisted Core state. Historical node IDs are never migrated into trust without a deliberate approved enrollment.
 
 `DeviceOllamaProvider` makes the enrolled resource available to the shared router; it does not create a second router or transfer authority from Core. Registry leases and broker task transitions share one synchronization boundary. A disconnected or stale node is removed from routing, cannot claim or complete queued work, and causes its pending tasks to expire when Core observes the unavailable lease through normal broker/status activity. No background loop is created. Loss of a node never promotes a local copy of Mary into an authority.
 

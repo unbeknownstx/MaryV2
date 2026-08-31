@@ -1,6 +1,7 @@
 """Run MaryV2's bounded Windows Ollama capability node without the Desktop GUI."""
 from __future__ import annotations
 
+import argparse
 import os
 import signal
 import socket
@@ -14,17 +15,22 @@ from mary.distributed import DeviceExecutionPermissions
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Run Mary's bounded Windows Ollama capability node.",
+    )
+    parser.add_argument(
+        "--enroll-only",
+        action="store_true",
+        help="Establish durable device trust, store it locally, then exit.",
+    )
+    args = parser.parse_args(argv)
     load_dotenv()
 
     core_url = os.getenv("MARY_CORE_URL", "").strip()
     if not core_url:
         print("MARY_CORE_URL is not configured. The headless node requires remote Mary Core.")
         return 2
-    if not os.getenv("MARY_NODE_ENROLLMENT_GRANT", "").strip():
-        print("MARY_NODE_ENROLLMENT_GRANT is not configured.")
-        return 2
-
     permissions = DeviceExecutionPermissions()
     if not permissions.is_allowed("llm.ollama"):
         print("Local permission llm.ollama is not enabled.")
@@ -42,12 +48,16 @@ def main() -> int:
         or socket.gethostname().strip()
         or "windows-node"
     )
-    gateway = gateway_from_environment(
-        application=None,
-        device_id=device_id,
-        surface="windows_node",
-        node_only=True,
-    )
+    try:
+        gateway = gateway_from_environment(
+            application=None,
+            device_id=device_id,
+            surface="windows_node",
+            node_only=True,
+        )
+    except RuntimeError as exc:
+        print(str(exc))
+        return 2
     if not isinstance(gateway, RemoteMaryGateway):
         print("Headless node did not resolve remote Mary Core authority.")
         return 2
@@ -60,6 +70,23 @@ def main() -> int:
         host_type="capability_node",
         surface="windows_node",
     )
+
+    if args.enroll_only:
+        enrolled = False
+        try:
+            agent.register()
+            enrolled = True
+            print("Durable node enrollment completed and was stored for this Windows user.")
+            return 0
+        except Exception:
+            print("Durable node enrollment failed.")
+            return 1
+        finally:
+            if enrolled:
+                agent.disconnect()
+            # The short-lived enrollment grant remains process-only. The
+            # credential store has already protected the durable proof.
+            os.environ.pop("MARY_NODE_ENROLLMENT_GRANT", None)
 
     stop = Event()
 
@@ -81,6 +108,7 @@ def main() -> int:
     print("capability:       llm.ollama")
     print(f"model:            {capabilities[0].metadata.get('configured_model', '')}")
     print("Desktop GUI:      NOT RUNNING / NOT REQUIRED")
+    print("Enrollment:       one-time grant or stored local credential")
     print("Press Ctrl+C to stop the node.")
 
     try:

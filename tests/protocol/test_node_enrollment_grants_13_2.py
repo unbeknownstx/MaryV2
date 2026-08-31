@@ -102,7 +102,13 @@ def test_scoped_grant_enrolls_and_recovers_without_creator_bearer(monkeypatch):
             "/v1/nodes/enrollment-grants",
             headers={"Authorization": "Bearer creator-secret"},
         ).json()["audit"]
-        assert [item["event"] for item in audit] == ["issued", "consumed", "consumed"]
+        assert [item["event"] for item in audit] == [
+            "issued",
+            "consumed",
+            "trusted",
+            "consumed",
+            "reenrolled",
+        ]
         assert grant not in repr(audit)
 
 
@@ -153,7 +159,9 @@ def test_grant_digest_and_audit_survive_core_restart_without_raw_grant(tmp_path)
     assert [item["event"] for item in second.enrollment_grant_status()["audit"]] == [
         "issued",
         "consumed",
+            "trusted",
         "consumed",
+            "reenrolled",
     ]
 
 

@@ -66,6 +66,19 @@ def _authorized(value: str | None) -> bool:
     )
 
 
+def _secure_node_transport(request: Request) -> bool:
+    """Accept node credentials only over HTTPS (plus in-process tests)."""
+
+    # ASGI server/proxy middleware must resolve trusted forwarded headers into
+    # request.url.scheme. Never trust a caller-supplied header directly here.
+    scheme = str(request.url.scheme or "").lower()
+    client_host = str(
+        getattr(request.client, "host", "")
+        or ""
+    ).lower()
+    return scheme == "https" or client_host == "testclient"
+
+
 def create_app(service: MaryCoreService | None = None):
     if FastAPI is None:  # pragma: no cover - installation guidance
         raise RuntimeError(
@@ -314,11 +327,20 @@ def create_app(service: MaryCoreService | None = None):
     @app.post("/v1/nodes/register")
     async def register_node(request: Request) -> dict[str, Any]:
         try:
+            if not _secure_node_transport(request):
+                raise HTTPException(
+                    status_code=426,
+                    detail="Node registration requires HTTPS.",
+                )
             creator_authorized = _authorized(request.headers.get("Authorization"))
             enrollment_grant = request.headers.get("X-Mary-Enrollment-Grant")
             node_token = request.headers.get("X-Mary-Node-Token")
-            if not creator_authorized and not enrollment_grant and not node_token:
-                raise HTTPException(status_code=401, detail="Node token or scoped enrollment grant required")
+            device_credential = request.headers.get("X-Mary-Device-Credential")
+            if not creator_authorized and not enrollment_grant and not node_token and not device_credential:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Node token, scoped enrollment grant, or device credential required",
+                )
             model = NodeRegistrationRequest.from_dict(
                 await request.json()
             )
@@ -328,6 +350,7 @@ def create_app(service: MaryCoreService | None = None):
                 model,
                 node_token=node_token,
                 enrollment_grant=enrollment_grant,
+                device_credential=device_credential,
                 creator_authorized=creator_authorized,
             )
 
@@ -367,6 +390,17 @@ def create_app(service: MaryCoreService | None = None):
     async def node_enrollment_grants(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.enrollment_grant_status()
+
+    @app.post("/v1/nodes/revoke")
+    async def revoke_node(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            payload = await request.json()
+            return await asyncio.to_thread(
+                core.revoke_node, str(payload.get("node_id") or ""),
+            )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/v1/nodes/heartbeat")
     async def heartbeat_node(request: Request) -> dict[str, Any]:

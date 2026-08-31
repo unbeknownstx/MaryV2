@@ -1,1 +1,1 @@
-- [Capability-node session isolation](capability-node-session-isolation.md) — credentials, leases, and task transitions share one boundary; replacements never inherit old work.
+- [Capability-node trust and session isolation](capability-node-session-isolation.md) — durable device trust and ephemeral sessions stay separate; replacements never inherit old work.

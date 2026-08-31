@@ -167,6 +167,24 @@ def test_gateway_environment_refuses_ambiguous_remote_and_local(monkeypatch):
         )
 
 
+def test_remote_creator_gateway_does_not_require_node_device_credential(monkeypatch):
+    monkeypatch.setenv("MARY_CORE_URL", "https://core.example")
+    monkeypatch.setenv("MARY_CORE_TOKEN", "creator-token")
+    monkeypatch.delenv("MARY_NODE_ENROLLMENT_GRANT", raising=False)
+    monkeypatch.delenv("MARY_NODE_DEVICE_CREDENTIAL", raising=False)
+
+    gateway = gateway_from_environment(
+        application=None,
+        device_id="creator-terminal",
+        surface="terminal",
+        node_only=False,
+    )
+
+    assert isinstance(gateway, RemoteMaryGateway)
+    assert gateway.client.token == "creator-token"
+    assert gateway.client._device_credential == ""
+
+
 def test_gateway_environment_never_implicitly_constructs_standalone(monkeypatch):
     monkeypatch.delenv("MARY_CORE_URL", raising=False)
     monkeypatch.delenv("MARY_CORE_TOKEN", raising=False)

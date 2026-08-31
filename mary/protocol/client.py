@@ -5,8 +5,10 @@ import json
 import re
 from typing import Any
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from .credential_store import NodeCredentialStore
 from .models import (
     CapabilityRouteRequest,
     CapabilityTaskDispatchRequest,
@@ -46,14 +48,19 @@ class MaryProtocolError(RuntimeError):
 
 
 class MaryClient:
-    def __init__(self, base_url: str, *, token: str = "", enrollment_grant: str = "", device_id: str = "python-client", surface: str = "client", timeout: float = 120.0) -> None:
+    def __init__(self, base_url: str, *, token: str = "", enrollment_grant: str = "", device_credential: str = "", credential_store: Any | None = None, device_id: str = "python-client", surface: str = "client", timeout: float = 120.0) -> None:
         self.base_url = str(base_url).rstrip("/")
         self.token = str(token or "")
         self.enrollment_grant = str(enrollment_grant or "")
         self.device_id = str(device_id or "python-client")
         self.surface = str(surface or "client")
         self.timeout = float(timeout)
-        # Ephemeral process-local device credential. It is never included in
+        self._credential_store = (
+            credential_store if credential_store is not None else NodeCredentialStore()
+        )
+        self._device_credential = str(device_credential or "")
+        self._credential_loaded = bool(self._device_credential)
+        # The session node token remains ephemeral and is never included in
         # request JSON or a client state/snapshot object.
         self._node_token = ""
 
@@ -116,6 +123,17 @@ class MaryClient:
     def nodes(self) -> dict[str, Any]:
         return self._request("GET", "/v1/nodes")
 
+    def revoke_node(self, node_id: str) -> dict[str, Any]:
+        clean = str(node_id or "").strip()
+        if not clean:
+            raise ValueError("node_id is required.")
+        return self._request(
+            "POST",
+            "/v1/nodes/revoke",
+            {"node_id": clean},
+            timeout=min(self.timeout, 3.0),
+        )
+
     def register_node(
         self,
         *,
@@ -135,19 +153,52 @@ class MaryClient:
             "capabilities": list(capabilities or []),
             "local": bool(local),
         })
+        if not self._device_credential_transport_is_safe():
+            raise MaryProtocolError(
+                "Node registration credentials require HTTPS or a loopback Core endpoint."
+            )
+        device_credential = self._load_device_credential()
         response = self._request(
             "POST", "/v1/nodes/register", model.to_dict(),
             timeout=min(self.timeout, 3.0),
             authenticated=bool(self.token),
             node_authenticated=bool(self._node_token),
             enrollment_authenticated=bool(self.enrollment_grant),
+            device_credential_authenticated=bool(device_credential),
         )
         issued = response.get("node_token")
         if issued is not None:
             if not isinstance(issued, str) or not issued:
                 raise MaryProtocolError("Mary Core returned an invalid node token.")
             self._node_token = issued
+        # This bootstrap value is deliberately consumed here rather than passed
+        # onward to UI/status callers with the registration response.
+        issued_credential = response.pop("device_credential", None)
+        if issued_credential is not None:
+            if not isinstance(issued_credential, str) or not issued_credential:
+                raise MaryProtocolError("Mary Core returned an invalid device credential.")
+            try:
+                self._credential_store.save(self.device_id, issued_credential)
+            except Exception as exc:
+                raise MaryProtocolError("Could not securely store the device credential.") from exc
+            self._device_credential = issued_credential
+            self._credential_loaded = True
         return response
+
+    def _load_device_credential(self) -> str:
+        if not self._credential_loaded:
+            self._credential_loaded = True
+            try:
+                self._device_credential = str(
+                    self._credential_store.load(self.device_id) or ""
+                )
+            except Exception as exc:
+                raise MaryProtocolError("Could not read the local device credential.") from exc
+        return self._device_credential
+
+    def _device_credential_transport_is_safe(self) -> bool:
+        parsed = urlsplit(self.base_url)
+        return parsed.scheme.lower() == "https"
 
     def heartbeat_node(self) -> dict[str, Any]:
         model = NodeHeartbeatRequest.from_dict({"node_id": self.device_id})
@@ -300,6 +351,7 @@ class MaryClient:
         authenticated: bool = True,
         node_authenticated: bool = False,
         enrollment_authenticated: bool = False,
+        device_credential_authenticated: bool = False,
         timeout: float | None = None,
     ) -> dict[str, Any]:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -314,6 +366,8 @@ class MaryClient:
             headers["X-Mary-Node-Token"] = self._node_token
         if enrollment_authenticated:
             headers["X-Mary-Enrollment-Grant"] = self.enrollment_grant
+        if device_credential_authenticated:
+            headers["X-Mary-Device-Credential"] = self._device_credential
         request = Request(self.base_url + path, data=body, headers=headers, method=method)
         try:
             with urlopen(request, timeout=self.timeout if timeout is None else float(timeout)) as response:

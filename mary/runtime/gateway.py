@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 from mary.distributed import CapabilityDescriptor, NodeDescriptor, preview_capability_task
 from mary.protocol.client import MaryClient
+from mary.protocol.credential_store import CredentialStoreError, NodeCredentialStore
 from mary.runtime.application import MaryApplication
 
 
@@ -610,6 +611,7 @@ def gateway_from_environment(
     core_url = os.getenv("MARY_CORE_URL", "").strip()
     core_token = os.getenv("MARY_CORE_TOKEN", "").strip()
     enrollment_grant = os.getenv("MARY_NODE_ENROLLMENT_GRANT", "").strip()
+    device_credential = ""
 
     if core_url:
         if application is not None:
@@ -617,10 +619,20 @@ def gateway_from_environment(
                 "MARY_CORE_URL selects remote client mode; do not supply a local "
                 "MaryApplication because that would create ambiguous authority."
             )
-        if node_only and not enrollment_grant:
-            raise RuntimeError(
-                "MARY_NODE_ENROLLMENT_GRANT is required for a node-only gateway."
-            )
+        credential_store = None
+        if node_only:
+            credential_store = NodeCredentialStore()
+            try:
+                device_credential = credential_store.load(device_id)
+            except CredentialStoreError as exc:
+                raise RuntimeError(
+                    "The local node credential could not be read safely."
+                ) from exc
+            if not enrollment_grant and not device_credential:
+                raise RuntimeError(
+                    "A one-time MARY_NODE_ENROLLMENT_GRANT or stored node credential "
+                    "is required for a node-only gateway."
+                )
         if not node_only and not core_token and not enrollment_grant:
             raise RuntimeError(
                 "MARY_CORE_TOKEN or MARY_NODE_ENROLLMENT_GRANT is required when "
@@ -631,6 +643,8 @@ def gateway_from_environment(
                 core_url,
                 token="" if node_only else core_token,
                 enrollment_grant=enrollment_grant,
+                device_credential=device_credential,
+                credential_store=credential_store,
                 device_id=device_id,
                 surface=surface,
             ),
