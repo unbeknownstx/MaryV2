@@ -799,7 +799,12 @@ class CognitiveOrchestrator:
                 source="llm_control_detector",
             )
 
-        if any(phrase in normalized for phrase in (
+        # Route names are often written as ``normal/free-first`` in Mary's own
+        # UI copy. Treat separators as spaces so that exact wording reliably
+        # clears a sticky local-only override instead of entering generation.
+        routing_text = re.sub(r"[/_-]+", " ", normalized)
+        routing_text = " ".join(routing_text.split())
+        if any(phrase in routing_text for phrase in (
             "use normal route", "use the normal route", "normal route",
             "go back to free first", "switch back to free first",
             "use free first", "free first", "clear model override",

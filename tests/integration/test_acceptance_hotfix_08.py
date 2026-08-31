@@ -15,6 +15,7 @@ class FakeProvider(LLMInterface):
         self.name = name
         self.content = content or f"{name} response"
         self.calls = 0
+        self.available = True
 
     def generate(self, messages, temperature=0.7, max_tokens=2048):
         self.calls += 1
@@ -27,7 +28,7 @@ class FakeProvider(LLMInterface):
         )
 
     def is_available(self):
-        return True
+        return self.available
 
     def provider_name(self):
         return self.name
@@ -75,6 +76,37 @@ def test_clearing_session_override_returns_to_free_first():
     router.clear_session_override()
     assert router.generate(_message()).provider == "groq"
     assert providers["groq"].calls == 1
+
+
+def test_normal_slash_free_first_wording_clears_local_only_and_restores_cloud(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+    router, providers = _router()
+
+    mary.llm = router
+    mary.reasoning.llm = router
+    mary.reflection.llm = router
+    mary.expert_consultant.router = router
+    mary.task_orchestrator.router = router
+    mary.task_executor.router = router
+
+    enabled = mary.process("go ahead and use ollama my local llm")
+    local_answer = mary.process("idk i just wanna talk for a bit")
+    providers["ollama"].available = False
+    cleared = mary.process("Use the normal/free-first route.")
+    cloud_answer = mary.process("i still just wanna talk for a bit")
+
+    assert "Local-only generation is active" in enabled.final_response
+    assert local_answer.reasoning.metadata["provider"] == "ollama"
+    assert cleared.reasoning.metadata["llm_skipped"] is True
+    assert "normal routing policy is active again" in cleared.final_response
+    assert router.session_override_status() == {"provider": None, "route": None}
+    assert cloud_answer.reasoning.metadata["provider"] == "groq"
+    assert providers["ollama"].calls >= 1
+    assert providers["groq"].calls >= 1
 
 
 def test_explicit_expert_route_beats_private_session_override():

@@ -3629,13 +3629,14 @@ class Mary:
                 response = (
                     "Okay. Local-only generation is active for this process now. "
                     "My ordinary model-backed turns will route through Ollama until you tell me "
-                    "to return to the normal/free-first route. Use /last after a generated turn "
-                    "to verify the provider that actually answered."
+                    "to return to the normal/free-first route. Use /last in Terminal Mary, "
+                    "or open Runtime → Last Turn in Mobile/PWA, to verify what answered."
                 )
             else:
                 response = (
                     f"Okay. I'm temporarily routing ordinary model-backed turns through {requested}. "
-                    "Use /last after a generated turn to verify what actually answered. "
+                    "Use /last in Terminal Mary, or open Runtime → Last Turn in Mobile/PWA, "
+                    "to verify what answered. "
                     "Tell me to use the normal/free-first route when you want to clear it."
                 )
             return {
