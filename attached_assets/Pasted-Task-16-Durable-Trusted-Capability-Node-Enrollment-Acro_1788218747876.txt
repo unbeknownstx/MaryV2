@@ -1,0 +1,99 @@
+Task #16 — Durable Trusted Capability-Node Enrollment Across Core Restarts
+
+Fix the specific resilience gap discovered during live MaryV2 acceptance testing.
+
+Problem: Mary Core currently keeps capability-node registrations, enrollment grants, session credentials, and enrollment audit state process-locally. When Railway/Core restarts, Mary’s canonical durable state survives, but Core forgets previously trusted capability machines. The Windows node can then remain running with an obsolete session/grant and cannot securely reconnect without local creator intervention.
+
+Goal: Preserve durable trust in an already-approved physical capability node across Core process restarts while keeping individual node sessions ephemeral, scoped, revocable, and possession-bound.
+
+Desired model:
+
+durable trusted device identity/enrollment
+→ Core restart
+→ old session becomes invalid
+→ known node reconnects using durable device proof
+→ Core verifies the previously trusted machine
+→ Core issues a fresh scoped session
+→ node resumes heartbeat/capabilities automatically
+
+Do not make node session tokens durable.
+
+Do not weaken Task #7 session isolation.
+
+Do not allow possession of a node ID alone to establish trust.
+
+Do not allow stale tasks or previous session ownership to transfer to the new session.
+
+Reuse the existing canonical persistence, enrollment, node registry, broker, permissions, and session-security architecture wherever possible. Do not create another node authority.
+
+Persist only the minimum information required to recognize a previously creator-approved trusted physical node securely. Secrets must use the project’s existing protected-secret/credential mechanisms where appropriate and must never appear in normal state projections, logs, traces, Mobile responses, or diagnostics.
+
+A Core restart must reconstruct trusted-device enrollment state while discarding ephemeral session state.
+
+After restart, the node must prove possession of its durable device credential before Core issues a new scoped session generation.
+
+Explicitly preserve these invariants:
+
+* old session token invalid after restart
+* stale task ownership invalid
+* node ID alone insufficient
+* unrelated machine cannot impersonate enrolled node
+* revoked node cannot automatically reconnect
+* re-enrollment cannot inherit old work
+* capabilities remain permission-scoped
+* creator and node credentials remain separate
+* node cannot become Mary identity authority
+* sleep/OFFLINE lifecycle gates from Task #13 remain enforced
+* Task #12 observability remains sanitized
+
+Add explicit creator-controlled node revocation. Revocation must remove durable trust so that the machine requires deliberate enrollment again.
+
+Verify migration behavior for existing installations. Do not silently trust arbitrary historical node IDs simply because they existed before this feature.
+
+Add tests proving:
+
+* first approved enrollment establishes durable device trust
+* normal session remains ephemeral
+* Core restart invalidates old session
+* trusted node can automatically authenticate after restart
+* fresh scoped session is issued
+* same canonical node identity is retained
+* stale session rejected
+* stale task result rejected
+* stale task cannot be inherited
+* incorrect durable credential rejected
+* node-ID spoof rejected
+* revoked node rejected after restart
+* replacement/re-enrollment semantics remain safe
+* multiple independently trusted nodes remain isolated
+* sleeping Mary does not accidentally dispatch new node work
+* OFFLINE Mary does not accidentally dispatch new node work
+* wake does not weaken node authentication
+* durable trust survives persistence reconstruction
+* corrupt trust state fails safely
+* credentials never appear in status/diagnostic projections
+
+Run focused security/resilience tests, affected regression suites, and the full suite.
+
+Do not attempt to recover my currently inaccessible Windows PC during this task. We will perform one deliberate local migration/re-enrollment when I am physically at the PC after this architecture is ready.
+
+Independently review the implementation for authentication, replay, impersonation, stale-session inheritance, secret leakage, lifecycle bypass, and duplicate-authority problems.
+
+Commit and report:
+
+1. root cause addressed
+2. architecture before/after
+3. durable vs ephemeral node state
+4. authentication/reconnect sequence
+5. revocation behavior
+6. restart behavior
+7. lifecycle interaction
+8. files changed
+9. security review
+10. focused tests
+11. full-suite results
+12. commit hash
+13. migration procedure for my existing Windows node
+14. anything requiring physical-device verification
+
+Stop after this task. Do not begin external integrations.
