@@ -61,3 +61,6 @@ __MACOSX/
 .vscode/*
 !.vscode/tasks.json
 .idea/
+
+# Local personal/archive folder
+/new sort this/

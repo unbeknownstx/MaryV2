@@ -455,62 +455,324 @@ class CharacterSourcebook:
         limit: int = 6,
         max_characters: int = 4200,
     ) -> CharacterSourceSelection:
-        """Retrieve the smallest relevant authored character evidence set."""
+        """Retrieve the smallest relevant authored character evidence set.
+
+        Deterministic, local retrieval only. The sourcebook remains the single
+        authored-character authority. Small concept families improve precision;
+        context guards prevent lexical collisions from padding TurnMind.
+        """
+        # CHARACTER_RETRIEVAL_BETA_2026_08_31
         if not self.records:
-            return CharacterSourceSelection(str(query), (), 0, self.sourcebook_hash)
-        query_tokens = self._tokens(query)
-        lowered = str(query or "").lower()
-        negative_context = any(word in lowered for word in ("wrong", "not mary", "generic", "bad response", "avoid", "never"))
-        public_context = any(word in lowered for word in ("stream", "audience", "public", "chat", "perform"))
+            return CharacterSourceSelection(
+                str(query),
+                (),
+                0,
+                self.sourcebook_hash,
+            )
+
+        raw_query = str(query or "")
+        lowered = raw_query.lower()
+        query_tokens = self._tokens(raw_query)
+
+        concept_families = (
+            (
+                {"comfort", "comforts", "console", "reassure", "upset", "grief", "sad", "cry", "hurt"},
+                {"care", "comfort", "help", "stay", "protect", "space", "tender", "upset", "hurt", "attention", "action"},
+            ),
+            (
+                {"bucko", "catchphrase", "tic", "repeating", "repeated", "saying"},
+                {"bucko", "catchphrase", "tic", "distinctive", "vocabulary", "repeat", "repetition", "humor", "phrase"},
+            ),
+            (
+                {"angry", "anger", "furious", "mad", "pissed"},
+                {"anger", "angry", "still", "neutral", "quiet", "shouting", "restraint"},
+            ),
+            (
+                {"steal", "steals", "stole", "food", "fries", "plate"},
+                {"steal", "stole", "theft", "food", "plate", "retaliation", "territorial"},
+            ),
+            (
+                {"remember", "memory", "dave", "fictional", "canon"},
+                {"remember", "memory", "fictional", "canon", "autobiographical", "history", "dave", "lived"},
+            ),
+            (
+                {"deadline", "late", "procrastinate", "procrastinating", "rush"},
+                {"deadline", "late", "lateness", "procrastination", "frantic", "focus", "work"},
+            ),
+        )
+
+        comfort_context = bool(
+            query_tokens.intersection(
+                {
+                    "comfort", "comforts", "console", "reassure",
+                    "grief", "sad", "cry", "upset",
+                }
+            )
+        )
+        attraction_context = (
+            bool(
+                query_tokens.intersection(
+                    {
+                        "flustered", "crush", "attracted", "attraction",
+                        "beautiful", "flirt", "flirting",
+                    }
+                )
+            )
+            or "likes someone" in lowered
+            or "like someone" in lowered
+        )
+        food_theft_context = (
+            bool(query_tokens.intersection({"steal", "steals", "stole"}))
+            and bool(query_tokens.intersection({"food", "fries", "plate"}))
+        )
+        retaliation_context = any(
+            phrase in lowered
+            for phrase in (
+                "steals back", "steal back", "retaliate", "retaliation",
+                "gets even", "revenge", "takes food back",
+            )
+        )
+        memory_boundary_context = (
+            bool(query_tokens.intersection({"remember", "memory"}))
+            and bool(
+                query_tokens.intersection(
+                    {"dave", "fictional", "canon"}
+                )
+            )
+        )
+
+        expanded_tokens: set[str] = set()
+        for triggers, expansions in concept_families:
+            if query_tokens.intersection(triggers):
+                expanded_tokens.update(expansions)
+
+        if attraction_context:
+            expanded_tokens.update(
+                {
+                    "attraction", "attracted", "shy", "nervous",
+                    "flustered", "romantic", "compliment",
+                    "beautiful", "flirt", "flirting",
+                }
+            )
+
+        negative_context = any(
+            phrase in lowered
+            for phrase in (
+                "wrong", "not mary", "generic", "bad response",
+                "avoid", "never", "keeps saying", "too much",
+                "repeating", "repeated",
+            )
+        )
+        public_context = any(
+            word in lowered
+            for word in ("stream", "audience", "public", "chat", "perform")
+        )
 
         scored: list[tuple[float, CharacterSourceRecord]] = []
+
         for record in self.records:
-            body_tokens = self._tokens(f"{record.heading} {record.text}")
-            exact_overlap = len(query_tokens.intersection(body_tokens))
+            heading_lower = record.heading.lower()
+            body_tokens = self._tokens(
+                f"{record.heading} {record.text}"
+            )
+
+            exact_overlap = len(
+                query_tokens.intersection(body_tokens)
+            )
+            concept_overlap = len(
+                expanded_tokens.intersection(body_tokens)
+            )
+
             related_overlap = 0
             for query_token in query_tokens:
                 if query_token in body_tokens or len(query_token) < 5:
                     continue
                 if any(
                     len(body_token) >= 5
-                    and (body_token.startswith(query_token) or query_token.startswith(body_token))
+                    and (
+                        body_token.startswith(query_token)
+                        or query_token.startswith(body_token)
+                    )
                     for body_token in body_tokens
                 ):
                     related_overlap += 1
-            overlap = exact_overlap + (0.65 * related_overlap)
+
+            lexical = 0.0
             if query_tokens:
-                lexical = overlap / max(1.0, len(query_tokens) ** 0.5)
-            else:
-                lexical = 0.0
+                lexical = (
+                    exact_overlap
+                    + (0.65 * related_overlap)
+                    + (0.55 * concept_overlap)
+                ) / max(
+                    1.0,
+                    len(query_tokens) ** 0.5,
+                )
+
             labels = record.evidence_labels
-            label_weight = max(_LABEL_WEIGHT.get(label, 0.75) for label in labels)
-            phrase_bonus = 0.0
+            label_weight = max(
+                _LABEL_WEIGHT.get(label, 0.75)
+                for label in labels
+            )
+
+            heading_bonus = 0.0
             for token in query_tokens:
-                if token in record.heading.lower():
-                    phrase_bonus += 0.18
+                if token in heading_lower:
+                    heading_bonus += 0.20
+            for token in expanded_tokens:
+                if token in heading_lower:
+                    heading_bonus += 0.10
+
             context_bonus = 0.0
             if negative_context and record.is_negative_example:
-                context_bonus += 0.8
-            if public_context and CharacterEvidenceLabel.PUBLIC_PERFORMER in labels:
-                context_bonus += 0.5
-            # With no lexical overlap, only allow high-authority baseline records
-            # when the query is tiny; otherwise irrelevant material stays out.
-            score = lexical * label_weight + phrase_bonus + context_bonus
+                context_bonus += 0.90
+            if (
+                public_context
+                and CharacterEvidenceLabel.PUBLIC_PERFORMER in labels
+            ):
+                context_bonus += 0.50
+
+            score = (
+                lexical * label_weight
+                + heading_bonus
+                + context_bonus
+            )
+
+            if (
+                score > 0.0
+                and record.source_name
+                == "mary_character_authority_alpha.jsonl"
+            ):
+                score += 0.08
+
+            # Comfort queries need direct care/comfort relevance. This keeps
+            # "someone she loves" from retrieving unrelated love/anger or
+            # expertise records merely because one word overlaps.
+            if comfort_context:
+                comfort_evidence = body_tokens.intersection(
+                    {
+                        "care", "comfort", "help", "stay", "protect",
+                        "space", "tender", "upset", "hurt", "attention",
+                        "support", "clinical", "therapeutic", "templated",
+                    }
+                )
+                if not comfort_evidence:
+                    score -= 1.00
+                if body_tokens.intersection({"anger", "angry"}) and not body_tokens.intersection(
+                    {"care", "comfort", "hurt", "upset", "protect"}
+                ):
+                    score -= 0.50
+
+            # Attraction means a person/chemistry context, not "I like that idea."
+            if attraction_context and not body_tokens.intersection(
+                {
+                    "attraction", "attracted", "shy", "nervous",
+                    "flustered", "romantic", "compliment",
+                    "beautiful", "flirt", "flirting",
+                }
+            ):
+                score -= 0.80
+
+            # When someone steals Mary's food, first-offense evidence should
+            # lead. Retaliation remains available, but should not outrank the
+            # initiating behavior unless the query is explicitly about payback.
+            if food_theft_context and not retaliation_context:
+                if record.heading.startswith("EX-001"):
+                    score += 0.60
+                if record.heading.startswith("EX-002"):
+                    score -= 0.20
+            elif retaliation_context and record.heading.startswith("EX-002"):
+                score += 0.60
+
+            # AI/fictional-memory boundary questions should stay focused on
+            # identity, canon and anti-autobiography evidence rather than
+            # generic Dave-adjacent humor.
+            if memory_boundary_context:
+                # CHARACTER_RETRIEVAL_BETA2_MEMORY_BOUNDARY_2026_08_31
+                # Memory/autobiography boundary queries need explicit AI, FC,
+                # or NEG evidence. Generic DNA-only Dave adjacency is noise.
+                if not (
+                    record.is_ai_mary
+                    or record.is_fictional_canon
+                    or record.is_negative_example
+                ):
+                    continue
+
+                boundary_evidence = body_tokens.intersection(
+                    {
+                        "remember", "memory", "fictional", "canon",
+                        "autobiographical", "history", "lived",
+                        "substitution", "identity",
+                    }
+                )
+                if not boundary_evidence:
+                    score -= 0.75
+                if record.is_negative_example:
+                    score += 0.20
+                if record.is_ai_mary:
+                    score += 0.15
+                if record.is_fictional_canon:
+                    score += 0.10
+
             if score > 0.0:
                 scored.append((score, record))
 
-        scored.sort(key=lambda row: (row[0], -row[1].ordinal), reverse=True)
+        if not scored:
+            return CharacterSourceSelection(
+                raw_query,
+                (),
+                len(self.records),
+                self.sourcebook_hash,
+            )
+
+        scored.sort(
+            key=lambda row: (row[0], -row[1].ordinal),
+            reverse=True,
+        )
+
+        # Six is a ceiling, not a quota.
+        best_score = scored[0][0]
+        relative_floor = max(
+            0.25,
+            best_score * 0.42,
+        )
+
         chosen: list[CharacterSourceRecord] = []
         used = 0
-        for _score, record in scored:
-            if len(chosen) >= max(1, min(int(limit), 12)):
+        bounded_limit = max(
+            1,
+            min(int(limit), 12),
+        )
+        character_budget = max(
+            500,
+            int(max_characters),
+        )
+
+        for score, record in scored:
+            if len(chosen) >= bounded_limit:
                 break
-            cost = len(record.text) + len(record.heading) + 80
-            if chosen and used + cost > max(500, int(max_characters)):
+            if score < relative_floor:
                 continue
+
+            cost = (
+                len(record.text)
+                + len(record.heading)
+                + 80
+            )
+            if (
+                chosen
+                and used + cost > character_budget
+            ):
+                continue
+
             chosen.append(record)
             used += cost
-        return CharacterSourceSelection(str(query), tuple(chosen), len(self.records), self.sourcebook_hash)
+
+        return CharacterSourceSelection(
+            raw_query,
+            tuple(chosen),
+            len(self.records),
+            self.sourcebook_hash,
+        )
 
     def snapshot(self) -> dict[str, Any]:
         labels: dict[str, int] = {}
