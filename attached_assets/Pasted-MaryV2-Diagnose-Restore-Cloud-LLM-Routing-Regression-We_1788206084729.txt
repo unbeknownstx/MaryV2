@@ -1,0 +1,461 @@
+MaryV2 — Diagnose & Restore Cloud LLM Routing Regression
+
+We need to diagnose a regression in the CURRENT MaryV2 repository/runtime.
+
+Do not redesign the architecture, replace the provider system, or broadly refactor Mary.
+
+Current observed behavior
+
+Mary Core 13.2 is online and the mobile/PWA successfully communicates with Core.
+
+Mary’s distributed local-generation path is working.
+
+When local-only generation is enabled, Mary reports that ordinary model-backed turns route through Ollama. The Windows capability node has previously successfully provided local Ollama inference.
+
+However, after returning Mary to her normal/free-first generation route, ordinary conversational generation currently fails and Mary returns the deterministic fallback:
+
+“Ugh—my language engines aren’t available right now. I’m still here, and my memory, relationship state, priorities, tools, and local systems are still running; I just can’t improvise a full conversational reply until a language model is available.”
+
+This is a REGRESSION.
+
+Cloud/provider generation worked previously.
+
+Historically MaryV2 has used a provider/router architecture involving providers such as:
+
+* Groq
+* Gemini
+* OpenRouter
+* OpenAI where configured
+* Ollama/local routing
+
+The intended normal/free-first routing has historically included cloud/free providers before local fallback.
+
+Do NOT assume those historical details are still exactly correct. Inspect the CURRENT repository and configuration.
+
+Also observed:
+
+A /last command sent through Mary Mobile did not produce provider diagnostics. It instead entered the ordinary conversational generation path and returned the same language-engine fallback.
+
+Determine whether /last is actually supposed to exist in the current build before calling this a bug.
+
+⸻
+
+OBJECTIVE
+
+Restore the previously intended normal Mary generation route while preserving:
+
+* Mary Core 13.2
+* canonical identity/state
+* memory
+* CharacterSourcebook
+* Experience Evolution
+* autonomy
+* node architecture
+* distributed Ollama/local generation
+* mobile/PWA
+* desktop compatibility
+* existing provider abstractions
+* current protocol compatibility
+
+Do not disturb unrelated systems.
+
+⸻
+
+PHASE 1 — INSPECT BEFORE MODIFYING
+
+First locate and map the CURRENT generation path.
+
+Find the code responsible for:
+
+1. receiving a conversational turn
+2. assembling Mary context
+3. selecting cognition/generation
+4. provider routing
+5. free-first routing
+6. local-only routing
+7. provider registration
+8. environment/config loading
+9. provider health/configuration checks
+10. generation failure handling
+11. deterministic “language engines unavailable” fallback
+12. any /last or diagnostic command handling
+
+Trace the actual call path.
+
+Report the relevant files/classes/functions before making significant changes.
+
+⸻
+
+PHASE 2 — DETERMINE EFFECTIVE CONFIGURATION
+
+Inspect which providers the current runtime knows about.
+
+For every implemented provider, determine:
+
+* registered?
+* enabled?
+* credentials/config present?
+* model configured?
+* model name?
+* endpoint/base URL?
+* routing priority?
+* eligible for normal route?
+* eligible for free-first route?
+* eligible for local-only?
+* health/status?
+* actual generation success/failure?
+
+IMPORTANT:
+
+Never print secrets or complete API keys.
+
+For credentials report only:
+
+PRESENT / MISSING
+
+If useful, show a safely masked identifier such as the final 4 characters only.
+
+Do not expose secrets in logs, commits, output, or source files.
+
+⸻
+
+PHASE 3 — CHECK REPLIT VS PRODUCTION CONFIGURATION
+
+Determine where the currently running production Core gets its configuration.
+
+Mary Core has been deployed through Railway, while Replit is being used as a development environment.
+
+Therefore distinguish carefully between:
+
+* Replit environment/secrets
+* repository defaults/configuration
+* Railway production environment
+* Windows node environment
+* local .env behavior
+
+Do NOT conclude that a provider works in production merely because its key exists in Replit.
+
+Likewise, do not conclude that a provider is broken merely because Replit lacks a production-only secret.
+
+Identify the actual configuration authority for the live Core.
+
+If Railway configuration cannot be directly inspected from this environment, say that explicitly and determine everything possible from repository behavior first.
+
+⸻
+
+PHASE 4 — TEST PROVIDERS INDIVIDUALLY
+
+Create or use the smallest existing diagnostic mechanism possible.
+
+Test each configured cloud provider DIRECTLY rather than testing only through the complete router.
+
+For each provider record:
+
+PROVIDER
+CONFIGURED?
+MODEL
+REQUEST ATTEMPTED?
+HTTP/API RESULT
+SUCCESS/FAILURE
+FAILURE CLASS
+
+Classify failures such as:
+
+* missing credential
+* authentication
+* invalid model
+* model retired/deprecated
+* quota/rate limit
+* malformed request
+* timeout/network
+* provider adapter exception
+* empty response
+* parser/normalization failure
+* configuration gating
+* registration failure
+* unknown
+
+Do not expose sensitive response data.
+
+⸻
+
+PHASE 5 — TEST THE ROUTER
+
+After direct provider tests, test the actual normal/free-first router.
+
+We need to know:
+
+1. Which provider is attempted first?
+2. What happens when it fails?
+3. Does Mary advance to the next provider?
+4. Are exceptions swallowed?
+5. Can one broken provider prevent subsequent providers?
+6. Does the router incorrectly believe providers are unavailable?
+7. Does local-only mode alter persistent/process routing state?
+8. Does switching OUT of local-only correctly restore normal routing?
+9. Is Ollama intended to remain a final fallback in normal mode?
+10. Are provider failures observable diagnostically?
+
+Specifically test:
+
+NORMAL MODE
+→ generation
+
+LOCAL-ONLY MODE
+→ generation
+
+LOCAL-ONLY → NORMAL
+→ generation
+
+NORMAL → LOCAL-ONLY → NORMAL
+→ generation
+
+We need to catch state leakage.
+
+⸻
+
+PHASE 6 — HISTORICAL REGRESSION CHECK
+
+Use Git history if useful.
+
+Find the most recent revision where normal/free-first cloud generation was known or strongly evidenced to work.
+
+Compare provider/router-related changes between that state and current HEAD.
+
+Focus only on relevant changes:
+
+* provider registration
+* router configuration
+* environment loading
+* model names
+* local-only mode
+* distributed node routing
+* unified Core transition
+* generation failure handling
+* CharacterSourcebook/context integration if it affected generation
+* Experience Evolution changes if they affected generation
+
+Do not blindly revert commits.
+
+Identify the actual regression.
+
+⸻
+
+PHASE 7 — REPAIR MINIMALLY
+
+Once the cause is known, make the smallest coherent repair.
+
+Preferred order:
+
+1. configuration/model correction
+2. provider registration correction
+3. routing correction
+4. state restoration correction
+5. adapter correction
+6. broader refactor ONLY if evidence proves necessary
+
+Preserve the current architecture.
+
+Do not replace working systems simply to make the tests pass.
+
+⸻
+
+PHASE 8 — IMPROVE DIAGNOSTICS
+
+Mary should not simply collapse every provider failure into:
+
+“language engines aren’t available”
+
+internally.
+
+The user-facing Mary response can remain graceful.
+
+But diagnostics should retain information such as:
+
+provider attempted
+model attempted
+failure category
+fallback attempted
+provider ultimately selected
+latency
+local/cloud
+node used where applicable
+
+Do not expose credentials.
+
+Check whether an existing provider trace / generation trace / last-turn diagnostic already exists.
+
+If one exists, repair or expose it rather than inventing a duplicate.
+
+Check whether /last is intended to invoke it.
+
+If /last never existed in the current architecture, do NOT arbitrarily add it solely because we assumed it existed.
+
+Instead report the actual diagnostic mechanism.
+
+⸻
+
+PHASE 9 — TESTS
+
+Add regression tests covering the failure we actually discover.
+
+At minimum, where applicable, verify:
+
+Test A
+
+First provider fails → second provider is attempted.
+
+Test B
+
+Multiple cloud providers fail → appropriate fallback occurs.
+
+Test C
+
+Local-only mode uses only allowed local cognition.
+
+Test D
+
+Leaving local-only restores normal routing.
+
+Test E
+
+NORMAL → LOCAL → NORMAL does not leak routing state.
+
+Test F
+
+Provider failure does not damage Mary state/memory.
+
+Test G
+
+Deterministic fallback occurs only after all eligible generation routes genuinely fail.
+
+Test H
+
+Provider diagnostics preserve useful failure information without leaking secrets.
+
+Use mocks/fakes for provider unit tests.
+
+Do not burn API credits unnecessarily.
+
+Perform only a minimal live request where required to verify configuration.
+
+⸻
+
+PHASE 10 — VERIFY THE COMPLETE MARY PATH
+
+After repair, prove:
+
+Mobile/PWA
+→ Mary Core
+→ canonical Mary context
+→ normal cognition router
+→ working provider
+→ Mary response
+
+Then verify:
+
+Mobile/PWA
+→ Mary Core
+→ local-only
+→ Windows capability node
+→ Ollama
+→ Mary response
+
+Then:
+
+switch back to normal
+→ cloud/free-first generation works again.
+
+The distributed local path MUST remain functional after repairing cloud routing.
+
+⸻
+
+IMPORTANT PRESERVATION RULES
+
+Do not:
+
+* rewrite MaryV2
+* remove CharacterSourcebook
+* remove Experience Evolution
+* flatten Mary back into an LLM wrapper
+* change canonical identity architecture
+* remove distributed nodes
+* remove Ollama
+* delete historical systems without analysis
+* create duplicate routers
+* create duplicate provider registries
+* hardcode API keys
+* expose secrets
+* blindly revert recent upgrades
+* change unrelated UI
+* perform giant cleanup refactors
+
+This is a targeted regression investigation and repair.
+
+⸻
+
+WHEN FINISHED
+
+Give me:
+
+1. Root Cause
+
+Exactly what was broken.
+
+2. Why It Broke
+
+What changed or became invalid.
+
+3. Files Changed
+
+Every modified file and why.
+
+4. Provider Status
+
+For each provider:
+
+WORKING / CONFIGURED BUT FAILING / NOT CONFIGURED / DISABLED
+
+5. Router Status
+
+Show the effective routing order after repair.
+
+6. Local Ollama Status
+
+Confirm distributed local generation remains intact.
+
+7. Mode Switching
+
+Confirm NORMAL → LOCAL-ONLY → NORMAL works.
+
+8. Diagnostics
+
+Explain the actual current mechanism for viewing the provider/model used by a turn and failures.
+
+Tell me whether /last is genuinely supported.
+
+9. Tests
+
+Give exact test results and total pass/fail/skip counts.
+
+10. Production Deployment
+
+Tell me whether the fix exists only in the Replit workspace/repository or whether the live Railway Mary Core must still be redeployed.
+
+DO NOT claim the phone is fixed until the production Core actually contains the repair/configuration.
+
+11. Git Status
+
+Show modified/untracked files and whether anything has been committed/pushed.
+
+Do not push destructive or uncertain changes without explaining them.
+
+12. Final Verdict
+
+Answer plainly:
+
+Is Mary’s normal cloud/free-first cognition route restored?
+
+Does local-only Ollama still work?
+
+Can we safely proceed with the larger MaryV2 architecture audit?
