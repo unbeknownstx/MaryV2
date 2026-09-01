@@ -2,7 +2,7 @@
 
 QWebChannel JSON is a poor transport for a large base64 MP3/WAV payload.  The
 12.12.2 desktop stages synthesized bytes into a bounded temporary directory and
-sends a local file URL to the browser instead.  The cache is presentation-only:
+sends a bounded local URL to the browser instead.  The cache is presentation-only:
 it is not memory, is never indexed by Mary's reservoir, and is deleted on
 normal desktop shutdown / bounded by a small file count if the process exits
 abruptly.
@@ -14,22 +14,36 @@ from pathlib import Path
 import tempfile
 from threading import RLock
 import time
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 
 class DesktopAudioCache:
-    def __init__(self, root: str | Path | None = None, *, max_files: int = 12) -> None:
+    def __init__(
+        self,
+        root: str | Path | None = None,
+        *,
+        max_files: int = 12,
+        public_url_builder: Callable[[Path], str] | None = None,
+    ) -> None:
         base = Path(root) if root is not None else Path(tempfile.gettempdir()) / "MaryV2" / "voice-cache"
         self.root = base.expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_files = max(3, min(64, int(max_files)))
         self._lock = RLock()
         self._owned: set[Path] = set()
+        self._public_url_builder = public_url_builder
         self._prune()
 
+    def set_public_url_builder(
+        self, builder: Callable[[Path], str] | None
+    ) -> None:
+        """Route staged audio through the desktop loopback origin when set."""
+        with self._lock:
+            self._public_url_builder = builder
+
     def stage(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Return a copy whose audio is a local file URL when possible."""
+        """Return a copy whose audio uses the configured local transport when possible."""
         output = dict(payload or {})
         encoded = str(output.get("audio_base64") or "").strip()
         if not encoded:
@@ -49,8 +63,12 @@ class DesktopAudioCache:
             with self._lock:
                 path.write_bytes(audio)
                 self._owned.add(path)
-                output["audio_url"] = path.as_uri()
-                output["audio_transport"] = "file_url"
+                if self._public_url_builder is not None:
+                    output["audio_url"] = self._public_url_builder(path)
+                    output["audio_transport"] = "loopback_url"
+                else:
+                    output["audio_url"] = path.as_uri()
+                    output["audio_transport"] = "file_url"
                 output.pop("audio_base64", None)
                 self._prune_locked()
         except Exception:

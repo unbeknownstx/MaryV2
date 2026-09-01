@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 
 from mary.core.config import PathConfig
 from mary.launcher.bridge import MaryLauncherBridge
+from mary.desktop.static_server import DesktopStaticServer
 
 
 class MaryLauncherWindow(QMainWindow):
@@ -29,6 +30,7 @@ class MaryLauncherWindow(QMainWindow):
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
 
+        self._static_server = DesktopStaticServer(frontend_path.parent).start()
         self.bridge = MaryLauncherBridge()
         self.channel = QWebChannel(self.web.page())
         self.channel.registerObject("launcherBridge", self.bridge)
@@ -39,7 +41,7 @@ class MaryLauncherWindow(QMainWindow):
         self.bridge.minimizeRequested.connect(self.showMinimized)
         self.bridge.windowMoveRequested.connect(self._start_system_move)
 
-        self.web.setUrl(QUrl.fromLocalFile(str(frontend_path.resolve())))
+        self.web.setUrl(QUrl(self._static_server.url_for(frontend_path.name)))
 
     def show_centered(self) -> None:
         screen = self.screen() or QApplication.primaryScreen()
@@ -63,6 +65,13 @@ class MaryLauncherWindow(QMainWindow):
                 handle.startSystemMove()
             except Exception:
                 pass
+
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        try:
+            self._static_server.stop()
+        finally:
+            event.accept()
 
     def _show_error(self, message: str) -> None:
         QMessageBox.warning(self, "Mary Launcher", str(message))

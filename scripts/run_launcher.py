@@ -2,15 +2,8 @@
 
 from __future__ import annotations
 
-from mary.desktop.webengine_bootstrap import configure_qtwebengine
-
 
 def main() -> int:
-    # The launcher is built by the same Vite pipeline and uses the same local
-    # file:// asset model as the main desktop shell.  Configure WebEngine before
-    # importing the Qt window for identical macOS behavior.
-    configure_qtwebengine()
-
     try:
         from mary.launcher.window import run_launcher
     except ModuleNotFoundError as exc:

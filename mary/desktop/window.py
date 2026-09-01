@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 from mary.desktop.bridge import MaryDesktopBridge
 from mary.desktop.device_node import DesktopCapabilityNodeAgent
 from mary.desktop.remote_application import RemoteMaryApplicationView
+from mary.desktop.static_server import DesktopStaticServer
 from mary.desktop.authority import resolve_desktop_application
 from mary.runtime.application import MaryApplication, create_application
 
@@ -48,6 +49,11 @@ class MaryDesktopWindow(QMainWindow):
         super().__init__()
         self.application = application
         self.bridge = MaryDesktopBridge(application)
+        self._static_server = DesktopStaticServer(
+            frontend_path.parent,
+            voice_root=self.bridge.audio_cache.root,
+        ).start()
+        self.bridge.audio_cache.set_public_url_builder(self._static_server.voice_url)
         self.node_agent: DesktopCapabilityNodeAgent | None = None
         if isinstance(application, RemoteMaryApplicationView):
             self.node_agent = DesktopCapabilityNodeAgent(
@@ -94,7 +100,10 @@ class MaryDesktopWindow(QMainWindow):
         self.bridge.maximizeRequested.connect(self._toggle_maximized)
         self.bridge.closeRequested.connect(self.close)
         self.bridge.windowMoveRequested.connect(self._start_system_move)
-        self.web.setUrl(QUrl.fromLocalFile(str(frontend_path.resolve())))
+        # Vite ES-module builds are not reliable from file:// on macOS QtWebEngine:
+        # Chromium can render the HTML/CSS while blocking module chunks under a
+        # null file origin. Use a loopback-only same-origin static server instead.
+        self.web.setUrl(QUrl(self._static_server.url_for(frontend_path.name)))
 
         # Game-style display controls. F11 or Alt+Enter enters true fullscreen;
         # Escape returns to the previous maximized/windowed state.
@@ -176,6 +185,7 @@ class MaryDesktopWindow(QMainWindow):
             if self.node_agent is not None:
                 self.node_agent.stop()
             self.bridge.close()
+            self._static_server.stop()
         finally:
             event.accept()
 

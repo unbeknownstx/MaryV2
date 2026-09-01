@@ -1,0 +1,359 @@
+diff --git a/mary/desktop/audio_cache.py b/mary/desktop/audio_cache.py
+index 7975331..c20f501 100644
+--- a/mary/desktop/audio_cache.py
++++ b/mary/desktop/audio_cache.py
+@@ -2,7 +2,7 @@
+ 
+ QWebChannel JSON is a poor transport for a large base64 MP3/WAV payload.  The
+ 12.12.2 desktop stages synthesized bytes into a bounded temporary directory and
+-sends a local file URL to the browser instead.  The cache is presentation-only:
++sends a bounded local URL to the browser instead.  The cache is presentation-only:
+ it is not memory, is never indexed by Mary's reservoir, and is deleted on
+ normal desktop shutdown / bounded by a small file count if the process exits
+ abruptly.
+@@ -14,22 +14,36 @@ from pathlib import Path
+ import tempfile
+ from threading import RLock
+ import time
+-from typing import Any
++from typing import Any, Callable
+ from uuid import uuid4
+ 
+ 
+ class DesktopAudioCache:
+-    def __init__(self, root: str | Path | None = None, *, max_files: int = 12) -> None:
++    def __init__(
++        self,
++        root: str | Path | None = None,
++        *,
++        max_files: int = 12,
++        public_url_builder: Callable[[Path], str] | None = None,
++    ) -> None:
+         base = Path(root) if root is not None else Path(tempfile.gettempdir()) / "MaryV2" / "voice-cache"
+         self.root = base.expanduser().resolve()
+         self.root.mkdir(parents=True, exist_ok=True)
+         self.max_files = max(3, min(64, int(max_files)))
+         self._lock = RLock()
+         self._owned: set[Path] = set()
++        self._public_url_builder = public_url_builder
+         self._prune()
+ 
++    def set_public_url_builder(
++        self, builder: Callable[[Path], str] | None
++    ) -> None:
++        """Route staged audio through the desktop loopback origin when set."""
++        with self._lock:
++            self._public_url_builder = builder
++
+     def stage(self, payload: dict[str, Any]) -> dict[str, Any]:
+-        """Return a copy whose audio is a local file URL when possible."""
++        """Return a copy whose audio uses the configured local transport when possible."""
+         output = dict(payload or {})
+         encoded = str(output.get("audio_base64") or "").strip()
+         if not encoded:
+@@ -49,8 +63,12 @@ class DesktopAudioCache:
+             with self._lock:
+                 path.write_bytes(audio)
+                 self._owned.add(path)
+-                output["audio_url"] = path.as_uri()
+-                output["audio_transport"] = "file_url"
++                if self._public_url_builder is not None:
++                    output["audio_url"] = self._public_url_builder(path)
++                    output["audio_transport"] = "loopback_url"
++                else:
++                    output["audio_url"] = path.as_uri()
++                    output["audio_transport"] = "file_url"
+                 output.pop("audio_base64", None)
+                 self._prune_locked()
+         except Exception:
+diff --git a/mary/desktop/static_server.py b/mary/desktop/static_server.py
+new file mode 100644
+index 0000000..0e7fe89
+--- /dev/null
++++ b/mary/desktop/static_server.py
+@@ -0,0 +1,125 @@
++"""Loopback-only static server for Mary Desktop/Launcher WebEngine assets.
++
++Qt WebEngine on macOS follows Chromium's stricter file-origin rules. A Vite
++production build opened through ``file://`` can display its HTML while Chromium
++blocks the ES-module chunks as cross-origin resources, leaving the splash screen
++stuck before Mary's JavaScript boot sequence begins.
++
++Serve the already-built ``desktop/dist`` directory from an ephemeral
++``127.0.0.1`` HTTP port instead. This gives every Vite module/CSS/manifest asset
++a normal same-origin URL without exposing Mary to the LAN or creating another
++Mary runtime. The server is presentation-only and is stopped with the window.
++"""
++from __future__ import annotations
++
++from functools import partial
++from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
++from pathlib import Path
++from threading import Thread
++from typing import Final
++from urllib.parse import quote, unquote, urlsplit
++
++
++_VOICE_PREFIX: Final[str] = "/__mary_voice__/"
++
++
++class _MaryStaticHandler(SimpleHTTPRequestHandler):
++    """Serve desktop assets plus Mary's bounded temporary voice cache."""
++
++    server_version = "MaryDesktopStatic/1.0"
++
++    def log_message(self, format: str, *args) -> None:  # noqa: A002
++        # Keep normal Mary startup quiet. WebEngine/JS diagnostics remain
++        # available through MaryWebEnginePage and DevTools when requested.
++        return
++
++    def end_headers(self) -> None:
++        # Desktop builds are local development artifacts. Avoid stale Vite
++        # chunks after a rebuild while keeping all traffic on loopback.
++        self.send_header("Cache-Control", "no-store")
++        super().end_headers()
++
++    def translate_path(self, path: str) -> str:
++        parsed_path = unquote(urlsplit(path).path)
++        if parsed_path.startswith(_VOICE_PREFIX):
++            voice_root = getattr(self.server, "mary_voice_root", None)
++            if voice_root is not None:
++                name = Path(parsed_path[len(_VOICE_PREFIX):]).name
++                candidate = (Path(voice_root) / name).resolve()
++                root = Path(voice_root).resolve()
++                try:
++                    candidate.relative_to(root)
++                except ValueError:
++                    return str(root / "__blocked__")
++                return str(candidate)
++        return super().translate_path(path)
++
++
++class DesktopStaticServer:
++    """Ephemeral loopback server for one desktop/dist tree."""
++
++    def __init__(self, root: str | Path, *, voice_root: str | Path | None = None) -> None:
++        self.root = Path(root).expanduser().resolve()
++        self.voice_root = (
++            Path(voice_root).expanduser().resolve() if voice_root is not None else None
++        )
++        self._httpd: ThreadingHTTPServer | None = None
++        self._thread: Thread | None = None
++
++    @property
++    def base_url(self) -> str:
++        if self._httpd is None:
++            raise RuntimeError("Desktop static server has not been started")
++        host, port = self._httpd.server_address[:2]
++        return f"http://{host}:{port}"
++
++    def start(self) -> "DesktopStaticServer":
++        if self._httpd is not None:
++            return self
++        if not self.root.is_dir():
++            raise FileNotFoundError(f"Desktop static root does not exist: {self.root}")
++
++        handler = partial(_MaryStaticHandler, directory=str(self.root))
++        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
++        httpd.daemon_threads = True
++        setattr(httpd, "mary_voice_root", self.voice_root)
++        thread = Thread(
++            target=httpd.serve_forever,
++            name="MaryDesktopStaticServer",
++            daemon=True,
++        )
++        self._httpd = httpd
++        self._thread = thread
++        thread.start()
++        return self
++
++    def url_for(self, relative_path: str = "index.html") -> str:
++        clean = str(relative_path or "index.html").replace("\\", "/").lstrip("/")
++        return f"{self.base_url}/{quote(clean, safe='/')}"
++
++    def voice_url(self, path: str | Path) -> str:
++        candidate = Path(path).expanduser().resolve()
++        if self.voice_root is None:
++            raise RuntimeError("No voice root is configured")
++        candidate.relative_to(self.voice_root)
++        return f"{self.base_url}{_VOICE_PREFIX}{quote(candidate.name)}"
++
++    def stop(self) -> None:
++        httpd = self._httpd
++        thread = self._thread
++        self._httpd = None
++        self._thread = None
++        if httpd is None:
++            return
++        try:
++            httpd.shutdown()
++        finally:
++            httpd.server_close()
++        if thread is not None and thread.is_alive():
++            thread.join(timeout=2.0)
++
++    def __enter__(self) -> "DesktopStaticServer":
++        return self.start()
++
++    def __exit__(self, exc_type, exc, tb) -> None:
++        self.stop()
+diff --git a/mary/desktop/window.py b/mary/desktop/window.py
+index 290ecb9..9936f5b 100644
+--- a/mary/desktop/window.py
++++ b/mary/desktop/window.py
+@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+ from mary.desktop.bridge import MaryDesktopBridge
+ from mary.desktop.device_node import DesktopCapabilityNodeAgent
+ from mary.desktop.remote_application import RemoteMaryApplicationView
++from mary.desktop.static_server import DesktopStaticServer
+ from mary.desktop.authority import resolve_desktop_application
+ from mary.runtime.application import MaryApplication, create_application
+ 
+@@ -48,6 +49,11 @@ class MaryDesktopWindow(QMainWindow):
+         super().__init__()
+         self.application = application
+         self.bridge = MaryDesktopBridge(application)
++        self._static_server = DesktopStaticServer(
++            frontend_path.parent,
++            voice_root=self.bridge.audio_cache.root,
++        ).start()
++        self.bridge.audio_cache.set_public_url_builder(self._static_server.voice_url)
+         self.node_agent: DesktopCapabilityNodeAgent | None = None
+         if isinstance(application, RemoteMaryApplicationView):
+             self.node_agent = DesktopCapabilityNodeAgent(
+@@ -94,7 +100,10 @@ class MaryDesktopWindow(QMainWindow):
+         self.bridge.maximizeRequested.connect(self._toggle_maximized)
+         self.bridge.closeRequested.connect(self.close)
+         self.bridge.windowMoveRequested.connect(self._start_system_move)
+-        self.web.setUrl(QUrl.fromLocalFile(str(frontend_path.resolve())))
++        # Vite ES-module builds are not reliable from file:// on macOS QtWebEngine:
++        # Chromium can render the HTML/CSS while blocking module chunks under a
++        # null file origin. Use a loopback-only same-origin static server instead.
++        self.web.setUrl(QUrl(self._static_server.url_for(frontend_path.name)))
+ 
+         # Game-style display controls. F11 or Alt+Enter enters true fullscreen;
+         # Escape returns to the previous maximized/windowed state.
+@@ -176,6 +185,7 @@ class MaryDesktopWindow(QMainWindow):
+             if self.node_agent is not None:
+                 self.node_agent.stop()
+             self.bridge.close()
++            self._static_server.stop()
+         finally:
+             event.accept()
+ 
+diff --git a/mary/launcher/window.py b/mary/launcher/window.py
+index bf8b831..c09fe12 100644
+--- a/mary/launcher/window.py
++++ b/mary/launcher/window.py
+@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+ 
+ from mary.core.config import PathConfig
+ from mary.launcher.bridge import MaryLauncherBridge
++from mary.desktop.static_server import DesktopStaticServer
+ 
+ 
+ class MaryLauncherWindow(QMainWindow):
+@@ -29,6 +30,7 @@ class MaryLauncherWindow(QMainWindow):
+         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+ 
++        self._static_server = DesktopStaticServer(frontend_path.parent).start()
+         self.bridge = MaryLauncherBridge()
+         self.channel = QWebChannel(self.web.page())
+         self.channel.registerObject("launcherBridge", self.bridge)
+@@ -39,7 +41,7 @@ class MaryLauncherWindow(QMainWindow):
+         self.bridge.minimizeRequested.connect(self.showMinimized)
+         self.bridge.windowMoveRequested.connect(self._start_system_move)
+ 
+-        self.web.setUrl(QUrl.fromLocalFile(str(frontend_path.resolve())))
++        self.web.setUrl(QUrl(self._static_server.url_for(frontend_path.name)))
+ 
+     def show_centered(self) -> None:
+         screen = self.screen() or QApplication.primaryScreen()
+@@ -64,6 +66,13 @@ class MaryLauncherWindow(QMainWindow):
+             except Exception:
+                 pass
+ 
++
++    def closeEvent(self, event) -> None:  # type: ignore[override]
++        try:
++            self._static_server.stop()
++        finally:
++            event.accept()
++
+     def _show_error(self, message: str) -> None:
+         QMessageBox.warning(self, "Mary Launcher", str(message))
+ 
+diff --git a/tests/desktop/test_loopback_static_server_macos.py b/tests/desktop/test_loopback_static_server_macos.py
+new file mode 100644
+index 0000000..b527e61
+--- /dev/null
++++ b/tests/desktop/test_loopback_static_server_macos.py
+@@ -0,0 +1,67 @@
++from __future__ import annotations
++
++import base64
++from pathlib import Path
++from urllib.request import urlopen
++
++from mary.desktop.audio_cache import DesktopAudioCache
++from mary.desktop.static_server import DesktopStaticServer
++
++
++def test_loopback_server_serves_vite_assets_same_origin(tmp_path: Path) -> None:
++    dist = tmp_path / "dist"
++    assets = dist / "assets"
++    assets.mkdir(parents=True)
++    (dist / "index.html").write_text('<script type="module" src="./assets/main.js"></script>', encoding="utf-8")
++    (assets / "main.js").write_text('globalThis.__maryBoot = true;', encoding="utf-8")
++
++    server = DesktopStaticServer(dist).start()
++    try:
++        assert server.base_url.startswith("http://127.0.0.1:")
++        with urlopen(server.url_for("index.html"), timeout=2) as response:
++            assert response.status == 200
++            assert b"type=\"module\"" in response.read()
++        with urlopen(server.url_for("assets/main.js"), timeout=2) as response:
++            assert response.status == 200
++            assert b"__maryBoot" in response.read()
++            assert response.headers["Cache-Control"] == "no-store"
++    finally:
++        server.stop()
++
++
++def test_desktop_audio_cache_can_use_same_loopback_origin(tmp_path: Path) -> None:
++    dist = tmp_path / "dist"
++    dist.mkdir()
++    (dist / "index.html").write_text("Mary", encoding="utf-8")
++    cache = DesktopAudioCache(tmp_path / "voice")
++    server = DesktopStaticServer(dist, voice_root=cache.root).start()
++    cache.set_public_url_builder(server.voice_url)
++    try:
++        payload = cache.stage({
++            "enabled": True,
++            "status": "success",
++            "format": "mp3",
++            "mime_type": "audio/mpeg",
++            "audio_base64": base64.b64encode(b"ID3mary").decode("ascii"),
++        })
++        assert payload["audio_transport"] == "loopback_url"
++        assert payload["audio_url"].startswith(server.base_url + "/__mary_voice__/")
++        with urlopen(payload["audio_url"], timeout=2) as response:
++            assert response.status == 200
++            assert response.read() == b"ID3mary"
++    finally:
++        server.stop()
++        cache.cleanup()
++
++
++def test_desktop_window_uses_loopback_origin_not_file_origin() -> None:
++    source = Path("mary/desktop/window.py").read_text(encoding="utf-8")
++    assert "DesktopStaticServer" in source
++    assert "self._static_server.url_for(frontend_path.name)" in source
++    assert "self.web.setUrl(QUrl(self._static_server.url_for(frontend_path.name)))" in source
++
++
++def test_launcher_uses_same_loopback_origin() -> None:
++    source = Path("mary/launcher/window.py").read_text(encoding="utf-8")
++    assert "DesktopStaticServer" in source
++    assert "self.web.setUrl(QUrl(self._static_server.url_for(frontend_path.name)))" in source
