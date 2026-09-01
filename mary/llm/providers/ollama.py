@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from ..interface import LLMInterface, LLMProviderError, LLMResponse
+from ..interface import LLMInterface, LLMResponse
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -112,11 +112,14 @@ class OllamaProvider(LLMInterface):
             ) as response:
                 raw_body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            raise LLMProviderError(
-                "Ollama returned an HTTP error.",
-                provider="ollama",
-                retryable=int(exc.code) >= 500 or int(exc.code) == 429,
-                status_code=int(exc.code),
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                detail = ""
+            message = detail.strip() or str(exc)
+            raise RuntimeError(
+                f"Ollama HTTP {exc.code}: {message}"
             ) from exc
         except (TimeoutError, socket.timeout) as exc:
             raise RuntimeError(

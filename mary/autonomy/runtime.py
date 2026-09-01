@@ -32,9 +32,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from time import time
 from typing import Any, Mapping
-from uuid import uuid4
-
-from mary.runtime.turn_observability import record_turn_stage
 
 from .actions import (
     Action,
@@ -117,14 +114,6 @@ class AutonomyCycleResult:
 
     timestamp: float
 
-    evaluation_id: str = field(
-        default_factory=lambda: f"evaluation_{uuid4().hex[:16]}"
-    )
-
-    cycle_reference_id: str = field(
-        default_factory=lambda: f"autonomy_cycle_{uuid4().hex[:16]}"
-    )
-
     trigger_results: tuple[
         TriggerResult,
         ...
@@ -145,8 +134,6 @@ class AutonomyCycleResult:
         ...
     ] = ()
 
-    deduplicated_proposal_ids: tuple[str, ...] = ()
-
     errors: tuple[
         str,
         ...
@@ -162,8 +149,6 @@ class AutonomyCycleResult:
         return {
             "cycle_id": self.cycle_id,
             "timestamp": self.timestamp,
-            "evaluation_id": self.evaluation_id,
-            "cycle_reference_id": self.cycle_reference_id,
             "trigger_results": [
                 result.to_dict()
                 for result
@@ -184,9 +169,6 @@ class AutonomyCycleResult:
                 for action
                 in self.actions_ready
             ],
-            "deduplicated_proposal_ids": list(
-                self.deduplicated_proposal_ids
-            ),
             "errors": list(
                 self.errors
             ),
@@ -428,10 +410,6 @@ class AutonomyRuntime:
         else:
             context.timestamp = timestamp
 
-        evaluation_id = f"evaluation_{uuid4().hex[:16]}"
-        cycle_reference_id = f"autonomy_cycle_{uuid4().hex[:16]}"
-        attention_id = self._opaque_context_id(context, "attention_id")
-
         self.cycle_count += 1
 
         cycle_errors: list[
@@ -449,7 +427,6 @@ class AutonomyRuntime:
         actions_created: list[
             Action
         ] = []
-        deduplicated_proposal_ids: list[str] = []
 
         try:
             # ----------------------------------------------------
@@ -475,23 +452,13 @@ class AutonomyRuntime:
                     continue
 
                 try:
-                    self._prepare_proposal(
-                        result.action,
-                        evaluation_id=evaluation_id,
-                        attention_id=attention_id,
+                    self.actions.add(
+                        result.action
                     )
-                    if self.actions.add(result.action):
-                        actions_created.append(result.action)
-                    else:
-                        existing = self.actions.active_by_dedupe_key(
-                            str(result.action.metadata.get("dedupe_key") or "")
-                        )
-                        proposal_id = str(
-                            getattr(existing, "metadata", {}).get("proposal_id")
-                            or ""
-                        )
-                        if proposal_id:
-                            deduplicated_proposal_ids.append(proposal_id)
+
+                    actions_created.append(
+                        result.action
+                    )
 
                 except Exception as exc:
                     cycle_errors.append(
@@ -524,23 +491,14 @@ class AutonomyRuntime:
                     action = self._action_from_schedule(
                         event
                     )
-                    self._prepare_proposal(
-                        action,
-                        evaluation_id=evaluation_id,
-                        attention_id=attention_id,
+
+                    self.actions.add(
+                        action
                     )
-                    if self.actions.add(action):
-                        actions_created.append(action)
-                    else:
-                        existing = self.actions.active_by_dedupe_key(
-                            str(action.metadata.get("dedupe_key") or "")
-                        )
-                        proposal_id = str(
-                            getattr(existing, "metadata", {}).get("proposal_id")
-                            or ""
-                        )
-                        if proposal_id:
-                            deduplicated_proposal_ids.append(proposal_id)
+
+                    actions_created.append(
+                        action
+                    )
 
                 except Exception as exc:
                     cycle_errors.append(
@@ -576,11 +534,9 @@ class AutonomyRuntime:
             else:
                 self.last_error = None
 
-            cycle_result = AutonomyCycleResult(
+            return AutonomyCycleResult(
                 cycle_id=self.cycle_count,
                 timestamp=timestamp,
-                evaluation_id=evaluation_id,
-                cycle_reference_id=cycle_reference_id,
                 trigger_results=tuple(
                     trigger_results
                 ),
@@ -591,20 +547,10 @@ class AutonomyRuntime:
                     actions_created
                 ),
                 actions_ready=actions_ready,
-                deduplicated_proposal_ids=tuple(
-                    dict.fromkeys(deduplicated_proposal_ids)
-                ),
                 errors=tuple(
                     cycle_errors
                 ),
             )
-            record_turn_stage(
-                "autonomy_processing",
-                status="success",
-                elapsed_ms=0.0,
-                outcome="proposals_recorded_not_executed",
-            )
-            return cycle_result
 
         except Exception as exc:
 
@@ -622,36 +568,6 @@ class AutonomyRuntime:
                     f"{exc}"
                 )
             ) from exc
-
-    @staticmethod
-    def _opaque_context_id(
-        context: TriggerContext | None,
-        key: str,
-    ) -> str | None:
-        """Accept only an opaque attention correlation identifier."""
-        if context is None:
-            return None
-        value = context.metadata.get(key) or context.values.get(key)
-        text = str(value or "").strip()
-        if key == "attention_id" and text.startswith("attention_"):
-            return text[:80]
-        return None
-
-    @staticmethod
-    def _prepare_proposal(
-        action: Action,
-        *,
-        evaluation_id: str,
-        attention_id: str | None,
-    ) -> None:
-        action.mark_as_proposal(
-            evaluation_id=evaluation_id,
-            attention_id=attention_id,
-            dedupe_key=(
-                str(action.metadata.get("dedupe_key") or "").strip()
-                or None
-            ),
-        )
 
     # ============================================================
     # SCHEDULE ACTION CREATION

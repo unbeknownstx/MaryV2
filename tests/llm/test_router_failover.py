@@ -60,12 +60,10 @@ def test_router_fails_over_when_primary_rate_limits():
 
     assert response.content == "Mary is still here."
     assert response.provider == "secondary"
-    assert [
-        (item["provider"], item["status"])
-        for item in router.last_generation_attempts
-    ] == [("primary", "failed"), ("secondary", "success")]
-    assert router.last_generation_attempts[0]["failure_category"] == "rate_limit"
-    assert all("error" not in item for item in router.last_generation_attempts)
+    assert router.last_generation_attempts == [
+        {"provider": "primary", "status": "failed", "error": "quota reached"},
+        {"provider": "secondary", "status": "success", "error": ""},
+    ]
 
 
 def test_router_skips_unavailable_fallbacks_and_keeps_order():
@@ -108,9 +106,11 @@ def test_router_cools_down_rate_limited_provider_on_next_turn():
     assert second.provider == "secondary"
     assert router.last_generation_attempts[0]["provider"] == "primary"
     assert router.last_generation_attempts[0]["status"] == "cooldown"
-    assert router.last_generation_attempts[1]["provider"] == "secondary"
-    assert router.last_generation_attempts[1]["status"] == "success"
-    assert "error" not in router.last_generation_attempts[1]
+    assert router.last_generation_attempts[1] == {
+        "provider": "secondary",
+        "status": "success",
+        "error": "",
+    }
 
 
 def test_clear_provider_cooldown_reenables_provider():

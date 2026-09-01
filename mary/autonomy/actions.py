@@ -276,35 +276,6 @@ class Action:
 
     parent_action_id: str | None = None
 
-    def mark_as_proposal(
-        self,
-        *,
-        evaluation_id: str,
-        attention_id: str | None = None,
-        dedupe_key: str | None = None,
-    ) -> None:
-        """Mark this action description as a non-executing proposal."""
-        self.permission = ActionPermission.REQUIRED
-        if self.status == ActionStatus.CREATED:
-            self.status = ActionStatus.PENDING
-        self.metadata.update(
-            {
-                "evaluation_id": evaluation_id,
-                "proposal_id": self.metadata.get("proposal_id")
-                or f"proposal_{uuid4().hex[:16]}",
-                "dedupe_key": dedupe_key
-                or self.metadata.get("dedupe_key")
-                or f"{self.source.value}:{self.name}",
-                "priority": self.priority.value,
-                "confirmation": "required",
-                "confirmation_required": True,
-                "execution_status": "not_executed",
-                "proposal_only": True,
-            }
-        )
-        if attention_id:
-            self.metadata["attention_id"] = attention_id
-
     # ------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------
@@ -378,10 +349,6 @@ class Action:
         )
 
         self.status = ActionStatus.APPROVED
-        if self.metadata.get("proposal_only"):
-            self.metadata["confirmation"] = "confirmed"
-            self.metadata["confirmation_required"] = False
-            self.metadata["execution_status"] = "confirmed_not_executed"
 
     def deny(self) -> None:
         """
@@ -393,10 +360,6 @@ class Action:
         )
 
         self.status = ActionStatus.REJECTED
-        if self.metadata.get("proposal_only"):
-            self.metadata["confirmation"] = "denied"
-            self.metadata["confirmation_required"] = False
-            self.metadata["execution_status"] = "rejected_not_executed"
 
     def cancel(self) -> None:
         """
@@ -411,8 +374,6 @@ class Action:
             return
 
         self.status = ActionStatus.CANCELLED
-        if self.metadata.get("proposal_only"):
-            self.metadata["execution_status"] = "cancelled_not_executed"
 
     def expire(self) -> None:
         """
@@ -597,7 +558,6 @@ class Action:
 
         return {
             "action_id": self.action_id,
-            "proposal_id": self.metadata.get("proposal_id"),
             "name": self.name,
             "action_type": self.action_type.value,
             "priority": self.priority.value,
@@ -761,9 +721,9 @@ class ActionQueue:
     def add(
         self,
         action: Action,
-    ) -> bool:
+    ) -> None:
         """
-        Add an action to the queue, deduplicating active proposals.
+        Add an action to the queue.
         """
 
         action.validate()
@@ -776,47 +736,9 @@ class ActionQueue:
                 )
             )
 
-        dedupe_key = str(action.metadata.get("dedupe_key") or "").strip()
-        if dedupe_key:
-            terminal = {
-                ActionStatus.COMPLETED,
-                ActionStatus.FAILED,
-                ActionStatus.CANCELLED,
-                ActionStatus.EXPIRED,
-                ActionStatus.REJECTED,
-            }
-            if any(
-                existing.metadata.get("dedupe_key") == dedupe_key
-                and existing.status not in terminal
-                for existing in self._actions.values()
-            ):
-                return False
-
         self._actions[
             action.action_id
         ] = action
-        return True
-
-    def active_by_dedupe_key(self, dedupe_key: str) -> Action | None:
-        """Return the existing active proposal for a bounded logical trigger."""
-
-        key = str(dedupe_key or "").strip()
-        if not key:
-            return None
-        terminal = {
-            ActionStatus.COMPLETED,
-            ActionStatus.FAILED,
-            ActionStatus.CANCELLED,
-            ActionStatus.EXPIRED,
-            ActionStatus.REJECTED,
-        }
-        for action in self._actions.values():
-            if (
-                str(action.metadata.get("dedupe_key") or "") == key
-                and action.status not in terminal
-            ):
-                return action
-        return None
 
     # ------------------------------------------------------------
     # Get

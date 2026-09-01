@@ -82,9 +82,10 @@ class LLMRouter:
         self.config = config
         self.providers: dict[str, LLMInterface] = {}
         self._purpose_providers: dict[tuple[str, str], LLMInterface] = {}
-        # Attempts are structural telemetry only. Provider exception messages
-        # and response metadata must never be retained here.
-        self.last_generation_attempts: list[dict[str, Any]] = []
+        # Preserve the long-standing public attempt record shape for callers
+        # and tests. Timing is carried in a parallel display-safe structure so
+        # instrumentation does not silently break routing consumers.
+        self.last_generation_attempts: list[dict[str, str]] = []
         self.last_generation_attempt_timings: list[dict[str, Any]] = []
         self.last_generation_route: dict[str, Any] = {}
         self.resource_governor = ResourceGovernor(config.governance)
@@ -613,12 +614,12 @@ class LLMRouter:
         exc: Exception,
         provider_name: str,
     ) -> LLMProviderError:
+        if isinstance(exc, LLMProviderError):
+            return exc
+
         message = str(exc)
         lowered = message.lower()
-        status_code = self._safe_status_code(exc)
-        normalized_provider = str(
-            getattr(exc, "provider", None) or provider_name or "unknown"
-        )
+        status_code = getattr(exc, "status_code", None)
 
         # A provider can report a token-budget problem with rate-limit wording
         # while using HTTP 413. That is a property of this request, not evidence
@@ -630,15 +631,12 @@ class LLMRouter:
             or "context length exceeded" in lowered
         ):
             return LLMProviderError(
-                "provider_request_too_large",
-                provider=normalized_provider,
+                message,
+                provider=provider_name,
                 retryable=False,
-                status_code=status_code,
             )
 
         if (
-            isinstance(exc, LLMRateLimitError)
-            or
             status_code == 429
             or "rate limit" in lowered
             or "rate_limit_exceeded" in lowered
@@ -648,71 +646,15 @@ class LLMRouter:
             or " tpd" in lowered
         ):
             return LLMRateLimitError(
-                "provider_rate_limited",
-                provider=normalized_provider,
-                status_code=status_code,
+                message,
+                provider=provider_name,
             )
 
         return LLMProviderError(
-            "provider_request_failed",
-            provider=normalized_provider,
-            retryable=bool(getattr(exc, "retryable", False)),
-            status_code=status_code,
+            message,
+            provider=provider_name,
+            retryable=False,
         )
-
-    @staticmethod
-    def _safe_status_code(exc: BaseException) -> int | None:
-        """Extract only a valid HTTP status code, never provider response data."""
-
-        for name in ("status_code", "status", "code"):
-            value = getattr(exc, name, None)
-            if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
-                return value
-        return None
-
-    @staticmethod
-    def _safe_model_name(value: Any) -> str | None:
-        candidate = str(value or "").strip()[:160]
-        if candidate and all(
-            char.isalnum() or char in "._:/+-"
-            for char in candidate
-        ):
-            return candidate
-        return None
-
-    @staticmethod
-    def _attempt_record(
-        provider: str,
-        status: str,
-        attempt: int,
-        *,
-        elapsed_ms: float,
-        call_ms: float | None = None,
-        failure_category: str | None = None,
-        status_code: int | None = None,
-        retryable: bool | None = None,
-        cooldown_seconds: float = 0.0,
-    ) -> dict[str, Any]:
-        """Build bounded structural provider telemetry without exception prose."""
-
-        record: dict[str, Any] = {
-            "provider": str(provider)[:64],
-            "attempt": max(1, int(attempt)),
-            "status": str(status)[:32],
-            "elapsed_ms": round(max(0.0, min(float(elapsed_ms), 86_400_000.0)), 2),
-        }
-        if call_ms is not None:
-            record["call_ms"] = round(max(0.0, min(float(call_ms), 86_400_000.0)), 2)
-        if failure_category:
-            record["failure_category"] = str(failure_category)[:64]
-        if status_code is not None:
-            record["status_code"] = status_code
-            record["status_class"] = f"{status_code // 100}xx"
-        if retryable is not None:
-            record["retryable"] = bool(retryable)
-        if cooldown_seconds > 0.0:
-            record["cooldown_seconds"] = round(min(cooldown_seconds, 86_400.0), 2)
-        return record
 
     # ============================================================
     # GENERATION
@@ -756,7 +698,6 @@ class LLMRouter:
             "requested_provider": effective_provider,
             "route": effective_route,
             "purpose": effective_purpose,
-            "route_purpose": str(effective_purpose or "general"),
             "strategy": self.routing_strategy(),
             "order": list(order),
             "selected_provider": None,
@@ -780,15 +721,14 @@ class LLMRouter:
                 provider_name
             )
             if cooldown > 0.0:
-                self.last_generation_attempts.append(self._attempt_record(
-                    provider_name,
-                    "cooldown",
-                    attempt_number,
-                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    failure_category="rate_limit",
-                    retryable=True,
-                    cooldown_seconds=cooldown,
-                ))
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "cooldown",
+                    "error": (
+                        "rate-limit cooldown active "
+                        f"({cooldown:.0f}s remaining)"
+                    ),
+                })
                 self.last_generation_attempt_timings.append({
                     "provider": provider_name,
                     "status": "cooldown",
@@ -828,15 +768,11 @@ class LLMRouter:
                     exc,
                     provider_name,
                 )
-                self.last_generation_attempts.append(self._attempt_record(
-                    provider_name,
-                    "unavailable",
-                    attempt_number,
-                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    failure_category=classify_failure(exc, default="provider_error"),
-                    status_code=self._safe_status_code(error),
-                    retryable=error.retryable,
-                ))
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "unavailable",
+                    "error": str(error),
+                })
                 last_error = error
                 self.last_generation_attempt_timings.append({
                     "provider": provider_name,
@@ -856,14 +792,13 @@ class LLMRouter:
                 continue
 
             if not available:
-                self.last_generation_attempts.append(self._attempt_record(
-                    provider_name,
-                    "not_configured",
-                    attempt_number,
-                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    failure_category="not_configured",
-                    retryable=False,
-                ))
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "not_configured",
+                    "error": (
+                        "provider is not configured/available"
+                    ),
+                })
                 self.last_generation_attempt_timings.append({
                     "provider": provider_name,
                     "status": "not_configured",
@@ -918,22 +853,11 @@ class LLMRouter:
                         exc,
                     )
 
-                cooldown_remaining = self._cooldown_remaining(provider_name)
-                self.last_generation_attempts.append(self._attempt_record(
-                    provider_name,
-                    "failed",
-                    attempt_number,
-                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    call_ms=provider_call_ms,
-                    failure_category=(
-                        "rate_limit"
-                        if isinstance(error, LLMRateLimitError)
-                        else classify_failure(exc, default="provider_error")
-                    ),
-                    status_code=self._safe_status_code(error),
-                    retryable=error.retryable,
-                    cooldown_seconds=cooldown_remaining,
-                ))
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "failed",
+                    "error": str(error),
+                })
                 self.last_generation_attempt_timings.append({
                     "provider": provider_name,
                     "status": "failed",
@@ -964,15 +888,11 @@ class LLMRouter:
                     provider=provider_name,
                     retryable=True,
                 )
-                self.last_generation_attempts.append(self._attempt_record(
-                    provider_name,
-                    "invalid_output",
-                    attempt_number,
-                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    call_ms=provider_call_ms,
-                    failure_category="invalid_output",
-                    retryable=True,
-                ))
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "invalid_output",
+                    "error": f"{quality_issue.code}: {quality_issue.description}",
+                })
                 self.last_generation_attempt_timings.append({
                     "provider": provider_name,
                     "status": "invalid_output",
@@ -1008,15 +928,11 @@ class LLMRouter:
                     provider=provider_name,
                     retryable=True,
                 )
-                self.last_generation_attempts.append(self._attempt_record(
-                    provider_name,
-                    "incomplete",
-                    attempt_number,
-                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    call_ms=provider_call_ms,
-                    failure_category="incomplete_output",
-                    retryable=True,
-                ))
+                self.last_generation_attempts.append({
+                    "provider": provider_name,
+                    "status": "incomplete",
+                    "error": str(error),
+                })
                 self.last_generation_attempt_timings.append({
                     "provider": provider_name,
                     "status": "incomplete",
@@ -1039,14 +955,11 @@ class LLMRouter:
             self.clear_provider_cooldown(
                 provider_name
             )
-            self.last_generation_attempts.append(self._attempt_record(
-                provider_name,
-                "success",
-                attempt_number,
-                elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                call_ms=provider_call_ms,
-                retryable=False,
-            ))
+            self.last_generation_attempts.append({
+                "provider": provider_name,
+                "status": "success",
+                "error": "",
+            })
             self.last_generation_attempt_timings.append({
                 "provider": provider_name,
                 "status": "success",
@@ -1057,7 +970,7 @@ class LLMRouter:
             self.resource_governor.record_usage(response.usage)
             self.last_generation_route.update({
                 "selected_provider": provider_name,
-                "selected_model": self._safe_model_name(selected.model_name()),
+                "selected_model": str(response.model or selected.model_name()),
                 "status": "success",
             })
             if not fallback_recorded:
@@ -1138,12 +1051,10 @@ class LLMRouter:
             available = False
             model = None
             source = "configured_host"
-            route_role = "conversation"
             try:
                 selected = self._get_provider_for_purpose(name, "conversation")
                 available = bool(selected.is_available()) and remaining <= 0.0
-                model = self._safe_model_name(selected.model_name())
-                route_role = str(getattr(selected, "role", route_role))[:32]
+                model = str(selected.model_name() or "") or None
                 if selected.__class__.__name__ == "DeviceOllamaProvider":
                     source = "capability_node"
             except Exception:
@@ -1153,8 +1064,6 @@ class LLMRouter:
                 "available": available,
                 "model": model,
                 "source": source,
-                "route_purpose": "conversation",
-                "route_role": route_role,
                 "cooldown_seconds": round(remaining, 2),
             })
 

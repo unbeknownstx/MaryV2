@@ -35,10 +35,7 @@ def test_router_records_attempt_and_provider_call_latency():
     assert response.content == "hello"
     attempt = router.last_generation_attempts[-1]
     timing = router.last_generation_attempt_timings[-1]
-    assert attempt["provider"] == "groq"
-    assert attempt["status"] == "success"
-    assert attempt["attempt"] == 1
-    assert "error" not in attempt
+    assert attempt == {"provider": "groq", "status": "success", "error": ""}
     assert timing["status"] == "success"
     assert timing["call_ms"] >= 0
     assert timing["elapsed_ms"] >= timing["call_ms"]

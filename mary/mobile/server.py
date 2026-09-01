@@ -17,7 +17,6 @@ Security model
 
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
@@ -31,8 +30,7 @@ import secrets
 from threading import RLock
 from time import monotonic, sleep
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlencode, urlparse
-from uuid import uuid4
+from urllib.parse import urlparse
 
 from mary.conversation import ConversationLane, classify_conversation_lane
 from mary.core.config import PathConfig
@@ -41,12 +39,6 @@ from mary.desktop.turn_trace import build_turn_trace
 from mary.desktop.projects import CreativeWorkspaceManager
 from mary.presence import PresenceEventType
 from mary.runtime.application import MaryApplication, create_application
-from mary.runtime.turn_observability import (
-    TurnTraceRecorder,
-    bind_turn_trace,
-    reset_turn_trace,
-    trace_correlation_id,
-)
 from mary.mobile.audio import MobileSpeechService
 from mary.mobile.voice_lab import VoiceLabStore, BASELINE as VOICE_BASELINE
 from mary.protocol.client import MaryClient, MaryProtocolError
@@ -97,8 +89,8 @@ def _json_safe(
 
 def _character_sourcebook_inventory(
     value: Any,
-) -> dict[str, Any]:
-    """Return canonical Sourcebook identity/counts without authored evidence."""
+) -> dict[str, int]:
+    """Return the bounded count-only Sourcebook projection used by Mobile."""
 
     sourcebook = dict(
         value
@@ -119,34 +111,9 @@ def _character_sourcebook_inventory(
         )
     except (TypeError, ValueError):
         records = 0
-    version = str(sourcebook.get("version") or "").strip()
-    if not _SAFE_TRACE_IDENTIFIER.fullmatch(version[:64]):
-        version = ""
-    sourcebook_hash = str(sourcebook.get("sourcebook_hash") or "").strip().lower()
-    if not re.fullmatch(r"[0-9a-f]{8,128}", sourcebook_hash):
-        sourcebook_hash = ""
-    raw_errors = sourcebook.get("errors", ())
-    if isinstance(raw_errors, (list, tuple)):
-        error_count = len(raw_errors)
-    else:
-        try:
-            error_count = int(sourcebook.get("error_count", 0))
-        except (TypeError, ValueError):
-            error_count = 0
     return {
-        "version": version,
         "records": records,
-        "sourcebook_hash": sourcebook_hash,
-        "error_count": max(0, min(error_count, 1_000_000)),
     }
-
-
-def _core_instance_id(state: Any) -> str:
-    """Extract Core's opaque canonical process identity from its state."""
-
-    core = dict(dict(state or {}).get("core", {}) or {})
-    value = str(core.get("instance_id") or "").strip()[:128]
-    return value if _SAFE_TRACE_IDENTIFIER.fullmatch(value) else ""
 
 
 def _is_loopback(
@@ -340,8 +307,6 @@ class MaryRemoteMobileRuntime:
             str,
             Any,
         ] = {}
-        self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
-        self._local_core_instance_id = f"mobile_core_{uuid4().hex[:24]}"
 
         self._last_feedback_context: dict[
             str,
@@ -360,7 +325,6 @@ class MaryRemoteMobileRuntime:
         # Core. Keep only the bounded identifier returned by Core; no presence
         # state is reconstructed or persisted by this proxy.
         self._surface_id: str | None = None
-        self._core_instance_id = ""
 
         configured = os.getenv(
             "MARY_MOBILE_PROXY_DATA_DIR",
@@ -410,7 +374,6 @@ class MaryRemoteMobileRuntime:
             or {}
         )
 
-        self._core_instance_id = _core_instance_id(state)
         return _json_safe(
             {
                 "name": mary_state.get(
@@ -420,7 +383,6 @@ class MaryRemoteMobileRuntime:
                 "provider": "mary-core",
                 "model": "MaryV2",
                 "busy": self.busy,
-                "core_instance_id": self._core_instance_id,
                 "conversation": {
                     "state": (
                         "thinking"
@@ -460,7 +422,6 @@ class MaryRemoteMobileRuntime:
                     "protocol": MOBILE_PROTOCOL_VERSION,
                     "authority": "remote_mary_core",
                     "conversation_id": self._conversation_id,
-                    "core_instance_id": self._core_instance_id,
                 },
                 "engagement": conversation.get(
                     "engagement",
@@ -622,7 +583,6 @@ class MaryRemoteMobileRuntime:
             self.client.dashboard()
             or {}
         )
-        self._core_instance_id = _core_instance_id(state)
 
         # The PWA's top-level ``character`` field is a presentation shape and
         # intentionally replaces Core's character-system projection below.
@@ -710,9 +670,7 @@ class MaryRemoteMobileRuntime:
             "surface": "pwa",
             "authority": "remote_mary_core",
             "conversation_id": self._conversation_id,
-            "core_instance_id": self._core_instance_id,
         }
-        payload["core_instance_id"] = self._core_instance_id
 
         payload[
             "core"
@@ -759,32 +717,6 @@ class MaryRemoteMobileRuntime:
                 self._last_trace
             )
 
-    def query_turn_traces(
-        self,
-        *,
-        request_id: str = "",
-        turn_id: str = "",
-        limit: int = 10,
-    ) -> dict[str, Any]:
-        """Proxy Core's authenticated bounded diagnostic trace query."""
-
-        params: dict[str, str | int] = {
-            "limit": max(1, min(int(limit), 40)),
-        }
-        for name, value in (("request_id", request_id), ("turn_id", turn_id)):
-            cleaned = str(value or "").strip()[:128]
-            if cleaned and _SAFE_TRACE_IDENTIFIER.fullmatch(cleaned):
-                params[name] = cleaned
-        query = getattr(self.client, "trace_query", None)
-        if callable(query):
-            return _json_safe(query(**params))
-        request = getattr(self.client, "_request", None)
-        if not callable(request):
-            raise RuntimeError("Mary Core trace query is unavailable.")
-        return _json_safe(
-            request("GET", f"/v1/turn-traces?{urlencode(params)}")
-        )
-
     def chat(
         self,
         text: str,
@@ -824,12 +756,6 @@ class MaryRemoteMobileRuntime:
         started = monotonic()
 
         try:
-            try:
-                self._core_instance_id = _core_instance_id(
-                    self.client.state()
-                )
-            except MaryProtocolError:
-                self._core_instance_id = ""
             response = (
                 self.client
                 .turn(
@@ -928,7 +854,6 @@ class MaryRemoteMobileRuntime:
                 "timings": timings,
                 "authority": "remote_mary_core",
                 "device_id": self.client.device_id,
-                "core_instance_id": self._core_instance_id,
             }
 
             if lane:
@@ -1064,7 +989,6 @@ class MaryRemoteMobileRuntime:
                     "error_type": type(exc).__name__,
                     "authority": "remote_mary_core",
                     "device_id": self.client.device_id,
-                    "core_instance_id": self._core_instance_id,
                 }
             raise
 
@@ -1818,8 +1742,6 @@ class MaryMobileRuntime:
             str,
             Any,
         ] = {}
-        self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
-        self._local_core_instance_id = f"mobile_core_{uuid4().hex[:24]}"
 
         self._last_feedback_context: dict[
             str,
@@ -2241,47 +2163,10 @@ class MaryMobileRuntime:
     ) -> dict[str, Any]:
         with self._lock:
             return _json_safe(
-                self._last_trace or {}
+                self._last_trace
+                or self.ecosystem.metrics.last_turn()
+                or {}
             )
-
-    def query_turn_traces(
-        self,
-        *,
-        request_id: str = "",
-        turn_id: str = "",
-        limit: int = 10,
-    ) -> dict[str, Any]:
-        """Return bounded newest-first local trace history with Core parity."""
-
-        bounded_limit = max(1, min(40, int(limit)))
-        safe_request_id = (
-            trace_correlation_id(request_id, prefix="request")
-            if request_id
-            else ""
-        )
-        safe_turn_id = (
-            trace_correlation_id(turn_id, prefix="turn")
-            if turn_id
-            else ""
-        )
-        with self._lock:
-            matches = [
-                _json_safe(trace)
-                for trace in reversed(self._recent_turn_traces)
-                if (
-                    not safe_request_id
-                    or trace.get("request_id") == safe_request_id
-                )
-                and (
-                    not safe_turn_id
-                    or trace.get("turn_id") == safe_turn_id
-                )
-            ][:bounded_limit]
-        return {
-            "traces": matches,
-            "count": len(matches),
-            "authority": "local_mobile",
-        }
 
     def chat(
         self,
@@ -2339,18 +2224,10 @@ class MaryMobileRuntime:
                 resolved_conversation_id
             )
 
-            local_turn_id = f"mobile_turn_{uuid4().hex}"
-            causal_recorder = TurnTraceRecorder(
-                request_id=f"mobile_request_{uuid4().hex}",
-                core_instance_id=self._local_core_instance_id,
-            )
-            causal_recorder.set_turn_id(local_turn_id)
-            causal_recorder.set_conversation_id(resolved_conversation_id)
-            trace_token = bind_turn_trace(causal_recorder)
-            try:
-                result = self.application.run(
+            result = (
+                self.application
+                .run(
                     value,
-                    turn_id=local_turn_id,
                     metadata={
                         "surface": "mobile",
                         "transport": "http",
@@ -2360,33 +2237,7 @@ class MaryMobileRuntime:
                         ),
                     },
                 )
-                causal_recorder.finish(
-                    outcome="success" if result.success else "failure",
-                    failure_kind=(
-                        None if result.success else "application_failure"
-                    ),
-                )
-            except Exception as exc:
-                causal_recorder.record(
-                    "application_turn",
-                    status="failure",
-                    elapsed_ms=0.0,
-                    failure_kind="application_failure",
-                    error=exc,
-                )
-                causal_recorder.finish(
-                    outcome="failure",
-                    failure_kind="application_failure",
-                    error=exc,
-                )
-                failed_trace = causal_recorder.snapshot()
-                with self._lock:
-                    self._last_trace = failed_trace
-                    self._recent_turn_traces.append(failed_trace)
-                raise
-            finally:
-                reset_turn_trace(trace_token)
-            causal_trace = causal_recorder.snapshot()
+            )
 
             pipeline_ms = (
                 monotonic()
@@ -2394,11 +2245,6 @@ class MaryMobileRuntime:
             ) * 1000.0
 
             if not result.success:
-                with self._lock:
-                    self._last_trace = causal_trace
-                    self._recent_turn_traces.append(
-                        _json_safe(causal_trace)
-                    )
                 raise RuntimeError(
                     result.error
                     or "Mary's pipeline did not complete."
@@ -2557,8 +2403,7 @@ class MaryMobileRuntime:
             )
 
             with self._lock:
-                self._last_trace = causal_trace
-                self._recent_turn_traces.append(_json_safe(causal_trace))
+                self._last_trace = trace
 
                 engagement_status = (
                     mary.engagement
@@ -4255,10 +4100,9 @@ class MaryMobileRequestHandler(
     def do_GET(
         self,
     ) -> None:
-        parsed_url = urlparse(
+        path = urlparse(
             self.path
-        )
-        path = parsed_url.path
+        ).path
 
         if path == "/api/health":
             if not self._require_api_auth():
@@ -4296,37 +4140,8 @@ class MaryMobileRequestHandler(
 
             return
 
-        if path in {"/api/trace", "/api/traces"}:
+        if path == "/api/trace":
             if not self._require_api_auth():
-                return
-
-            query = parse_qs(parsed_url.query)
-            wants_query = path == "/api/traces" or bool(
-                query.get("request_id") or query.get("turn_id")
-            )
-            if wants_query:
-                trace_query = getattr(
-                    self.mary_server.runtime,
-                    "query_turn_traces",
-                    None,
-                )
-                if not callable(trace_query):
-                    self._send_json(
-                        {"ok": False, "error": "Trace query is unavailable."},
-                        HTTPStatus.NOT_IMPLEMENTED,
-                    )
-                    return
-                try:
-                    limit = int((query.get("limit") or ["10"])[0])
-                except (TypeError, ValueError):
-                    limit = 10
-                self._send_json(
-                    trace_query(
-                        request_id=(query.get("request_id") or [""])[0],
-                        turn_id=(query.get("turn_id") or [""])[0],
-                        limit=max(1, min(limit, 40)),
-                    )
-                )
                 return
 
             self._send_json(

@@ -144,15 +144,12 @@ def create_app(service: MaryCoreService | None = None):
         response.headers["X-Mary-Request-ID"] = trace.request_id
         try:
             with trace.stage(
-                "authentication",
-                failure_kind="authentication_failure",
+                "core_ingress",
+                failure_kind="invalid_request",
             ):
                 await require_creator(request)
-            with trace.stage("core_ingress", failure_kind="invalid_request"):
                 payload = await request.json()
                 model = TurnRequest.from_dict(payload)
-                trace.set_turn_id(model.turn_id)
-                trace.set_conversation_id(model.conversation_id)
 
             turn_response = await asyncio.to_thread(
                 core.process_turn,
@@ -164,7 +161,7 @@ def create_app(service: MaryCoreService | None = None):
                 failure_kind="serialization_failure",
             ):
                 serialized = turn_response.to_dict()
-            trace.finish(outcome="replayed" if trace.replayed else "success")
+            trace.finish(outcome="success")
             return serialized
 
         except asyncio.CancelledError as exc:
@@ -248,31 +245,6 @@ def create_app(service: MaryCoreService | None = None):
     async def state(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.state()
-
-    @app.get("/v1/admin/turn-traces")
-    @app.get("/v1/turn-traces")
-    async def turn_traces(request: Request) -> dict[str, Any]:
-        await require_creator(request)
-        request_id = request.query_params.get("request_id")
-        turn_id = request.query_params.get("turn_id")
-        raw_limit = request.query_params.get("limit", "20")
-        try:
-            limit = int(raw_limit)
-            traces = core.query_turn_traces(
-                request_id=request_id,
-                turn_id=turn_id,
-                limit=limit,
-            )
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(
-                status_code=422,
-                detail="Invalid turn trace query.",
-            ) from exc
-        return {
-            "traces": traces,
-            "count": len(traces),
-            "limit": max(1, min(40, limit)),
-        }
 
     @app.post("/v1/admin/backups")
     async def create_durable_backup(request: Request) -> dict[str, Any]:

@@ -75,9 +75,9 @@ def test_consultation_records_advisory_result_and_explicit_provenance():
     assert len(task.evidence) == 2
     assert task.evidence[-1].provenance == "openai"
     assert task.evidence[-1].metadata["advisory_only"] is True
-    assert router.last_generation_attempts[0]["provider"] == "openai"
-    assert router.last_generation_attempts[0]["status"] == "success"
-    assert "error" not in router.last_generation_attempts[0]
+    assert router.last_generation_attempts == [
+        {"provider": "openai", "status": "success", "error": ""},
+    ]
 
 
 def test_consultation_prompt_is_bounded_to_task_context_not_mary_memory():

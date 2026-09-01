@@ -128,12 +128,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.turn_envelope import attach_turn_envelope
-from mary.runtime.turn_observability import (
-    causal_operation_id,
-    current_turn_trace,
-    observe_turn_stage,
-    record_turn_stage,
-)
+from mary.runtime.turn_observability import observe_turn_stage
 from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.root_authority import MaryRootAuthority
 from mary.runtime.environment import RuntimeEnvironment
@@ -761,54 +756,6 @@ class Mary:
                 input_text,
                 intent=intent,
             )
-            trace = current_turn_trace()
-            trace_turn_id = str(getattr(trace, "turn_id", "") or "")
-            relationship_ids: dict[str, Any] = {}
-            relationship_outcome = "not_applicable"
-            relationship_status = "skipped"
-            if natural_relationship_learning is not None:
-                relationship_status = "success"
-                relationship_ids["relationship_observation_id"] = (
-                    causal_operation_id(
-                        trace_turn_id,
-                        "relationship",
-                        "observation",
-                    )
-                )
-                memory_id = natural_relationship_learning.get("memory_id")
-                if memory_id:
-                    relationship_ids["memory_object_id"] = memory_id
-                if natural_relationship_learning.get("learned"):
-                    relationship_outcome = "write"
-                elif natural_relationship_learning.get("already_known"):
-                    relationship_outcome = "retrieval_only"
-                elif natural_relationship_learning.get("detected"):
-                    relationship_outcome = "blocked_or_rejected"
-                else:
-                    relationship_outcome = "no_operation"
-            record_turn_stage(
-                "relationship_learning",
-                status=relationship_status,
-                elapsed_ms=0.0,
-                outcome=relationship_outcome,
-                result_ids=relationship_ids,
-            )
-            if natural_relationship_learning is not None:
-                memory_id = natural_relationship_learning.get("memory_id")
-                record_turn_stage(
-                    "memory_write",
-                    status="success" if memory_id else "skipped",
-                    elapsed_ms=0.0,
-                    outcome="write" if memory_id else "no_operation",
-                    result_ids={
-                        "memory_operation_id": causal_operation_id(
-                            trace_turn_id,
-                            "memory",
-                            "relationship_evidence_write",
-                        ),
-                        "memory_object_id": memory_id,
-                    },
-                )
             self.conversation_learning.observe_learning(
                 natural_relationship_learning
             )
@@ -1777,27 +1724,6 @@ class Mary:
             memory_context = self.memory.build_context(
                 input_text
             )
-        trace = current_turn_trace()
-        trace_turn_id = str(getattr(trace, "turn_id", "") or "")
-        retrieved_memory_ids = [
-            str(item.get("id") or "")
-            for item in list(memory_context.get("relevant_memories", []))[:8]
-            if isinstance(item, dict) and item.get("id")
-        ]
-        record_turn_stage(
-            "memory_retrieval",
-            status="success",
-            elapsed_ms=0.0,
-            outcome="retrieval" if retrieved_memory_ids else "no_operation",
-            result_ids={
-                "memory_operation_id": causal_operation_id(
-                    trace_turn_id,
-                    "memory",
-                    "retrieval",
-                ),
-                "memory_object_id": retrieved_memory_ids,
-            },
-        )
 
         lifecycle_window = self.context_lifecycle.select(
             recent_conversation or []
@@ -1827,37 +1753,6 @@ class Mary:
             context_lifecycle=lifecycle_context,
             incoming_emotion_appraisal=incoming_emotion_appraisal,
             workspace_context=workspace_context,
-        )
-        developed_preference_ids = [
-            str(item.get("developed_preference_id") or "")
-            for item in self.growth.status().get("developed_preferences", [])[:8]
-            if isinstance(item, dict) and item.get("developed_preference_id")
-        ]
-        record_turn_stage(
-            "developed_self_projection",
-            status="success",
-            elapsed_ms=0.0,
-            outcome=(
-                "active_preferences_projected"
-                if developed_preference_ids
-                else "no_active_preferences"
-            ),
-            result_ids={
-                "developed_preference_id": developed_preference_ids,
-            },
-        )
-        record_turn_stage(
-            "relationship_projection",
-            status="success",
-            elapsed_ms=0.0,
-            outcome="projected",
-            result_ids={
-                "relationship_profile_id": causal_operation_id(
-                    trace_turn_id,
-                    "relationship",
-                    "projection",
-                ),
-            },
         )
         prompt_mind_state = mind_state.prompt_view()
         relationship_view = prompt_mind_state.get("relationship")

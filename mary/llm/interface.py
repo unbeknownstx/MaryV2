@@ -21,18 +21,10 @@ class LLMProviderError(RuntimeError):
         *,
         provider: str = "unknown",
         retryable: bool = False,
-        status_code: int | None = None,
     ) -> None:
         super().__init__(message)
         self.provider = provider
         self.retryable = bool(retryable)
-        self.status_code = (
-            int(status_code)
-            if isinstance(status_code, int)
-            and not isinstance(status_code, bool)
-            and 100 <= status_code <= 599
-            else None
-        )
 
 
 class LLMRateLimitError(LLMProviderError):
@@ -43,13 +35,11 @@ class LLMRateLimitError(LLMProviderError):
         message: str,
         *,
         provider: str = "unknown",
-        status_code: int | None = None,
     ) -> None:
         super().__init__(
             message,
             provider=provider,
             retryable=True,
-            status_code=status_code,
         )
 
 

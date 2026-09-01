@@ -91,8 +91,8 @@ def test_groq_success_stops_the_free_first_route():
     assert providers["gemini"].calls == 0
     assert providers["openrouter"].calls == 0
     assert providers["ollama"].calls == 0
-    assert [(item["provider"], item["status"]) for item in router.last_generation_attempts] == [
-        ("groq", "success"),
+    assert router.last_generation_attempts == [
+        {"provider": "groq", "status": "success", "error": ""},
     ]
 
 
@@ -161,8 +161,8 @@ def test_private_routes_are_ollama_only(route):
     assert providers["ollama"].calls == 1
     for name in ("groq", "gemini", "openrouter", "openai"):
         assert providers[name].calls == 0
-    assert [(item["provider"], item["status"]) for item in router.last_generation_attempts] == [
-        ("ollama", "success"),
+    assert router.last_generation_attempts == [
+        {"provider": "ollama", "status": "success", "error": ""},
     ]
 
 
@@ -192,10 +192,11 @@ def test_not_configured_provider_is_skipped_without_generation():
 
     assert response.provider == "gemini"
     assert providers["groq"].calls == 0
-    assert router.last_generation_attempts[0]["provider"] == "groq"
-    assert router.last_generation_attempts[0]["status"] == "not_configured"
-    assert router.last_generation_attempts[0]["failure_category"] == "not_configured"
-    assert "error" not in router.last_generation_attempts[0]
+    assert router.last_generation_attempts[0] == {
+        "provider": "groq",
+        "status": "not_configured",
+        "error": "provider is not configured/available",
+    }
 
 
 def test_availability_check_failure_is_skipped_as_unavailable():
@@ -206,10 +207,11 @@ def test_availability_check_failure_is_skipped_as_unavailable():
 
     assert response.provider == "gemini"
     assert providers["groq"].calls == 0
-    assert router.last_generation_attempts[0]["provider"] == "groq"
-    assert router.last_generation_attempts[0]["status"] == "unavailable"
-    assert router.last_generation_attempts[0]["failure_category"] == "provider_error"
-    assert "error" not in router.last_generation_attempts[0]
+    assert router.last_generation_attempts[0] == {
+        "provider": "groq",
+        "status": "unavailable",
+        "error": "health check failed",
+    }
 
 
 def test_incomplete_length_response_falls_through_instead_of_being_spoken():
@@ -221,15 +223,18 @@ def test_incomplete_length_response_falls_through_instead_of_being_spoken():
 
     assert response.provider == "openrouter"
     assert providers["gemini"].calls == 1
-    assert [
-        (item["provider"], item["status"])
-        for item in router.last_generation_attempts
-    ] == [
-        ("groq", "failed"),
-        ("gemini", "incomplete"),
-        ("openrouter", "success"),
+    assert router.last_generation_attempts == [
+        {"provider": "groq", "status": "failed", "error": "groq failed"},
+        {
+            "provider": "gemini",
+            "status": "incomplete",
+            "error": (
+                "Provider returned an incomplete response because its output "
+                "limit was reached."
+            ),
+        },
+        {"provider": "openrouter", "status": "success", "error": ""},
     ]
-    assert all("error" not in item for item in router.last_generation_attempts)
 
 
 def test_rate_limit_cooldown_skips_provider_on_next_turn_without_extra_call():
@@ -248,8 +253,11 @@ def test_rate_limit_cooldown_skips_provider_on_next_turn_without_extra_call():
     assert providers["gemini"].calls == 2
     assert router.last_generation_attempts[0]["provider"] == "groq"
     assert router.last_generation_attempts[0]["status"] == "cooldown"
-    assert router.last_generation_attempts[1]["provider"] == "gemini"
-    assert router.last_generation_attempts[1]["status"] == "success"
+    assert router.last_generation_attempts[1] == {
+        "provider": "gemini",
+        "status": "success",
+        "error": "",
+    }
 
 
 def test_provider_attempts_reports_exact_route_results():
@@ -260,15 +268,15 @@ def test_provider_attempts_reports_exact_route_results():
     response = router.generate(_message())
 
     assert response.provider == "openrouter"
-    assert [
-        (item["provider"], item["status"])
-        for item in router.last_generation_attempts
-    ] == [
-        ("groq", "failed"),
-        ("gemini", "not_configured"),
-        ("openrouter", "success"),
+    assert router.last_generation_attempts == [
+        {"provider": "groq", "status": "failed", "error": "groq failed"},
+        {
+            "provider": "gemini",
+            "status": "not_configured",
+            "error": "provider is not configured/available",
+        },
+        {"provider": "openrouter", "status": "success", "error": ""},
     ]
-    assert all("error" not in item for item in router.last_generation_attempts)
 
 
 def test_explicit_provider_override_bypasses_free_first_order():
@@ -286,6 +294,6 @@ def test_explicit_provider_override_bypasses_free_first_order():
     assert providers["gemini"].calls == 1
     assert providers["openrouter"].calls == 0
     assert providers["ollama"].calls == 0
-    assert [(item["provider"], item["status"]) for item in router.last_generation_attempts] == [
-        ("gemini", "success"),
+    assert router.last_generation_attempts == [
+        {"provider": "gemini", "status": "success", "error": ""},
     ]

@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from mary.autonomy.actions import ActionPermission
 from mary.core.service import MaryCoreService
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
-from mary.mobile.server import MaryMobileRuntime
 from mary.protocol.server import create_app
 from mary.runtime.application import create_application
 from mary.runtime.pipeline import PipelineResult, PipelineStatus
@@ -70,9 +69,7 @@ class FailingLifecycleLLM(LifecycleFakeLLM):
         temperature: float = 0.7,
         max_tokens: int = 2048,
     ) -> LLMResponse:
-        raise RuntimeError(
-            "PRIVATE_PROVIDER_BODY account=user@example.invalid token=secret-value"
-        )
+        raise RuntimeError("deterministic provider failure")
 
 
 class DispositionAwareLifecycleLLM(LifecycleFakeLLM):
@@ -255,156 +252,6 @@ def test_canonical_turn_emits_every_internal_observability_stage_without_content
     serialized = str(trace.snapshot())
     assert "private bounded audit prompt" not in serialized
     assert "A deterministic Mary response." not in serialized
-
-
-def test_causal_trace_links_real_turn_objects_and_deduplicates_proposal(
-    tmp_path,
-    monkeypatch,
-):
-    app = _application(tmp_path, monkeypatch)
-    app.mary.set_developed_preference(
-        "creator interaction response length",
-        category="creator_interaction",
-        strength=0.88,
-        polarity=1.0,
-        confidence=0.96,
-        source="experience_promotion",
-    )
-    app.mary.agency.goals.add_goal(
-        "Review the unfinished certification",
-        importance=0.95,
-    )
-
-    def run_traced(turn_id: str):
-        trace = TurnTraceRecorder(
-            request_id=f"request-{turn_id}",
-            core_instance_id="causal-core",
-        )
-        trace.set_turn_id(turn_id)
-        trace.set_conversation_id("causal-conversation")
-        token = bind_turn_trace(trace)
-        try:
-            result = app.run(
-                "What should we work on next?",
-                turn_id=turn_id,
-            )
-            trace.finish(outcome="success")
-            return result, trace.snapshot()
-        finally:
-            reset_turn_trace(token)
-
-    first, first_trace = run_traced("causal-turn-one")
-    second, second_trace = run_traced("causal-turn-two")
-
-    assert first.success is second.success is True
-    first_stages = first_trace["stages"]
-    by_stage = {
-        name: [item for item in first_stages if item["stage"] == name]
-        for name in {item["stage"] for item in first_stages}
-    }
-    attention = next(
-        item
-        for item in by_stage["attention_publication"]
-        if item.get("result_ids", {}).get("attention_id")
-    )
-    experience = next(
-        item
-        for item in by_stage["experience_growth"]
-        if item.get("result_ids", {}).get("experience_id")
-    )
-    developed = next(
-        item
-        for item in by_stage["developed_self_projection"]
-        if item.get("result_ids", {}).get("developed_preference_id")
-    )
-    evaluation = by_stage["autonomy_evaluation"][-1]
-    proposal = by_stage["autonomy_proposal"][-1]
-
-    assert attention["result_ids"]["attention_id"].startswith("attention_")
-    assert experience["result_ids"]["experience_id"].startswith("experience_")
-    assert developed["result_ids"]["developed_preference_id"][0].startswith(
-        "developed_preference_"
-    )
-    assert evaluation["result_ids"]["attention_id"] == (
-        attention["result_ids"]["attention_id"]
-    )
-    assert evaluation["result_ids"]["autonomy_cycle_id"].startswith(
-        "autonomy_cycle_"
-    )
-    assert evaluation["result_ids"]["autonomy_evaluation_id"].startswith(
-        "evaluation_"
-    )
-    assert proposal["outcome"] == "proposed_pending_confirmation"
-    assert proposal["result_ids"]["autonomy_proposal_id"][0].startswith(
-        "proposal_"
-    )
-
-    repeated = [
-        item
-        for item in second_trace["stages"]
-        if item["stage"] == "autonomy_proposal"
-    ][-1]
-    assert repeated["outcome"] == "deduplicated_existing"
-    assert repeated["result_ids"]["autonomy_proposal_id"] == (
-        proposal["result_ids"]["autonomy_proposal_id"]
-    )
-    action = app.mary.autonomy.actions.all()[0]
-    assert action.metadata["execution_status"] == "not_executed"
-    assert action.metadata["confirmation_required"] is True
-    assert action.attempts == 0
-    serialized = str(first_trace) + str(second_trace)
-    assert "What should we work on next?" not in serialized
-    assert "A deterministic Mary response." not in serialized
-    assert "creator interaction response length" not in serialized
-
-
-def test_local_mobile_produces_and_queries_canonical_content_free_trace(
-    tmp_path,
-    monkeypatch,
-):
-    app = _application(tmp_path, monkeypatch)
-    runtime = MaryMobileRuntime(application=app)
-    private_prompt = "PRIVATE_LOCAL_MOBILE_PROMPT"
-
-    payload = runtime.chat(
-        private_prompt,
-        conversation_id="person@example.invalid",
-    )
-    raw_turn_id = payload["runtime"]["turn_id"]
-    trace = runtime.last_turn_trace()
-    queried = runtime.query_turn_traces(
-        turn_id=raw_turn_id,
-        limit=999,
-    )
-
-    assert trace["event"] == "mary.turn.complete"
-    assert trace["schema"] == 1
-    assert trace["status"] == "success"
-    assert trace["turn_id"].startswith("turn_")
-    assert trace["conversation_id"].startswith("conversation_")
-    assert queried["traces"] == [trace]
-    assert queried["count"] == 1
-    serialized = str(trace)
-    assert private_prompt not in serialized
-    assert "person@example.invalid" not in serialized
-    assert "Runtime response from Mary." not in serialized
-
-    monkeypatch.setattr(
-        app,
-        "run",
-        lambda *_args, **_kwargs: PipelineResult(
-            status=PipelineStatus.FAILED,
-            turn_id="failed-mobile-turn",
-            error="PRIVATE_RETURNED_FAILURE",
-        ),
-    )
-    with pytest.raises(RuntimeError, match="PRIVATE_RETURNED_FAILURE"):
-        runtime.chat("PRIVATE_FAILED_MOBILE_PROMPT")
-    failed = runtime.last_turn_trace()
-    assert failed["status"] == "failure"
-    assert failed["outcome"] == "failure"
-    assert "PRIVATE_RETURNED_FAILURE" not in str(failed)
-    assert "PRIVATE_FAILED_MOBILE_PROMPT" not in str(failed)
 
 
 def test_growth_failure_is_visible_as_post_processing_without_losing_response(
@@ -765,10 +612,6 @@ def test_provider_unavailable_fallback_cannot_create_preference_evidence(
 
     assert result.success is True
     assert _cycle(result).reasoning.metadata["llm_unavailable"] is True
-    assert _cycle(result).reasoning.metadata["llm_error"] == "provider_unavailable"
-    assert "PRIVATE_PROVIDER_BODY" not in str(_cycle(result).metadata)
-    assert "user@example.invalid" not in str(_cycle(result).metadata)
-    assert "secret-value" not in str(_cycle(result).metadata)
     assert diagnostic["detected"] is False
     assert diagnostic["disposition"] == "blocked"
     assert diagnostic["block_reason"] == "failed_turn"
