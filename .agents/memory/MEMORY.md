@@ -1,3 +1,4 @@
 - [Capability-node trust and session isolation](capability-node-session-isolation.md) — durable device trust and ephemeral sessions stay separate; replacements never inherit old work.
 - [Interaction preference evidence boundary](interaction-preference-evidence-boundary.md) — learn only direct creator instructions/corrections; retries and generated output never count.
 - [Railway SSH key discovery](railway-ssh-key-discovery.md) — CLI key registration selects keys discovered under ~/.ssh; arbitrary /tmp paths may be ignored despite help text.
+- [Production fingerprint restart instability](production-fingerprint-restart-instability.md) — startup changed the durable fingerprint with unchanged bytes/sourcebook; never waive the deployment gate.
