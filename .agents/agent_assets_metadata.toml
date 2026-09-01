@@ -28,3 +28,17 @@ mtime_ms = 1788225707823
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:00f1ce7a-b57d-48a1-bb8b-a1bff8da913e/88191ab5-c401-4b93-8e54-78d3df7ac563/b1f96d7b-693e-440e-9681-1359680073ec"
 storage_version_token = "1788225791493187"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Cvv_v5OiWDwLgDXKqz6i2"
+uri = "file://docs/certification/MARYV2_SAFE_PRODUCTION_BACKUP_DEPLOYMENT_RESTART_2026-08-31.md"
+type = "text"
+title = "MaryV2 Safe Production Backup, Deployment & Restart Certification"
+description = "Task 23 certification with the complete persistence inventory, verified backup and recovery evidence, release results, Railway deployment/restart runbook, rollback gate, and DEPLOYMENT READY — MANUAL ACTION REQUIRED verdict."
+logical_id = "8d667cf1-6690-4e32-8060-48ea836afff0"
+content_hash = "sha256:d67c5106bfafcd6787faae0d2c5dcbb0f176cb27d4a4684e52827201ad51121a"
+size = 14610
+mtime_ms = 1788227357098
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:00f1ce7a-b57d-48a1-bb8b-a1bff8da913e/8d667cf1-6690-4e32-8060-48ea836afff0/1b5a2371-5e90-418a-8c14-8ea73bd88ee8"
+storage_version_token = "1788227484554735"
+content_type = "text/markdown"
