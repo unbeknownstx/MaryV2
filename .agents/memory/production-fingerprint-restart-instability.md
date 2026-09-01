@@ -1,16 +1,16 @@
 ---
-name: Production fingerprint restart instability
-description: A production deployment and rollback both changed the durable-state fingerprint before any acceptance turn.
+name: Restart-stable preference loading
+description: Durable developed-preference chronology must be preserved exactly during deserialization.
 ---
 
 Treat a pre/post-deployment durable fingerprint mismatch as a hard stop even when
 file count, total bytes, and CharacterSourcebook metadata remain unchanged.
 
-**Why:** A controlled deployment changed the fingerprint before any live
-acceptance turn, and rolling back to the known-good code tree changed it again.
-This shows startup can mutate fingerprint-relevant state; matching aggregate
-sizes does not prove reconstruction equality.
+**Why:** Preference deserialization once reconstructed durable overrides through
+the normal mutation path, regenerating chronology timestamps in memory. A
+graceful shutdown then persisted them, changing the fingerprint before any
+creator turn. Matching aggregate sizes did not prove reconstruction equality.
 
-**How to apply:** Stop acceptance, execute the approved code rollback, avoid
-creator or learning turns, and diagnose the per-file/projection difference from
-verified backups before attempting another production deployment.
+**How to apply:** Keep load paths observational, preserve serialized chronology
+exactly, test construct/close fingerprint equality, and stop deployment
+acceptance whenever exact durable reconstruction disagrees.

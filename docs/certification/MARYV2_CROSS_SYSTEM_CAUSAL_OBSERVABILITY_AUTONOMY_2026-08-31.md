@@ -76,5 +76,73 @@ Fresh patched-state backup:
 
 ## Certification restart and live acceptance
 
-Pending the single certification deployment restart and exact pre-turn
-fingerprint gate.
+Certification revision:
+`a20329227fc3f335433de4bfcd0d3ffe69b839c8`
+
+The single certification deployment replaced Core instance
+`618557bc-7b87-4603-91df-3f1f739ca0bb` with
+`499ba90f-0d2f-4b3f-9739-f472f73835e8`.
+
+Before any acceptance turn:
+
+- fingerprint:
+  exact `d16ffabc7199471a9ca3c683f396216f835fd4fe3c89ca4c167d50d742aadb45`
+  match;
+- files/bytes: exact `12` / `81,347` match;
+- sourcebook: exact version/count/hash match.
+
+### Live causal evidence
+
+- Four bounded authenticated turns completed successfully.
+- Every queried historical trace returned the same content-free completion by
+  raw turn filter and opaque request filter.
+- The normal provider-backed turn recorded:
+  `provider_availability=success`, `provider_generation=success`, and
+  `provider_fallback=not_needed`.
+- Each relevant trace projected the existing active developed preference ID
+  `developed_preference_cc60f5a44c9b9bbc45f1812c`.
+- The preference remained the sole active developed preference; certification
+  did not create another one.
+- Traces linked authentication, ingress, lifecycle, attention, context,
+  sourcebook, memory, relationship, developed-self, growth, persistence,
+  autonomy evaluation, and response serialization without prompt/response
+  content.
+
+### Proposal-only autonomy evidence
+
+- A harmless creator-directed curiosity established one real Agency
+  orientation.
+- Evaluation `evaluation_4f1d0e8daeaa456a` produced pending-confirmation
+  proposal `proposal_47dc810581c44727`.
+- Repeated relevant evaluation `evaluation_72227c5347e94475` returned
+  `deduplicated_existing` with that exact proposal ID.
+- Both traces reported `proposals_recorded_not_executed`.
+- No approval, ready action, execution attempt, tool call, spending, message,
+  capability dispatch, filesystem action, or external consequential action
+  occurred.
+
+### Sleep/wake and Mobile parity
+
+- Manual offline state produced `OFFLINE`,
+  `attention_paused_by_sleep=true`, and
+  `autonomy_paused_by_sleep=true`.
+- After clearing manual offline and explicitly waking the registered
+  certification surface, Core returned `ACTIVE` with both pause flags false.
+- The Mobile workflow ran as `remote-core client` and explicitly did not create
+  a second Mary.
+- Authenticated Mobile `/api/state` projected Core instance
+  `499ba90f-0d2f-4b3f-9739-f472f73835e8`, exactly matching production Core.
+
+## Final verdict
+
+**PASS — Task #24 cross-system causal observability and live proposal-only
+autonomy are certified.**
+
+The restart-time discrepancy was an owner-level deserialization defect, not
+state loss and not a fingerprint-contract defect. The durable gate was never
+weakened: failed deployments stopped before acceptance, remediation was
+verified offline and independently reviewed, a fresh patched-state backup was
+created, the single certification restart matched it exactly, and live
+acceptance proved causal linkage, bounded lookup, learned-state continuity,
+proposal deduplication, lifecycle gating, Core/Mobile parity, and zero
+autonomous execution.
