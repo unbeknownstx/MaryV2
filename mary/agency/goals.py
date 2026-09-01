@@ -27,7 +27,7 @@ from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, loa
 
 
 class GoalSystem:
-    """Persistent manager for Mary's long-term goals."""
+    """Manager for Mary's long-term goals with optional persistence."""
 
     VALID_STATUSES = {
         "active",
@@ -38,12 +38,12 @@ class GoalSystem:
 
     def __init__(
         self,
-        path: str | Path = "data/goals/goals.json",
+        path: str | Path | None = None,
         capacity: int = 512,
         content_limit: int = 2000,
         backup_generations: int = 3,
     ) -> None:
-        self.path = Path(path)
+        self.path = Path(path) if path is not None else None
         self.capacity = max(1, int(capacity))
         self.content_limit = max(128, int(content_limit))
         self.backup_generations = max(1, int(backup_generations))
@@ -55,7 +55,10 @@ class GoalSystem:
     # ============================================================
 
     def load(self) -> None:
-        """Load state with finite-backup recovery."""
+        """Load state with finite-backup recovery when persistence is configured."""
+        if self.path is None:
+            return
+
         cleanup_stale_temps(self.path)
         if not self.path.exists() and not any(
             self.path.with_name(f"{self.path.name}.bak{i}").exists()
@@ -78,7 +81,11 @@ class GoalSystem:
         self.recovered_from_backup = bool(source is not None and source != self.path)
 
     def save(self) -> None:
-        """Persist bounded state atomically."""
+        """Persist bounded state atomically when persistence is configured."""
+        if self.path is None:
+            self._compact()
+            return
+
         self._ensure_directory()
         self._compact()
         atomic_write_json(
@@ -105,7 +112,9 @@ class GoalSystem:
         return max(0, before - len(self.goals))
 
     def _ensure_directory(self) -> None:
-        """Create the goal storage directory if necessary."""
+        """Create the configured goal storage directory if necessary."""
+        if self.path is None:
+            return
 
         self.path.parent.mkdir(
             parents=True,

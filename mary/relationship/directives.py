@@ -25,7 +25,7 @@ from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, loa
 
 
 class CreatorDirectiveSystem:
-    """Persistent manager for explicit creator directives."""
+    """Manage explicit creator directives, optionally persisting them."""
 
     VALID_STATUSES = {
         "active",
@@ -35,13 +35,13 @@ class CreatorDirectiveSystem:
 
     def __init__(
         self,
-        path: str | Path = "data/relationship/creator_directives.json",
+        path: str | Path | None = None,
         *,
         capacity: int = 512,
         content_limit: int = 2000,
         backup_generations: int = 3,
     ) -> None:
-        self.path = Path(path)
+        self.path: Path | None = Path(path) if path is not None else None
         self.capacity = max(1, int(capacity))
         self.content_limit = max(128, int(content_limit))
         self.backup_generations = max(1, int(backup_generations))
@@ -53,7 +53,9 @@ class CreatorDirectiveSystem:
     # ============================================================
 
     def load(self) -> None:
-        """Load directives with finite-backup recovery."""
+        """Load directives with finite-backup recovery when configured."""
+        if self.path is None:
+            return
         cleanup_stale_temps(self.path)
         if not self.path.exists() and not any(
             self.path.with_name(f"{self.path.name}.bak{i}").exists()
@@ -76,9 +78,11 @@ class CreatorDirectiveSystem:
         self.recovered_from_backup = bool(source is not None and source != self.path)
 
     def save(self) -> None:
-        """Persist directives atomically after bounded compaction."""
-        self._ensure_directory()
+        """Persist directives atomically after bounded compaction when configured."""
         self._compact()
+        if self.path is None:
+            return
+        self._ensure_directory()
         atomic_write_json(
             self.path,
             {"directives": self.directives},
@@ -104,7 +108,8 @@ class CreatorDirectiveSystem:
         return max(0, before - len(self.directives))
 
     def _ensure_directory(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
 
     # ============================================================
     # CREATE / UPDATE

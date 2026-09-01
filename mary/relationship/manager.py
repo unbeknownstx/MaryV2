@@ -26,17 +26,17 @@ from .user import UserModel
 
 
 class RelationshipManager:
-    """Own and persist Mary's relationship state for her creator."""
+    """Own Mary's relationship state, optionally persisting it for her creator."""
 
     def __init__(
         self,
-        path: str | Path = "data/relationship/relationship.json",
+        path: str | Path | None = None,
         *,
         creator_id: str = "creator",
         creator_name: str = "unbe",
         limits: RuntimeLimits | None = None,
     ) -> None:
-        self.path = Path(path)
+        self.path: Path | None = Path(path) if path is not None else None
         self.limits = limits or RuntimeLimits()
         self.last_load_source: str | None = None
         self.recovered_from_backup = False
@@ -59,7 +59,10 @@ class RelationshipManager:
     # ============================================================
 
     def load(self) -> None:
-        """Load relationship state with finite-backup recovery."""
+        """Load relationship state with finite-backup recovery when configured."""
+
+        if self.path is None:
+            return
 
         self.stale_temps_removed += cleanup_stale_temps(self.path)
         if not self.path.exists() and not any(
@@ -93,9 +96,11 @@ class RelationshipManager:
         self.recovered_from_backup = source != self.path
 
     def save(self) -> None:
-        """Compact then atomically persist all relationship state."""
+        """Compact then atomically persist relationship state when configured."""
 
         self._compact_state()
+        if self.path is None:
+            return
         payload = {
             "version": 3,
             "policy": "bounded_relationship_continuity",
@@ -208,10 +213,11 @@ class RelationshipManager:
 
     def governance_status(self) -> dict[str, Any]:
         file_size = 0
-        try:
-            file_size = self.path.stat().st_size
-        except OSError:
-            pass
+        if self.path is not None:
+            try:
+                file_size = self.path.stat().st_size
+            except OSError:
+                pass
         return {
             "policy": "bounded_relationship_continuity",
             "counts": {
@@ -231,7 +237,7 @@ class RelationshipManager:
                 "milestones": self.limits.relationship_milestone_capacity,
             },
             "persistence": {
-                "path": str(self.path),
+                "path": str(self.path) if self.path is not None else None,
                 "file_size_bytes": file_size,
                 "soft_limit_bytes": self.limits.state_file_soft_limit_bytes,
                 "backup_generations": self.limits.backup_generations,

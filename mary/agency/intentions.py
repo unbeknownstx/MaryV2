@@ -24,7 +24,7 @@ from mary.runtime.persistence import atomic_write_json, cleanup_stale_temps, loa
 
 
 class IntentionSystem:
-    """Persistent manager for Mary's short-term intentions."""
+    """Manager for Mary's short-term intentions with optional persistence."""
 
     VALID_STATUSES = {
         "pending",
@@ -35,12 +35,12 @@ class IntentionSystem:
 
     def __init__(
         self,
-        path: str | Path = "data/goals/intentions.json",
+        path: str | Path | None = None,
         capacity: int = 512,
         content_limit: int = 2000,
         backup_generations: int = 3,
     ) -> None:
-        self.path = Path(path)
+        self.path = Path(path) if path is not None else None
         self.capacity = max(1, int(capacity))
         self.content_limit = max(128, int(content_limit))
         self.backup_generations = max(1, int(backup_generations))
@@ -52,7 +52,10 @@ class IntentionSystem:
     # ============================================================
 
     def load(self) -> None:
-        """Load state with finite-backup recovery."""
+        """Load state with finite-backup recovery when persistence is configured."""
+        if self.path is None:
+            return
+
         cleanup_stale_temps(self.path)
         if not self.path.exists() and not any(
             self.path.with_name(f"{self.path.name}.bak{i}").exists()
@@ -75,7 +78,11 @@ class IntentionSystem:
         self.recovered_from_backup = bool(source is not None and source != self.path)
 
     def save(self) -> None:
-        """Persist bounded state atomically."""
+        """Persist bounded state atomically when persistence is configured."""
+        if self.path is None:
+            self._compact()
+            return
+
         self._ensure_directory()
         self._compact()
         atomic_write_json(
@@ -102,7 +109,9 @@ class IntentionSystem:
         return max(0, before - len(self.intentions))
 
     def _ensure_directory(self) -> None:
-        """Create the storage directory if necessary."""
+        """Create the configured storage directory if necessary."""
+        if self.path is None:
+            return
 
         self.path.parent.mkdir(
             parents=True,
