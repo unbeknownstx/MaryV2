@@ -98,6 +98,8 @@ def inspect_backup(archive: Path) -> dict:
                 "sourcebook": manifest.get("sourcebook", {}),
                 "excluded_state": manifest.get("excluded_state", []),
             }
+            if "projection_version" in manifest:
+                stable["projection_version"] = manifest["projection_version"]
             encoded = json.dumps(
                 stable,
                 ensure_ascii=False,
@@ -112,6 +114,7 @@ def inspect_backup(archive: Path) -> dict:
         "archive": path,
         "created_at_utc": manifest.get("created_at_utc"),
         "format": manifest.get("format"),
+        "projection_version": manifest.get("projection_version", 1),
         "files": validated,
         "file_count": len(validated),
         "durable_state_fingerprint": manifest.get("durable_state_fingerprint"),

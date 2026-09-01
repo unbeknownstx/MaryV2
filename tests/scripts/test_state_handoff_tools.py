@@ -7,7 +7,11 @@ import zipfile
 
 from scripts.backup_state import create_backup
 from scripts.verify_state_integrity import inspect_state
-from mary.runtime.backup import BACKUP_FORMAT
+from mary.runtime.backup import (
+    BACKUP_FORMAT,
+    durable_fingerprint,
+    verify_reconstruction,
+)
 
 
 def test_state_integrity_accepts_fresh_missing_data_directory(tmp_path):
@@ -216,6 +220,93 @@ def test_state_backup_excludes_ephemeral_unknown_and_credential_files(tmp_path):
     assert enrollment["audit"] == []
     assert enrollment["session_generations"] == {}
     assert enrollment["trusted_devices"][0]["node_id"] == "device-a"
+
+
+def test_engagement_projection_excludes_process_local_plan_from_fingerprint(
+    tmp_path,
+):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    durable = {
+        "schema_version": 1,
+        "mode": "adaptive",
+        "active_session": {
+            "mode": "engaged",
+            "turns_remaining": 3,
+            "thread_id": "thread-a",
+            "started_at": "2026-08-31T00:00:00+00:00",
+        },
+        "stats": {"engaged_turns": 8, "deep_turns": 2},
+    }
+    for root, last_plan, asked in (
+        (first, {"target_length": "brief", "rationale": "first"}, True),
+        (second, {"target_length": "long", "rationale": "second"}, False),
+    ):
+        state = root / "runtime" / "conversation_engagement.json"
+        state.parent.mkdir(parents=True)
+        state.write_text(
+            json.dumps({
+                **durable,
+                "last_plan": last_plan,
+                "last_question_asked": asked,
+            }),
+            encoding="utf-8",
+        )
+
+    first_fingerprint = durable_fingerprint(first)
+    second_fingerprint = durable_fingerprint(second)
+    assert (
+        first_fingerprint["durable_state_fingerprint"]
+        == second_fingerprint["durable_state_fingerprint"]
+    )
+    assert first_fingerprint["projection_version"] == 2
+
+    archive = create_backup(first, tmp_path / "backups")
+    assert archive is not None
+    with zipfile.ZipFile(archive) as bundle:
+        manifest = json.loads(bundle.read("MARYV2_STATE_BACKUP_MANIFEST.json"))
+        engagement = json.loads(
+            bundle.read("data/runtime/conversation_engagement.json")
+        )
+    record = next(
+        item
+        for item in manifest["files"]
+        if item["path"] == "data/runtime/conversation_engagement.json"
+    )
+    assert manifest["projection_version"] == 2
+    assert record["sanitized_for_recovery"] is True
+    assert engagement["last_plan"] == {}
+    assert engagement["last_question_asked"] is False
+    assert engagement["mode"] == durable["mode"]
+    assert engagement["active_session"] == durable["active_session"]
+    assert engagement["stats"] == durable["stats"]
+
+
+def test_reconstruction_verifies_pre_projection_v2_manifest(tmp_path):
+    state = tmp_path / "data" / "runtime" / "conversation_engagement.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "mode": "adaptive",
+            "active_session": {},
+            "last_plan": {"target_length": "brief"},
+            "last_question_asked": True,
+            "stats": {"engaged_turns": 1, "deep_turns": 0},
+        }),
+        encoding="utf-8",
+    )
+    old_manifest = durable_fingerprint(
+        tmp_path / "data",
+        projection_version=1,
+    )
+    assert "projection_version" not in old_manifest
+    verified = verify_reconstruction(
+        tmp_path / "data",
+        old_manifest,
+        sourcebook=None,
+    )
+    assert verified["reconstruction_verified"] is True
 
 
 def test_state_backup_refuses_sensitive_field_without_touching_source(tmp_path):

@@ -19,6 +19,7 @@ import zipfile
 
 BACKUP_FORMAT = "maryv2-state-backup-v2"
 MANIFEST_NAME = "MARYV2_STATE_BACKUP_MANIFEST.json"
+STATE_PROJECTION_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -216,8 +217,55 @@ def validate_json_state_payload(payload: bytes) -> tuple[int, str | int | None]:
     return _json_metadata(payload)
 
 
-def _export_payload(spec: DurableStateFile, source: bytes) -> bytes:
+def _canonical_json_bytes(value: Any) -> bytes:
+    return (
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _export_payload(
+    spec: DurableStateFile,
+    source: bytes,
+    *,
+    projection_version: int = STATE_PROJECTION_VERSION,
+) -> bytes:
     """Project mixed stores down to only their durable reconstruction state."""
+    if (
+        projection_version >= 2
+        and spec.relative_path == "runtime/conversation_engagement.json"
+    ):
+        try:
+            value = json.loads(source.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "Conversation engagement state is not valid UTF-8 JSON."
+            ) from exc
+        if not isinstance(value, dict) or value.get("schema_version") != 1:
+            raise ValueError("Unsupported conversation engagement state schema.")
+        active_session = value.get("active_session", {})
+        stats = value.get("stats", {})
+        if not isinstance(active_session, dict) or not isinstance(stats, dict):
+            raise ValueError("Invalid conversation engagement state.")
+        # The planner's last plan and question decision are process-local
+        # observations. ConversationEngagement.load() intentionally does not
+        # reconstruct them, so they cannot participate in a restart-stable
+        # durable fingerprint. Keep the stable policy/session/statistics fields.
+        return _canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "mode": value.get("mode", "adaptive"),
+                "active_session": active_session,
+                "last_plan": {},
+                "last_question_asked": False,
+                "stats": stats,
+            }
+        )
     if spec.relative_path != "runtime/node_enrollment.json":
         return source
     try:
@@ -239,15 +287,7 @@ def _export_payload(spec: DurableStateFile, source: bytes) -> bytes:
         "session_generations": {},
         "trusted_devices": trusted,
     }
-    return (
-        json.dumps(
-            sanitized,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n"
-    ).encode("utf-8")
+    return _canonical_json_bytes(sanitized)
 
 
 def _reject_sensitive_keys(value: Any) -> None:
@@ -289,7 +329,10 @@ def durable_fingerprint(
     *,
     sourcebook: Any | None = None,
     specifications: Iterable[DurableStateFile] = DURABLE_STATE_FILES,
+    projection_version: int = STATE_PROJECTION_VERSION,
 ) -> dict[str, Any]:
+    if projection_version not in {1, STATE_PROJECTION_VERSION}:
+        raise ValueError("Unsupported durable-state projection version.")
     root = Path(data_root).expanduser().resolve()
     registered = {item.relative_path for item in specifications}
     for strict_root in sorted(_STRICT_DURABLE_ROOTS):
@@ -315,7 +358,11 @@ def durable_fingerprint(
             continue
         if path.is_symlink() or root not in path.resolve().parents:
             raise ValueError(f"Unsafe durable-state path: {spec.relative_path}")
-        payload = _export_payload(spec, path.read_bytes())
+        payload = _export_payload(
+            spec,
+            path.read_bytes(),
+            projection_version=projection_version,
+        )
         record_count, schema_version = _json_metadata(payload)
         record = {
             "path": f"data/{spec.relative_path}",
@@ -328,6 +375,11 @@ def durable_fingerprint(
             "record_count": record_count,
             "sanitized_for_recovery": (
                 spec.relative_path == "runtime/node_enrollment.json"
+                or (
+                    projection_version >= 2
+                    and spec.relative_path
+                    == "runtime/conversation_engagement.json"
+                )
             ),
         }
         records.append(record)
@@ -346,6 +398,10 @@ def durable_fingerprint(
         "sourcebook": _sourcebook_summary(sourcebook),
         "excluded_state": list(EXCLUDED_STATE),
     }
+    # Projection v1 predates this manifest field. Omitting it when validating
+    # older v2 archives preserves their original fingerprint exactly.
+    if projection_version >= 2:
+        stable["projection_version"] = projection_version
     return {
         **stable,
         "file_count": len(records),
@@ -399,7 +455,13 @@ def create_backup(
                     for item in DURABLE_STATE_FILES
                     if item.relative_path == relative.as_posix()
                 )
-                payload = _export_payload(spec, (root / relative).read_bytes())
+                payload = _export_payload(
+                    spec,
+                    (root / relative).read_bytes(),
+                    projection_version=int(
+                        manifest.get("projection_version", 1)
+                    ),
+                )
                 if (
                     len(payload) != int(record["size"])
                     or sha256_bytes(payload) != str(record["sha256"])
@@ -459,6 +521,8 @@ def inspect_backup(archive: Path) -> dict[str, Any]:
             "sourcebook": manifest.get("sourcebook", {}),
             "excluded_state": manifest.get("excluded_state", []),
         }
+        if "projection_version" in manifest:
+            stable["projection_version"] = manifest["projection_version"]
         if _canonical_fingerprint(stable) != str(
             manifest.get("durable_state_fingerprint", "")
         ):
@@ -473,6 +537,7 @@ def backup_public_report(archive: Path, manifest: dict[str, Any]) -> dict[str, A
     return {
         "backup_id": Path(archive).stem,
         "format": manifest["format"],
+        "projection_version": manifest.get("projection_version", 1),
         "created_at_utc": manifest.get("created_at_utc"),
         "file_count": manifest["file_count"],
         "total_bytes": manifest["total_bytes"],
@@ -489,6 +554,7 @@ def durable_public_report(fingerprint: dict[str, Any]) -> dict[str, Any]:
     """Project a live durable fingerprint without paths or state contents."""
     return {
         "format": fingerprint["format"],
+        "projection_version": fingerprint.get("projection_version", 1),
         "file_count": fingerprint["file_count"],
         "total_bytes": fingerprint["total_bytes"],
         "categories": fingerprint["categories"],
@@ -506,7 +572,11 @@ def verify_reconstruction(
     sourcebook: Any,
 ) -> dict[str, Any]:
     """Verify restored durable state and authored sourcebook against a snapshot."""
-    actual = durable_fingerprint(data_root, sourcebook=sourcebook)
+    actual = durable_fingerprint(
+        data_root,
+        sourcebook=sourcebook,
+        projection_version=int(expected_manifest.get("projection_version", 1)),
+    )
     expected_fingerprint = str(
         expected_manifest.get("durable_state_fingerprint", "")
     )
