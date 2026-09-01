@@ -1,0 +1,164 @@
+Continue Task #24 — Diagnose Restart-Time Fingerprint Mutation
+
+Task #24 local implementation is complete and validated, but production certification is correctly blocked by the durable-state fingerprint gate.
+
+Current evidence:
+
+* local Task #24 commit: 2075fc2175224485d6090e9f57a05464573e4213
+* full suite: 1,482 passed, 1 skipped
+* deterministic release verification: PASS
+* independent architecture/privacy review: PASS
+* provider-error sanitization, causal tracing, historical queries, Core/Mobile parity, autonomy deduplication, and proposal-only safeguards are implemented
+* verified pre-deployment backup: MaryV2-state-20260901-031641Z-4655b5db90cb
+* backup fingerprint: 4655b5db…fb26
+* Task #24 deployment commit: d2095731…
+* post-deploy pre-acceptance fingerprint unexpectedly changed to b2681c1b…7c9
+* production acceptance was correctly stopped before any learning/autonomy acceptance turn
+* rollback commit: 6633eb3b…
+* known-good code is live
+* rollback restart changed fingerprint again to 71e3179e…0c01
+* file count, total bytes, and CharacterSourcebook remained unchanged
+
+This strongly suggests restart-time mutation of one or more fingerprint-relevant state fields.
+
+Do not weaken the fingerprint gate.
+Do not simply ignore the mismatch.
+Do not rerun production acceptance until the discrepancy is explained.
+
+Objective
+
+Determine exactly which file(s) and field(s) change across a Core restart and classify each change as:
+
+* durable canonical state that must remain stable;
+* intentionally restart-ephemeral state that should not participate in durable fingerprinting;
+* derived/reconstructable state;
+* timestamp/metadata noise;
+* defect/unknown.
+
+Required forensic comparison
+
+Compare:
+
+1. verified backup state before deployment;
+2. state immediately after Task #24 deployment startup;
+3. state immediately after rollback startup.
+
+Produce a content-safe per-file comparison:
+
+relative path | before hash | after hash | changed? | changed field paths | classification
+
+Do not print private field values.
+
+For changed JSON files, report only JSON paths and safe structural metadata, e.g.:
+
+* $.runtime.last_started_at
+* $.engagement.plan_id
+* $.provider.cooldown
+* $.relationship.score
+
+not the underlying private contents.
+
+Trace startup writers
+
+For every changed field:
+
+* identify the owning subsystem;
+* identify the exact startup/load/reconstruction code that writes it;
+* determine whether the mutation happens before first creator turn;
+* determine whether it is expected by architecture.
+
+Pay special attention to:
+
+* startup timestamps;
+* regenerated opaque IDs;
+* engagement/initiative planning state;
+* lifecycle reconstruction;
+* provider cooldown/status;
+* attention/autonomy runtime state;
+* surface/session state;
+* derived indexes;
+* cache metadata;
+* file ordering/serialization normalization;
+* backup generation metadata;
+* counters initialized on load.
+
+Fingerprint model
+
+Review the Task #23 projection-v2 durable fingerprint contract.
+
+The durable fingerprint should include only state intended to survive process restart.
+
+It should not include intentionally ephemeral or reconstructable state such as:
+
+* surface leases;
+* attention queues;
+* provider cooldown;
+* node sessions;
+* request traces;
+* in-flight work;
+* restart timestamps;
+* runtime process IDs;
+* transient autonomy cycle state;
+* derived caches/indexes;
+
+unless the existing architecture explicitly defines any of those as durable.
+
+If a restart-ephemeral field is currently included, fix the fingerprint projection rather than mutating/removing that subsystem.
+
+If a field is intended durable but changes at restart, repair the owning persistence/reconstruction path.
+
+Regression requirements
+
+Add tests proving:
+
+* same durable state across process restart produces identical durable fingerprint;
+* intentionally ephemeral startup state may change without changing durable fingerprint;
+* a real durable-state mutation does change fingerprint;
+* sourcebook count/hash remains stable;
+* learned developed preference remains fingerprint-relevant and stable;
+* relationship/memory/growth/shared-work durable state remains fingerprint-relevant where intended;
+* runtime timestamps/queues/sessions do not affect durable fingerprint;
+* fingerprint comparison remains deterministic across JSON serialization/order differences.
+
+Production re-certification
+
+Only after the discrepancy is fully classified and tests pass:
+
+1. create a fresh verified production backup;
+2. record current durable fingerprint;
+3. deploy the corrected Task #24 revision;
+4. allow exactly the single normal deployment restart;
+5. verify exact durable fingerprint equality before any acceptance turn;
+6. if it mismatches, hard-stop again;
+7. if it matches, resume the already-approved Task #24 live acceptance:
+    * normal causal trace;
+    * historical trace lookup;
+    * learned-state retrieval trace;
+    * provider fallback trace;
+    * one harmless proposal-only autonomy chain;
+    * autonomy dedupe;
+    * sleep/wake autonomy gating;
+    * zero autonomous execution.
+
+Do not create another developed preference or alter existing learned state merely for certification.
+
+Final report addition
+
+Add:
+
+1. exact changed files;
+2. exact changed JSON paths;
+3. owner/startup writer for each;
+4. durable vs ephemeral classification;
+5. root cause;
+6. whether fingerprint contract or persistence owner was wrong;
+7. files changed;
+8. regression-test results;
+9. full-suite result;
+10. release-verification result;
+11. new deployment revision;
+12. pre/post fingerprint;
+13. completed Task #24 live causal/autonomy results;
+14. final verdict.
+
+Do not start a new task. This is continuation/completion of Task #24.
