@@ -1,0 +1,166 @@
+diff --git a/scripts/run_desktop.py b/scripts/run_desktop.py
+index 8e797ac..bae47a1 100644
+--- a/scripts/run_desktop.py
++++ b/scripts/run_desktop.py
+@@ -2,8 +2,15 @@
+ 
+ from __future__ import annotations
+ 
++from mary.desktop.webengine_bootstrap import configure_qtwebengine
++
+ 
+ def main() -> int:
++    # Qt WebEngine reads Chromium process flags during import/initialization.
++    # Configure them before importing the window module so the Vite production
++    # shell can load its local JS/CSS assets on current macOS Qt builds.
++    configure_qtwebengine()
++
+     try:
+         from mary.desktop.window import run_desktop
+     except ModuleNotFoundError as exc:
+diff --git a/scripts/run_launcher.py b/scripts/run_launcher.py
+index f4c722f..83fcc94 100644
+--- a/scripts/run_launcher.py
++++ b/scripts/run_launcher.py
+@@ -2,8 +2,15 @@
+ 
+ from __future__ import annotations
+ 
++from mary.desktop.webengine_bootstrap import configure_qtwebengine
++
+ 
+ def main() -> int:
++    # The launcher is built by the same Vite pipeline and uses the same local
++    # file:// asset model as the main desktop shell.  Configure WebEngine before
++    # importing the Qt window for identical macOS behavior.
++    configure_qtwebengine()
++
+     try:
+         from mary.launcher.window import run_launcher
+     except ModuleNotFoundError as exc:
+diff --git a/mary/desktop/webengine_bootstrap.py b/mary/desktop/webengine_bootstrap.py
+new file mode 100644
+index 0000000..91ebd09
+--- /dev/null
++++ b/mary/desktop/webengine_bootstrap.py
+@@ -0,0 +1,64 @@
++"""Early Qt WebEngine process configuration for Mary desktop surfaces.
++
++Qt WebEngine consumes Chromium command-line flags when its process is first
++initialized.  Mary currently loads the trusted Vite production shell from a
++``file://`` URL so it can also play the temporary ``file://`` audio files
++staged by :mod:`mary.desktop.audio_cache` without adding another web server or
++transport layer.
++
++On macOS with Qt/Chromium 6.11, ES-module and stylesheet subresources from the
++same local build can otherwise be treated as a unique/null origin and rejected
++before Mary's JavaScript boot code executes.  ``--allow-file-access-from-files``
++restores same-machine file-to-file loading for this trusted desktop shell.
++
++This module deliberately has no PySide imports.  Call
++:func:`configure_qtwebengine` *before* importing ``QtWebEngine`` classes.
++"""
++
++from __future__ import annotations
++
++import os
++import shlex
++import sys
++
++_FILE_ACCESS_FLAG = "--allow-file-access-from-files"
++
++
++def _flag_tokens(value: str) -> list[str]:
++    """Return Chromium flag tokens without failing on an imperfect env value."""
++
++    if not value.strip():
++        return []
++    try:
++        return shlex.split(value)
++    except ValueError:
++        # Preserve startup even if a user supplied unmatched quoting.  We only
++        # need a conservative duplicate check before appending our own flag.
++        return value.split()
++
++
++def configure_qtwebengine(*, platform: str | None = None) -> str:
++    """Apply Mary desktop's required early WebEngine flags.
++
++    The macOS-only file-access flag is intentionally narrow: it does not disable
++    Chromium web security and it does not affect Mary Core/network authority.
++    Existing ``QTWEBENGINE_CHROMIUM_FLAGS`` values are preserved verbatim.
++
++    Returns the effective flag string, which also makes this helper easy to
++    verify in isolation without importing PySide6.
++    """
++
++    effective_platform = sys.platform if platform is None else str(platform)
++    current = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "").strip()
++
++    if effective_platform != "darwin":
++        return current
++
++    if _FILE_ACCESS_FLAG not in _flag_tokens(current):
++        current = f"{current} {_FILE_ACCESS_FLAG}".strip()
++        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = current
++
++    return current
++
++
++__all__ = ["configure_qtwebengine"]
+diff --git a/tests/desktop/test_webengine_bootstrap_macos.py b/tests/desktop/test_webengine_bootstrap_macos.py
+new file mode 100644
+index 0000000..58e6d3e
+--- /dev/null
++++ b/tests/desktop/test_webengine_bootstrap_macos.py
+@@ -0,0 +1,50 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++from mary.desktop.webengine_bootstrap import configure_qtwebengine
++
++
++FILE_ACCESS_FLAG = "--allow-file-access-from-files"
++
++
++def test_macos_bootstrap_adds_local_file_access_flag(monkeypatch):
++    monkeypatch.delenv("QTWEBENGINE_CHROMIUM_FLAGS", raising=False)
++
++    effective = configure_qtwebengine(platform="darwin")
++
++    assert effective == FILE_ACCESS_FLAG
++    assert effective == __import__("os").environ["QTWEBENGINE_CHROMIUM_FLAGS"]
++
++
++def test_macos_bootstrap_preserves_existing_flags_and_is_idempotent(monkeypatch):
++    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging=stderr")
++
++    first = configure_qtwebengine(platform="darwin")
++    second = configure_qtwebengine(platform="darwin")
++
++    assert first == f"--enable-logging=stderr {FILE_ACCESS_FLAG}"
++    assert second == first
++    assert second.split().count(FILE_ACCESS_FLAG) == 1
++
++
++def test_non_macos_bootstrap_leaves_webengine_flags_unchanged(monkeypatch):
++    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--existing-flag")
++
++    effective = configure_qtwebengine(platform="win32")
++
++    assert effective == "--existing-flag"
++    assert __import__("os").environ["QTWEBENGINE_CHROMIUM_FLAGS"] == "--existing-flag"
++
++
++def test_entrypoints_configure_webengine_before_importing_qt_windows():
++    root = Path(__file__).resolve().parents[2]
++    desktop = (root / "scripts" / "run_desktop.py").read_text(encoding="utf-8")
++    launcher = (root / "scripts" / "run_launcher.py").read_text(encoding="utf-8")
++
++    assert desktop.index("configure_qtwebengine()") < desktop.index(
++        "from mary.desktop.window import run_desktop"
++    )
++    assert launcher.index("configure_qtwebengine()") < launcher.index(
++        "from mary.launcher.window import run_launcher"
++    )

@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+from mary.desktop.webengine_bootstrap import configure_qtwebengine
+
 
 def main() -> int:
+    # Qt WebEngine reads Chromium process flags during import/initialization.
+    # Configure them before importing the window module so the Vite production
+    # shell can load its local JS/CSS assets on current macOS Qt builds.
+    configure_qtwebengine()
+
     try:
         from mary.desktop.window import run_desktop
     except ModuleNotFoundError as exc:
