@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from mary.mobile.server import _is_loopback, _resolve_auth
+from mary.mobile.server import _is_loopback, _missing_static_assets, _resolve_auth
 
 
 def test_loopback_does_not_require_generated_token(tmp_path, monkeypatch):
@@ -38,3 +38,11 @@ def test_mobile_static_root_prefers_phone_ui_even_if_desktop_is_built(tmp_path):
     (tmp_path / "desktop" / "dist" / "index.html").write_text("desktop", encoding="utf-8")
 
     assert _static_root(tmp_path) == (tmp_path / "mobile_web")
+
+
+def test_complete_mobile_shell_has_no_missing_linked_assets():
+    root = Path(__file__).resolve().parents[2]
+    index = (root / "mobile_web" / "index.html").read_text(encoding="utf-8")
+
+    assert _missing_static_assets(root / "mobile_web") == []
+    assert 'rel="icon" href="./assets/mary-icon.png"' in index

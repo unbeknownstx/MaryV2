@@ -10,7 +10,7 @@ Security model
 * Loopback-only development can run without a token.
 * Non-loopback hosts (including Replit) automatically require a bearer token.
   If MARY_MOBILE_TOKEN is absent, a strong token is generated and persisted
-  under Mary's configured private data root, then printed once at startup.
+  under Mary's configured private data root without being written to logs.
 * API bodies are bounded and static paths are traversal-safe.
 * The browser never receives provider API keys or environment secrets.
 """
@@ -20,6 +20,8 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from functools import partial
+from hashlib import sha256
+from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -57,6 +59,10 @@ MOBILE_PROTOCOL_VERSION = "4"
 MAX_REQUEST_BYTES = 256_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
 _SAFE_TRACE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
+_SAFE_REPLIT_USER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+_PREVIEW_SESSION_COOKIE = "__Host-mary-mobile-preview"
+_PREVIEW_SESSION_MIN_SECONDS = 60
+_PREVIEW_SESSION_MAX_SECONDS = 900
 
 
 def _clean_conversation_id(
@@ -216,6 +222,197 @@ class MobileAuth:
         return bool(
             self.token
         )
+
+
+@dataclass(frozen=True)
+class MobilePreviewAuth:
+    """Fail-closed Replit development-preview identity boundary."""
+
+    enabled: bool
+    expected_host: str
+    allowed_user_ids: frozenset[str]
+    session_ttl_seconds: int = 300
+
+
+@dataclass(frozen=True)
+class _MobilePreviewSession:
+    user_id: str
+    audience: str
+    expires_at: float
+
+
+class MobilePreviewSessions:
+    """Opaque, process-local preview sessions; no durable credential is copied."""
+
+    def __init__(
+        self,
+        config: MobilePreviewAuth,
+        *,
+        clock: Callable[[], float] = monotonic,
+    ) -> None:
+        self.config = config
+        self._clock = clock
+        self._lock = RLock()
+        self._sessions: dict[str, _MobilePreviewSession] = {}
+
+    @staticmethod
+    def _digest(
+        token: str,
+    ) -> str:
+        return sha256(
+            str(token).encode("utf-8")
+        ).hexdigest()
+
+    def _remove_expired(
+        self,
+        now: float,
+    ) -> None:
+        expired = [
+            digest
+            for digest, session in self._sessions.items()
+            if session.expires_at <= now
+        ]
+        for digest in expired:
+            self._sessions.pop(digest, None)
+
+    def issue(
+        self,
+        *,
+        user_id: str,
+        audience: str,
+    ) -> tuple[str, int]:
+        now = self._clock()
+        ttl = self.config.session_ttl_seconds
+        token = secrets.token_urlsafe(32)
+        with self._lock:
+            self._remove_expired(now)
+            self._sessions[self._digest(token)] = _MobilePreviewSession(
+                user_id=user_id,
+                audience=audience,
+                expires_at=now + ttl,
+            )
+        return token, ttl
+
+    def authorized(
+        self,
+        token: str,
+        *,
+        user_id: str,
+        audience: str,
+    ) -> bool:
+        if not token:
+            return False
+        now = self._clock()
+        with self._lock:
+            self._remove_expired(now)
+            session = self._sessions.get(self._digest(token))
+            return bool(
+                session
+                and session.user_id == user_id
+                and session.audience == audience
+                and session.expires_at > now
+            )
+
+
+def _environment_flag(
+    name: str,
+) -> bool:
+    return os.getenv(
+        name,
+        "",
+    ).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _normalized_host(
+    value: Any,
+) -> str:
+    raw = str(value or "").split(",", 1)[0].strip().lower()
+    if not raw:
+        return ""
+    parsed = urlparse(
+        raw
+        if "://" in raw
+        else f"//{raw}"
+    )
+    return str(parsed.hostname or "").strip().lower()
+
+
+def _resolve_preview_auth(
+) -> MobilePreviewAuth:
+    """Enable owner-scoped preview sessions only from an explicit dev workflow."""
+
+    disabled = MobilePreviewAuth(
+        enabled=False,
+        expected_host="",
+        allowed_user_ids=frozenset(),
+    )
+    if not _environment_flag(
+        "MARY_MOBILE_REPLIT_PREVIEW_BOOTSTRAP"
+    ):
+        return disabled
+    if not os.getenv(
+        "REPL_ID",
+        "",
+    ).strip():
+        return disabled
+
+    expected_host = _normalized_host(
+        os.getenv(
+            "REPLIT_DEV_DOMAIN",
+            "",
+        )
+    )
+    if not expected_host.endswith(
+        ".replit.dev"
+    ):
+        return disabled
+
+    allowed_user_ids = {
+        value.strip()
+        for value in os.getenv(
+            "MARY_MOBILE_PREVIEW_USER_IDS",
+            "",
+        ).split(",")
+        if _SAFE_REPLIT_USER_ID.fullmatch(value.strip())
+    }
+    owner_id = os.getenv(
+        "REPL_OWNER_ID",
+        "",
+    ).strip()
+    if _SAFE_REPLIT_USER_ID.fullmatch(
+        owner_id
+    ):
+        allowed_user_ids.add(owner_id)
+    if not allowed_user_ids:
+        return disabled
+
+    try:
+        ttl = int(
+            os.getenv(
+                "MARY_MOBILE_PREVIEW_SESSION_TTL_SECONDS",
+                "300",
+            )
+        )
+    except ValueError:
+        ttl = 300
+    ttl = max(
+        _PREVIEW_SESSION_MIN_SECONDS,
+        min(
+            _PREVIEW_SESSION_MAX_SECONDS,
+            ttl,
+        ),
+    )
+    return MobilePreviewAuth(
+        enabled=True,
+        expected_host=expected_host,
+        allowed_user_ids=frozenset(allowed_user_ids),
+        session_ttl_seconds=ttl,
+    )
 
 
 def _resolve_auth(
@@ -4013,15 +4210,131 @@ class MaryMobileRequestHandler(
             "",
         )
 
-        return secrets.compare_digest(
+        if secrets.compare_digest(
             supplied,
             f"Bearer {expected}",
+        ):
+            return True
+
+        identity = self._preview_identity(
+            require_origin=(
+                self.command
+                not in {
+                    "GET",
+                    "HEAD",
+                    "OPTIONS",
+                }
+            )
         )
+        if identity is None:
+            return False
+        user_id, audience = identity
+        return (
+            self.mary_server
+            .preview_sessions
+            .authorized(
+                self._preview_cookie(),
+                user_id=user_id,
+                audience=audience,
+            )
+        )
+
+    def _preview_cookie(
+        self,
+    ) -> str:
+        cookie = SimpleCookie()
+        try:
+            cookie.load(
+                self.headers.get(
+                    "Cookie",
+                    "",
+                )
+            )
+        except Exception:
+            return ""
+        morsel = cookie.get(
+            _PREVIEW_SESSION_COOKIE
+        )
+        return (
+            str(morsel.value)
+            if morsel is not None
+            else ""
+        )
+
+    def _preview_identity(
+        self,
+        *,
+        require_origin: bool,
+    ) -> tuple[str, str] | None:
+        config = (
+            self.mary_server
+            .preview_auth
+        )
+        if not config.enabled:
+            return None
+        audience = _normalized_host(
+            self.headers.get(
+                "Host",
+                "",
+            )
+        )
+        if audience != config.expected_host:
+            return None
+        user_id = str(
+            self.headers.get(
+                "X-Replit-User-Id",
+                "",
+            )
+            or ""
+        ).strip()
+        if (
+            not _SAFE_REPLIT_USER_ID.fullmatch(
+                user_id
+            )
+            or user_id
+            not in config.allowed_user_ids
+        ):
+            return None
+        fetch_site = str(
+            self.headers.get(
+                "Sec-Fetch-Site",
+                "",
+            )
+            or ""
+        ).strip().lower()
+        if (
+            fetch_site
+            and fetch_site != "same-origin"
+        ):
+            return None
+        origin = str(
+            self.headers.get(
+                "Origin",
+                "",
+            )
+            or ""
+        ).strip()
+        if origin:
+            parsed_origin = urlparse(
+                origin
+            )
+            if (
+                parsed_origin.scheme != "https"
+                or _normalized_host(origin) != audience
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+            ):
+                return None
+        elif require_origin:
+            return None
+        return user_id, audience
 
     def _send_json(
         self,
         payload: Any,
         status: int = HTTPStatus.OK,
+        *,
+        headers: dict[str, str] | None = None,
     ) -> None:
         raw = json.dumps(
             _json_safe(
@@ -4060,6 +4373,14 @@ class MaryMobileRequestHandler(
             "Cache-Control",
             "no-store",
         )
+        for name, value in (
+            headers
+            or {}
+        ).items():
+            self.send_header(
+                name,
+                value,
+            )
 
         self.end_headers()
 
@@ -4411,6 +4732,11 @@ class MaryMobileRequestHandler(
 
             return
 
+        if path == "/favicon.ico":
+            self.path = (
+                "/assets/mary-icon.png"
+            )
+
         # SPA fallback: unknown extensionless routes reopen the Mary UI.
         parsed = Path(
             path
@@ -4446,6 +4772,45 @@ class MaryMobileRequestHandler(
                 HTTPStatus.NOT_FOUND,
             )
 
+            return
+
+        if path == "/api/auth/preview":
+            identity = self._preview_identity(
+                require_origin=True
+            )
+            if identity is None:
+                self._send_json(
+                    {
+                        "ok": False,
+                        "error": "Unauthorized",
+                        "auth_required": True,
+                    },
+                    HTTPStatus.UNAUTHORIZED,
+                )
+                return
+            user_id, audience = identity
+            token, ttl = (
+                self.mary_server
+                .preview_sessions
+                .issue(
+                    user_id=user_id,
+                    audience=audience,
+                )
+            )
+            self._send_json(
+                {
+                    "ok": True,
+                    "auth": "replit_preview_session",
+                    "expires_in_seconds": ttl,
+                },
+                headers={
+                    "Set-Cookie": (
+                        f"{_PREVIEW_SESSION_COOKIE}={token}; "
+                        f"Path=/; Max-Age={ttl}; "
+                        "Secure; HttpOnly; SameSite=Strict"
+                    ),
+                },
+            )
             return
 
         if not self._require_api_auth():
@@ -4746,6 +5111,7 @@ class MaryMobileServer(
         runtime: MaryMobileRuntime,
         static_root: Path,
         auth: MobileAuth,
+        preview_auth: MobilePreviewAuth | None = None,
     ) -> None:
         self.runtime = (
             runtime
@@ -4760,6 +5126,19 @@ class MaryMobileServer(
 
         self.auth = (
             auth
+        )
+        self.preview_auth = (
+            preview_auth
+            or MobilePreviewAuth(
+                enabled=False,
+                expected_host="",
+                allowed_user_ids=frozenset(),
+            )
+        )
+        self.preview_sessions = (
+            MobilePreviewSessions(
+                self.preview_auth
+            )
         )
 
         handler = partial(
@@ -4843,6 +5222,97 @@ def _static_root(
     return (
         root
         / "desktop"
+    )
+
+
+def _missing_static_assets(
+    static_root: Path,
+) -> list[str]:
+    """Find local assets referenced by the selected shell before serving it."""
+
+    root = Path(
+        static_root
+    ).resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        return [
+            "index.html",
+        ]
+    try:
+        html = index.read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        return [
+            "index.html",
+        ]
+    references = {
+        match.group(1)
+        for match in re.finditer(
+            r"""(?:src|href)=["']([^"'#?]+)["']""",
+            html,
+            re.IGNORECASE,
+        )
+    }
+    missing: set[str] = set()
+    for reference in references:
+        parsed = urlparse(
+            reference
+        )
+        if (
+            parsed.scheme
+            or parsed.netloc
+            or reference.startswith(
+                (
+                    "data:",
+                    "//",
+                )
+            )
+        ):
+            continue
+        relative = Path(
+            parsed.path.lstrip("/")
+        ).as_posix()
+        candidate = (
+            root
+            / relative
+        ).resolve()
+        try:
+            candidate.relative_to(
+                root
+            )
+        except ValueError:
+            missing.add(
+                relative
+                or reference
+            )
+            continue
+        if not candidate.is_file():
+            missing.add(
+                relative
+            )
+    app_script = root / "app.js"
+    if app_script.is_file():
+        try:
+            app_source = app_script.read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            app_source = ""
+        if (
+            "register('./sw.js')" in app_source
+            and not (
+                root
+                / "sw.js"
+            ).is_file()
+        ):
+            missing.add(
+                "sw.js"
+            )
+    return sorted(
+        item
+        for item in missing
+        if item
     )
 
 
@@ -4930,16 +5400,21 @@ def run_mobile_server(
         host=resolved_host,
         data_root=auth_data_root,
     )
+    preview_auth = (
+        _resolve_preview_auth()
+    )
 
-    if not (
-        static_root
-        / "index.html"
-    ).exists():
+    missing_assets = (
+        _missing_static_assets(
+            static_root
+        )
+    )
+    if missing_assets:
         runtime.close()
 
         raise RuntimeError(
-            f"Mobile UI not found at {static_root}. "
-            "Run `cd desktop && npm ci && npm run build` first."
+            f"Mobile UI at {static_root} is incomplete; "
+            f"missing: {', '.join(missing_assets)}."
         )
 
     server = MaryMobileServer(
@@ -4950,6 +5425,7 @@ def run_mobile_server(
         runtime=runtime,
         static_root=static_root,
         auth=auth,
+        preview_auth=preview_auth,
     )
 
     print(
@@ -4995,19 +5471,22 @@ def run_mobile_server(
             )
 
             print(
-                "FIRST-RUN MOBILE ACCESS TOKEN",
-                flush=True,
-            )
-
-            print(
-                auth.token,
+                "Generated a private Mobile bearer credential.",
                 flush=True,
             )
 
             print(
                 (
-                    "Enter this once in the Mary mobile app. "
-                    "It is saved on this device."
+                    "The credential value is intentionally "
+                    "not written to logs."
+                ),
+                flush=True,
+            )
+
+            print(
+                (
+                    "Use an approved local credential-transfer "
+                    "flow for non-preview devices."
                 ),
                 flush=True,
             )
@@ -5029,6 +5508,15 @@ def run_mobile_server(
             (
                 "Mobile API protection: loopback-only "
                 "(no token required)"
+            ),
+            flush=True,
+        )
+
+    if preview_auth.enabled:
+        print(
+            (
+                "Replit development preview: "
+                "owner-scoped HttpOnly session bootstrap"
             ),
             flush=True,
         )
