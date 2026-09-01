@@ -132,6 +132,12 @@ After Task #23 code is running:
   metadata, per-file SHA-256, a deterministic durable-state fingerprint,
   CharacterSourcebook count/version/hash, and explicit exclusions;
 - mixed node state is sanitized to durable trust only;
+- projection version 2 canonicalizes mixed conversation-engagement state by
+  clearing `last_plan` and `last_question_asked`, which
+  `ConversationEngagement.load()` intentionally does not reconstruct, while
+  preserving mode, active-session/thread/turn state, and statistics;
+- projection version 1 remains available only to validate and reconstruct v2
+  archives created before the engagement projection was introduced;
 - archive bytes are rechecked against the manifest before atomic promotion;
 - the HTTP response returns only content-free metadata and never an archive
   path, file path, or state values;
@@ -209,17 +215,52 @@ variables as a new active deployment. Railway volume restore stages a replacemen
 volume and redeploys the service; the previous volume remains retained but
 unmounted.
 
-## Current manual gate
+## Current certified production state
 
-The authoritative production location, restart control, and rollback history
-are now verified. A stable off-volume v2 backup and offline reconstruction proof
-are complete. Production still runs Task #22 commit
-`4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`; Task #23 is not deployed.
+The creator authorized the controlled sequence. Production now runs exact
+revision `0767b44b2662081dac16a167d027b92cf8397dbd`.
 
-**Single creator action required:** explicitly authorize execution of the
-controlled production sequence beginning with staging `MARY_BACKUP_DIR` using
-`--skip-deploys`, then pushing the reviewed Task #23 commits. Until that
-authorization is received, do not push, deploy, or restart.
+The first Task #23 deployment exposed a false raw-fingerprint stop condition:
+`runtime/conversation_engagement.json` changed from 635 to 277 bytes because a
+restart cleared `last_plan`. Offline replay reproduced the live fingerprint
+exactly and proved that no durable field or CharacterSourcebook record changed.
+Projection version 2 corrected the policy, and the replacement deployment
+matched the projected pre-deployment fingerprint exactly.
+
+Certified evidence:
+
+- corrected deployment:
+  `cf59e603-e011-4940-8d8d-bb6a1b315027`;
+- pre-learning Core:
+  `26582d65-df81-462b-94a2-b84e5ed89d71`;
+- projected pre-learning fingerprint:
+  `69c651a812dd59890d5e92804c5f5049f277683bd118744c635c5bcbdad32fe1`;
+- active developed preference:
+  `developed_preference_cc60f5a44c9b9bbc45f1812c`;
+- post-learning backup:
+  `MaryV2-state-20260901-023710Z-171e4c969ccb`;
+- post-learning durable fingerprint:
+  `171e4c969ccb6084ddac429fec811a8243e86cb2e6a9b12915cfab012befcf62`;
+- off-volume archive SHA-256:
+  `c5512eab0dc14472d15646e51e95e1bb9f46aea00f77286eccf424c0895f89ea`;
+- controlled restart deployment:
+  `bc77b19a-72aa-40de-9d4e-26fe9f248e06`;
+- post-restart Core:
+  `17f25055-a4cd-4a04-bf4f-a9a16d2fea2d`;
+- post-restart fingerprint before any new turn: exact match;
+- CharacterSourcebook before/after:
+  version `1.0`, 189 records, hash `49f3c9963de2b35d108d`, zero errors;
+- runtime turn count reset from 6 to 0, compute nodes/work queues were empty,
+  provider cooldowns were zero, and creator surfaces reconnected with new
+  process-local leases;
+- Mobile explicitly reconnected after restart;
+- the same fresh-conversation prompt fell from 156 words before promotion to
+  116 words before restart and 73 words after restart without restating the
+  preference.
+
+The full certification record is:
+
+`docs/certification/MARYV2_SAFE_PRODUCTION_BACKUP_DEPLOYMENT_RESTART_2026-08-31.md`
 
 ## Railway references
 
