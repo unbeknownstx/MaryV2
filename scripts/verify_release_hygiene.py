@@ -31,6 +31,7 @@ EXACT_SKIP_PARTS = {
 
 LOCAL_SECRET_NAMES = {".env", ".env.bak", ".env.before_cleanup.bak"}
 SELF_TEST_EXEMPTIONS = {Path("tests/scripts/test_release_hygiene.py")}
+GENERATED_ASSET_METADATA = Path(".agents/agent_assets_metadata.toml")
 
 PLACEHOLDER_PREFIXES = (
     "your_", "your-", "example_", "example-", "sample_", "sample-", "replace_", "replace-",
@@ -81,10 +82,22 @@ def _looks_like_secret_name(name: str) -> bool:
     return any(marker in normalized for marker in ("api_key", "apikey", "secret", "token"))
 
 
-def _contains_possible_secret(text: str, *, env_template: bool = False) -> bool:
+def _contains_possible_secret(
+    text: str,
+    *,
+    env_template: bool = False,
+    generated_asset_metadata: bool = False,
+) -> bool:
     if any(pattern.search(text) for pattern in RAW_SECRET_PATTERNS):
         return True
     for line in text.splitlines():
+        if (
+            generated_asset_metadata
+            and line.lstrip().startswith("storage_version_token =")
+        ):
+            # Replit writes this opaque object-version number. It is neither an
+            # authentication token nor a value supplied by the application.
+            continue
         match = QUOTED_SECRET_ASSIGNMENT.search(line)
         if match and not _is_placeholder_value(match.group("value")):
             return True
@@ -132,7 +145,11 @@ def main() -> int:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if _contains_possible_secret(text, env_template=path.name in {".env.example", "example.env.example"}):
+        if _contains_possible_secret(
+            text,
+            env_template=path.name in {".env.example", "example.env.example"},
+            generated_asset_metadata=relative == GENERATED_ASSET_METADATA,
+        ):
             problems.append(f"possible secret in {relative}")
 
     if problems:

@@ -15,8 +15,15 @@ import tempfile
 import zipfile
 
 from mary.core.config import PathConfig
+from mary.runtime.backup import (
+    BACKUP_FORMAT,
+    DURABLE_STATE_FILES,
+    MANIFEST_NAME,
+    sha256_bytes,
+    validate_json_state_payload,
+)
 
-MANIFEST_NAME = "MARYV2_STATE_BACKUP_MANIFEST.json"
+LEGACY_BACKUP_FORMAT = "maryv2-state-backup-v1"
 
 
 def _safe_data_member(name: str) -> PurePosixPath | None:
@@ -44,12 +51,16 @@ def inspect_backup(archive: Path) -> dict:
         except (UnicodeError, json.JSONDecodeError, KeyError) as exc:
             raise ValueError("MaryV2 backup manifest is invalid.") from exc
 
-        if not isinstance(manifest, dict) or manifest.get("format") != "maryv2-state-backup-v1":
+        if not isinstance(manifest, dict) or manifest.get("format") not in {
+            LEGACY_BACKUP_FORMAT,
+            BACKUP_FORMAT,
+        }:
             raise ValueError("Unsupported MaryV2 state backup format.")
         records = manifest.get("files", [])
         if not isinstance(records, list):
             raise ValueError("MaryV2 backup file manifest is invalid.")
 
+        allowed = {f"data/{item.relative_path}" for item in DURABLE_STATE_FILES}
         validated: list[dict[str, str | int]] = []
         for record in records:
             if not isinstance(record, dict):
@@ -58,6 +69,8 @@ def inspect_backup(archive: Path) -> dict:
             safe = _safe_data_member(name)
             if safe is None or name not in names:
                 raise ValueError(f"Unsafe or missing backup member: {name!r}")
+            if manifest.get("format") == BACKUP_FORMAT and name not in allowed:
+                raise ValueError(f"Backup member is not registered durable state: {name}")
             payload = bundle.read(name)
             digest = hashlib.sha256(payload).hexdigest()
             expected = str(record.get("sha256", "")).strip().lower()
@@ -66,6 +79,8 @@ def inspect_backup(archive: Path) -> dict:
             expected_size = int(record.get("size", len(payload)))
             if len(payload) != expected_size:
                 raise ValueError(f"Backup size mismatch: {name}")
+            if manifest.get("format") == BACKUP_FORMAT:
+                validate_json_state_payload(payload)
             validated.append({"path": name, "size": len(payload), "sha256": digest})
 
         unexpected_data = [
@@ -75,18 +90,44 @@ def inspect_backup(archive: Path) -> dict:
         ]
         if unexpected_data:
             raise ValueError("Backup contains unmanifested data files.")
+        if manifest.get("format") == BACKUP_FORMAT:
+            stable = {
+                "format": manifest["format"],
+                "files": manifest["files"],
+                "categories": manifest.get("categories", {}),
+                "sourcebook": manifest.get("sourcebook", {}),
+                "excluded_state": manifest.get("excluded_state", []),
+            }
+            encoded = json.dumps(
+                stable,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            actual = sha256_bytes(encoded)
+            if actual != str(manifest.get("durable_state_fingerprint", "")):
+                raise ValueError("Backup durable-state fingerprint mismatch.")
 
     return {
         "archive": path,
         "created_at_utc": manifest.get("created_at_utc"),
+        "format": manifest.get("format"),
         "files": validated,
         "file_count": len(validated),
+        "durable_state_fingerprint": manifest.get("durable_state_fingerprint"),
+        "categories": manifest.get("categories", {}),
+        "sourcebook": manifest.get("sourcebook", {}),
+        "excluded_state": manifest.get("excluded_state", []),
     }
 
 
 def restore_backup(archive: Path, data_root: Path, *, apply: bool = False) -> dict:
     report = inspect_backup(archive)
     target = Path(data_root).expanduser().resolve()
+    if apply and report.get("format") != BACKUP_FORMAT:
+        raise ValueError(
+            "Legacy backups are inspection-only; recovery requires a validated v2 archive."
+        )
 
     existing_files = [path for path in target.rglob("*") if path.is_file()] if target.exists() else []
     if existing_files:

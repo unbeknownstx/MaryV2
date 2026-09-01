@@ -7,6 +7,7 @@ import zipfile
 
 from scripts.backup_state import create_backup
 from scripts.verify_state_integrity import inspect_state
+from mary.runtime.backup import BACKUP_FORMAT
 
 
 def test_state_integrity_accepts_fresh_missing_data_directory(tmp_path):
@@ -48,7 +49,8 @@ def test_state_backup_contains_data_and_manifest_but_never_env(tmp_path):
         timestamp=datetime(2026, 8, 21, 12, 0, tzinfo=timezone.utc),
     )
     assert archive is not None
-    assert archive.name == "MaryV2-state-20260821-120000Z.zip"
+    assert archive.name.startswith("MaryV2-state-20260821-120000Z-")
+    assert archive.suffix == ".zip"
 
     with zipfile.ZipFile(archive) as bundle:
         names = set(bundle.namelist())
@@ -58,12 +60,16 @@ def test_state_backup_contains_data_and_manifest_but_never_env(tmp_path):
         manifest = json.loads(bundle.read("MARYV2_STATE_BACKUP_MANIFEST.json"))
         assert manifest["contains_environment_secrets"] is False
         assert manifest["file_count"] == 1
+        assert manifest["format"] == BACKUP_FORMAT
+        assert len(manifest["durable_state_fingerprint"]) == 64
+        assert "node_sessions" in manifest["excluded_state"]
 
 
 def test_state_backup_refuses_destination_inside_data_root(tmp_path):
     data = tmp_path / "data"
-    data.mkdir()
-    (data / "state.json").write_text("{}", encoding="utf-8")
+    target = data / "memory" / "memory.json"
+    target.parent.mkdir(parents=True)
+    target.write_text("{}", encoding="utf-8")
 
     try:
         create_backup(data, data / "backups")
@@ -131,8 +137,9 @@ def test_state_restore_refuses_nonempty_target(tmp_path):
     from scripts.restore_state import restore_backup
 
     source = tmp_path / "source_data"
-    source.mkdir()
-    (source / "state.json").write_text("{}", encoding="utf-8")
+    state = source / "memory" / "memory.json"
+    state.parent.mkdir(parents=True)
+    state.write_text("{}", encoding="utf-8")
     archive = create_backup(source, tmp_path / "backups")
     assert archive is not None
 
@@ -166,3 +173,106 @@ def test_state_restore_rejects_tampered_backup_hash(tmp_path):
         assert "hash mismatch" in str(exc).lower()
     else:
         raise AssertionError("tampered backup should fail validation")
+
+
+def test_state_backup_excludes_ephemeral_unknown_and_credential_files(tmp_path):
+    data = tmp_path / "data"
+    durable = data / "runtime" / "node_enrollment.json"
+    durable.parent.mkdir(parents=True)
+    durable.write_text(
+        json.dumps({
+            "version": 2,
+            "grants": [{"grant_id": "old-grant", "digest": "a" * 64}],
+            "audit": [{"event": "issued", "grant_id": "old-grant"}],
+            "session_generations": {"device-a": 7},
+            "trusted_devices": [{
+                "node_id": "device-a",
+                "credential_digest": "b" * 64,
+                "enrolled_at": "2026-08-31T00:00:00+00:00",
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (data / "runtime" / "node_sessions.json").write_text("{}", encoding="utf-8")
+    (data / "runtime" / "provider_token.json").write_text(
+        json.dumps({"access_token": "must-not-copy"}),
+        encoding="utf-8",
+    )
+    reservoir = data / "reservoir" / "mary_reservoir.sqlite3"
+    reservoir.parent.mkdir(parents=True)
+    reservoir.write_bytes(b"rebuildable")
+
+    archive = create_backup(data, tmp_path / "backups")
+    assert archive is not None
+    with zipfile.ZipFile(archive) as bundle:
+        names = set(bundle.namelist())
+    assert "data/runtime/node_enrollment.json" in names
+    assert "data/runtime/node_sessions.json" not in names
+    assert "data/runtime/provider_token.json" not in names
+    assert "data/reservoir/mary_reservoir.sqlite3" not in names
+    with zipfile.ZipFile(archive) as bundle:
+        enrollment = json.loads(bundle.read("data/runtime/node_enrollment.json"))
+    assert enrollment["grants"] == []
+    assert enrollment["audit"] == []
+    assert enrollment["session_generations"] == {}
+    assert enrollment["trusted_devices"][0]["node_id"] == "device-a"
+
+
+def test_state_backup_refuses_sensitive_field_without_touching_source(tmp_path):
+    data = tmp_path / "data"
+    state = data / "relationship" / "relationship.json"
+    state.parent.mkdir(parents=True)
+    original = json.dumps({"relationship": {}, "access_token": "must-not-copy"})
+    state.write_text(original, encoding="utf-8")
+
+    try:
+        create_backup(data, tmp_path / "backups")
+    except ValueError as exc:
+        assert "credential-like field" in str(exc)
+    else:
+        raise AssertionError("credential-like fields must fail closed")
+
+    assert state.read_text(encoding="utf-8") == original
+    assert not list((tmp_path / "backups").glob("*")) if (tmp_path / "backups").exists() else True
+
+
+def test_state_backup_fingerprint_is_deterministic_for_same_state(tmp_path):
+    data = tmp_path / "data"
+    state = data / "memory" / "memory.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({"memories": [{"id": "m1"}]}), encoding="utf-8")
+
+    first = create_backup(
+        data,
+        tmp_path / "first",
+        timestamp=datetime(2026, 8, 21, 13, 0, tzinfo=timezone.utc),
+    )
+    second = create_backup(
+        data,
+        tmp_path / "second",
+        timestamp=datetime(2026, 8, 22, 13, 0, tzinfo=timezone.utc),
+    )
+    assert first is not None and second is not None
+    with zipfile.ZipFile(first) as bundle:
+        first_manifest = json.loads(bundle.read("MARYV2_STATE_BACKUP_MANIFEST.json"))
+    with zipfile.ZipFile(second) as bundle:
+        second_manifest = json.loads(bundle.read("MARYV2_STATE_BACKUP_MANIFEST.json"))
+    assert first_manifest["created_at_utc"] != second_manifest["created_at_utc"]
+    assert (
+        first_manifest["durable_state_fingerprint"]
+        == second_manifest["durable_state_fingerprint"]
+    )
+
+
+def test_state_backup_fails_closed_for_unclassified_durable_json(tmp_path):
+    data = tmp_path / "data"
+    unknown = data / "relationship" / "shadow_authority.json"
+    unknown.parent.mkdir(parents=True)
+    unknown.write_text("{}", encoding="utf-8")
+
+    try:
+        create_backup(data, tmp_path / "backups")
+    except ValueError as exc:
+        assert "Unclassified durable-state JSON" in str(exc)
+    else:
+        raise AssertionError("unknown durable files must be classified before backup")

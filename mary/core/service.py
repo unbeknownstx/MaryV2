@@ -44,6 +44,13 @@ from mary.protocol.models import (
     WorkspaceActionRequest,
 )
 from mary.runtime.application import MaryApplication, create_application
+from mary.runtime.backup import (
+    backup_public_report,
+    create_backup,
+    durable_fingerprint,
+    durable_public_report,
+    inspect_backup,
+)
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
 from mary.runtime.turn_observability import (
     current_turn_trace,
@@ -295,6 +302,60 @@ class MaryCoreService:
             "architecture": self.identity.mary_architecture,
             "instance_id": self.instance_id,
             "uptime_seconds": round(max(0.0, monotonic() - self.started_monotonic), 2),
+        }
+
+    def create_durable_backup(self) -> dict[str, Any]:
+        """Create and verify one protected, allowlisted durable-state snapshot."""
+        configured = str(os.getenv("MARY_BACKUP_DIR", "") or "").strip()
+        if not configured:
+            raise RuntimeError(
+                "MARY_BACKUP_DIR must identify a protected backup location."
+            )
+        paths = getattr(getattr(self.mary, "config", None), "paths", None)
+        data_root = getattr(paths, "data", None)
+        if data_root is None:
+            raise RuntimeError("Canonical Mary data root is unavailable.")
+        sourcebook = getattr(self.mary, "character_sourcebook", None)
+        if sourcebook is None:
+            sourcebook = getattr(self.mary, "sourcebook", None)
+
+        # Turns, lifecycle changes, and node enrollment writes are the durable
+        # writers owned by this service. Holding all three locks makes the file
+        # set stable without mutating canonical state merely to take a backup.
+        with self._turn_lock:
+            with self._creator_lifecycle_lock:
+                with self._node_lifecycle_lock:
+                    archive = create_backup(
+                        Path(data_root),
+                        Path(configured),
+                        sourcebook=sourcebook,
+                    )
+                    if archive is None:
+                        raise RuntimeError("No canonical durable state exists to back up.")
+                    manifest = inspect_backup(archive)
+        return backup_public_report(archive, manifest)
+
+    def durable_state_status(self) -> dict[str, Any]:
+        """Return content-free durable fingerprints for pre/post operations."""
+        paths = getattr(getattr(self.mary, "config", None), "paths", None)
+        data_root = getattr(paths, "data", None)
+        if data_root is None:
+            raise RuntimeError("Canonical Mary data root is unavailable.")
+        sourcebook = getattr(self.mary, "character_sourcebook", None)
+        with self._turn_lock:
+            with self._creator_lifecycle_lock:
+                with self._node_lifecycle_lock:
+                    fingerprint = durable_fingerprint(
+                        Path(data_root),
+                        sourcebook=sourcebook,
+                    )
+        return {
+            **durable_public_report(fingerprint),
+            "core_instance_id": self.instance_id,
+            "uptime_seconds": round(
+                max(0.0, monotonic() - self.started_monotonic),
+                2,
+            ),
         }
 
     def execution_allowed(self, *_args: Any, **_kwargs: Any) -> bool:

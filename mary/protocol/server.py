@@ -7,6 +7,7 @@ import os
 import secrets
 from time import monotonic
 from typing import Any
+import zipfile
 
 try:
     from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -244,6 +245,28 @@ def create_app(service: MaryCoreService | None = None):
     async def state(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.state()
+
+    @app.post("/v1/admin/backups")
+    async def create_durable_backup(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            return await asyncio.to_thread(core.create_durable_backup)
+        except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Durable-state backup failed safely.",
+            ) from exc
+
+    @app.get("/v1/admin/durable-state")
+    async def durable_state(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            return await asyncio.to_thread(core.durable_state_status)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Durable-state fingerprint failed safely.",
+            ) from exc
 
     @app.get("/v1/creator-surfaces/status")
     async def creator_surface_status(request: Request) -> dict[str, Any]:

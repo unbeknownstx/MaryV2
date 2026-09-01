@@ -1,0 +1,363 @@
+Task #23 — Safe Production Backup, Deployment, Restart & Live Learning Certification
+
+Task #22 repaired the complete Experience Evolution / developed-self learning loop in canonical production-equivalent composition.
+
+Current verified sequence:
+
+authenticated creator evidence
+→ structured preference evidence
+→ candidate
+→ five governed consistent observations
+→ promotion
+→ durable developed preference
+→ fresh conversation retrieval
+→ context influence
+→ measurable behavioral adaptation
+→ process-local reconstruction
+
+Task #22 remains PARTIAL only because the revised code has not been deployed to the authoritative Railway Core.
+
+Task #21 established that we do not yet have a sufficiently safe production backup/export + controlled restart workflow.
+
+Objective: create the minimum safe operational workflow necessary to protect Mary’s canonical production state, deploy the Task #22 revision, restart/reconstruct the production Core deliberately, and then perform the actual live Railway learning-loop certification.
+
+This is not a persistence redesign.
+
+Do not create another state authority.
+
+Do not migrate Mary to another persistence architecture merely to complete this task.
+
+Preserve existing canonical persistence semantics.
+
+⸻
+
+1. Preserve Task #22 first
+
+Before production work:
+
+* inspect the current working tree;
+* confirm the Task #22 changes are exactly the intended changes;
+* run the focused Task #22 tests;
+* record the CharacterSourcebook count/hash;
+* commit Task #22 cleanly;
+* report its commit hash.
+
+Do not lose or overwrite the existing Task #22 working-tree implementation.
+
+⸻
+
+2. Resolve the release-gate attached_assets/ false positive
+
+The current sole full-suite failure is:
+
+forbidden active root directory: attached_assets
+
+This directory contains user-supplied task/certification material and is not Mary runtime state.
+
+Repair the repository-structure policy narrowly so it distinguishes:
+
+* preserved user/upload staging material
+
+from
+
+* forbidden runtime-generated state such as repository-root data/.
+
+Requirements:
+
+* do not delete the uploaded assets simply to make the test pass;
+* do not weaken rejection of runtime state inside the source tree;
+* do not broadly allow arbitrary generated root directories;
+* document the allowed purpose clearly;
+* add regression coverage.
+
+Restore a clean full suite and release gate before deployment.
+
+⸻
+
+3. Determine the authoritative production-state location
+
+Before designing backup logic, identify exactly where the deployed Railway Core stores each durable state category.
+
+Produce a production persistence inventory for:
+
+* episodic memory
+* semantic memory
+* developed preferences
+* developed personality state
+* relationship state/history
+* growth journal
+* shared work
+* node durable trust
+* any durable autonomy records
+* sourcebook/configuration references
+
+For each record:
+
+State | storage owner | physical/backend location | durability mechanism | backup mechanism | reconstruction path
+
+Distinguish durable state from intentionally ephemeral:
+
+* surface leases
+* attention queues
+* provider cooldown
+* node sessions
+* in-flight node work
+* request traces
+* dialogue-session context where intentionally ephemeral
+
+Do not guess from local Replit paths if Railway uses a mounted volume or another configured location.
+
+⸻
+
+4. Implement safe production backup/export
+
+Provide a bounded creator/admin-only mechanism to produce a consistent backup of canonical durable Mary state before deployment/restart.
+
+Prefer reuse of existing atomic JSON/backup/persistence infrastructure.
+
+Requirements:
+
+* authenticated creator/admin only;
+* read-only with respect to canonical state;
+* does not expose raw state contents through ordinary HTTP responses;
+* produces a backup artifact/snapshot in an appropriate protected location;
+* includes a manifest;
+* includes schema/version metadata where available;
+* includes hashes/fingerprints and record counts sufficient to verify completeness without exposing contents;
+* excludes ephemeral state;
+* never includes environment secrets, API credentials, node session tokens, bearer tokens, or provider credentials;
+* failures must leave canonical state untouched;
+* backup completion must be independently verifiable before restart.
+
+If an existing Railway volume snapshot or deployment-native mechanism is safer than application-level export, use or integrate that rather than duplicating it unnecessarily.
+
+⸻
+
+5. Add restore/recovery validation
+
+Do not create an unauthenticated “restore everything” HTTP endpoint.
+
+Establish a controlled recovery procedure appropriate to the existing deployment architecture.
+
+Prove offline/high-fidelity first:
+
+canonical state
+→ backup
+→ fresh application process
+→ restore/reconstruct
+→ same durable fingerprints
+→ ephemeral state absent
+
+Explicitly verify:
+
+* CharacterSourcebook unchanged
+* developed preferences preserved
+* relationship preserved
+* growth journal preserved
+* memories preserved
+* shared work preserved according to its actual semantics
+* durable node trust preserved if Task #16-equivalent support is present
+* node sessions do not survive
+* surface leases do not survive
+* attention queue does not survive
+* stale work/session ownership cannot resurrect
+
+Corrupt or incomplete backups must fail safely.
+
+⸻
+
+6. Controlled deployment/restart workflow
+
+Establish the exact production procedure:
+
+pre-deployment health
+→ state fingerprint
+→ verified backup
+→ deploy approved commit
+→ Railway restart/new instance
+→ health
+→ reconstruction verification
+→ state fingerprint comparison
+→ surface reconnect
+→ normal turn
+
+Record:
+
+* old Core instance ID
+* new Core instance ID
+* previous uptime
+* new uptime
+* pre/post durable-state counts
+* CharacterSourcebook pre/post count/hash
+* developed-self counts
+* memory counts
+* growth count
+* relationship aggregates
+* shared-work aggregates
+
+Do not expose private values.
+
+If the current environment does not have authority to initiate a Railway deployment/restart, stop before deployment and report exactly what single creator action is required.
+
+Do not fake this stage using a local restart and call it production.
+
+⸻
+
+7. Deploy Task #22
+
+Once backup/recovery is proven and the release gate is clean:
+
+* push the approved Task #22 + Task #23 commits through the existing GitHub/Railway deployment workflow;
+* verify Railway is running the expected revision if revision provenance is available;
+* verify architecture/protocol compatibility;
+* verify production Core reconstructed correctly.
+
+No unrelated feature changes.
+
+⸻
+
+8. Production learning-loop acceptance
+
+Now repeat the Task #22 test against the actual deployed Railway Core through the production Mobile/Core path.
+
+Use one benign interaction preference within the supported four dimensions.
+
+Do not manipulate thresholds.
+
+Demonstrate:
+
+creator turn 1
+→ preference candidate
+
+turns 2–4
+→ governed reinforcement/defer/eligibility
+
+turn 5
+→ promotion when existing policy is satisfied
+
+Then open a fresh conversation without restating the preference.
+
+Verify:
+
+* developed preference is active
+* retrieval occurs
+* relevant generation context reflects it
+* behavior changes measurably
+
+Use content-free IDs wherever available:
+
+* request ID
+* turn ID
+* experience ID
+* evidence ID
+* candidate ID
+* developed-preference ID
+
+⸻
+
+9. Real restart persistence proof
+
+After the promoted test preference exists and a fresh verified backup exists, perform one further controlled Core restart if operationally safe.
+
+Prove:
+
+developed preference before restart
+→ new Core process
+→ preference reconstructed
+→ fresh conversation
+→ preference retrieved
+→ behavior still influenced
+
+This is the missing production evidence from Tasks #21 and #22.
+
+Also verify expected ephemeral clearing:
+
+* old surface leases gone
+* attention queue reset
+* provider cooldown reset if intentionally ephemeral
+* old node sessions invalid
+
+Reconnect the Mobile surface and verify it reaches the same canonical Mary.
+
+⸻
+
+10. Rollback
+
+Before deployment, document the rollback procedure.
+
+If reconstruction or state fingerprints are wrong:
+
+* stop acceptance testing;
+* do not continue writing new state;
+* return to the previous known-good code revision;
+* restore/reconstruct from the verified pre-deployment state according to the safe recovery procedure;
+* report the discrepancy.
+
+Do not attempt improvised manual edits to Mary’s persistent JSON/state.
+
+⸻
+
+11. Required tests
+
+Add/retain tests proving:
+
+* backup excludes secrets
+* backup excludes ephemeral state
+* backup has deterministic manifest/fingerprints
+* backup failure is non-destructive
+* reconstruction preserves durable state
+* corrupt backup fails safely
+* stale sessions do not resurrect
+* stale surface leases do not resurrect
+* canonical identity remains singular
+* Task #22 promoted preferences survive reconstruction
+* CharacterSourcebook remains unchanged
+* structure gate permits only intended user asset staging while still rejecting runtime-state roots
+
+Run:
+
+* focused backup/recovery tests
+* persistence tests
+* developed-self tests
+* lifecycle/security tests
+* release verification
+* full suite
+
+⸻
+
+Final report
+
+Report:
+
+1. Task #22 commit hash
+2. Task #23 commit hash
+3. release-gate result
+4. production persistence inventory
+5. backup architecture
+6. backup manifest/fingerprint result
+7. restore/reconstruction test result
+8. exact deployment/restart procedure
+9. deployed revision
+10. pre/post Core instance IDs
+11. pre/post durable-state fingerprints/counts
+12. expected ephemeral-state clearing
+13. production learning candidate progression
+14. production promotion result
+15. fresh-session retrieval result
+16. measured production behavioral influence
+17. post-restart developed-preference retrieval result
+18. CharacterSourcebook pre/post hash/count
+19. rollback readiness
+20. focused test results
+21. full-suite result
+22. release-verification result
+23. anything requiring creator/manual Railway action
+
+Final verdict:
+
+* LIVE PRODUCTION LEARNING + RESTART VERIFIED
+* DEPLOYMENT READY — MANUAL ACTION REQUIRED
+* PARTIAL
+* FAILED
+
+Do not begin Task #24 or unrelated feature work afterward.

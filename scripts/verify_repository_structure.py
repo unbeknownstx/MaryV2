@@ -1,4 +1,9 @@
-"""Fail-fast structural hygiene gate for the canonical MaryV2 source tree."""
+"""Fail-fast structural hygiene gate for the canonical MaryV2 source tree.
+
+``attached_assets`` is the one reserved root for preserved user-upload staging.
+It is source input, never a permitted Mary runtime-state or generated-output
+location.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,8 +24,9 @@ REQUIRED = (
     "projects/unbeknownst",
 )
 FORBIDDEN_ROOT_DIRS = {
-    "data", "payload", "upgrade_backups", "attached_assets", "Unbeknownst Chapters", "node_modules",
+    "data", "payload", "upgrade_backups", "Unbeknownst Chapters", "node_modules",
 }
+PRESERVED_UPLOAD_ROOT = "attached_assets"
 HISTORY_PREFIXES = (
     "START_HERE_", "TEST_RESULTS_", "MIGRATION_", "CHECKPOINT_", "FINAL_PASS_",
     "DESKTOP_PHASE_", "MOBILE_", "STAGE", "BREAKTHROUGH_", "MARYV2_12_", "MARYV2_13_",

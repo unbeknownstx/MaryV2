@@ -58,3 +58,33 @@ def test_safe_test_and_placeholder_assignments_do_not_trigger_hygiene(tmp_path, 
     monkeypatch.setattr(hygiene, "ROOT", tmp_path)
 
     assert hygiene.main() == 0
+
+
+def test_generated_asset_storage_version_is_not_an_authentication_secret(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / ".gitignore").write_text(".env\n", encoding="utf-8")
+    metadata = tmp_path / ".agents" / "agent_assets_metadata.toml"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(
+        'storage_version_token = "1788225791493187"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(hygiene, "ROOT", tmp_path)
+
+    assert hygiene.main() == 0
+
+
+def test_storage_version_assignment_outside_generated_metadata_is_still_scanned(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (tmp_path / "unsafe.py").write_text(
+        'storage_version_token = "not-a-placeholder"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(hygiene, "ROOT", tmp_path)
+
+    assert hygiene.main() == 1
