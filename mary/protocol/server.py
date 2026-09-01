@@ -8,6 +8,7 @@ import secrets
 from time import monotonic
 from typing import Any
 import zipfile
+import json
 
 try:
     from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -37,6 +38,8 @@ from mary.runtime.turn_observability import (
     reset_turn_trace,
     upstream_request_hash,
 )
+
+MAX_WORKSPACE_ACTION_BYTES = 16_384
 
 
 def _token() -> str:
@@ -104,6 +107,54 @@ def create_app(service: MaryCoreService | None = None):
     )
 
     app.state.mary_core = core
+
+    async def bounded_json(
+        request: Request,
+        *,
+        limit: int,
+    ) -> Any:
+        raw_length = str(
+            request.headers.get(
+                "Content-Length",
+                "",
+            )
+            or ""
+        ).strip()
+        if raw_length:
+            try:
+                if int(raw_length) > limit:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Request body too large.",
+                    )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid Content-Length.",
+                ) from exc
+
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Request body too large.",
+                )
+            chunks.append(chunk)
+        try:
+            return json.loads(
+                b"".join(chunks)
+            )
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Request body must be valid JSON.",
+            ) from exc
 
     async def require_creator(request: Request) -> None:
         if not _authorized(
@@ -670,7 +721,10 @@ def create_app(service: MaryCoreService | None = None):
         await require_creator(request)
 
         try:
-            payload = await request.json()
+            payload = await bounded_json(
+                request,
+                limit=MAX_WORKSPACE_ACTION_BYTES,
+            )
 
             model = WorkspaceActionRequest.from_dict(
                 payload

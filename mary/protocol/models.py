@@ -156,6 +156,7 @@ _ALLOWED_WORKSPACE_ACTIONS = {
     "study.review_card",
     "research.create_thread",
     "research.add_note",
+    "arcade.play",
     "production.create",
     "production.set_stage",
     "production.add_asset",
@@ -188,6 +189,30 @@ class WorkspaceActionRequest:
 
         if len(args) > 32:
             raise ValueError("Workspace action args exceed the protocol field limit.")
+
+        if action == "arcade.play":
+            raw_game = args.get("game")
+            raw_arcade_payload = args.get("payload", "")
+            if not isinstance(raw_game, str) or not isinstance(
+                raw_arcade_payload,
+                str,
+            ):
+                raise ValueError("Arcade game and payload must be strings.")
+            game = raw_game.strip().lower()
+            if game not in {"coin", "number", "prompt"}:
+                raise ValueError("Arcade game must be coin, number, or prompt.")
+            arcade_payload = raw_arcade_payload.strip()
+            if len(arcade_payload) > 2:
+                raise ValueError("Arcade payload exceeds the protocol limit.")
+            if game == "number" and arcade_payload:
+                if not arcade_payload.isdigit() or not 1 <= int(arcade_payload) <= 10:
+                    raise ValueError("Arcade number guess must be from 1 to 10.")
+            elif game != "number" and arcade_payload:
+                raise ValueError("This Arcade game does not accept a payload.")
+            args = {
+                "game": game,
+                "payload": arcade_payload,
+            }
 
         device_id = str(payload.get("device_id") or "unknown-device").strip()[:160]
 

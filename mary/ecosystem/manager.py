@@ -110,6 +110,9 @@ class MaryEcosystem:
                 "threads": self.research.list(30),
             },
             "production": self.production.snapshot(),
+            "arcade": {
+                "games": self.arcade.games(),
+            },
             "companion": self.companion_snapshot(),
             "presence": self.presence.snapshot(),
             "semantics": {
@@ -280,6 +283,15 @@ class MaryEcosystem:
                 metadata={"thread_id": thread.get("id")},
             )
             return {"ok": True, "thread": thread}
+
+        if name == "arcade.play":
+            return {
+                "ok": True,
+                **self.arcade.play(
+                    str(values.get("game") or ""),
+                    str(values.get("payload") or ""),
+                ),
+            }
 
         if name == "research.add_note":
             thread_id = str(values.get("thread_id") or "")

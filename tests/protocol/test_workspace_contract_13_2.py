@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from mary.core.service import MaryCoreService
 from mary.ecosystem import MaryEcosystem
 from mary.protocol.models import WorkspaceActionRequest
-from mary.protocol.server import create_app
+from mary.protocol.server import MAX_WORKSPACE_ACTION_BYTES, create_app
 
 
 class FakeConfig:
@@ -94,6 +94,11 @@ def test_workspace_snapshot_excludes_device_local_capabilities(tmp_path):
     assert "paths" not in snapshot
     assert "external" not in snapshot
     assert "foreground_window" not in snapshot.get("presence", {})
+    assert [game["key"] for game in snapshot["arcade"]["games"]] == [
+        "coin",
+        "number",
+        "prompt",
+    ]
 
 
 def test_workspace_action_request_rejects_device_local_operations():
@@ -103,6 +108,34 @@ def test_workspace_action_request_rejects_device_local_operations():
                 "action": "filesystem.search",
                 "args": {"query": "secret"},
                 "device_id": "pc",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("game", "payload"),
+    [
+        ("filesystem", ""),
+        ("number", "11"),
+        ("number", "private guess"),
+        ("coin", "unexpected"),
+        ("number", {"guess": 7}),
+        (["number"], ""),
+    ],
+)
+def test_workspace_action_request_rejects_unbounded_arcade_arguments(
+    game,
+    payload,
+):
+    with pytest.raises(ValueError):
+        WorkspaceActionRequest.from_dict(
+            {
+                "action": "arcade.play",
+                "args": {
+                    "game": game,
+                    "payload": payload,
+                },
+                "device_id": "iphone",
             }
         )
 
@@ -123,6 +156,44 @@ def test_core_workspace_action_updates_one_canonical_ecosystem(tmp_path):
     assert result["item"]["title"] == "Reconcile Mary"
     assert result["workspace"]["command"]["projects"] == 1
     assert app.ecosystem.command.items[0].title == "Reconcile Mary"
+
+
+def test_core_workspace_action_plays_arcade_inside_canonical_ecosystem(tmp_path):
+    app = FakeApplication(tmp_path)
+    core = MaryCoreService(app, instance_id="workspace-core")
+
+    result = core.workspace_action(
+        {
+            "action": "arcade.play",
+            "args": {"game": "coin", "payload": ""},
+            "device_id": "iphone",
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["game"] == "coin"
+    assert result["result"] in {"Heads", "Tails"}
+    assert len(result["workspace"]["arcade"]["games"]) == 3
+
+    started = core.workspace_action(
+        {
+            "action": "arcade.play",
+            "args": {"game": "number", "payload": ""},
+            "device_id": "iphone",
+        }
+    )
+    app.ecosystem.arcade._number = 7
+    won = core.workspace_action(
+        {
+            "action": "arcade.play",
+            "args": {"game": "number", "payload": "7"},
+            "device_id": "iphone",
+        }
+    )
+
+    assert started["state"] == "started"
+    assert won["state"] == "won"
+    assert app.ecosystem.arcade._number is None
 
 
 def test_http_workspace_contract_is_authenticated_and_mutates_core(tmp_path, monkeypatch):
@@ -150,3 +221,34 @@ def test_http_workspace_contract_is_authenticated_and_mutates_core(tmp_path, mon
         payload = response.json()
         assert payload["focus"]["active"] is True
         assert payload["workspace"]["focus"]["task"] == "MaryV2"
+
+
+def test_http_workspace_action_rejects_body_before_oversize_json_parsing(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MARY_CORE_TOKEN", "test-secret")
+    api = create_app(
+        MaryCoreService(
+            FakeApplication(tmp_path),
+            instance_id="workspace-core",
+        )
+    )
+
+    body = (
+        '{"action":"arcade.play","args":{"game":"number","payload":"'
+        + ("7" * MAX_WORKSPACE_ACTION_BYTES)
+        + '"},"device_id":"iphone"}'
+    )
+    with TestClient(api) as client:
+        response = client.post(
+            "/v1/workspace/action",
+            headers={
+                "Authorization": "Bearer test-secret",
+                "Content-Type": "application/json",
+            },
+            content=body,
+        )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Request body too large."

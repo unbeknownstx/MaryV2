@@ -23,6 +23,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -57,6 +58,47 @@ MOBILE_PROTOCOL_VERSION = "4"
 MAX_REQUEST_BYTES = 256_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
 _SAFE_TRACE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
+_MOBILE_TRACE_TIMING_FIELDS = {
+    "context_ms",
+    "intent_ms",
+    "reasoning_ms",
+    "reflection_ms",
+    "response_select_ms",
+    "cognition_total_ms",
+    "pipeline_ms",
+    "avatar_ms",
+    "worker_total_ms",
+    "provider_call_ms",
+    "perceived_ms",
+}
+_TRACE_PROVIDER_CATEGORIES = {
+    "gemini",
+    "groq",
+    "ollama",
+    "openrouter",
+    "local/mind",
+    "local/system",
+}
+_TRACE_ATTEMPT_STATUSES = {
+    "success",
+    "failure",
+    "timeout",
+    "unavailable",
+    "skipped",
+    "cancelled",
+}
+_TRACE_FINISH_REASONS = {
+    "stop",
+    "length",
+    "tool_calls",
+    "content_filter",
+    "error",
+    "n/a",
+}
+_TRACE_LANES = {
+    lane.value
+    for lane in ConversationLane
+}
 
 
 def _clean_conversation_id(
@@ -93,6 +135,188 @@ def _json_safe(
             default=str,
         )
     )
+
+
+def _safe_trace_identifier(
+    value: Any,
+    *,
+    limit: int = 128,
+) -> str:
+    candidate = str(value or "").strip()[:limit]
+    return (
+        candidate
+        if _SAFE_TRACE_IDENTIFIER.fullmatch(candidate)
+        else ""
+    )
+
+
+def _bounded_trace_ms(
+    value: Any,
+) -> float | None:
+    try:
+        duration = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(duration) or duration < 0.0:
+        return None
+    return round(
+        min(duration, 86_400_000.0),
+        2,
+    )
+
+
+def _trace_provider_category(
+    value: Any,
+) -> str:
+    normalized = str(value or "").strip().lower()
+    return (
+        normalized
+        if normalized in _TRACE_PROVIDER_CATEGORIES
+        else "unknown"
+    )
+
+
+def _trace_model_category(
+    value: Any,
+    *,
+    provider: str,
+) -> str:
+    normalized = str(value or "").strip().lower()
+    if provider in {
+        "local/mind",
+        "local/system",
+    }:
+        return "local"
+    if normalized in {
+        "",
+        "n/a",
+        "none",
+        "unknown",
+    }:
+        return "n/a"
+    return "configured"
+
+
+def _trace_enum(
+    value: Any,
+    allowed: set[str],
+) -> str:
+    normalized = str(value or "").strip().lower()
+    return (
+        normalized
+        if normalized in allowed
+        else "unknown"
+    )
+
+
+def _finalize_local_mobile_trace(
+    causal_trace: Any,
+    presentation_trace: Any,
+) -> dict[str, Any]:
+    """Add strictly bounded display telemetry to a content-free causal trace."""
+
+    causal = dict(causal_trace or {})
+    presentation = dict(presentation_trace or {})
+    finalized = dict(causal)
+
+    provider = _trace_provider_category(
+        presentation.get("provider")
+    )
+    finalized["provider"] = provider
+    finalized["model"] = _trace_model_category(
+        presentation.get("model"),
+        provider=provider,
+    )
+    finalized["finish_reason"] = _trace_enum(
+        presentation.get("finish_reason"),
+        _TRACE_FINISH_REASONS,
+    )
+
+    raw_attempts = (
+        presentation.get("provider_attempts")
+        or presentation.get("attempts")
+        or []
+    )
+    attempts: list[dict[str, Any]] = []
+    for raw in list(raw_attempts)[:12]:
+        if not isinstance(raw, dict):
+            continue
+        attempt = {
+            "provider": _trace_provider_category(
+                raw.get("provider")
+            ),
+            "status": _trace_enum(
+                raw.get("status"),
+                _TRACE_ATTEMPT_STATUSES,
+            ),
+        }
+        for field in (
+            "elapsed_ms",
+            "call_ms",
+        ):
+            duration = _bounded_trace_ms(
+                raw.get(field)
+            )
+            if duration is not None:
+                attempt[field] = duration
+        attempts.append(attempt)
+    finalized["provider_attempts"] = attempts
+
+    timings: dict[str, float] = {}
+    for field in _MOBILE_TRACE_TIMING_FIELDS:
+        duration = _bounded_trace_ms(
+            dict(
+                presentation.get(
+                    "timings",
+                    {},
+                )
+                or {}
+            ).get(field)
+        )
+        if duration is not None:
+            timings[field] = duration
+    finalized["timings"] = timings
+
+    lane = _trace_enum(
+        dict(
+            presentation.get(
+                "mobile",
+                {},
+            )
+            or {}
+        ).get("lane"),
+        _TRACE_LANES,
+    )
+    if lane != "unknown":
+        finalized["mobile"] = {
+            "lane": lane,
+        }
+
+    return _json_safe(finalized)
+
+
+def _without_unbounded_trace_routes(
+    value: Any,
+) -> dict[str, Any]:
+    """Remove legacy metadata-derived route strings from queried trace records."""
+
+    payload = dict(value or {})
+    traces: list[dict[str, Any]] = []
+    for raw in list(
+        payload.get(
+            "traces",
+            [],
+        )
+        or []
+    )[:40]:
+        if not isinstance(raw, dict):
+            continue
+        trace = dict(raw)
+        trace.pop("route", None)
+        traces.append(trace)
+    payload["traces"] = traces
+    payload["count"] = len(traces)
+    return _json_safe(payload)
 
 
 def _character_sourcebook_inventory(
@@ -777,12 +1001,17 @@ class MaryRemoteMobileRuntime:
                 params[name] = cleaned
         query = getattr(self.client, "trace_query", None)
         if callable(query):
-            return _json_safe(query(**params))
+            return _without_unbounded_trace_routes(
+                query(**params)
+            )
         request = getattr(self.client, "_request", None)
         if not callable(request):
             raise RuntimeError("Mary Core trace query is unavailable.")
-        return _json_safe(
-            request("GET", f"/v1/turn-traces?{urlencode(params)}")
+        return _without_unbounded_trace_routes(
+            request(
+                "GET",
+                f"/v1/turn-traces?{urlencode(params)}",
+            )
         )
 
     def chat(
@@ -900,12 +1129,18 @@ class MaryRemoteMobileRuntime:
                 if not isinstance(raw, dict):
                     continue
                 safe_attempts.append({
-                    "provider": safe_identifier(raw.get("provider"), 64),
-                    "status": safe_identifier(raw.get("status"), 32),
+                    "provider": _trace_provider_category(raw.get("provider")),
+                    "status": _trace_enum(
+                        raw.get("status"),
+                        _TRACE_ATTEMPT_STATUSES,
+                    ),
                 })
-            lane = safe_identifier(
+            lane = _trace_enum(
                 dict(provenance.get("conversation_lane", {}) or {}).get("lane"),
-                32,
+                _TRACE_LANES,
+            )
+            provider = _trace_provider_category(
+                provenance.get("provider")
             )
 
             trace = {
@@ -917,13 +1152,15 @@ class MaryRemoteMobileRuntime:
                     max(0.0, min(elapsed, 86_400.0)),
                     6,
                 ),
-                "provider": safe_identifier(provenance.get("provider"), 64),
-                "model": safe_identifier(provenance.get("model"), 128),
-                "finish_reason": safe_identifier(
-                    provenance.get("finish_reason"),
-                    64,
+                "provider": provider,
+                "model": _trace_model_category(
+                    provenance.get("model"),
+                    provider=provider,
                 ),
-                "route": safe_identifier(provenance.get("route"), 64),
+                "finish_reason": _trace_enum(
+                    provenance.get("finish_reason"),
+                    _TRACE_FINISH_REASONS,
+                ),
                 "provider_attempts": safe_attempts,
                 "timings": timings,
                 "authority": "remote_mary_core",
@@ -931,7 +1168,7 @@ class MaryRemoteMobileRuntime:
                 "core_instance_id": self._core_instance_id,
             }
 
-            if lane:
+            if lane != "unknown":
                 trace[
                     "mobile"
                 ] = {
@@ -1556,6 +1793,21 @@ class MaryRemoteMobileRuntime:
                     ),
                 },
             ),
+            "playArcade": lambda values: (
+                "arcade.play",
+                {
+                    "game": str(
+                        values[0]
+                        if values
+                        else ""
+                    ),
+                    "payload": str(
+                        values[1]
+                        if len(values) > 1
+                        else ""
+                    ),
+                },
+            ),
         }
 
         if name in workspace_actions:
@@ -1745,6 +1997,32 @@ class MaryRemoteMobileRuntime:
                     },
                 )
             )
+
+        if name == "getCreativeWorkspaceState":
+            return {
+                "configured": False,
+                "files": [],
+                "compatibility_only": True,
+                "mobile_limited": True,
+                "reason": (
+                    "Creative Workspace file access is Desktop-only "
+                    "in remote-Core Mobile mode."
+                ),
+            }
+
+        if name in {
+            "readCreativeTextFile",
+            "saveCreativeTextFile",
+        }:
+            return {
+                "ok": False,
+                "compatibility_only": True,
+                "mobile_limited": True,
+                "error": (
+                    "Creative Workspace file editing is Desktop-only "
+                    "in remote-Core Mobile mode."
+                ),
+            }
 
         raise KeyError(
             "Bridge method is not available "
@@ -2550,6 +2828,10 @@ class MaryMobileRuntime:
                     lane.lane
                 ),
             )
+            trace = _finalize_local_mobile_trace(
+                causal_trace,
+                trace,
+            )
 
             self.ecosystem.record_turn(
                 elapsed=result.elapsed,
@@ -2557,8 +2839,10 @@ class MaryMobileRuntime:
             )
 
             with self._lock:
-                self._last_trace = causal_trace
-                self._recent_turn_traces.append(_json_safe(causal_trace))
+                self._last_trace = _json_safe(trace)
+                self._recent_turn_traces.append(
+                    _json_safe(trace)
+                )
 
                 engagement_status = (
                     mary.engagement

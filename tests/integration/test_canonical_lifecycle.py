@@ -365,6 +365,34 @@ def test_local_mobile_produces_and_queries_canonical_content_free_trace(
     app = _application(tmp_path, monkeypatch)
     runtime = MaryMobileRuntime(application=app)
     private_prompt = "PRIVATE_LOCAL_MOBILE_PROMPT"
+    monkeypatch.setattr(
+        "mary.mobile.server.build_turn_trace",
+        lambda *_args, **_kwargs: {
+            "turn_id": "PRIVATE_RAW_TURN",
+            "provider": "groq",
+            "model": "PRIVATE_MODEL_NAME",
+            "finish_reason": "PRIVATE_FINISH_REASON",
+            "attempts": [
+                {
+                    "provider": "groq",
+                    "status": "success",
+                    "elapsed_ms": 4.5,
+                    "error": "PRIVATE_PROVIDER_ERROR",
+                },
+                {
+                    "provider": "PRIVATE_PROVIDER",
+                    "status": "PRIVATE_STATUS",
+                },
+            ],
+            "timings": {
+                "pipeline_ms": 8.0,
+                "private_timing": "PRIVATE_TIMING_VALUE",
+            },
+            "delivery_plan": {
+                "private": "PRIVATE_CREATOR_CONTEXT",
+            },
+        },
+    )
 
     payload = runtime.chat(
         private_prompt,
@@ -382,12 +410,28 @@ def test_local_mobile_produces_and_queries_canonical_content_free_trace(
     assert trace["status"] == "success"
     assert trace["turn_id"].startswith("turn_")
     assert trace["conversation_id"].startswith("conversation_")
+    assert payload["runtime"]["trace"] == trace
+    assert trace["model"] == "configured"
+    assert trace["finish_reason"] == "unknown"
+    assert trace["provider_attempts"] == [
+        {
+            "provider": "groq",
+            "status": "success",
+            "elapsed_ms": 4.5,
+        },
+        {
+            "provider": "unknown",
+            "status": "unknown",
+        },
+    ]
+    assert trace["timings"] == {"pipeline_ms": 8.0}
     assert queried["traces"] == [trace]
     assert queried["count"] == 1
     serialized = str(trace)
     assert private_prompt not in serialized
     assert "person@example.invalid" not in serialized
     assert "Runtime response from Mary." not in serialized
+    assert "PRIVATE_" not in serialized
 
     monkeypatch.setattr(
         app,

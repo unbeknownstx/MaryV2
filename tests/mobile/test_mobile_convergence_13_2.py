@@ -747,6 +747,15 @@ def test_mobile_web_is_a_13_2_first_class_core_client():
         in js
     )
 
+    assert "runtimeCharacterProjection" in js
+    assert "d.relationship?.label" in js
+    assert "memoryCount:character.memory_count" in js
+    assert "Creative Workspace files stay on Mary’s configured host" in js
+    assert "Configured project references remain Desktop-only" in js
+    assert "g.key||g.id||g.name" in js
+    assert "state.arcadeNumberActive" in js
+    assert "Guess a number from 1 to 10" in js
+
     assert (
         "Search approved files on my devices"
         in js

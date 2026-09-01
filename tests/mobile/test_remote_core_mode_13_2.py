@@ -22,6 +22,7 @@ class FakeRemoteClient:
         self.token = token
         self.device_id = device_id
         self.runtime_actions = []
+        self.workspace_actions = []
         self.surface_calls = []
 
     def surface_register(self, **payload):
@@ -142,7 +143,27 @@ class FakeRemoteClient:
             "command": {
                 "items": [],
             },
+            "arcade": {
+                "games": [
+                    {
+                        "key": "coin",
+                        "label": "Coin Flip",
+                        "description": "Quick local coin flip.",
+                    },
+                ],
+            },
         }
+
+    def workspace_action(self, action, args=None):
+        payload = dict(args or {})
+        self.workspace_actions.append((action, payload))
+        if action == "arcade.play":
+            return {
+                "ok": True,
+                "game": payload["game"],
+                "result": "Heads",
+            }
+        return {"ok": True}
 
     def turn(
         self,
@@ -344,6 +365,7 @@ def test_remote_mobile_success_trace_drops_private_provenance_and_bad_id(
         response.provenance = {
             "provider": "groq",
             "model": "safe-model",
+            "route": "PRIVATE_ROUTE_CONTEXT",
             "provider_attempts": [{
                 "provider": "groq",
                 "status": "failure",
@@ -368,6 +390,71 @@ def test_remote_mobile_success_trace_drops_private_provenance_and_bad_id(
     assert trace["timings"]["context_ms"] == 1.25
     assert 0.0 <= trace["elapsed"] <= 86_400.0
     assert "PRIVATE_" not in serialized
+    assert runtime.last_turn_trace() == trace
+
+
+def test_local_finalized_trace_only_retains_allowlisted_content_free_telemetry():
+    finalized = mobile_server._finalize_local_mobile_trace(
+        {
+            "event": "mary.turn.complete",
+            "request_id": "request_safe",
+            "turn_id": "turn_safe",
+            "conversation_id": "conversation_safe",
+            "stages": [],
+        },
+        {
+            "turn_id": "PRIVATE_RAW_TURN",
+            "provider": "groq",
+            "model": "PRIVATE_MODEL_NAME",
+            "finish_reason": "PRIVATE_FINISH_REASON",
+            "attempts": [
+                {
+                    "provider": "groq",
+                    "status": "success",
+                    "elapsed_ms": 12.5,
+                    "error": "PRIVATE_PROVIDER_ERROR",
+                },
+                {
+                    "provider": "PRIVATE_PROVIDER",
+                    "status": "PRIVATE_STATUS",
+                },
+            ],
+            "timings": {
+                "pipeline_ms": 18.0,
+                "context_ms": float("nan"),
+                "intent_ms": float("inf"),
+                "reasoning_ms": float("-inf"),
+                "private_timing": "PRIVATE_PROMPT",
+            },
+            "delivery_plan": {
+                "private": "PRIVATE_CREATOR_CONTEXT",
+            },
+            "local_mind": {
+                "private": "PRIVATE_MEMORY",
+            },
+            "mobile": {
+                "lane": "PRIVATE_LANE",
+            },
+        },
+    )
+
+    assert finalized["turn_id"] == "turn_safe"
+    assert finalized["model"] == "configured"
+    assert finalized["finish_reason"] == "unknown"
+    assert finalized["provider_attempts"] == [
+        {
+            "provider": "groq",
+            "status": "success",
+            "elapsed_ms": 12.5,
+        },
+        {
+            "provider": "unknown",
+            "status": "unknown",
+        },
+    ]
+    assert finalized["timings"] == {"pipeline_ms": 18.0}
+    assert "mobile" not in finalized
+    assert "PRIVATE_" not in json.dumps(finalized, sort_keys=True)
 
 
 def test_remote_mobile_trace_query_uses_authenticated_core_client(
@@ -389,6 +476,7 @@ def test_remote_mobile_trace_query_uses_authenticated_core_client(
             "traces": [{
                 "request_id": "request-safe",
                 "core_instance_id": "test-core",
+                "route": "PRIVATE_ROUTE_CONTEXT",
             }],
             "count": 1,
         }
@@ -400,6 +488,8 @@ def test_remote_mobile_trace_query_uses_authenticated_core_client(
     )
 
     assert payload["traces"][0]["core_instance_id"] == "test-core"
+    assert "route" not in payload["traces"][0]
+    assert "PRIVATE_" not in json.dumps(payload, sort_keys=True)
     assert calls == [(
         "GET",
         "/v1/turn-traces?limit=40&request_id=request-safe",
@@ -607,6 +697,50 @@ def test_remote_dashboard_preserves_canonical_core_state(
         ]
         == "Mary"
     )
+
+    assert dashboard["ecosystem"]["arcade"]["games"][0]["key"] == "coin"
+
+
+def test_remote_arcade_uses_typed_canonical_workspace_action(monkeypatch, tmp_path):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+
+    result = runtime.bridge_call("playArcade", ["coin", ""])
+
+    assert result == {"ok": True, "game": "coin", "result": "Heads"}
+    assert runtime.client.workspace_actions == [
+        ("arcade.play", {"game": "coin", "payload": ""}),
+    ]
+
+
+def test_remote_studio_is_explicitly_compatibility_only(monkeypatch, tmp_path):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+
+    state = runtime.bridge_call("getCreativeWorkspaceState")
+    read = runtime.bridge_call("readCreativeTextFile", ["private.txt"])
+    write = runtime.bridge_call(
+        "saveCreativeTextFile",
+        ["private.txt", "do not write"],
+    )
+
+    assert state["compatibility_only"] is True
+    assert state["files"] == []
+    assert "Desktop-only" in state["reason"]
+    assert read["ok"] is False
+    assert write["ok"] is False
+    assert read["compatibility_only"] is True
+    assert write["compatibility_only"] is True
 
 def test_remote_mobile_feedback_is_forwarded_to_canonical_core(monkeypatch, tmp_path):
     monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
