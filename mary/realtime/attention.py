@@ -19,6 +19,8 @@ from threading import RLock
 from typing import Any
 import uuid
 
+from mary.runtime.turn_observability import record_turn_stage
+
 
 class AttentionSource(str, Enum):
     CREATOR_SPEECH = "creator_speech"
@@ -93,10 +95,17 @@ class AttentionEvent:
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     id: str = field(default_factory=lambda: f"attention_{uuid.uuid4().hex[:12]}")
     sequence: int = 0
+    dedupe_key: str | None = None
+    execution_status: str = "not_executed"
+
+    @property
+    def attention_id(self) -> str:
+        return self.id
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["source"] = self.source.value
+        payload["attention_id"] = self.id
         return payload
 
 
@@ -119,6 +128,9 @@ class AttentionBus:
         self._published = 0
         self._claimed = 0
         self._dropped = 0
+        self._deduplicated = 0
+        self._paused = False
+        self._pause_reason: str | None = None
 
     def publish(
         self,
@@ -129,12 +141,26 @@ class AttentionBus:
         importance: float = 0.5,
         interruptible: bool = True,
         metadata: dict[str, Any] | None = None,
+        dedupe_key: str | None = None,
     ) -> AttentionEvent:
         resolved = AttentionSource(str(getattr(source, "value", source)).strip().lower())
         text = " ".join(str(summary or "").split()).strip()[:1200]
         if not text:
             raise ValueError("Attention events require a non-empty summary.")
+        normalized_dedupe = " ".join(str(dedupe_key or "").split()).strip()[:160] or None
         with self._lock:
+            if normalized_dedupe is not None:
+                for _, _, queued in self._heap:
+                    if queued.dedupe_key == normalized_dedupe:
+                        self._deduplicated += 1
+                        record_turn_stage(
+                            "attention_publication",
+                            status="skipped",
+                            elapsed_ms=0.0,
+                            outcome="deduplicated",
+                            result_ids={"attention_id": queued.id},
+                        )
+                        return queued
             self._sequence += 1
             event = AttentionEvent(
                 source=resolved,
@@ -144,6 +170,7 @@ class AttentionBus:
                 interruptible=bool(interruptible),
                 metadata=_safe_metadata(metadata),
                 sequence=self._sequence,
+                dedupe_key=normalized_dedupe,
             )
             heapq.heappush(self._heap, (event.priority, event.sequence, event))
             self._recent.append(event)
@@ -151,6 +178,13 @@ class AttentionBus:
                 del self._recent[: len(self._recent) - self.recent_limit]
             self._published += 1
             self._trim_pending_locked()
+            record_turn_stage(
+                "attention_publication",
+                status="success",
+                elapsed_ms=0.0,
+                outcome="published",
+                result_ids={"attention_id": event.id},
+            )
             return event
 
     def _trim_pending_locked(self) -> None:
@@ -171,6 +205,8 @@ class AttentionBus:
         if not target:
             return None
         with self._lock:
+            if self._paused:
+                return None
             for index, (_, _, event) in enumerate(self._heap):
                 if event.id != target:
                     continue
@@ -182,6 +218,8 @@ class AttentionBus:
 
     def next(self) -> AttentionEvent | None:
         with self._lock:
+            if self._paused:
+                return None
             if not self._heap:
                 return None
             _, _, event = heapq.heappop(self._heap)
@@ -203,6 +241,8 @@ class AttentionBus:
         limit = max(1, min(8, int(limit)))
         threshold = max(0.0, min(1.0, float(minimum_importance)))
         with self._lock:
+            if self._paused:
+                return []
             ordered = sorted(self._heap, key=lambda item: (item[0], item[1]))
             chosen = [item[2] for item in ordered if item[2].importance >= threshold][:limit]
             for event in chosen:
@@ -223,6 +263,18 @@ class AttentionBus:
         with self._lock:
             return list(self._recent[-max(1, min(100, int(limit))):])
 
+    def pause(self, reason: str = "lifecycle_sleep") -> None:
+        """Pause claims while retaining the bounded ephemeral queue."""
+        with self._lock:
+            self._paused = True
+            self._pause_reason = " ".join(str(reason or "paused").split())[:120]
+
+    def wake(self) -> None:
+        """Resume claims without claiming or executing an event."""
+        with self._lock:
+            self._paused = False
+            self._pause_reason = None
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             pending = self.pending(12)
@@ -233,6 +285,9 @@ class AttentionBus:
                 "published": self._published,
                 "claimed": self._claimed,
                 "dropped": self._dropped,
+                "deduplicated": self._deduplicated,
+                "paused": self._paused,
+                "pause_reason": self._pause_reason,
                 "next": pending[0].to_dict() if pending else None,
                 "recent": [event.to_dict() for event in recent],
                 "policy": "priority is attention only; provenance/authority remain owned by canonical Mary systems",

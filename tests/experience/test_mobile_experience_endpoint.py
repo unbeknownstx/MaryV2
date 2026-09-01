@@ -10,6 +10,8 @@ from mary.mobile.server import MaryMobileRuntime, MaryMobileServer, MobileAuth
 
 
 class _Runtime:
+    trace_queries = []
+
     def status(self):
         return {"name": "Mary"}
 
@@ -35,6 +37,13 @@ class _Runtime:
 
     def last_turn_trace(self):
         return {"provider": "groq", "model": "openai/gpt-oss-20b", "lane": "social_instant"}
+
+    def query_turn_traces(self, **query):
+        self.trace_queries.append(query)
+        return {
+            "traces": [{"request_id": query.get("request_id"), "core_instance_id": "core-1"}],
+            "count": 1,
+        }
 
     def close(self):
         pass
@@ -83,6 +92,37 @@ def test_experience_endpoint_is_authenticated_and_presentation_only(tmp_path):
         thread.join(timeout=2)
 
 
+def test_trace_query_endpoint_is_authenticated_and_bounded(tmp_path):
+    runtime = _Runtime()
+    runtime.trace_queries = []
+    server, thread = _serve(tmp_path, runtime=runtime)
+    try:
+        conn = HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        conn.request("GET", "/api/traces?request_id=request-safe&limit=999")
+        unauthorized = conn.getresponse()
+        unauthorized.read()
+        assert unauthorized.status == 401
+
+        conn.request(
+            "GET",
+            "/api/traces?request_id=request-safe&limit=999",
+            headers={"Authorization": "Bearer secret"},
+        )
+        response = conn.getresponse()
+        payload = json.loads(response.read())
+        assert response.status == 200
+        assert payload["traces"][0]["request_id"] == "request-safe"
+        assert runtime.trace_queries == [{
+            "request_id": "request-safe",
+            "turn_id": "",
+            "limit": 40,
+        }]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_local_mobile_runtime_projects_real_sourcebook_count_only(
     monkeypatch,
     tmp_path,
@@ -96,7 +136,10 @@ def test_local_mobile_runtime_projects_real_sourcebook_count_only(
 
     sourcebook = SimpleNamespace(
         snapshot=lambda: {
+            "version": "13.2",
             "records": 189,
+            "sourcebook_hash": "abcdef1234567890abcd",
+            "errors": ["PRIVATE_SOURCE_PATH"],
             "source_names": ["PRIVATE_AUTHORED_SOURCE"],
             "records_preview": ["PRIVATE_AUTHORED_EVIDENCE"],
         }
@@ -156,8 +199,16 @@ def test_local_mobile_runtime_projects_real_sourcebook_count_only(
         rendered = repr(payload)
         assert response.status == 200
         assert payload["metadata"]["character_records"] == 189
+        sourcebook_projection = runtime.dashboard_state()["character_sourcebook"]
+        assert sourcebook_projection == {
+            "version": "13.2",
+            "records": 189,
+            "sourcebook_hash": "abcdef1234567890abcd",
+            "error_count": 1,
+        }
         assert "PRIVATE_AUTHORED_SOURCE" not in rendered
         assert "PRIVATE_AUTHORED_EVIDENCE" not in rendered
+        assert "PRIVATE_SOURCE_PATH" not in repr(sourcebook_projection)
     finally:
         server.shutdown()
         server.server_close()

@@ -22,6 +22,7 @@ from mary.runtime.turn_observability import (
     TurnTraceRecorder,
     bind_turn_trace,
     reset_turn_trace,
+    trace_correlation_id,
     upstream_request_hash,
 )
 from mary.runtime import turn_observability
@@ -195,6 +196,33 @@ def test_total_elapsed_time_is_bounded():
     assert finished["total_elapsed_ms"] == 86_400_000.0
 
 
+def test_trace_links_conversation_and_allowlists_result_ids():
+    trace = _recorder()
+    trace.set_turn_id("turn-safe")
+    trace.set_conversation_id("conversation-safe")
+    event = trace.record(
+        "attention_publication",
+        status="success",
+        elapsed_ms=1,
+        outcome="published",
+        result_ids={
+            "attention_id": "attention-safe",
+            "experience_id": ["experience-1", "unsafe private id"],
+            "unknown_id": "must-not-appear",
+            "memory_object_id": PRIVATE_MEMORY,
+        },
+    )
+    assert event["conversation_id"] == trace_correlation_id(
+        "conversation-safe",
+        prefix="conversation",
+    )
+    assert event["result_ids"] == {
+        "attention_id": "attention-safe",
+        "experience_id": ["experience-1"],
+    }
+    _assert_private_content_absent(json.dumps(event, sort_keys=True))
+
+
 def test_client_preserves_only_safe_core_request_id_on_http_failure(monkeypatch):
     headers = Message()
     headers["X-Mary-Request-ID"] = "request_safe_failure"
@@ -321,6 +349,60 @@ def test_http_turn_correlates_request_and_keeps_failure_responses_sanitized(monk
         "response_serialization",
     }.issubset({item["stage"] for item in trace["stages"]})
     _assert_private_content_absent(json.dumps(trace, sort_keys=True))
+
+
+def test_authenticated_trace_query_filters_ids_and_marks_replay(monkeypatch):
+    fastapi = pytest.importorskip("fastapi")
+    del fastapi
+    from fastapi.testclient import TestClient
+    from mary.protocol.server import create_app
+
+    monkeypatch.setenv("MARY_CORE_TOKEN", SECRET_TOKEN)
+    core = MaryCoreService(FakeApplication(), instance_id="query-core")
+    core.register_creator_surface({"surface_id": "test-creator"})
+    headers = {"Authorization": f"Bearer {SECRET_TOKEN}"}
+    payload = {
+        "text": "hello",
+        "turn_id": "turn-query-safe",
+        "conversation_id": "conversation-query-safe",
+    }
+    with TestClient(create_app(core)) as client:
+        first = client.post("/v1/turn", headers=headers, json=payload)
+        replay = client.post("/v1/turn", headers=headers, json=payload)
+        unauthorized = client.get("/v1/turn-traces")
+        queried = client.get(
+            "/v1/turn-traces?turn_id=turn-query-safe&limit=1000",
+            headers=headers,
+        )
+        unsafe = client.get(
+            "/v1/turn-traces?request_id=private%20request",
+            headers=headers,
+        )
+
+    assert first.status_code == replay.status_code == 200
+    assert first.json()["request_id"] != replay.json()["request_id"]
+    assert unauthorized.status_code == 401
+    assert unsafe.status_code == 200
+    assert unsafe.json()["count"] == 0
+    body = queried.json()
+    assert body["limit"] == 40
+    assert [trace["outcome"] for trace in body["traces"]] == [
+        "replayed",
+        "success",
+    ]
+    assert all(
+        trace["conversation_id"] == trace_correlation_id(
+            "conversation-query-safe",
+            prefix="conversation",
+        )
+        for trace in body["traces"]
+    )
+    assert "conversation-query-safe" not in json.dumps(body, sort_keys=True)
+    assert any(
+        stage["status"] == "skipped"
+        and stage.get("outcome") == "replayed"
+        for stage in body["traces"][0]["stages"]
+    )
 
 
 def test_health_stays_responsive_and_cancelled_request_records_upstream_disconnect(

@@ -1006,6 +1006,7 @@ class MaryApplication:
         surface: str,
         transport: str,
         voice_input: bool,
+        attention_id: str | None = None,
     ) -> TriggerContext:
         """Build the small, non-authoritative context exposed to triggers."""
 
@@ -1050,6 +1051,8 @@ class MaryApplication:
         safe_values["input_text"] = " ".join(
             str(input_text or "").split()
         )[:512]
+        if str(attention_id or "").startswith("attention_"):
+            safe_values["attention_id"] = str(attention_id)[:80]
 
         autonomy_status = getattr(
             self.mary.autonomy.status,
@@ -1071,6 +1074,11 @@ class MaryApplication:
                         result.turn_id,
                     )
                 )[:160],
+                "attention_id": (
+                    str(attention_id)[:80]
+                    if str(attention_id or "").startswith("attention_")
+                    else None
+                ),
             },
         )
 
@@ -1133,6 +1141,16 @@ class MaryApplication:
                 str(snapshot.status),
             ),
             "cycle_id": cycle_id,
+            "cycle_reference_id": getattr(
+                cycle_result,
+                "cycle_reference_id",
+                None,
+            ),
+            "evaluation_id": getattr(
+                cycle_result,
+                "evaluation_id",
+                None,
+            ),
             "cycle_count": snapshot.cycle_count,
             "trigger_result_count": len(
                 getattr(
@@ -1162,6 +1180,14 @@ class MaryApplication:
                     (),
                 )
             ),
+            "proposal_ids": [
+                str(getattr(action, "metadata", {}).get("proposal_id"))
+                for action in getattr(cycle_result, "actions_created", ())
+                if getattr(action, "metadata", {}).get("proposal_id")
+            ][:8],
+            "deduplicated_proposal_ids": list(
+                getattr(cycle_result, "deduplicated_proposal_ids", ())
+            )[:8],
             "errors": bounded_errors[:4],
             "last_cycle_at": snapshot.last_cycle_at,
         }
@@ -1225,27 +1251,6 @@ class MaryApplication:
         if not source_item_id or not description:
             return None
 
-        # Keep one outstanding proposal per durable Agency item. Repeated turns
-        # about the same goal/curiosity should not grow an unbounded action queue.
-        autonomy = self.mary.autonomy
-        for action in autonomy.actions.all():
-            metadata = getattr(action, "metadata", {})
-            if not isinstance(metadata, dict):
-                continue
-            if metadata.get("bridge") != "agency_autonomy_proposal":
-                continue
-            if str(metadata.get("source_item_id") or "") != source_item_id:
-                continue
-            status = getattr(getattr(action, "status", None), "value", "")
-            if status not in {
-                "completed",
-                "failed",
-                "cancelled",
-                "expired",
-                "rejected",
-            }:
-                return None
-
         suggested_action = str(
             decision.get("suggested_action") or "consider"
         ).strip()[:120]
@@ -1274,6 +1279,7 @@ class MaryApplication:
                 "source_item_type": source_item_type,
                 "turn_id": str(getattr(result, "turn_id", ""))[:160],
                 "execution": "not_authorized",
+                "dedupe_key": f"agency:{source_item_id}"[:180],
             },
         )
 
@@ -1286,6 +1292,7 @@ class MaryApplication:
         transport: str,
         voice_input: bool,
         startup_error: str | None,
+        attention_id: str | None = None,
     ) -> None:
         """Run at most one passive autonomy cycle for a successful turn."""
 
@@ -1348,6 +1355,7 @@ class MaryApplication:
                         surface=surface,
                         transport=transport,
                         voice_input=voice_input,
+                        attention_id=attention_id,
                     )
                 )
         except Exception as exc:
@@ -1372,6 +1380,61 @@ class MaryApplication:
         record = self._autonomy_record(
             cycle_result=cycle_result,
         )
+        cycle_ids = {
+            "autonomy_cycle_id": getattr(
+                cycle_result,
+                "cycle_reference_id",
+                "",
+            ),
+            "autonomy_evaluation_id": getattr(
+                cycle_result,
+                "evaluation_id",
+                "",
+            ),
+        }
+        if str(attention_id or "").startswith("attention_"):
+            cycle_ids["attention_id"] = str(attention_id)[:80]
+        record_turn_stage(
+            "autonomy_evaluation",
+            status="success",
+            elapsed_ms=0.0,
+            outcome="evaluated",
+            result_ids=cycle_ids,
+        )
+        proposal_ids = list(record.get("proposal_ids") or [])
+        deduplicated_ids = list(
+            record.get("deduplicated_proposal_ids") or []
+        )
+        if proposal_ids:
+            record_turn_stage(
+                "autonomy_proposal",
+                status="success",
+                elapsed_ms=0.0,
+                outcome="proposed_pending_confirmation",
+                result_ids={
+                    **cycle_ids,
+                    "autonomy_proposal_id": proposal_ids,
+                },
+            )
+        elif deduplicated_ids:
+            record_turn_stage(
+                "autonomy_proposal",
+                status="skipped",
+                elapsed_ms=0.0,
+                outcome="deduplicated_existing",
+                result_ids={
+                    **cycle_ids,
+                    "autonomy_proposal_id": deduplicated_ids,
+                },
+            )
+        else:
+            record_turn_stage(
+                "autonomy_proposal",
+                status="skipped",
+                elapsed_ms=0.0,
+                outcome="not_applicable",
+                result_ids=cycle_ids,
+            )
         if proposal_trigger is not None:
             record["agency_proposal"] = {
                 "created": any(
@@ -1557,6 +1620,11 @@ class MaryApplication:
                 transport=transport,
                 voice_input=voice,
                 startup_error=autonomy_startup_error,
+                attention_id=(
+                    getattr(interaction, "attention_event_id", None)
+                    if interaction is not None
+                    else None
+                ),
             )
 
         return result

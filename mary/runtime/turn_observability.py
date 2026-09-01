@@ -16,20 +16,48 @@ from uuid import uuid4
 
 _STAGES = {
     "core_ingress",
+    "authentication",
+    "lifecycle_gate",
     "turn_lock_acquisition",
     "application_turn",
     "context_construction",
+    "context_assembly",
     "character_sourcebook_retrieval",
+    "sourcebook_projection",
     "memory_retrieval",
+    "relationship_projection",
+    "developed_self_projection",
     "provider_availability",
+    "provider_routing",
+    "provider_attempt",
     "provider_generation",
     "provider_fallback",
+    "dialogue_realization",
     "dialogue_persistence",
+    "experience_growth",
     "growth_processing",
+    "preference_evidence",
+    "memory_write",
+    "memory_consolidation",
+    "relationship_learning",
+    "attention_publication",
     "autonomy_processing",
+    "autonomy_evaluation",
+    "autonomy_proposal",
+    "persistence",
     "response_serialization",
+    "serialization",
 }
 _STATUSES = {"success", "failure", "skipped"}
+_TERMINAL_OUTCOMES = {"success", "failure", "replayed"}
+_RESULT_ID_KEYS = {
+    "experience_id", "preference_evidence_id", "preference_candidate_id",
+    "developed_preference_id", "promotion_id", "memory_operation_id",
+    "memory_object_id", "relationship_observation_id",
+    "relationship_profile_id", "relationship_history_id", "attention_id",
+    "autonomy_cycle_id", "autonomy_evaluation_id", "autonomy_proposal_id",
+    "tool_request_id", "capability_request_id",
+}
 _FAILURE_KINDS = {
     "application_exception",
     "authentication_failure",
@@ -66,6 +94,35 @@ def bounded_identifier(value: Any, *, default_prefix: str = "request") -> str:
     if _SAFE_ID.fullmatch(cleaned):
         return cleaned
     return f"{default_prefix}_{uuid4().hex}"
+
+
+def trace_correlation_id(value: Any, *, prefix: str) -> str:
+    """Project caller-visible correlation values as non-reversible opaque IDs."""
+
+    safe_prefix = bounded_type_name(prefix).lower()
+    supplied = str(value or "").strip()
+    if re.fullmatch(rf"{re.escape(safe_prefix)}_[0-9a-f]{{24}}", supplied):
+        return supplied
+    if not supplied:
+        supplied = uuid4().hex
+    digest = hashlib.sha256(supplied.encode("utf-8")).hexdigest()[:24]
+    return f"{safe_prefix}_{digest}"
+
+
+def safe_link_identifier(value: Any) -> str:
+    """Return an existing opaque ID when it is safe to expose, else no ID."""
+
+    cleaned = str(value or "").strip()
+    return cleaned if _SAFE_ID.fullmatch(cleaned) else ""
+
+
+def causal_operation_id(turn_id: Any, subsystem: str, operation: str) -> str:
+    """Create one opaque ID at a real subsystem operation boundary."""
+
+    del turn_id
+    safe_subsystem = bounded_type_name(subsystem).lower()
+    safe_operation = bounded_type_name(operation).lower()
+    return f"{safe_subsystem}_{safe_operation}_{uuid4().hex[:24]}"
 
 
 def upstream_request_hash(value: Any) -> str:
@@ -105,13 +162,19 @@ class TurnTraceRecorder:
     max_stages: int = 64
     started: float = field(default_factory=monotonic)
     turn_id: str = ""
+    conversation_id: str = ""
+    replayed: bool = field(default=False, init=False)
     _stages: list[dict[str, Any]] = field(default_factory=list, init=False)
     _finished: bool = field(default=False, init=False)
+    _completion: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _dropped_stages: int = field(default=0, init=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.request_id = bounded_identifier(self.request_id)
+        self.request_id = trace_correlation_id(
+            self.request_id,
+            prefix="request",
+        )
         self.core_instance_id = bounded_identifier(
             self.core_instance_id,
             default_prefix="core",
@@ -124,7 +187,22 @@ class TurnTraceRecorder:
         )
 
     def set_turn_id(self, value: Any) -> None:
-        self.turn_id = bounded_identifier(value, default_prefix="turn")
+        with self._lock:
+            if not self._finished:
+                self.turn_id = trace_correlation_id(value, prefix="turn")
+
+    def set_conversation_id(self, value: Any) -> None:
+        with self._lock:
+            if not self._finished:
+                self.conversation_id = trace_correlation_id(
+                    value,
+                    prefix="conversation",
+                )
+
+    def mark_replayed(self) -> None:
+        with self._lock:
+            if not self._finished:
+                self.replayed = True
 
     def record(
         self,
@@ -135,6 +213,7 @@ class TurnTraceRecorder:
         provider: Any = None,
         attempt: int | None = None,
         outcome: Any = None,
+        result_ids: dict[str, Any] | None = None,
         failure_kind: str | None = None,
         error: BaseException | str | None = None,
     ) -> dict[str, Any]:
@@ -153,6 +232,8 @@ class TurnTraceRecorder:
             event["upstream_request_hash"] = self.upstream_request_hash
         if self.turn_id:
             event["turn_id"] = self.turn_id
+        if self.conversation_id:
+            event["conversation_id"] = self.conversation_id
         if provider not in (None, ""):
             event["provider"] = bounded_identifier(
                 provider,
@@ -161,10 +242,26 @@ class TurnTraceRecorder:
         if attempt is not None:
             event["attempt"] = max(1, min(99, int(attempt)))
         if outcome not in (None, ""):
-            event["outcome"] = bounded_identifier(
-                outcome,
-                default_prefix="outcome",
-            )[:64]
+            safe_outcome = safe_link_identifier(outcome)
+            if safe_outcome:
+                event["outcome"] = safe_outcome[:64]
+        if isinstance(result_ids, dict):
+            safe_results: dict[str, Any] = {}
+            for key in sorted(_RESULT_ID_KEYS):
+                raw = result_ids.get(key)
+                if isinstance(raw, (list, tuple)):
+                    values = [
+                        safe for item in raw[:8]
+                        if (safe := safe_link_identifier(item))
+                    ]
+                    if values:
+                        safe_results[key] = values
+                else:
+                    safe = safe_link_identifier(raw)
+                    if safe:
+                        safe_results[key] = safe
+            if safe_results:
+                event["result_ids"] = safe_results
         if safe_status == "failure":
             kind = failure_kind or classify_failure(
                 error if isinstance(error, BaseException) else None
@@ -242,7 +339,8 @@ class TurnTraceRecorder:
                 "schema": 1,
                 "request_id": self.request_id,
                 "core_instance_id": self.core_instance_id,
-                "outcome": "success" if outcome == "success" else "failure",
+                "outcome": outcome if outcome in _TERMINAL_OUTCOMES else "failure",
+                "status": "success" if outcome in {"success", "replayed"} else "failure",
                 "total_elapsed_ms": round(
                     max(
                         0.0,
@@ -260,9 +358,11 @@ class TurnTraceRecorder:
                 event["upstream_request_hash"] = self.upstream_request_hash
             if self.turn_id:
                 event["turn_id"] = self.turn_id
+            if self.conversation_id:
+                event["conversation_id"] = self.conversation_id
             if failed_stage:
                 event["failed_stage"] = failed_stage
-            if outcome != "success":
+            if outcome not in {"success", "replayed"}:
                 kind = failure_kind or classify_failure(
                     error if isinstance(error, BaseException) else None
                 )
@@ -283,6 +383,7 @@ class TurnTraceRecorder:
                 **event,
                 "stages": [dict(item) for item in self._stages],
             }
+            self._completion = snapshot
         _LOGGER.info(json.dumps(event, separators=(",", ":"), sort_keys=True))
         if self.sink is not None:
             try:
@@ -301,11 +402,18 @@ class TurnTraceRecorder:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
+            if self._completion is not None:
+                return {
+                    **self._completion,
+                    "stages": [dict(item) for item in self._completion["stages"]],
+                }
             return {
                 "request_id": self.request_id,
                 "core_instance_id": self.core_instance_id,
                 "turn_id": self.turn_id,
+                "conversation_id": self.conversation_id,
                 "finished": self._finished,
+                "replayed": self.replayed,
                 "upstream_request_hash": self.upstream_request_hash,
                 "dropped_stage_count": self._dropped_stages,
                 "stages": [dict(item) for item in self._stages],

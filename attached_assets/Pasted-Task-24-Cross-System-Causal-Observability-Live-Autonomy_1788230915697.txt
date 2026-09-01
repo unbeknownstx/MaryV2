@@ -1,0 +1,603 @@
+Task #24 — Cross-System Causal Observability + Live Autonomy Certification
+
+Task #23 is complete and production is now safely deployable, restartable, recoverable, and capable of live developed-self learning across a real Railway Core restart.
+
+Production currently runs:
+
+0767b44b2662081dac16a167d027b92cf8397dbd
+
+Task #23 proved:
+
+creator evidence
+→ governed preference candidate
+→ exactly five valid observations
+→ one promotion
+→ durable developed preference
+→ fresh-session behavioral influence
+→ verified backup
+→ empty-root reconstruction
+→ controlled Railway restart
+→ exact durable fingerprint preservation
+→ learned preference surviving restart
+→ Mobile reconnect
+
+The next remaining certification gap is causal observability across subsystems, especially:
+
+turn → experience → attention → autonomy evaluation → proposal
+
+and the ability to correlate:
+
+turn → memory / relationship / preference / growth / autonomy
+
+without exposing private contents.
+
+Task #21 also found:
+
+* no live harmless autonomy proposal had been produced;
+* Mobile trace lacked Core instance ID;
+* trace history/queryability was insufficient;
+* attention IDs were not linked to autonomy;
+* relationship/preference/memory object IDs were not correlated to turn IDs;
+* raw provider failure detail in routing status exposed more upstream metadata than necessary;
+* Mobile sourcebook projection omitted canonical hash;
+* Core/Mobile Ollama labels differed by purpose without clear labeling.
+
+This task should solve those issues without redesigning Mary’s architecture.
+
+⸻
+
+1. Objective
+
+Build a bounded, content-free causal trace that lets us answer:
+
+“What happened because of this authenticated creator turn?”
+
+For a successful turn, the trace should be able to show, where applicable:
+
+Core instance
+→ request
+→ turn
+→ provider attempts
+→ response success/failure
+→ experience
+→ preference evidence/candidate/promotion
+→ memory operation
+→ relationship operation
+→ attention event
+→ autonomy evaluation
+→ proposal
+→ persistence/post-processing outcome
+
+Not every turn will produce every object. Absence must be explicit and explainable.
+
+⸻
+
+2. Preserve privacy and boundedness
+
+Do not expose:
+
+* prompts;
+* model output;
+* memory contents;
+* sourcebook contents/evidence;
+* relationship text;
+* creator preference text;
+* tool arguments containing sensitive information;
+* API keys;
+* bearer tokens;
+* node session credentials;
+* environment secrets;
+* raw provider exception bodies;
+* upstream account/billing metadata.
+
+Trace data should contain only bounded structural information such as:
+
+* opaque IDs;
+* stage names;
+* subsystem names;
+* status/disposition;
+* counts;
+* safe enums;
+* sanitized failure categories;
+* durations;
+* hashes where already appropriate;
+* timestamps;
+* Core instance ID.
+
+Retain existing trace/ring bounds. Do not create an unbounded telemetry log.
+
+⸻
+
+3. Canonical causal IDs
+
+Reuse existing IDs where they already exist.
+
+Do not invent a second object identity system.
+
+Ensure the following can be correlated where applicable:
+
+* core_instance_id
+* request_id
+* turn_id
+* conversation_id
+* experience_id
+* preference evidence ID
+* preference candidate ID
+* developed preference ID / promotion ID
+* memory operation/object ID
+* relationship observation/profile/history ID
+* attention_id
+* autonomy cycle/evaluation ID
+* autonomy proposal ID
+* tool/capability request ID if a proposal later requests one
+
+IDs should be opaque and content-free.
+
+If a subsystem currently lacks a stable operation/result ID, add the smallest bounded ID needed for traceability.
+
+⸻
+
+4. Per-turn stage outcomes
+
+Extend canonical turn observability so a successful or failed turn can report stage outcomes such as:
+
+* ingress
+* auth
+* lifecycle gate
+* context assembly
+* sourcebook projection
+* memory retrieval
+* relationship projection
+* developed-self projection
+* provider routing
+* provider attempt(s)
+* dialogue realization
+* experience/growth
+* preference evidence
+* memory write/consolidation
+* relationship learning
+* attention publication
+* autonomy evaluation
+* autonomy proposal
+* persistence
+* serialization
+
+Each stage should expose only:
+
+status
+duration
+safe outcome
+opaque result IDs
+
+where applicable.
+
+Do not require fake IDs for not_applicable.
+
+⸻
+
+5. Historical/queryable trace
+
+Task #21 found that Mobile only exposed the latest trace while Core internally retained bounded history.
+
+Add a bounded authenticated creator/admin query path that can retrieve trace metadata by:
+
+* request ID; or
+* turn ID.
+
+Optionally support a small bounded recent history.
+
+Requirements:
+
+* authentication required;
+* creator/admin diagnostic authority only;
+* bounded number of results;
+* content-free;
+* no raw provider payloads;
+* no secrets;
+* no arbitrary filesystem/log access;
+* no unbounded historical database.
+
+Mobile should be able to project this safely for diagnostics.
+
+⸻
+
+6. Provider failure sanitization
+
+Fix the Task #21 telemetry defect:
+
+compute_fabric.routing.last_generation.attempts
+
+must not retain or project raw provider error text that can include:
+
+* account metadata;
+* billing links;
+* raw HTTP bodies;
+* provider-specific exception text;
+* secret-shaped values.
+
+Replace with safe structured data:
+
+* provider
+* model if safe/configured
+* attempt number
+* success/failure
+* safe failure category
+* HTTP/status class if appropriate
+* retryability
+* cooldown state
+* elapsed time
+* safe upstream correlation hash if available
+
+Preserve enough information to diagnose fallback behavior.
+
+Add explicit regression tests using secret-shaped/provider-account-shaped exceptions.
+
+⸻
+
+7. Core/Mobile projection parity
+
+Resolve the remaining Task #21 projection gaps:
+
+Sourcebook
+
+Mobile should project:
+
+* version
+* record count
+* canonical hash
+* error count
+
+without exposing sourcebook contents.
+
+Core instance
+
+Mobile turn/trace projection should include canonical core_instance_id.
+
+Ollama route label
+
+Resolve:
+
+device:general:offline
+
+vs
+
+device:conversation:offline
+
+Either:
+
+* use the same purpose-qualified canonical route label;
+
+or
+
+* explicitly expose the route purpose so the difference is intentional and understandable.
+
+Do not silently normalize two different meanings.
+
+Add parity tests.
+
+⸻
+
+8. Live autonomy objective
+
+Once causal tracing exists, produce one harmless live autonomy proposal through the real production Core.
+
+The goal is to prove:
+
+bounded trigger/event
+→ attention
+→ autonomy evaluation
+→ proposal
+
+and stop there.
+
+The proposal must:
+
+* be harmless;
+* require no spending;
+* require no destructive action;
+* require no external message;
+* require no filesystem mutation;
+* require no tool execution;
+* require no capability-node dispatch;
+* remain proposal-only;
+* preserve explicit creator confirmation as a separate later authority.
+
+Good examples are non-consequential internal suggestions such as:
+
+* suggesting that the creator revisit an unfinished task;
+* proposing a harmless follow-up question;
+* proposing a bounded internal review;
+* surfacing a low-risk reminder-like idea without scheduling it automatically.
+
+Do not manufacture emotionally manipulative or relationship-based triggers just to make autonomy fire.
+
+⸻
+
+9. Live autonomy causal proof
+
+For the live proposal, record content-free:
+
+* triggering request/turn/event ID;
+* attention ID;
+* autonomy evaluation/cycle ID;
+* proposal ID;
+* proposal category;
+* disposition/status;
+* dedupe key or equivalent bounded identifier;
+* priority class;
+* whether confirmation is required;
+* execution status.
+
+Expected final execution state:
+
+not executed
+
+unless the system architecture defines another non-actioning terminal state such as proposed or pending_confirmation.
+
+Verify no tool/capability request was actually executed.
+
+⸻
+
+10. Autonomy dedupe/prioritization
+
+After producing one harmless proposal:
+
+* repeat or replay the same logical trigger where safe;
+* prove the same proposal is not duplicated incorrectly;
+* show dedupe/prioritization behavior;
+* show whether it updates, suppresses, merges, or retains one canonical proposal.
+
+Do not create five separate proposals just to demonstrate counters.
+
+⸻
+
+11. Lifecycle/autonomy interaction
+
+Live-test:
+
+ACTIVE
+→ autonomy evaluation allowed
+→ one harmless proposal exists
+→ disconnect/sleep
+→ autonomy paused
+→ no new proposal work
+→ reconnect/wake
+→ autonomy resumes
+
+Existing proposal state should behave according to current architecture.
+
+If proposals are intentionally ephemeral, document that.
+
+If proposals are durable, prove expected persistence.
+
+Do not change policy solely to make persistence convenient.
+
+⸻
+
+12. Provider fallback + causal trace
+
+Reproduce one bounded real provider fallback if practical and quota-safe.
+
+Prove in one trace:
+
+request
+→ provider attempt A failed
+→ provider attempt B succeeded
+→ dialogue success
+→ growth/experience
+→ attention
+→ autonomy evaluation
+
+Confirm failed provider output created:
+
+* no false preference evidence;
+* no false memory;
+* no duplicate attention;
+* no duplicate autonomy cycle.
+
+⸻
+
+13. Learning trace regression
+
+Do not re-run a full five-observation production promotion unless necessary.
+
+Use the already-existing live promoted preference to prove trace support for a new relevant turn:
+
+turn
+→ developed-self retrieval/projection
+→ provider-facing context/disposition
+→ response
+
+The trace should identify the developed preference object by opaque ID only, not its contents.
+
+Verify the existing production developed preference remains:
+
+developed_preference_cc60f5a44c9b9bbc45f1812c
+
+or the canonical equivalent if IDs are intentionally reconstructed differently.
+
+Do not create duplicate preference state.
+
+⸻
+
+14. Memory and relationship trace behavior
+
+The trace must distinguish:
+
+* no operation;
+* retrieval only;
+* candidate/deferred;
+* write;
+* promotion/consolidation;
+* blocked/rejected.
+
+Do not force semantic or episodic memory creation merely to get an ID.
+
+For relationship:
+
+* perform one benign relationship-relevant turn;
+* show whether relationship processing ran;
+* expose only operation/result IDs and disposition;
+* do not force a milestone.
+
+If no durable relationship write occurs, trace should say so explicitly rather than leaving the stage unknowable.
+
+⸻
+
+15. Persistence/restart interaction
+
+Task #23 already proved production restart and reconstruction.
+
+Do not perform another production restart unless required by the deployment of Task #24.
+
+If deployment causes one normal Railway restart:
+
+* use the existing backup/restart workflow;
+* verify durable fingerprint;
+* verify learned preference survives;
+* verify Core instance changes;
+* verify Mobile trace now reflects the new Core instance.
+
+Do not perform an extra second restart solely for this task.
+
+⸻
+
+16. Tests
+
+Add focused tests for:
+
+* request → experience ID linkage
+* request → attention ID linkage
+* attention → autonomy cycle linkage
+* autonomy cycle → proposal linkage
+* preference evidence/candidate/developed-state linkage
+* relationship operation linkage
+* memory operation result linkage
+* failed provider cannot fabricate subsystem IDs
+* rejected auth/lifecycle requests do not create causal objects
+* retries do not duplicate causal objects
+* trace query by request/turn ID
+* trace ring remains bounded
+* telemetry remains content-free
+* provider exception/account metadata sanitization
+* Mobile sourcebook hash parity
+* Mobile Core instance parity
+* Ollama route-purpose parity
+* sleep pauses autonomy
+* harmless proposal remains non-executing
+* dedupe works
+
+Run:
+
+* observability-focused tests;
+* autonomy tests;
+* lifecycle tests;
+* growth/developed-self tests;
+* relationship/memory integration tests;
+* Core/Mobile projection tests;
+* security/redaction tests;
+* release verification;
+* full suite.
+
+⸻
+
+17. Production safety
+
+Before deployment:
+
+* reuse Task #23 backup mechanism;
+* verify current production fingerprint;
+* verify backup completion;
+* deploy only approved Task #24 changes;
+* verify post-deploy fingerprint;
+* rollback if durable state diverges unexpectedly.
+
+Do not modify or delete production learned state.
+
+Do not reset the existing developed preference.
+
+⸻
+
+18. Final live acceptance
+
+Final production evidence must show:
+
+A. Normal turn causal chain
+
+request
+→ turn
+→ experience
+→ attention
+→ subsystem outcomes
+
+B. Learned-state influence
+
+turn
+→ developed preference retrieval/projection
+→ provider/context influence
+
+C. Provider fallback
+
+provider failure
+→ fallback success
+→ post-processing
+
+D. Autonomy
+
+trigger
+→ attention ID
+→ autonomy cycle ID
+→ proposal ID
+→ proposed/pending
+→ no execution
+
+E. Lifecycle
+
+sleep
+→ autonomy paused
+→ wake
+→ autonomy resumed
+
+F. Trace history
+
+Retrieve at least one prior trace by request or turn ID.
+
+⸻
+
+Final report
+
+Report:
+
+1. exact observability gaps found
+2. files changed
+3. causal ID model
+4. per-turn stage model
+5. trace history/query implementation
+6. provider error sanitization result
+7. Core/Mobile parity result
+8. sourcebook projection parity
+9. provider route-label parity
+10. focused-test results
+11. full-suite result
+12. release verification result
+13. deployment revision
+14. pre/post durable fingerprint
+15. Core instance before/after deployment
+16. live normal-turn causal chain
+17. live developed-state retrieval chain
+18. live fallback causal chain
+19. live autonomy trigger/attention/cycle/proposal chain
+20. autonomy dedupe result
+21. sleep/wake autonomy result
+22. proof that no autonomous execution/spending/tool dispatch occurred
+23. remaining unknowns
+24. commit hash
+
+Final verdict must be one of:
+
+* CAUSAL OBSERVABILITY + LIVE AUTONOMY VERIFIED
+* OBSERVABILITY VERIFIED / AUTONOMY PARTIAL
+* PARTIAL
+* FAILED
+
+Do not begin unrelated work after Task #24.

@@ -2,462 +2,350 @@
 
 **Certification date:** 2026-08-31 America/Los_Angeles  
 **Task:** #23  
-**Final verdict:** **PRE-DEPLOYMENT BACKUP VERIFIED — DEPLOYMENT AUTHORIZATION REQUIRED**
+**Final verdict:** **CERTIFIED — DEPLOYED, BACKED UP, LEARNED, AND RESTART-STABLE**
 
-Task #23 implementation is locally committed and independently reviewed. This
-certification document is committed separately after the implementation so it
-can record the implementation's immutable Git hash. The exact certification
-commit is recorded in the final handoff and is recoverable with:
+## 1. Immutable revisions
 
-`git log -1 --format=%H -- docs/certification/MARYV2_SAFE_PRODUCTION_BACKUP_DEPLOYMENT_RESTART_2026-08-31.md`
+- Task #22:
+  `4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`
+- Task #23 implementation:
+  `b6f121ebe4a2a89229201a0c81ded74213435ff8`
+- Original certification:
+  `a7359674224d0e2aa6446f11786f18271ca4a67c`
+- Library registration:
+  `6f270e589920077272e85339dcec8241cbf5e046`
+- Verified pre-deployment production backup evidence:
+  `65b654bc230356f7294e77fd604cde411dc38bd6`
+- Restart-stable engagement backup projection:
+  `0767b44b2662081dac16a167d027b92cf8397dbd`
 
-The reviewed Task #23 history is release-clean.
-No GitHub push, Railway deployment, Railway restart, or production learning
-experiment was performed. Railway project, service, environment, canonical
-volume, active deployment, restart authority, and rollback history are now
-verified. Because GitHub `main` triggers Railway deployment, stopping before
-push remains required until explicit creator authorization.
+Production and the controlled restart both used exact code revision
+`0767b44b2662081dac16a167d027b92cf8397dbd`.
 
-The production Core remains healthy on the prior deployment. Its authenticated
-Task #23 durable-state endpoint returns HTTP 404, independently confirming that
-the new code is not live.
-
-## 1. Task #22 commit hash
-
-`4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`
-
-Short revision: `4f21b7b`  
-Commit title: `Update agent growth logic and preference evidence processing`
-
-At the Task #23 start, this was both local `HEAD` and `origin/main`. The Task
-#22 files, report, tests, and attached specification were present in that clean
-commit.
-
-## 2. Task #23 implementation commit hash
-
-`b6f121ebe4a2a89229201a0c81ded74213435ff8`
-
-Short revision: `b6f121e`  
-Commit title: `Add safe production backup and recovery workflow`
-
-This implementation commit is local only. The certification report is the next
-local commit. Git commits cannot embed their own hash because the hash is
-derived from the committed file contents; the final handoff records that second
-exact hash and the command above resolves it reproducibly.
-
-## 3. Release-gate result
+## 2. Release gates and independent review
 
 **PASS**
 
-- Repository structure policy now permits only the reserved root
-  `attached_assets/` for preserved user/task upload staging.
-- Runtime state roots such as `data/`, `payload/`, and `upgrade_backups/`
-  remain forbidden.
-- Regression coverage proves upload staging is allowed while runtime roots and
-  generated state reports remain rejected.
-- Release hygiene continues scanning source/config for real assignments while
-  narrowly recognizing Replit's generated
-  `.agents/agent_assets_metadata.toml` `storage_version_token` as object
-  metadata, not an authentication secret.
-- The exact same assignment outside that generated metadata path still fails.
-- Composite deterministic/offline release verification: **PASS**.
+- Narrow `attached_assets/` staging exception passed.
+- Strict release hygiene and repository structure passed.
+- Focused engagement/backup/restore/protocol suite: **19 passed**.
+- Complete deterministic/offline release verification: **PASS**.
+- Existing pre-fix full-suite baseline: **1,469 passed, 1 skipped**.
+- Two new projection/backward-compatibility regressions also passed inside the
+  complete release verification.
+- Independent architecture review: **PASS**.
 
-## 4. Production persistence inventory
+The reviewer agreed that projection version 2 aligns backup semantics with
+`ConversationEngagement.load()`, preserves old v2 archive validation through
+projection version 1, fails safely on invalid JSON/schema, and makes the forward
+fix safer than rolling back to code that would repeat the same normalization.
 
-The complete owner/path/durability/backup/reconstruction matrix is:
+## 3. Production persistence and backup policy
 
-`docs/operations/PRODUCTION_BACKUP_DEPLOYMENT_RESTART.md`
+Canonical production state:
 
-Registered durable categories:
+- Railway project: `outstanding-charm`
+- service/environment: `MaryV2` / `production`
+- volume: `maryv2-volume`
+- volume mount: `/data`
+- canonical root: `/data/production-v1`
+- protected application backup root: `/data/production-backups`
 
-- episodic/semantic/working memory persistence;
-- developed preferences/personality/values;
-- governed preference candidates/evidence;
-- relationship state/history/milestones;
-- creator directives;
-- knowledge state;
-- goals, intentions, and curiosities;
-- growth journal;
-- conversation engagement policy state;
-- durable node trust;
-- response feedback;
-- voice-lab state when owned by the shared root;
-- Command Center, focus, inbox, study, research, and production shared work;
-- grounded persistent pending thoughts.
+The `maryv2-state-backup-v2` format remains a strict allowlist. It excludes
+credentials, workspace/source files, caches, reservoir indexes, leases,
+provider cooldowns, node sessions/tokens/grants, in-flight work, and traces.
+Unknown JSON under durable owner roots fails closed.
 
-CharacterSourcebook remains a read-only repository/configuration authority. It
-is fingerprinted in the manifest and reconstructed from deployed authored
-sources; it is not copied into mutable Mary state.
+Projection version 2 additionally canonicalizes
+`runtime/conversation_engagement.json`:
 
-Authorized Railway inspection established:
+- preserved: mode, active session, thread, turns remaining, start time, stats;
+- cleared: `last_plan`, `last_question_asked`;
+- reason: those planner observations are process-local and intentionally not
+  reconstructed by `ConversationEngagement.load()`.
 
-- project: `outstanding-charm`;
-- service/environment: `MaryV2` / `production`;
-- volume: `maryv2-volume`, Ready, 500 MB;
-- volume mount: `/data`;
-- canonical `MARY_DATA_DIR`: `/data/production-v1`;
-- active source: `unbeknownstx/MaryV2`, branch `main`;
-- active deployment status: `SUCCESS`;
-- active instance status: `RUNNING`.
+Old Task #23 v2 archives without a projection field remain verifiable and
+reconstructable with projection version 1.
 
-## 5. Backup architecture
+## 4. Verified raw pre-deployment production backup
 
-Task #23 replaces recursive “copy every data file” behavior with a strict v2
-allowlist:
-
-`maryv2-state-backup-v2`
-
-Properties:
-
-- canonical files only;
-- unknown JSON under durable owner roots fails closed;
-- environment/provider credentials and credential-like JSON fields fail closed;
-- symlink/path escape is rejected;
-- source code and arbitrary workspace files are excluded;
-- reservoir/index/cache state is excluded;
-- node enrollment state is sanitized to trusted-device digests only;
-- grants, grant audit, session generations, live node tokens, and work ownership
-  are absent;
-- deterministic file/category metadata and durable-state fingerprint;
-- CharacterSourcebook version/count/hash;
-- archive bytes are rechecked against the initial manifest to detect a write
-  race;
-- staging failure deletes only temporary output and leaves canonical state
-  untouched;
-- offline v2 restore only, into an empty target;
-- legacy v1 archives are inspection-only.
-
-Core operations:
-
-- `POST /v1/admin/backups`: creator-authenticated backup trigger;
-- `GET /v1/admin/durable-state`: creator-authenticated content-free live
-  fingerprint, category counts, Core instance ID, and uptime;
-- no HTTP restore endpoint;
-- no archive download endpoint;
-- ordinary responses expose no state values or archive/file paths.
-
-Production `POST /v1/admin/backups` additionally requires `MARY_BACKUP_DIR` to
-name protected persistent storage outside `MARY_DATA_DIR`.
-
-## 6. Backup manifest/fingerprint result
-
-A real production pre-deployment backup was exported from Railway without
-deploying or restarting Core. Creator lifecycle was offline, active surfaces and
-nodes were zero, and all 12 remote JSON generations had identical SHA-256 values
+The creator lifecycle was taken offline for the export. Production reported
+zero surfaces and zero nodes. All 12 JSON generations had identical hashes
 before and after transfer.
 
 - Backup ID:
   `MaryV2-state-20260901-021008Z-1cf6c48d29a4`
-- Format: `maryv2-state-backup-v2`
-- Verified: `true`
-- File count: `12`
-- Total bytes: `72,291`
-- Environment secrets included: `false`
-- Durable-state fingerprint:
+- Files/bytes: `12` / `72,291`
+- Raw fingerprint:
   `1cf6c48d29a41a36ca14fdb36aa884139935c08dc55ca744d74f9b4270b64af6`
 - Archive SHA-256:
   `2b064dfa990919a5fa684b7c4cc9ab8505ed50297cc85870574cc4960b237581`
-- Remote before/after JSON-set SHA-256:
+- Remote JSON-set SHA-256:
   `ac22a3dc8380ff70e40c5487514b252660c1d9f997fe8a2ebdf8377c1e394005`
-- Sourcebook version: `1.0`
-- Sourcebook records: `189`
-- Sourcebook hash: `49f3c9963de2b35d108d`
+- CharacterSourcebook:
+  version `1.0`, 189 records, hash `49f3c9963de2b35d108d`
+- Secret scan, ZIP CRC, empty-root restore, fresh Mary reconstruction:
+  **PASS**
 
-Content-free category summaries:
+The archive and content-free attestation are gitignored, mode 0600, and retained
+under `backups/production/`. Export/restore staging and the temporary Railway
+SSH key were securely removed.
 
-| Category | Files | Records | Bytes |
-|---|---:|---:|---:|
-| autonomy | 3 | 0 | 62 |
-| developed self | 1 | 5 | 472 |
-| engagement | 1 | 6 | 635 |
-| growth | 1 | 61 | 58,328 |
-| knowledge | 1 | 0 | 114 |
-| memory | 1 | 0 | 99 |
-| preference candidates | 1 | 0 | 1,391 |
-| relationship | 2 | 0 | 2,958 |
-| training | 1 | 5 | 8,232 |
+## 5. First deployment stop condition and root cause
 
-The archive and content-free attestation are gitignored, permission mode 0600,
-and retained under `backups/production/`. Raw export and restore staging trees
-were securely erased after verification. The temporary Railway SSH key was
-removed from Railway and the local environment.
+GitHub `main` advanced atomically from Task #22 to
+`65b654bc230356f7294e77fd604cde411dc38bd6`. Railway deployed:
 
-## 7. Restore/reconstruction test result
+- deployment:
+  `3fecf94f-8293-496f-93bd-190f4248cf4f`
+- Core instance:
+  `88071a41-a7b4-4c5e-b0f7-2ae584e1b2db`
+- startup logs: clean
 
-**PASS — real production export and canonical reconstruction**
+The mandatory fingerprint gate stopped before any creator or learning turn:
 
-The test performs:
+- expected raw fingerprint:
+  `1cf6c48d29a41a36ca14fdb36aa884139935c08dc55ca744d74f9b4270b64af6`
+- live raw fingerprint:
+  `b1b541a51d8ca1771fe67ce88539b4b31be2be96dc068a9efaf7b3386f9ebf4f`
+- file count: unchanged at 12
+- only category difference:
+  engagement 635 bytes → 277 bytes
 
-creator preference observations
-→ governed promotion
-→ persisted memory/relationship/growth/developed self
-→ shared Command Center work
-→ grounded pending thought
-→ v2 backup
-→ verified empty-target restore
-→ fresh application construction
-→ equal durable fingerprint
-→ equal sourcebook
-→ active developed preference
-→ recovered memory/relationship/growth/shared work/pending thought
+Offline replay of the retained archive through `ConversationEngagement.load()`
+produced exactly 277 bytes and the exact live whole-state fingerprint. The only
+structural change was removal of values under `last_plan`.
 
-Additional recovery results:
+CharacterSourcebook never diverged:
 
-- corrupt hash fails safely;
-- corrupt durable-state fingerprint fails safely;
-- sourcebook mismatch fails reconstruction verification;
-- sensitive state field fails backup without modifying source state;
-- unclassified durable JSON fails closed;
-- nonempty restore target is rejected;
-- backup output inside `MARY_DATA_DIR` is rejected;
-- canonical identity remains singular through fresh construction.
+- version `1.0`
+- records `189`
+- hash `49f3c9963de2b35d108d`
+- errors `[]`
 
-## 8. Exact deployment/restart procedure
+This was a durable-fingerprint policy defect, not state loss. No rollback was
+performed because old code would repeat the same restart normalization.
 
-The exact procedure and rollback gate are documented in:
+## 6. Projection-v2 correction and replacement deployment
 
-`docs/operations/PRODUCTION_BACKUP_DEPLOYMENT_RESTART.md`
+The corrected offline projection of both raw and restart-normalized state is:
 
-Required sequence:
+`69c651a812dd59890d5e92804c5f5049f277683bd118744c635c5bcbdad32fe1`
 
-pre-deployment health
-→ current deployment/Core instance/uptime
-→ quiesced no-deploy production export and verified v2 fingerprint
-→ CharacterSourcebook fingerprint
-→ verified off-volume backup
-→ stage `MARY_BACKUP_DIR` without deploying
-→ approved commit and rollback target
-→ deploy
-→ health/new instance
-→ durable fingerprint comparison
-→ Mobile reconnect
-→ normal turn
-→ five governed learning observations
-→ fresh-conversation retrieval/behavior
-→ fresh verified backup
-→ deliberate restart
-→ new instance/fingerprint/retrieval/behavior
-→ expected ephemeral clearing
+A projected recovery archive was created and independently restored:
 
-## 9. Deployed revision
+- backup:
+  `MaryV2-state-20260901-023026Z-69c651a812dd`
+- files/bytes: `12` / `71,867`
+- archive SHA-256:
+  `c7ff4af989142eb856e7d5836b328a3d237091766cd0b58bc7d3ff831a833756`
+- reconstruction: **PASS**
 
-**Not deployed.**
+GitHub `main` then advanced non-force by exactly commit `0767b44b…`.
+Railway deployed:
 
-Production read-only evidence:
+- corrected deployment:
+  `cf59e603-e011-4940-8d8d-bb6a1b315027`
+- corrected Core:
+  `26582d65-df81-462b-94a2-b84e5ed89d71`
+- projection version: `2`
+- live fingerprint:
+  `69c651a812dd59890d5e92804c5f5049f277683bd118744c635c5bcbdad32fe1`
+- files/bytes: `12` / `71,867`
+- startup logs: clean
+- sourcebook: exact match
 
-- `/v1/health`: HTTP 200
-- service: `mary-core`
-- architecture: `13.2`
-- protocol: `1`
-- `/v1/admin/durable-state`: HTTP 404
+No turn was sent until every corrected gate passed.
 
-The 404 proves the production process does not contain Task #23.
+## 7. Mobile reconnect and ordinary baseline turn
 
-Authorized Railway deployment metadata proves the deployed revision is:
+The local Mobile workflow reconnected as a remote-Core client. One ordinary
+non-learning turn used a fresh conversation and the prompt:
 
-`4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`
+`How should I plan tomorrow?`
 
-Active Railway deployment:
+- request:
+  `request_1d50c4c2953d456cbc136c07b719c899`
+- turn:
+  `turn_ae016f5ec9d9424d956f7bc689780e1b`
+- response: 156 words / 907 characters
+- growth disposition: `not_applicable`
+
+This became the bounded behavioral baseline.
+
+## 8. Five valid production observations
+
+The retained production backup already contained two qualifying direct creator
+observations for `creator interaction response length`:
+
+1. `creator_turn_da7e85d3ced51dcd25b190a7f57c1835`
+   - source: `creator_explicit_preference`
+   - confidence/strength: `0.96` / `0.88`
+2. `creator_turn_142e777067ee3dd00a0e4aa0d109475c`
+   - source: `creator_corrective_feedback`
+   - confidence/strength: `0.92` / `0.82`
+
+They were preserved rather than deleted or reset. Three additional valid direct
+creator observations completed the total of five:
+
+3. `creator_turn_90a1a67fe50bc95c78cc1ff89211ce92`
+   - candidate count: 3
+   - state: eligible
+   - promotion: deferred
+4. `creator_turn_0977044f48dac93e077f7f321f27d4b6`
+   - candidate count: 4
+   - state: eligible
+   - promotion: deferred
+5. `creator_turn_24f241f7739afa82e8e42228ea6b9098`
+   - disposition/result: promoted
+
+The new narrow wording was:
+
+`I prefer concise responses by default.`
+
+Local extraction proved it produces only `response_length`; the broader phrase
+containing “actionable” would also have created an unrelated directness
+candidate and was not used.
+
+One intervening provider generation failed internally:
+
+- turn: `turn_a8bd6387ae1946ab9bc27038e8864ad2`
+- block reason: `failed_turn`
+- durable observation count remained 4
+
+The policy correctly refused to learn from that failed turn. It is not counted
+among the five valid observations.
+
+Final promotion:
+
+- candidate:
+  `preference_candidate_61c393c0978673d0ce2a2908`
+- developed preference:
+  `developed_preference_cc60f5a44c9b9bbc45f1812c`
+- state: `active`
+- promotions: exactly one
+- remaining candidates: zero
+
+## 9. Fresh-session behavioral proof
+
+Without restating the preference, a fresh conversation repeated the baseline
+prompt:
+
+- pre-promotion baseline: 156 words
+- post-promotion/pre-restart: 116 words
+- reduction: 40 words / 25.6%
+- request:
+  `request_72dfee076772491d846f83898305dd59`
+- turn:
+  `turn_645e7900e9c94e0d8b65afe1bdab2e82`
+- preference evidence from the prompt: `not_applicable`
+- developed preference active: yes
+- pending candidate: no
+
+## 10. Verified post-learning production backup
+
+Before restart, production created:
+
+- backup:
+  `MaryV2-state-20260901-023710Z-171e4c969ccb`
+- projection version: `2`
+- files/bytes: `12` / `80,301`
+- durable fingerprint:
+  `171e4c969ccb6084ddac429fec811a8243e86cb2e6a9b12915cfab012befcf62`
+- archive SHA-256, remote and local:
+  `c5512eab0dc14472d15646e51e95e1bb9f46aea00f77286eccf424c0895f89ea`
+- sourcebook:
+  version `1.0`, 189 records, hash `49f3c9963de2b35d108d`
+- ZIP CRC, strict manifest, empty-root restore, fresh Mary reconstruction:
+  **PASS**
+- reconstructed developed preference: active
+
+The temporary Railway SSH key was removed from Railway and securely erased.
+
+## 11. Controlled Railway restart
+
+Railway redeployed the existing successful deployment without pulling a new
+source revision:
+
+- old deployment:
+  `cf59e603-e011-4940-8d8d-bb6a1b315027`
+- controlled restart deployment:
+  `bc77b19a-72aa-40de-9d4e-26fe9f248e06`
+- exact revision:
+  `0767b44b2662081dac16a167d027b92cf8397dbd`
+- pre-restart Core:
+  `26582d65-df81-462b-94a2-b84e5ed89d71`
+- post-restart Core:
+  `17f25055-a4cd-4a04-bf4f-a9a16d2fea2d`
+- startup logs: clean
+
+Before any post-restart turn:
+
+- fingerprint: exact `171e4c96…cf62` match
+- files/bytes: exact 12 / 80,301 match
+- every category: exact match
+- sourcebook: exact match, zero errors
+- developed preference: active with the same stable ID
+- candidates: zero
+- runtime turn count: 6 → 0
+- connected/registered compute nodes: 0 / 0
+- queued work: 0
+- provider cooldowns: 0
+
+The compatibility `preference_promotions` counter reset from 1 to 0 as designed;
+its documented scope is `current_core_process`. Durable developed preference
+count remained 1.
+
+Terminal automatically established a new process-local lease. Mobile was then
+explicitly registered on the restarted Core, producing two current surfaces.
+This is reconnection, not restoration of an old lease.
+
+## 12. Post-restart retrieval and behavior
+
+Another fresh conversation repeated the baseline prompt without restating the
+preference:
+
+- response: 73 words / 404 characters
+- reduction from pre-promotion baseline: 83 words / 53.2%
+- request:
+  `request_0e6ee9a585024d779229b255bff857ae`
+- turn:
+  `turn_f62c60b952454e9697a98b31eb7f33e8`
+- developed preference: active with the same stable ID
+- durable developed preference count: 1
+- pending candidates: zero
+- preference evidence from the prompt: `not_applicable`
+- Mobile reconnect: verified
+
+## 13. Rollback readiness
+
+No rollback was required.
+
+The last known-good pre-Task-23 Railway deployment remains:
+
 `76cc5e90-5f44-4ab9-acf7-de231f521faa`
 
-Active Railway container instance:
-`d160b4b5-bb86-415a-9142-5839cda3fe76`
+Railway CLI 5.47.1 does not provide a rollback subcommand. The documented
+rollback is Railway **Deployments → select known-good deployment → Rollback**.
+Do not substitute `redeploy` for rollback and do not force-rewind GitHub.
 
-## 10. Pre/post Core instance IDs
+State rollback authorities:
 
-Content-free pre-deployment production observation:
+1. raw verified production archive `MaryV2-state-20260901-021008Z-…`;
+2. projected pre-learning archive `MaryV2-state-20260901-023026Z-…`;
+3. verified post-learning archive `MaryV2-state-20260901-023710Z-…`.
 
-- Existing Core instance ID:
-  `0a23147b-1afc-4e49-b240-4836b9ab1d57`
-- Observed uptime: `1,363.22` seconds
-- Railway container instance:
-  `d160b4b5-bb86-415a-9142-5839cda3fe76`
+Restore remains offline-only into an empty target; persistent JSON is never
+manually edited.
 
-Post-deployment instance ID: **not available; no deployment occurred**.  
-Post-restart instance ID: **not available; no restart occurred**.
+## 14. Final verdict
 
-## 11. Pre/post durable-state fingerprints/counts
+# CERTIFIED — DEPLOYED, BACKED UP, LEARNED, AND RESTART-STABLE
 
-Production pre-deployment durable fingerprint from the stable, strict v2
-off-volume export:
-
-`1cf6c48d29a41a36ca14fdb36aa884139935c08dc55ca744d74f9b4270b64af6`
-
-Production post-deployment fingerprint: **not applicable**.
-
-Production content-free category counts are recorded in section 6. The current
-HTTP fingerprint endpoint remains unavailable because Task #23 is not deployed.
-
-## 12. Expected ephemeral-state clearing
-
-Offline recovery tests prove absence/non-resurrection of:
-
-- surface leases;
-- attention queue state;
-- provider cooldown state;
-- request/turn traces;
-- reservoir/rebuildable state;
-- node sessions;
-- node session generations;
-- enrollment grants;
-- old node tokens;
-- in-flight/claimed work ownership.
-
-Durable node trust is preserved. A restored Core rejects the pre-backup
-enrollment grant and old node token, accepts the correct durable device proof,
-and issues a new node token at a fresh session generation.
-
-Railway production clearing remains unexecuted.
-
-## 13. Production learning candidate progression
-
-**Not executed.**
-
-No Task #22 preference experiment was repeated against Railway because Task #23
-is not deployed. The verified production backup now exists.
-
-Required progression after the manual gate:
-
-1 deferred
-→ 2 deferred
-→ 3 eligible/base gate deferred
-→ 4 eligible/base gate deferred
-→ 5 automatic promotion if unchanged policy is satisfied.
-
-## 14. Production promotion result
-
-**Not executed.**
-
-No production threshold, candidate, or represented preference was manipulated.
-
-## 15. Fresh-session retrieval result
-
-Production: **not executed**.  
-Canonical production-equivalent backup/reconstruction test: **PASS**.
-
-The restored fresh application has one active developed interaction preference
-without creator restatement.
-
-## 16. Measured production behavioral influence
-
-Production: **not executed**.
-
-Task #22 canonical production-equivalent evidence remains:
-
-- baseline: `251` characters;
-- developed-self influenced output: `40` characters;
-- reduction: `84.1%`.
-
-Task #23 proves that promoted state survives v2 backup, offline restore, and
-fresh application reconstruction. It does not relabel that evidence as
-production.
-
-## 17. Post-restart developed-preference retrieval result
-
-Railway: **not executed**.
-
-Offline fresh-process reconstruction: **PASS**. The active promoted preference
-is present after backup/restore/new application construction.
-
-The real Railway restart is intentionally still missing.
-
-## 18. CharacterSourcebook pre/post hash/count
-
-Local pre/post reconstruction:
-
-- version: `1.0` → `1.0`
-- records: `189` → `189`
-- hash: `49f3c9963de2b35d108d` →
-  `49f3c9963de2b35d108d`
-- load errors: `0`
-
-Production post-deployment/post-restart: **not applicable**.
-
-## 19. Rollback readiness
-
-**Backup and operator controls verified; deployment authorization pending.**
-
-Documented rollback:
-
-1. stop acceptance and new state writes on mismatch;
-2. select the prior known-good Railway deployment and Rollback;
-3. restore the verified v2 archive into an empty recovery directory if state is
-   wrong;
-4. point `MARY_DATA_DIR` to that verified reconstruction before known-good
-   deployment;
-5. reconstruct and compare fingerprints;
-6. report the discrepancy;
-7. never manually edit Mary's persistent JSON.
-
-Authorized Railway CLI access verified deployment history, including the active
-Task #22 deployment and prior rollback candidates. Railway native volume backup
-is unavailable on the current plan, so the off-volume v2 archive is the state
-rollback authority.
-
-## 20. Focused test results
-
-- Task #22 focused lifecycle/persistence/security/sourcebook suite before Task
-  #23: **74 passed**
-- Task #23 broad persistence/developed-self/lifecycle/security/sourcebook
-  matrix: **121 passed**
-- Final changed backup/recovery/node-trust set: **34 passed**
-- Final release-hygiene/structure/backup set: **29 passed**
-
-Independent architect review:
-
-**PASS — the verified no-deploy Railway backup closes the infrastructure/backup
-gate; production is correctly blocked solely on explicit creator authorization.**
-
-## 21. Full-suite result
-
-**1,469 passed, 1 skipped, 0 failed**
-
-The former `attached_assets/` structure failure is resolved narrowly without
-deleting user uploads or allowing runtime state in the source tree.
-
-## 22. Release-verification result
-
-**PASS**
-
-`python -m scripts.run_release_verification`
-
-All listed deterministic/offline gates passed, including:
-
-- compile;
-- pytest;
-- diagnostics;
-- memory restart;
-- provider resilience/routing;
-- lifecycle/developed-self/preference promotion;
-- resource governance;
-- persistence recovery/state integrity;
-- release hygiene;
-- repository structure;
-- local safety.
-
-Final output:
-
-`Release verification PASSED (deterministic/offline gate).`
-
-## 23. Creator deployment authorization required
-
-The required production location, backup, manifest/fingerprint, offline
-reconstruction, deployment identity, and rollback checks are complete.
-
-**Single creator action required:** authorize execution of the documented
-production sequence. That authorization permits:
-
-1. staging `MARY_BACKUP_DIR=/data/production-backups` with
-   `--skip-deploys`;
-2. pushing the reviewed Task #23 commits to `main`;
-3. observing the automatic Railway deployment;
-4. running the post-deploy fingerprint, Mobile, live-learning, backup, and
-   controlled-restart certification.
-
-Until explicit authorization is received, do not push, deploy, or restart.
-
-# PRE-DEPLOYMENT BACKUP VERIFIED — DEPLOYMENT AUTHORIZATION REQUIRED
-
-Task #23 is release-clean and now has a verified real production pre-deployment
-backup. Production deployment, live learning certification, and real restart
-persistence remain correctly blocked on explicit creator authorization.
+Task #23 preserved Task #22, corrected the narrow repository gate, inventoried
+production persistence, implemented authenticated content-safe v2 backups,
+proved offline restoration and fresh reconstruction, documented deployment and
+rollback, deployed the approved revisions, completed exactly five valid
+governed observations, promoted the concise-response preference once, exported
+a verified post-learning backup, and proved exact durable fingerprint and
+learned behavior across a real Railway Core restart.
