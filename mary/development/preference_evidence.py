@@ -48,7 +48,17 @@ _CORRECTIVE_PATTERNS: tuple[tuple[str, float, str], ...] = (
     (
         r"\b(?:be|get|make (?:it|your (?:answers?|responses?|replies))) more direct\b|"
         r"\b(?:get|come) (?:straight )?to the point\b|"
-        r"\b(?:don'?t|do not) sugarcoat\b",
+        r"\b(?:don'?t|do not) sugarcoat\b|"
+        r"\b(?:(?:that|this)(?: (?:answer|response|reply))? "
+        r"(?:was|is) (?:too|way too) "
+        r"(?:long|wordy|verbose|detailed)[.!?]? )?"
+        r"(?:give|put) (?:me )?(?:the )?(?:actionable )?"
+        r"(?:answer|response|reply|summary) first\b|"
+        r"\b(?:(?:that|this)(?: (?:answer|response|reply))? "
+        r"(?:was|is) (?:too|way too) "
+        r"(?:long|wordy|verbose|detailed)\b.*)"
+        r"\b(?:give|put) (?:me )?(?:the )?(?:actionable )?"
+        r"(?:answer|response|reply|summary) first\b",
         1.0,
         "directness",
     ),
@@ -103,7 +113,10 @@ _EXPLICIT_PATTERNS: tuple[tuple[str, float, str], ...] = (
         r"\bfrom now on,? (?:be (?:concise|brief)|keep (?:your )?"
         r"(?:answers?|responses?|replies) (?:concise|brief|short))\b|"
         r"\bkeep (?:your )?(?:answers?|responses?|replies) "
-        r"(?:concise|brief|short)\b",
+        r"(?:concise|brief|short)\b|"
+        r"\bi prefer (?:(?:concise|brief|short) (?:and )?"
+        r"actionable|actionable (?:and )?(?:concise|brief|short)) "
+        r"(?:answers?|responses?|replies)\b(?: first)?",
         1.0,
         "response_length",
     ),
@@ -133,7 +146,15 @@ _EXPLICIT_PATTERNS: tuple[tuple[str, float, str], ...] = (
         r"(?:answers?|responses?|replies) direct)\b|"
         r"\bfrom now on,? (?:be direct|keep (?:your )?"
         r"(?:answers?|responses?|replies) direct)\b|"
-        r"\bkeep (?:your )?(?:answers?|responses?|replies) direct\b",
+        r"\bkeep (?:your )?(?:answers?|responses?|replies) direct\b|"
+        r"\bi prefer (?:(?:concise|brief|short) (?:and )?"
+        r"actionable|actionable (?:and )?(?:concise|brief|short)|"
+        r"actionable) (?:answers?|responses?|replies)\b(?: first)?|"
+        r"\bi prefer (?:technical )?"
+        r"(?:explanations?|answers?|responses?|replies) to "
+        r"(?:start|begin) with (?:a )?"
+        r"(?:(?:short|brief|concise) )?summary before "
+        r"(?:the )?(?:detail|details)\b",
         1.0,
         "directness",
     ),
@@ -172,42 +193,161 @@ _DIRECT_OPENING_RE = re.compile(
     re.IGNORECASE,
 )
 
+_NEGATED_MODIFIER_RE = {
+    "response_length": re.compile(
+        r"\b(?:not|no|without)\s+(?:\w+\s+){0,3}"
+        r"(?:concise|brief|short|detailed|thorough|in[- ]depth)\b|"
+        r"\bnon[- ](?:concise|brief|detailed)\b",
+        re.IGNORECASE,
+    ),
+    "directness": re.compile(
+        r"\b(?:not|no|without)\s+(?:\w+\s+){0,3}"
+        r"(?:actionable|direct|gentle|tactful)\b|"
+        r"\bnon[- ](?:actionable|direct)\b",
+        re.IGNORECASE,
+    ),
+}
 
-def extract_preference_evidence(text: str) -> PreferenceEvidence | None:
-    """Extract one allow-listed explicit interaction signal, if present."""
+
+_POLARITY_FRAGMENT_PATTERNS: dict[
+    str,
+    tuple[tuple[str, float], ...],
+] = {
+    "response_length": (
+        (
+            r"\b(?:concise|brief|short)(?: actionable)? "
+            r"(?:answers?|responses?|replies)\b",
+            1.0,
+        ),
+        (
+            r"\b(?:answers?|responses?|replies) (?:should |to )?"
+            r"(?:be )?(?:concise|brief|short)\b",
+            1.0,
+        ),
+        (
+            r"\b(?:too|way too) (?:long|wordy|verbose|detailed)\b",
+            1.0,
+        ),
+        (
+            r"\b(?:detailed|thorough|in[- ]depth) "
+            r"(?:answers?|responses?|replies)\b",
+            -1.0,
+        ),
+        (
+            r"\b(?:answers?|responses?|replies) (?:should |to )?"
+            r"(?:be )?(?:detailed|thorough|in[- ]depth)\b",
+            -1.0,
+        ),
+        (
+            r"\b(?:too|way too) (?:short|brief|terse)\b|"
+            r"\b(?:give|include|add) more "
+            r"(?:detail|context|explanation) in "
+            r"(?:your )?(?:answers?|responses?|replies)\b",
+            -1.0,
+        ),
+    ),
+    "directness": (
+        (
+            r"\b(?:actionable|direct) "
+            r"(?:answers?|responses?|replies)\b|"
+            r"\b(?:answers?|responses?|replies) (?:should |to )?"
+            r"(?:be )?(?:actionable|direct)\b",
+            1.0,
+        ),
+        (
+            r"\b(?:gentle|tactful) "
+            r"(?:answers?|responses?|replies)\b|"
+            r"\b(?:answers?|responses?|replies) (?:should |to )?"
+            r"(?:be )?(?:gentle|tactful)\b|"
+            r"\b(?:too|way too) (?:blunt|harsh|direct)\b",
+            -1.0,
+        ),
+    ),
+}
+
+
+def _recognized_polarities(signal: str, normalized: str) -> set[float]:
+    """Find all recognized directions across every clause in the statement."""
+
+    polarities: set[float] = set()
+    for patterns in (_CORRECTIVE_PATTERNS, _EXPLICIT_PATTERNS):
+        for pattern, polarity, pattern_signal in patterns:
+            if pattern_signal == signal and re.search(
+                pattern,
+                normalized,
+                flags=re.IGNORECASE,
+            ):
+                polarities.add(polarity)
+    for pattern, polarity in _POLARITY_FRAGMENT_PATTERNS.get(signal, ()):
+        if re.search(pattern, normalized, flags=re.IGNORECASE):
+            polarities.add(polarity)
+    return polarities
+
+
+def extract_preference_evidence_items(text: str) -> tuple[PreferenceEvidence, ...]:
+    """Extract one bounded observation per supported interaction dimension.
+
+    A compound creator instruction can carry multiple approved dimensions, but
+    contradictory polarities for the same dimension are intentionally rejected
+    rather than guessed.
+    """
 
     normalized = " ".join(str(text or "").casefold().split())
     if not normalized or len(normalized) > 2_000:
-        return None
+        return ()
     if any(mark in normalized for mark in ('"', "“", "”", "‘", "’")):
-        return None
+        return ()
     if re.search(r"(?:^|\s)'[^']{2,}'(?:[\s.,!?]|$)", normalized):
-        return None
+        return ()
     if _DIRECT_OPENING_RE.match(normalized) is None:
-        return None
+        return ()
     if re.search(
         r"\b(?:mary|he|she|they|someone|my (?:friend|coworker|boss)) "
         r"(?:said|says|prefers?|told|asked)\b",
         normalized,
     ):
-        return None
+        return ()
 
+    matches: dict[str, list[PreferenceEvidence]] = {}
     for evidence_class, patterns, confidence, strength in (
         ("corrective_feedback", _CORRECTIVE_PATTERNS, 0.92, 0.82),
         ("explicit_preference", _EXPLICIT_PATTERNS, 0.96, 0.88),
     ):
         for pattern, polarity, signal in patterns:
             if re.match(pattern, normalized, flags=re.IGNORECASE):
-                return PreferenceEvidence(
-                    name=_CANDIDATE_NAMES[signal],
-                    signal=signal,
-                    category="creator_interaction",
-                    polarity=polarity,
-                    strength=strength,
-                    confidence=confidence,
-                    evidence_class=evidence_class,
+                matches.setdefault(signal, []).append(
+                    PreferenceEvidence(
+                        name=_CANDIDATE_NAMES[signal],
+                        signal=signal,
+                        category="creator_interaction",
+                        polarity=polarity,
+                        strength=strength,
+                        confidence=confidence,
+                        evidence_class=evidence_class,
+                    )
                 )
-    return None
+
+    evidence_items: list[PreferenceEvidence] = []
+    for signal in _CANDIDATE_NAMES:
+        signal_matches = matches.get(signal, [])
+        polarities = {item.polarity for item in signal_matches}
+        negated = _NEGATED_MODIFIER_RE.get(signal)
+        if (
+            len(polarities) != 1
+            or (negated is not None and negated.search(normalized))
+            or len(_recognized_polarities(signal, normalized)) > 1
+        ):
+            continue
+        if signal_matches:
+            evidence_items.append(signal_matches[0])
+    return tuple(evidence_items)
+
+
+def extract_preference_evidence(text: str) -> PreferenceEvidence | None:
+    """Extract the first allow-listed interaction signal for compatibility."""
+
+    evidence_items = extract_preference_evidence_items(text)
+    return evidence_items[0] if evidence_items else None
 
 
 def stable_evidence_id(
@@ -226,3 +366,44 @@ def stable_evidence_id(
         ).encode("utf-8")
     ).hexdigest()
     return f"creator_turn_{digest[:32]}"
+
+
+def stable_candidate_id(evidence: PreferenceEvidence) -> str:
+    """Return an opaque stable ID for an approved preference dimension."""
+
+    return stable_candidate_reference(
+        name=evidence.name,
+        category=evidence.category,
+    )
+
+
+def stable_developed_preference_id(evidence: PreferenceEvidence) -> str:
+    """Return the durable opaque ID used after an approved promotion."""
+
+    return stable_developed_preference_reference(
+        name=evidence.name,
+        category=evidence.category,
+    )
+
+
+def stable_candidate_reference(*, name: str, category: str) -> str:
+    """Derive the persisted candidate reference without creator prose."""
+
+    digest = hashlib.sha256(
+        f"{str(category).strip().lower()}|{str(name).strip().lower()}".encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return f"preference_candidate_{digest[:24]}"
+
+
+def stable_developed_preference_reference(*, name: str, category: str) -> str:
+    """Derive the active developed-state reference without creator prose."""
+
+    digest = hashlib.sha256(
+        (
+            f"developed|{str(category).strip().lower()}|"
+            f"{str(name).strip().lower()}"
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"developed_preference_{digest[:24]}"

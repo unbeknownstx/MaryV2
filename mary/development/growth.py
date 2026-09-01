@@ -14,7 +14,11 @@ from typing import Any
 
 from .experience import ExperienceJournal
 from .preference_evidence import (
-    extract_preference_evidence,
+    extract_preference_evidence_items,
+    stable_candidate_reference,
+    stable_candidate_id,
+    stable_developed_preference_reference,
+    stable_developed_preference_id,
     stable_evidence_id,
 )
 
@@ -125,12 +129,35 @@ class GrowthEngine:
             promoted_preferences = self._promote_strict_preference_candidates()
             self.preference_promotions += len(promoted_preferences)
         if preference_evidence.get("detected"):
-            preference_evidence["disposition"] = (
-                "promoted"
-                if preference_evidence.get("_candidate_name") in promoted_preferences
-                else preference_evidence.get("disposition", "deferred")
+            items = list(
+                preference_evidence.get("evidence_items")
+                or [preference_evidence]
             )
-        preference_evidence.pop("_candidate_name", None)
+            for item in items:
+                candidate_name = item.get("_candidate_name")
+                if candidate_name in promoted_preferences:
+                    item["disposition"] = "promoted"
+                    item["candidate_state"] = "promoted"
+                    item["promotion_result"] = "promoted"
+                    item["developed_preference_id"] = item.get(
+                        "_developed_preference_id"
+                    )
+                else:
+                    item["promotion_result"] = item.get(
+                        "promotion_result",
+                        "deferred",
+                    )
+                item.pop("_candidate_name", None)
+                item.pop("_developed_preference_id", None)
+            if "evidence_items" in preference_evidence:
+                preference_evidence["evidence_items"] = items
+                preference_evidence.update(
+                    {
+                        key: value
+                        for key, value in items[0].items()
+                        if key != "evidence_items"
+                    }
+                )
 
         milestones: list[dict[str, Any]] = []
         if _ACHIEVEMENT_RE.search(str(input_text)) and (shared_work.get("recorded") or importance >= 0.75):
@@ -187,63 +214,82 @@ class GrowthEngine:
                 "block_reason": "non_creator_authority",
             }
 
-        evidence = extract_preference_evidence(input_text)
-        if evidence is None:
+        evidence_items = extract_preference_evidence_items(input_text)
+        if not evidence_items:
             return {
                 "detected": False,
                 "disposition": "not_applicable",
             }
         if not generation_succeeded:
+            first = evidence_items[0]
             return {
                 "detected": False,
-                "evidence_class": evidence.evidence_class,
-                "signal": evidence.signal,
+                "evidence_class": first.evidence_class,
+                "signal": first.signal,
                 "disposition": "blocked",
                 "block_reason": "failed_turn",
             }
 
-        evidence_id = stable_evidence_id(
-            turn_id=turn_id,
-            fallback_id=experience_id,
-            evidence=evidence,
-        )
-        existing = self.mary.preference_promotion.get_candidate(evidence.name)
-        existing_observations = (
-            list(existing.get("observations", []) or [])
-            if isinstance(existing, dict)
-            else []
-        )
-        duplicate = self.mary.preference_promotion.has_evidence_id(
-            evidence.name,
-            evidence_id,
-        )
+        diagnostics: list[dict[str, Any]] = []
+        for evidence in evidence_items:
+            evidence_id = stable_evidence_id(
+                turn_id=turn_id,
+                fallback_id=experience_id,
+                evidence=evidence,
+            )
+            existing = self.mary.preference_promotion.get_candidate(evidence.name)
+            duplicate = self.mary.preference_promotion.has_evidence_id(
+                evidence.name,
+                evidence_id,
+            )
 
-        evaluation = self.mary.observe_preference_experience(
-            evidence.name,
-            category=evidence.category,
-            strength=evidence.strength,
-            polarity=evidence.polarity,
-            confidence=evidence.confidence,
-            source=f"creator_{evidence.evidence_class}",
-            reason=f"{evidence.evidence_class}:{evidence.signal}",
-            evidence_id=evidence_id,
-        )
-        return {
-            "detected": True,
-            "evidence_class": evidence.evidence_class,
-            "signal": evidence.signal,
-            "candidate_created": existing is None and not duplicate,
-            "observation_count": int(evaluation.get("observation_count", 0) or 0),
-            "gate_outcome": (
-                "duplicate"
-                if duplicate
-                else "base_eligible"
-                if evaluation.get("eligible")
-                else "deferred"
-            ),
-            "disposition": "duplicate" if duplicate else "deferred",
-            "_candidate_name": evidence.name,
-        }
+            evaluation = self.mary.observe_preference_experience(
+                evidence.name,
+                category=evidence.category,
+                strength=evidence.strength,
+                polarity=evidence.polarity,
+                confidence=evidence.confidence,
+                source=f"creator_{evidence.evidence_class}",
+                reason=f"{evidence.evidence_class}:{evidence.signal}",
+                evidence_id=evidence_id,
+            )
+            diagnostics.append(
+                {
+                    "detected": True,
+                    "evidence_class": evidence.evidence_class,
+                    "signal": evidence.signal,
+                    "evidence_id": evidence_id,
+                    "candidate_id": stable_candidate_id(evidence),
+                    "candidate_created": existing is None and not duplicate,
+                    "observation_count": int(
+                        evaluation.get("observation_count", 0) or 0
+                    ),
+                    "candidate_state": (
+                        "eligible"
+                        if evaluation.get("eligible")
+                        else "candidate"
+                    ),
+                    "gate_outcome": (
+                        "duplicate"
+                        if duplicate
+                        else "base_eligible"
+                        if evaluation.get("eligible")
+                        else "deferred"
+                    ),
+                    "disposition": "duplicate" if duplicate else "deferred",
+                    "promotion_result": "duplicate" if duplicate else "deferred",
+                    "developed_preference_id": None,
+                    "_candidate_name": evidence.name,
+                    "_developed_preference_id": (
+                        stable_developed_preference_id(evidence)
+                    ),
+                }
+            )
+
+        result = dict(diagnostics[0])
+        if len(diagnostics) > 1:
+            result["evidence_items"] = diagnostics
+        return result
 
     def _promote_strict_preference_candidates(self) -> list[str]:
         promoted: list[str] = []
@@ -332,10 +378,20 @@ class GrowthEngine:
         try:
             for item in self.mary.preference_promotion.get_candidates():
                 name = str(item.get("name") or "")
+                category = str(item.get("category") or "general")
                 evaluation = self.mary.preference_promotion.evaluate(name)
                 candidates.append({
                     "name": name,
-                    "category": item.get("category", "general"),
+                    "category": category,
+                    "candidate_id": stable_candidate_reference(
+                        name=name,
+                        category=category,
+                    ),
+                    "state": (
+                        "eligible"
+                        if evaluation.get("eligible")
+                        else "candidate"
+                    ),
                     "observations": evaluation.get("observation_count", 0),
                     "eligible": bool(evaluation.get("eligible")),
                     "confidence": round(float(evaluation.get("mean_confidence", 0.0) or 0.0), 3),
@@ -360,6 +416,31 @@ class GrowthEngine:
             relationship_milestone_count = len(self.mary.relationship_milestones.get_milestones())
         except Exception:
             relationship_milestone_count = 0
+        developed_preferences = []
+        try:
+            for item in self.mary.preferences.get_preferences():
+                if not isinstance(item, dict):
+                    continue
+                category = str(item.get("category") or "").strip().lower()
+                source = str(item.get("source") or "").strip().lower()
+                if (
+                    category != "creator_interaction"
+                    or source != "experience_promotion"
+                ):
+                    continue
+                developed_preferences.append(
+                    {
+                        "developed_preference_id": (
+                            stable_developed_preference_reference(
+                                name=str(item.get("name") or ""),
+                                category=category,
+                            )
+                        ),
+                        "state": "active",
+                    }
+                )
+        except Exception:
+            developed_preferences = []
 
         process_counters = {
             "semantic_promotions": self.semantic_promotions,
@@ -387,6 +468,7 @@ class GrowthEngine:
             "durable_state": durable_state,
             "last_growth": dict(self.last_growth),
             "preference_candidates": candidates[:12],
+            "developed_preferences": developed_preferences[:12],
             "recent_milestones": [dict(x) for x in recent_milestones],
             "policy": {
                 "automatic_safe_semantic_consolidation": self.auto_consolidate,

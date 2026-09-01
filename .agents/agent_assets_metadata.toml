@@ -14,3 +14,17 @@ mtime_ms = 1788224493875
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:00f1ce7a-b57d-48a1-bb8b-a1bff8da913e/891936e2-b9b9-4e34-9539-dc76fc535b04/5513e356-a6f9-4afd-9a1a-14ab3253f7ae"
 storage_version_token = "1788224533899465"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "jPHW9K-6QqFhHIyN0-UcS"
+uri = "file://docs/certification/MARYV2_LIVE_LEARNING_DEVELOPED_SELF_LOOP_2026-08-31.md"
+type = "text"
+title = "MaryV2 Live Learning / Developed-Self Loop"
+description = "Task 22 implementation and certification report covering extractor root cause, bounded repair, governance, canonical tests, content-free ID progression, persistence, behavioral adaptation, sourcebook integrity, and the final PARTIAL verdict."
+logical_id = "88191ab5-c401-4b93-8e54-78d3df7ac563"
+content_hash = "sha256:501544b7836b62d904813ab7b38a90a0f39e936c8fd67ed2851d9963f695e458"
+size = 14618
+mtime_ms = 1788225707823
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:00f1ce7a-b57d-48a1-bb8b-a1bff8da913e/88191ab5-c401-4b93-8e54-78d3df7ac563/b1f96d7b-693e-440e-9681-1359680073ec"
+storage_version_token = "1788225791493187"
+content_type = "text/markdown"

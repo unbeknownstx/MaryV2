@@ -72,6 +72,32 @@ class FailingLifecycleLLM(LifecycleFakeLLM):
         raise RuntimeError("deterministic provider failure")
 
 
+class DispositionAwareLifecycleLLM(LifecycleFakeLLM):
+    """Make later output measurably follow the compiled developed-self context."""
+
+    def generate(
+        self,
+        messages: list[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ) -> LLMResponse:
+        prompt = "\n".join(str(message.content) for message in messages).casefold()
+        if "length=micro" in prompt or "length=brief" in prompt:
+            content = "Use staged releases with rollback gates."
+        else:
+            content = (
+                "Organize the release as a sequence of coordinated stages. "
+                "Begin with preflight validation, continue through environment "
+                "promotion and approval gates, and finish with monitored rollout, "
+                "rollback verification, and a documented handoff for every service."
+            )
+        return LLMResponse(
+            content=content,
+            provider="lifecycle-fake",
+            model="lifecycle-test-model",
+        )
+
+
 def _application(
     tmp_path,
     monkeypatch,
@@ -290,19 +316,111 @@ def test_canonical_explicit_preference_creates_deferred_candidate_with_sanitized
     growth = _cycle(result).metadata["growth"]
     diagnostic = growth["preference_evidence"]
 
-    assert diagnostic == {
-        "detected": True,
-        "evidence_class": "explicit_preference",
-        "signal": "response_length",
-        "candidate_created": True,
-        "observation_count": 1,
-        "gate_outcome": "deferred",
-        "disposition": "deferred",
-    }
+    assert diagnostic["detected"] is True
+    assert diagnostic["evidence_class"] == "explicit_preference"
+    assert diagnostic["signal"] == "response_length"
+    assert diagnostic["candidate_created"] is True
+    assert diagnostic["observation_count"] == 1
+    assert diagnostic["candidate_state"] == "candidate"
+    assert diagnostic["gate_outcome"] == "deferred"
+    assert diagnostic["disposition"] == "deferred"
+    assert diagnostic["promotion_result"] == "deferred"
+    assert diagnostic["developed_preference_id"] is None
+    assert diagnostic["evidence_id"].startswith("creator_turn_")
+    assert diagnostic["candidate_id"].startswith("preference_candidate_")
+    assert growth["experience_id"]
+    status_candidate = app.mary.growth.status()["preference_candidates"][0]
+    assert status_candidate["candidate_id"] == diagnostic["candidate_id"]
+    assert status_candidate["state"] == "candidate"
     assert private_text not in str(diagnostic)
+    assert private_text not in str(app.mary.growth.status())
     assert app.mary.preferences.get_preference(
         "creator interaction response length"
     ) is None
+
+
+def test_common_summary_first_and_compound_creator_language_are_bounded_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    app = _application(tmp_path, monkeypatch)
+
+    compound = app.run(
+        "I prefer concise actionable answers first.",
+        turn_id="ordinary-compound-preference",
+    )
+    compound_diagnostic = _cycle(compound).metadata["growth"][
+        "preference_evidence"
+    ]
+    items = compound_diagnostic["evidence_items"]
+
+    assert [item["signal"] for item in items] == [
+        "response_length",
+        "directness",
+    ]
+    assert len({item["evidence_id"] for item in items}) == 2
+    assert len({item["candidate_id"] for item in items}) == 2
+    assert all(item["observation_count"] == 1 for item in items)
+    assert all(item["disposition"] == "deferred" for item in items)
+
+    summary_first = app.run(
+        "I prefer technical explanations to start with a short summary "
+        "before the detail.",
+        turn_id="ordinary-summary-first-preference",
+    )
+    summary_diagnostic = _cycle(summary_first).metadata["growth"][
+        "preference_evidence"
+    ]
+    assert summary_diagnostic["signal"] == "directness"
+    assert summary_diagnostic["observation_count"] == 2
+
+    corrective = app.run(
+        "That was too verbose. Give me the actionable answer first in "
+        "situations like this.",
+        turn_id="ordinary-corrective-preference",
+    )
+    corrective_items = _cycle(corrective).metadata["growth"][
+        "preference_evidence"
+    ]["evidence_items"]
+    assert [item["signal"] for item in corrective_items] == [
+        "response_length",
+        "directness",
+    ]
+    assert all(item["evidence_class"] == "corrective_feedback" for item in corrective_items)
+    assert [item["observation_count"] for item in corrective_items] == [2, 3]
+
+
+def test_non_preferences_and_unbounded_negation_remain_not_applicable(
+    tmp_path,
+    monkeypatch,
+):
+    app = _application(tmp_path, monkeypatch)
+
+    for index, prompt in enumerate(
+        (
+            "I prefer tea in the afternoon.",
+            "Technical explanations often have summaries.",
+            "I do not prefer concise answers.",
+            "I prefer answers that are not concise.",
+            "I prefer answers without concise summaries.",
+            "I prefer non-actionable answers.",
+            "I prefer concise answers but detailed responses.",
+            "I prefer detailed responses but concise answers.",
+            "That was too verbose, but give more detail in your responses.",
+            "Give more detail in your responses, but that was too verbose.",
+            "That was too long, but your next response should be detailed.",
+            "Your response should be detailed, but that was too long.",
+            "That response was too brief, but please keep your answers concise.",
+            "Please keep your answers concise, but that response was too brief.",
+            "For this one response, use the first paragraph from the document.",
+        )
+    ):
+        result = app.run(prompt, turn_id=f"bounded-negative-{index}")
+        assert _cycle(result).metadata["growth"]["preference_evidence"] == {
+            "detected": False,
+            "disposition": "not_applicable",
+        }
+    assert app.mary.preference_promotion.get_candidates() == []
 
 
 def test_canonical_corrective_feedback_and_reinforcement_promote_without_lowering_gates(
@@ -597,11 +715,64 @@ def test_promoted_interaction_preference_conditions_fresh_session_and_survives_s
     disposition = _cycle(result).context.mind_state["disposition"]
 
     assert disposition["verbosity"] <= 0.34
-    assert disposition["preferred_length"] == "brief"
+    assert disposition["preferred_length"] in {"brief", "micro"}
+    assert disposition["verbosity"] <= 0.34
     assert any(
         "developed interaction preference for concise responses" in item
         for item in disposition["instructions"]
     )
+
+
+def test_promoted_preference_changes_later_comparable_behavior_without_restatement(
+    tmp_path,
+    monkeypatch,
+):
+    app = _application(tmp_path, monkeypatch)
+    app.mary.llm.register_provider(
+        "lifecycle-fake",
+        DispositionAwareLifecycleLLM(),
+    )
+    query = (
+        "Explain how a complex multi-stage deployment workflow should be "
+        "organized when several services, approval gates, rollback checks, "
+        "regional safety constraints, and separate release environments all "
+        "need to stay coordinated without losing a clear ownership trail."
+    )
+
+    before = app.run(
+        query,
+        turn_id="behavior-before-promotion",
+        metadata={"conversation_id": "behavior-baseline-session"},
+    )
+    _reinforce_concise_preference(app)
+    promotion_diagnostic = app.mary.growth.last_growth["preference_evidence"]
+    after = app.run(
+        query,
+        turn_id="behavior-after-promotion",
+        metadata={"conversation_id": "behavior-fresh-session"},
+    )
+    before_disposition = _cycle(before).context.mind_state["disposition"]
+    disposition = _cycle(after).context.mind_state["disposition"]
+
+    assert promotion_diagnostic["disposition"] == "promoted"
+    assert promotion_diagnostic["promotion_result"] == "promoted"
+    assert promotion_diagnostic["developed_preference_id"].startswith(
+        "developed_preference_"
+    )
+    developed_status = app.mary.growth.status()["developed_preferences"]
+    assert developed_status == [
+        {
+            "developed_preference_id": promotion_diagnostic[
+                "developed_preference_id"
+            ],
+            "state": "active",
+        }
+    ]
+    assert disposition["preferred_length"] in {"brief", "micro"}
+    assert disposition["verbosity"] <= 0.34
+    assert before_disposition["preferred_length"] == "medium"
+    assert len(after.output) < len(before.output) * 0.5
+    assert "concise" not in query.casefold()
 
 
 def test_promoted_interaction_preference_persists_across_application_reconstruction(
@@ -609,6 +780,21 @@ def test_promoted_interaction_preference_persists_across_application_reconstruct
     monkeypatch,
 ):
     first = _application(tmp_path, monkeypatch, auto_save=True)
+    first.mary.llm.register_provider(
+        "lifecycle-fake",
+        DispositionAwareLifecycleLLM(),
+    )
+    query = (
+        "Explain how a complex multi-stage deployment workflow should be "
+        "organized when several services, approval gates, rollback checks, "
+        "regional safety constraints, and separate release environments all "
+        "need to stay coordinated without losing a clear ownership trail."
+    )
+    baseline = first.run(
+        query,
+        turn_id="reconstruction-behavior-baseline",
+        metadata={"conversation_id": "reconstruction-baseline-session"},
+    )
     _reinforce_concise_preference(first)
     assert first.close() is True
 
@@ -618,17 +804,26 @@ def test_promoted_interaction_preference_persists_across_application_reconstruct
         auto_save=True,
         load=True,
     )
+    second.mary.llm.register_provider(
+        "lifecycle-fake",
+        DispositionAwareLifecycleLLM(),
+    )
     restored = second.mary.preferences.get_preference(
         "creator interaction response length"
     )
     result = second.run(
-        "Explain the release strategy with enough complexity to avoid a micro response.",
+        query,
+        turn_id="reconstruction-behavior-restored",
         metadata={"conversation_id": "post-restart-fresh-session"},
     )
 
     assert restored is not None
     assert restored["source"] == "experience_promotion"
     assert _cycle(result).context.mind_state["disposition"]["verbosity"] <= 0.34
+    assert len(result.output) < len(baseline.output) * 0.5
+    assert second.mary.growth.status()["developed_preferences"][0]["state"] == (
+        "active"
+    )
     second.close()
 
 

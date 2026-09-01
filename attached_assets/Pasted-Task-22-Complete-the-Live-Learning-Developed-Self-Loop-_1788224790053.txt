@@ -1,0 +1,212 @@
+Task #22 — Complete the Live Learning / Developed-Self Loop
+
+Task #21 operational certification produced a PARTIAL verdict. The highest-priority remaining functional defect is the incomplete production learning loop.
+
+Current live production result:
+
+creator interaction
+→ growth experience ✅
+→ preference candidate ✅ for some narrow phrasings
+→ reinforcement ✅ to two observations
+→ promotion ❌
+→ durable developed preference ❌
+→ fresh-session retrieval ❌
+→ behavioral influence ❌
+
+Two common explicit creator phrasings were classified not_applicable, while a narrower formulation and corrective feedback did create a response-length candidate.
+
+Do not redesign memory, developed-self, or governance.
+Do not lower promotion thresholds just to force a pass.
+Do not broaden extraction beyond the existing approved interaction-preference dimensions.
+Do not allow provider output, guest statements, or failed turns to become trusted creator preference evidence.
+
+Objective
+
+Repair explicit interaction-preference recognition so ordinary authenticated creator language reaches the existing governed preference pipeline, then prove the entire intended live loop:
+
+creator evidence
+→ structured candidate
+→ governed reinforcement
+→ promotion
+→ durable persistence
+→ fresh conversation/session retrieval
+→ context influence
+→ observable later behavioral adaptation
+
+First: trace the current extractor
+
+Inspect mary/development/preference_evidence.py and every downstream caller.
+
+Determine exactly why common forms such as:
+
+* “I prefer concise actionable answers first.”
+* “I prefer technical explanations to start with a short summary before the detail.”
+* “That was too verbose. Give me the actionable answer first in situations like this.”
+
+may be missed or only partially represented.
+
+Identify:
+
+* supported interaction-preference dimensions
+* current phrase/pattern recognition
+* compound-clause handling
+* negation handling
+* corrective-feedback handling
+* provenance requirements
+* confidence assignment
+* dedupe/reinforcement logic
+* observation thresholds
+* promotion rules
+* whether multiple distinct preference dimensions in one statement are intentionally split, merged, or rejected
+
+Do not guess. Map the exact live path.
+
+Repair requirements
+
+Improve extraction coverage for normal creator phrasing while preserving bounded semantics.
+
+Support equivalent natural formulations within the already-approved interaction-preference dimensions.
+
+If a creator statement contains two supported dimensions, handle them explicitly according to existing architecture rather than silently discarding the whole statement.
+
+Preserve:
+
+* authenticated creator provenance
+* quote/evidence integrity
+* provider-output rejection
+* failed-turn rejection
+* guest/noncreator rejection
+* retry/idempotency protection
+* duplicate-evidence control
+* confidence/reinforcement governance
+* foundational CharacterSourcebook immutability
+
+Incidental facts must still not become preferences.
+
+Governance
+
+Do not bypass normal promotion rules.
+
+If the existing policy requires:
+
+* multiple observations
+* consistent evidence
+* confidence threshold
+* evidence diversity
+* review/defer states
+
+preserve those rules.
+
+The task is successful only if valid creator evidence can naturally accumulate enough governed support to cross the existing promotion path.
+
+Required integration tests
+
+Through canonical MaryApplication.run() / production-equivalent composition prove:
+
+1. common concise-answer preference phrasing produces structured preference evidence
+2. summary-first technical preference phrasing is recognized
+3. corrective feedback is recognized
+4. compound supported preference phrasing is handled intentionally
+5. unsupported/incidental statements remain not_applicable
+6. provider-authored preference statements cannot become creator evidence
+7. guest/noncreator statements cannot overwrite creator preferences
+8. failed turns do not create evidence
+9. retries do not duplicate observations
+10. repeated consistent evidence advances candidate observations
+11. conflicting evidence is governed rather than blindly promoted
+12. appropriate evidence reaches the existing promotion threshold
+13. promoted developed preference persists
+14. fresh conversation/session retrieves the promoted preference
+15. retrieved preference is included in later context
+16. later comparable response behavior changes in the expected direction without restating the preference
+17. CharacterSourcebook remains unchanged
+18. sleep/wake does not erase developed preference state
+19. restart/reconstruction preserves developed preference state in the existing canonical persistence model
+
+Live production acceptance
+
+After tests pass, run a small bounded production experiment.
+
+Use a benign uniquely-labeled interaction preference.
+
+Do not use temporary arbitrary facts as the learning target.
+
+Demonstrate live:
+
+1. first creator evidence
+2. candidate creation
+3. candidate ID
+4. governance/defer state
+5. reinforcement observations
+6. promotion decision
+7. durable developed preference count/state
+8. fresh conversation/session
+9. retrieval without restating the preference
+10. behavioral influence on a comparable query
+
+If a real Core restart is not safely available yet, fresh session/process-local reconstruction is acceptable for this task, but clearly mark full remote process restart as deferred to the restart-certification task.
+
+Behavioral proof
+
+Do not judge adaptation only by counters.
+
+Compare a relevant response before and after promotion using a bounded measurable behavior appropriate to the learned dimension, for example:
+
+* answer length
+* summary-first structure
+* action-first structure
+* directness
+
+The comparison must be performed without reminding Mary of the preference in the final test turn.
+
+Observability
+
+Expose or use content-free IDs/status sufficient to show:
+
+experience ID → preference evidence/candidate ID → observation count → promotion/defer result → developed preference ID/state
+
+Do not expose the raw creator statement in public/status telemetry.
+
+If Task #23-level generalized trace work is not yet implemented, add only the minimum bounded diagnostics needed to certify this learning loop and avoid broad observability redesign in this task.
+
+Character integrity
+
+Record before/after:
+
+* CharacterSourcebook record count
+* version
+* hash
+* errors
+
+It must remain unchanged.
+
+Final report
+
+Report:
+
+1. exact extractor/root-cause defect
+2. supported preference dimensions
+3. extraction behavior before vs after
+4. governance rules preserved
+5. files changed
+6. canonical integration tests
+7. security/provenance tests
+8. focused-suite result
+9. full-suite result
+10. live production sequence with content-free IDs
+11. candidate observation progression
+12. promotion result
+13. durable developed-preference result
+14. fresh-session retrieval result
+15. measured behavioral influence
+16. CharacterSourcebook before/after hash/count
+17. remaining limitations
+18. exact commit hash
+
+Final task verdict must be one of:
+
+* LIVE LEARNING LOOP VERIFIED
+* PARTIAL
+* FAILED
+
+Do not begin unrelated work after this task.
