@@ -1,0 +1,38 @@
+Create a new active project task for the remaining requirement from cancelled Task #5: safe Replit Mobile preview bootstrap and historical 404 resolution.
+
+Treat cancelled Task #5 only as provenance. Do not reopen or rewrite it.
+
+First investigate the current Mobile/PWA implementation, authentication path, deployment/runtime configuration, tests, and Git history to determine:
+
+* why a fresh Replit Mobile preview still requires manually entering/storing MARY_MOBILE_TOKEN;
+* whether the historical 404 is still reproducible;
+* the exact cause of that 404 if repository/runtime evidence can establish it;
+* whether the safe solution belongs in the Mobile server, preview bootstrap, Replit environment wiring, or another existing boundary.
+
+Implement the smallest safe solution that lets an authorized Replit development preview connect to canonical Mary Core without exposing any Core/provider secret to browser source, localStorage, query strings, logs, repository files, generated assets, or Git history.
+
+Preserve all current security and architecture guarantees:
+
+* Mary Core remains sole identity/state authority.
+* Non-loopback clients remain authenticated.
+* Mobile remains a thin, non-authoritative surface.
+* Do not weaken bearer authentication globally.
+* Do not expose MARY_CORE_TOKEN, provider keys, or any production secret client-side.
+* Preserve Task #23/#24 production behavior and fingerprint guarantees.
+
+Add deterministic regression coverage for both the bootstrap path and the actual 404 failure mechanism.
+
+Run the full relevant test suite and python -m scripts.run_release_verification --offline.
+
+Before any production deployment or durable-state mutation, stop and report:
+
+1. root cause;
+2. architecture of the fix;
+3. files changed;
+4. tests added/changed;
+5. test results;
+6. offline release-verification result;
+7. security analysis proving no Core/provider secret reaches the browser;
+8. exact physical acceptance steps for my iPhone/iPad.
+
+Do not modify Mary’s durable production state, memories, developed self, relationship state, sourcebook, or production fingerprint as part of this task.
