@@ -1,4 +1,6 @@
 import json
+from collections import deque
+from threading import RLock
 from types import SimpleNamespace
 
 import pytest
@@ -53,7 +55,10 @@ class FakeRemoteClient:
             },
             "character": {
                 "sourcebook": {
+                    "version": "13.2",
                     "records": 189,
+                    "sourcebook_hash": "abcdef1234567890abcd",
+                    "errors": ["PRIVATE_SOURCE_PATH"],
                     "source_names": ["PRIVATE_AUTHORED_SOURCE"],
                 },
             },
@@ -245,8 +250,16 @@ def test_remote_mobile_runtime_does_not_construct_local_mary(
         == "remote_mary_core"
     )
     dashboard = runtime.dashboard_state()
-    assert dashboard["character_sourcebook"] == {"records": 189}
+    assert dashboard["character_sourcebook"] == {
+        "version": "13.2",
+        "records": 189,
+        "sourcebook_hash": "abcdef1234567890abcd",
+        "error_count": 1,
+    }
     assert "PRIVATE_AUTHORED_SOURCE" not in repr(dashboard["character_sourcebook"])
+    assert "PRIVATE_SOURCE_PATH" not in repr(dashboard["character_sourcebook"])
+    assert dashboard["core_instance_id"] == "test-core"
+    assert payload["runtime"]["trace"]["core_instance_id"] == "test-core"
 
 
 def test_remote_mobile_default_proxy_state_uses_canonical_data_root(
@@ -308,6 +321,7 @@ def test_remote_mobile_retains_safe_core_request_id_on_turn_failure(
         "error_type": "MaryProtocolError",
         "authority": "remote_mary_core",
         "device_id": "iphone",
+        "core_instance_id": "test-core",
     }
 
 
@@ -354,6 +368,86 @@ def test_remote_mobile_success_trace_drops_private_provenance_and_bad_id(
     assert trace["timings"]["context_ms"] == 1.25
     assert 0.0 <= trace["elapsed"] <= 86_400.0
     assert "PRIVATE_" not in serialized
+
+
+def test_remote_mobile_trace_query_uses_authenticated_core_client(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(mobile_server, "MaryClient", FakeRemoteClient)
+    monkeypatch.setenv("MARY_MOBILE_PROXY_DATA_DIR", str(tmp_path / "proxy"))
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+    calls = []
+
+    def request(method, path):
+        calls.append((method, path))
+        return {
+            "traces": [{
+                "request_id": "request-safe",
+                "core_instance_id": "test-core",
+            }],
+            "count": 1,
+        }
+
+    runtime.client._request = request
+    payload = runtime.query_turn_traces(
+        request_id="request-safe",
+        limit=999,
+    )
+
+    assert payload["traces"][0]["core_instance_id"] == "test-core"
+    assert calls == [(
+        "GET",
+        "/v1/turn-traces?limit=40&request_id=request-safe",
+    )]
+
+
+def test_local_mobile_trace_query_keeps_bounded_newest_first_history():
+    runtime = object.__new__(mobile_server.MaryMobileRuntime)
+    runtime._lock = RLock()
+    runtime._last_trace = {}
+    runtime._recent_turn_traces = deque(maxlen=40)
+    for index in range(45):
+        runtime._recent_turn_traces.append({
+            "request_id": mobile_server.trace_correlation_id(
+                f"request-{index}",
+                prefix="request",
+            ),
+            "turn_id": mobile_server.trace_correlation_id(
+                f"turn-{index}",
+                prefix="turn",
+            ),
+            "authority": "local_mobile",
+        })
+
+    recent = runtime.query_turn_traces(limit=3)
+    filtered = runtime.query_turn_traces(turn_id="turn-42", limit=1000)
+
+    assert [item["turn_id"] for item in recent["traces"]] == [
+        mobile_server.trace_correlation_id("turn-44", prefix="turn"),
+        mobile_server.trace_correlation_id("turn-43", prefix="turn"),
+        mobile_server.trace_correlation_id("turn-42", prefix="turn"),
+    ]
+    assert filtered == {
+        "traces": [{
+            "request_id": mobile_server.trace_correlation_id(
+                "request-42",
+                prefix="request",
+            ),
+            "turn_id": mobile_server.trace_correlation_id(
+                "turn-42",
+                prefix="turn",
+            ),
+            "authority": "local_mobile",
+        }],
+        "count": 1,
+        "authority": "local_mobile",
+    }
+    assert len(runtime._recent_turn_traces) == 40
 
 
 def test_remote_dashboard_preserves_canonical_core_state(

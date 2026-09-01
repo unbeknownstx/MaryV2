@@ -43,6 +43,18 @@ class _Provider:
         return LLMResponse(content="hello", provider="ollama", model="test-local-role")
 
 
+class _SensitiveFailureProvider(_Provider):
+    def generate(self, messages, temperature=0.7, max_tokens=128):
+        error = RuntimeError(
+            "account acct_private billing https://provider.example/billing "
+            "body=sk-private-provider-token"
+        )
+        error.status_code = 429
+        error.account = {"id": "acct_private"}
+        error.body = "sk-private-provider-token"
+        raise error
+
+
 def test_router_status_reports_routes_without_authority_claims(monkeypatch):
     router = LLMRouter(_Config())
     router.register_provider("ollama", _Provider())
@@ -62,6 +74,34 @@ def test_successful_generation_records_selected_engine():
     assert status["selected_provider"] == "ollama"
     assert status["selected_model"] == "test-local-role"
     assert status["order"] == ["ollama"]
+    assert status["route_purpose"] == "general"
+
+
+def test_provider_attempt_status_is_structural_and_drops_exception_metadata():
+    router = LLMRouter(_Config())
+    router.register_provider("ollama", _SensitiveFailureProvider())
+
+    try:
+        router.generate([LLMMessage(role="user", content="hi")])
+    except Exception:
+        pass
+
+    status = router.routing_status()
+    serialized = repr(status)
+    attempt = status["last_generation"]["attempts"][0]
+    assert attempt["provider"] == "ollama"
+    assert attempt["status"] == "failed"
+    assert attempt["attempt"] == 1
+    assert attempt["failure_category"] == "rate_limit"
+    assert attempt["status_code"] == 429
+    assert attempt["status_class"] == "4xx"
+    assert attempt["retryable"] is True
+    assert attempt["cooldown_seconds"] > 0
+    assert attempt["elapsed_ms"] >= 0
+    assert "error" not in attempt
+    assert "acct_private" not in serialized
+    assert "billing" not in serialized
+    assert "sk-private-provider-token" not in serialized
 
 
 def test_node_registry_preview_keeps_execution_unauthorized():

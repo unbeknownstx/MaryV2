@@ -120,6 +120,7 @@ class MaryCoreService:
         self._turn_replays: OrderedDict[str, tuple[str, TurnResponse]] = OrderedDict()
         self._turn_replay_capacity = 256
         self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
+        self._turn_trace_lock = RLock()
         self.creator_surfaces = creator_surface_coordinator or CreatorSurfaceCoordinator(
             idle_seconds=creator_idle_seconds,
             sleep_seconds=creator_sleep_seconds,
@@ -186,8 +187,15 @@ class MaryCoreService:
         if self._closed:
             raise RuntimeError("Mary Core is closed.")
         turn = request if isinstance(request, TurnRequest) else TurnRequest.from_dict(request)
-        if not self.execution_allowed():
-            raise RuntimeError("Mary Core is sleeping or offline; wake a creator surface first.")
+        trace = current_turn_trace()
+        if trace is not None:
+            trace.set_turn_id(turn.turn_id)
+            trace.set_conversation_id(turn.conversation_id)
+        with observe_turn_stage("lifecycle_gate"):
+            if not self.execution_allowed():
+                raise RuntimeError(
+                    "Mary Core is sleeping or offline; wake a creator surface first."
+                )
 
         with observe_turn_stage(
             "turn_lock_acquisition",
@@ -197,7 +205,8 @@ class MaryCoreService:
         try:
             # A lease can expire while a turn waits for the canonical writer
             # lock, so re-check at the actual application execution boundary.
-            self.enforce_execution_policy("turn.execute")
+            with observe_turn_stage("lifecycle_gate"):
+                self.enforce_execution_policy("turn.execute")
             replay_digest = hashlib.sha256(
                 json.dumps(
                     {
@@ -220,8 +229,15 @@ class MaryCoreService:
                         "turn_id was already used for a different turn request."
                     )
                 self._turn_replays.move_to_end(turn.turn_id)
+                if trace is not None:
+                    trace.mark_replayed()
+                    trace.record(
+                        "application_turn",
+                        status="skipped",
+                        elapsed_ms=0.0,
+                        outcome="replayed",
+                    )
                 payload = previous_response.to_dict()
-                trace = current_turn_trace()
                 payload["request_id"] = trace.request_id if trace is not None else ""
                 return TurnResponse(**payload)
 
@@ -251,7 +267,6 @@ class MaryCoreService:
                         turn.text,
                         metadata=application_metadata,
                     )
-            trace = current_turn_trace()
             if trace is not None:
                 trace.set_turn_id(result.turn_id)
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
@@ -259,6 +274,17 @@ class MaryCoreService:
                 raise RuntimeError(result.error or "Mary's canonical turn pipeline failed.")
 
             after = self._state_fingerprint()
+            if trace is not None:
+                trace.record(
+                    "persistence",
+                    status="success",
+                    elapsed_ms=0.0,
+                    outcome=(
+                        "durable_state_changed"
+                        if before != after
+                        else "durable_state_unchanged"
+                    ),
+                )
             conversation = self.conversation_status()
             engagement = dict(conversation.get("engagement", {}) or {})
             last_plan = dict(engagement.get("last_plan", {}) or {})
@@ -289,10 +315,44 @@ class MaryCoreService:
     def record_turn_trace(self, trace: dict[str, Any]) -> None:
         """Retain a small content-free diagnostic window for this Core process."""
 
-        self._recent_turn_traces.append(_json_safe(trace))
+        with self._turn_trace_lock:
+            self._recent_turn_traces.append(_json_safe(trace))
 
-    def recent_turn_traces(self) -> list[dict[str, Any]]:
-        return [deepcopy(item) for item in self._recent_turn_traces]
+    def recent_turn_traces(self, limit: int = 40) -> list[dict[str, Any]]:
+        bounded_limit = max(1, min(40, int(limit)))
+        with self._turn_trace_lock:
+            items = list(self._recent_turn_traces)[-bounded_limit:]
+        return [deepcopy(item) for item in items]
+
+    def query_turn_traces(
+        self,
+        *,
+        request_id: str | None = None,
+        turn_id: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Query the bounded in-memory trace window by safe causal IDs."""
+
+        from mary.runtime.turn_observability import trace_correlation_id
+
+        safe_request_id = (
+            trace_correlation_id(request_id, prefix="request")
+            if request_id not in (None, "")
+            else ""
+        )
+        safe_turn_id = (
+            trace_correlation_id(turn_id, prefix="turn")
+            if turn_id not in (None, "")
+            else ""
+        )
+        bounded_limit = max(1, min(40, int(limit)))
+        with self._turn_trace_lock:
+            matches = [
+                item for item in reversed(self._recent_turn_traces)
+                if (not safe_request_id or item.get("request_id") == safe_request_id)
+                and (not safe_turn_id or item.get("turn_id") == safe_turn_id)
+            ][:bounded_limit]
+        return [deepcopy(item) for item in matches]
 
     def health(self) -> dict[str, Any]:
         return {
@@ -387,7 +447,17 @@ class MaryCoreService:
             autonomy_status_value = str(
                 getattr(autonomy_status, "value", autonomy_status or "")
             ).lower()
+            realtime = getattr(self.mary, "realtime", None)
+            attention = getattr(realtime, "attention", None)
             gated = lifecycle["state"] in {"SLEEPING", "OFFLINE"}
+            if gated:
+                pause_attention = getattr(attention, "pause", None)
+                if callable(pause_attention):
+                    pause_attention("creator_lifecycle")
+            else:
+                wake_attention = getattr(attention, "wake", None)
+                if callable(wake_attention):
+                    wake_attention()
             if (
                 gated
                 and not self._autonomy_paused_by_sleep
@@ -403,6 +473,14 @@ class MaryCoreService:
                     resume()
                 self._autonomy_paused_by_sleep = False
             lifecycle["autonomy_paused_by_sleep"] = self._autonomy_paused_by_sleep
+            attention_snapshot = getattr(attention, "snapshot", None)
+            if callable(attention_snapshot):
+                try:
+                    lifecycle["attention_paused_by_sleep"] = bool(
+                        attention_snapshot().get("paused")
+                    )
+                except Exception:
+                    lifecycle["attention_paused_by_sleep"] = gated
             self._schedule_creator_lifecycle_check_locked(
                 lifecycle.get("next_transition_seconds")
             )
