@@ -10,7 +10,7 @@ Security model
 * Loopback-only development can run without a token.
 * Non-loopback hosts (including Replit) automatically require a bearer token.
   If MARY_MOBILE_TOKEN is absent, a strong token is generated and persisted
-  under data/mobile/access_token.txt, then printed once at startup.
+  under Mary's configured private data root, then printed once at startup.
 * API bodies are bounded and static paths are traversal-safe.
 * The browser never receives provider API keys or environment secrets.
 """
@@ -33,6 +33,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from mary.conversation import ConversationLane, classify_conversation_lane
+from mary.core.config import PathConfig
 from mary.desktop.dashboard import build_desktop_dashboard_state
 from mary.desktop.turn_trace import build_turn_trace
 from mary.desktop.projects import CreativeWorkspaceManager
@@ -337,11 +338,7 @@ class MaryRemoteMobileRuntime:
             .expanduser()
             .resolve()
             if configured
-            else (
-                _project_root()
-                / "data"
-                / "mobile_proxy"
-            )
+            else (PathConfig().data / "mobile_proxy")
         )
 
         self.data_root.mkdir(

@@ -249,6 +249,35 @@ def test_remote_mobile_runtime_does_not_construct_local_mary(
     assert "PRIVATE_AUTHORED_SOURCE" not in repr(dashboard["character_sourcebook"])
 
 
+def test_remote_mobile_default_proxy_state_uses_canonical_data_root(
+    monkeypatch,
+    tmp_path,
+):
+    canonical_data = tmp_path / "canonical-state"
+    monkeypatch.setattr(
+        mobile_server,
+        "MaryClient",
+        FakeRemoteClient,
+    )
+    monkeypatch.delenv(
+        "MARY_MOBILE_PROXY_DATA_DIR",
+        raising=False,
+    )
+    monkeypatch.setenv(
+        "MARY_DATA_DIR",
+        str(canonical_data),
+    )
+
+    runtime = mobile_server.MaryRemoteMobileRuntime(
+        "https://core.example",
+        token="secret",
+        device_id="iphone",
+    )
+
+    assert runtime.data_root == canonical_data / "mobile_proxy"
+    assert runtime.data_root.is_dir()
+
+
 def test_remote_mobile_retains_safe_core_request_id_on_turn_failure(
     monkeypatch,
     tmp_path,

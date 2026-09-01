@@ -5,6 +5,7 @@
 
 # Mutable Mary state and workspaces are not source
 /data/
+/.data.migration-removal_*/
 .runtime/
 workspace/
 
