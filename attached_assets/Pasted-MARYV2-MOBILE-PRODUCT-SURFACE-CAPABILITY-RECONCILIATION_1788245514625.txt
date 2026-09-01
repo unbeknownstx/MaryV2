@@ -1,0 +1,72 @@
+MARYV2 — MOBILE PRODUCT-SURFACE CAPABILITY RECONCILIATION
+
+Do not redesign Mary Core and do not alter Mary’s durable identity/state.
+
+We have completed the major canonical-Core architecture/certification work. Now reconcile the user-facing Mobile/PWA capabilities visible in the current application so we can distinguish fully operational features from intentionally unavailable, externally dependent, dormant, or genuinely unwired functionality.
+
+Inspect the current implementation, tests, routes, remote-Mobile bridge/API, capability registry, and UI for:
+
+* Studio / Creative Workspace
+* Project References / visual-reference loading
+* Study
+* Personal Search
+* Media / YouTube
+* Mary Arcade
+* Settings / Connection
+
+Important observed physical-device evidence:
+
+1. Studio currently displays:
+    'Bridge method is not available in remote-core mobile mode: getCreativeWorkspaceState'
+    The UI advertises Load Studio and says the configured creative workspace can be read/edited, so determine whether this is an intentionally unsupported compatibility surface or a genuine missing remote-Core bridge/API path.
+2. Project References says Load Studio to list project image references; determine whether this is blocked by the same Studio wiring.
+3. Personal Search reports Capable devices: 0. Determine whether this is correct when no capability node is online and identify exactly what Mac/Windows capability enrollment will make it operational.
+4. YouTube reports Configured: No / Enabled: No. Confirm this is an optional unconfigured external capability rather than broken wiring, and identify exactly what configuration/dependency would enable it. Do not add secrets or enable it merely to make the UI green.
+5. Arcade reports no games. Determine whether Arcade is intentionally dormant/empty, externally populated, or missing implementation.
+6. Study exposes persistent project creation and due-card functionality. Verify whether its state is canonical Core-owned, durable, cross-surface, and actually wired. Do not create production study data during audit unless explicitly authorized.
+7. Settings currently reports remote_mary_core, architecture 13.2, Railway host, canonical Core connection, Mobile protocol 4, and device bearer stored. Verify these projections come from authoritative current state rather than stale/static UI values.
+
+For every surface classify it as exactly one of:
+
+* FULLY_OPERATIONAL
+* OPERATIONAL_WHEN_EXTERNAL_CAPABILITY_AVAILABLE
+* OPTIONAL_UNCONFIGURED
+* INTENTIONALLY_DORMANT
+* COMPATIBILITY_ONLY
+* PARTIALLY_WIRED
+* BROKEN
+
+Trace UI → Mobile API/bridge → canonical Core/service → durable/external backend where applicable.
+
+Specifically investigate the missing getCreativeWorkspaceState path. Do not paper over it by hiding the error or implementing arbitrary filesystem access on Mobile. Preserve the rule that the phone never receives arbitrary filesystem access and that workspace operations remain bounded to Mary’s configured workspace.
+
+Also reconcile these findings with the previously observed projection inconsistencies:
+
+* Growth: 75 retained experiences / 17 meaningful experiences / 1 developed preference
+* Runtime: Memories/Episodic/Semantic/Working shown as 0
+* Runtime Last Turn sometimes reports no provider attempts after real Mobile conversation
+* relationship labels differ between surfaces (Getting familiar, Familiarizing, etc.)
+
+Determine whether each difference is legitimate semantic projection or stale/missing wiring.
+
+Do not modify production yet.
+
+First return:
+
+1. capability matrix;
+2. exact implementation path for every surface;
+3. root cause of every partial/broken feature;
+4. whether Studio is the only genuinely missing remote-Mobile capability;
+5. which features require Mac/Windows/external configuration;
+6. which empty states are intentional;
+7. proposed smallest safe fixes;
+8. tests required;
+9. whether any finding threatens canonical Mary coherence, persistence, privacy, or Task #23/#24 guarantees;
+10. final assessment separating:
+    * Mary Core completeness,
+    * Mobile client completeness,
+    * optional ecosystem capability completeness.
+
+Preserve all existing security boundaries, bearer authentication, canonical Core authority, proposal-only autonomy safeguards, production fingerprint protections, and deterministic release verification.
+
+Do not execute a Mary conversation, mutate durable Mary state, deploy production, or install/configure external services during this audit.
