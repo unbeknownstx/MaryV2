@@ -298,7 +298,13 @@ class ReflectionEngine:
                     metadata={
                         "mode": "creator_identity_boundary_fallback",
                         "llm_calls": 1,
-                        "llm_error": str(exc),
+                        "llm_error": "provider_unavailable",
+                        "llm_error_details": {
+                            "error_type": type(exc).__name__,
+                            "provider": str(getattr(exc, "provider", "unknown"))[:64],
+                            "status_code": getattr(exc, "status_code", None),
+                            "retryable": bool(getattr(exc, "retryable", False)),
+                        },
                     },
                 )
 
@@ -313,7 +319,13 @@ class ReflectionEngine:
                 metadata={
                     "mode": "character_revision_unavailable",
                     "llm_calls": 1,
-                    "llm_error": str(exc),
+                    "llm_error": "provider_unavailable",
+                    "llm_error_details": {
+                        "error_type": type(exc).__name__,
+                        "provider": str(getattr(exc, "provider", "unknown"))[:64],
+                        "status_code": getattr(exc, "status_code", None),
+                        "retryable": bool(getattr(exc, "retryable", False)),
+                    },
                 },
             )
 

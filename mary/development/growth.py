@@ -21,6 +21,11 @@ from .preference_evidence import (
     stable_developed_preference_id,
     stable_evidence_id,
 )
+from mary.runtime.turn_observability import (
+    causal_operation_id,
+    current_turn_trace,
+    record_turn_stage,
+)
 
 
 _ACHIEVEMENT_RE = re.compile(
@@ -192,6 +197,67 @@ class GrowthEngine:
             "milestones": [m.get("id") for m in milestones],
             "timestamp": datetime.now().isoformat(),
         }
+        trace = current_turn_trace()
+        trace_turn_id = str(
+            turn_id or getattr(trace, "turn_id", "") or ""
+        )
+        record_turn_stage(
+            "experience_growth",
+            status="success",
+            elapsed_ms=0.0,
+            outcome="experience_recorded",
+            result_ids={"experience_id": experience.get("id")},
+        )
+        evidence_items = list(
+            preference_evidence.get("evidence_items")
+            or ([preference_evidence] if preference_evidence else [])
+        )
+        evidence_ids = [
+            item.get("evidence_id")
+            for item in evidence_items
+            if isinstance(item, dict) and item.get("evidence_id")
+        ]
+        candidate_ids = [
+            item.get("candidate_id")
+            for item in evidence_items
+            if isinstance(item, dict) and item.get("candidate_id")
+        ]
+        developed_ids = [
+            item.get("developed_preference_id")
+            for item in evidence_items
+            if isinstance(item, dict) and item.get("developed_preference_id")
+        ]
+        record_turn_stage(
+            "preference_evidence",
+            status=(
+                "success"
+                if preference_evidence.get("detected")
+                else "skipped"
+            ),
+            elapsed_ms=0.0,
+            outcome=str(
+                preference_evidence.get("disposition")
+                or "not_applicable"
+            ),
+            result_ids={
+                "preference_evidence_id": evidence_ids,
+                "preference_candidate_id": candidate_ids,
+                "developed_preference_id": developed_ids,
+            },
+        )
+        record_turn_stage(
+            "memory_consolidation",
+            status="success" if promoted_semantic else "skipped",
+            elapsed_ms=0.0,
+            outcome="promoted" if promoted_semantic else "deferred_or_none",
+            result_ids={
+                "memory_operation_id": causal_operation_id(
+                    trace_turn_id,
+                    "memory",
+                    "consolidation",
+                ),
+            },
+        )
         return dict(self.last_growth)
 
     def _observe_creator_preference(
