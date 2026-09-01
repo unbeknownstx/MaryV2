@@ -1,0 +1,586 @@
+Task #21 — MaryV2 Full Operational Certification
+
+Tasks #15–#20 have repaired several classes of runtime/test divergence. We now need to determine whether MaryV2 is genuinely functioning as one integrated computational character in production.
+
+This is not primarily a coding task.
+
+Do not begin by changing code.
+
+Do not assume a subsystem works because:
+
+* a unit test passes
+* an integration test passes
+* a class exists
+* a status endpoint says enabled
+* a subsystem can be constructed
+* documentation says it is implemented
+
+The goal is empirical operational proof.
+
+Certification standard
+
+For each major MaryV2 capability, distinguish:
+
+* LIVE VERIFIED
+* LIVE VERIFIED WITH LIMITATIONS
+* TEST VERIFIED ONLY
+* IMPLEMENTED BUT NOT EXERCISED
+* PARTIAL
+* FAILED
+* UNKNOWN
+
+The final claim PASS — COHERENT OPERATIONAL SYSTEM is allowed only when the major intended runtime loops actually complete.
+
+⸻
+
+1. Canonical identity and runtime
+
+Prove live that there is:
+
+* one canonical Mary identity
+* one canonical MaryApplication/Core authority
+* no competing runtime state
+* surfaces are clients
+* providers are replaceable cognition
+* capability nodes are replaceable capability providers
+
+Exercise production Mobile/Core rather than inferring solely from source.
+
+⸻
+
+2. Complete normal-turn pipeline
+
+Perform several small authenticated creator turns.
+
+Prove the actual sequence:
+
+surface
+→ Core
+→ MaryApplication
+→ character/context
+→ memory retrieval
+→ relationship/developed-state projection
+→ cognition/provider
+→ response
+→ growth/experience
+→ learning candidates where appropriate
+→ attention/events
+→ autonomy evaluation
+→ persistence
+→ sanitized projections/telemetry
+
+For each turn correlate using Mary-owned request/turn/experience IDs.
+
+Verify that successful fallback turns still execute appropriate post-turn processing.
+
+⸻
+
+3. Memory + Experience Evolution
+
+Repeat the controlled production learning experiment after Task #17.
+
+Prove independently:
+
+Immediate context
+
+Same-conversation temporary recall.
+
+Selective non-learning
+
+Incidental temporary information is not blindly promoted.
+
+Explicit preference evidence
+
+Authenticated creator preference creates appropriate structured candidate/evidence.
+
+Governance
+
+Candidate is promoted, deferred, reviewed, or blocked for an explainable reason.
+
+Reinforcement
+
+Appropriate repeated evidence can advance through governance.
+
+Persistence
+
+Promoted state survives a fresh conversation and other intended persistence boundaries.
+
+Retrieval
+
+New conversation retrieves relevant durable state.
+
+Behavioral influence
+
+Mary changes a later response because of learned evidence without the preference being repeated in that turn.
+
+Corrective feedback
+
+Negative/corrective creator feedback affects later comparable behavior.
+
+Confirm throughout that CharacterSourcebook remains unchanged.
+
+This subsystem does not pass merely because candidates now appear. The entire intended learning loop must be demonstrated.
+
+⸻
+
+4. Character integrity
+
+Prove:
+
+* CharacterSourcebook loads the canonical 189 records
+* Core and Mobile projections agree
+* sourcebook hash remains stable through ordinary conversation and learning
+* developed preferences do not rewrite authored personality
+* provider output cannot mutate character authority
+* character behavior actually influences generated responses
+
+Use bounded behavioral probes rather than exposing sourcebook contents.
+
+⸻
+
+5. Relationship system
+
+Exercise benign relationship-relevant interactions.
+
+Determine whether:
+
+* creator turns reach relationship processing
+* evidence is recorded appropriately
+* continuity changes according to existing governance
+* state persists
+* later context receives the relationship projection
+* guest/noncreator statements cannot overwrite creator state
+
+Do not simulate affection or manufacture milestones solely to make counters increase.
+
+⸻
+
+6. Developed self
+
+Verify independently:
+
+* preferences
+* personality development where intentionally supported
+* feedback evidence
+* persistence
+* retrieval
+* context injection
+* actual behavioral effect
+
+Distinguish Mary’s developed state from creator-profile preferences and from CharacterSourcebook.
+
+⸻
+
+7. Provider/cognition routing
+
+Exercise the configured normal route.
+
+Verify:
+
+Groq → Gemini → OpenRouter → eligible Ollama fallback
+
+as far as currently available.
+
+Prove at least one real fallback.
+
+Verify:
+
+* provider failure does not corrupt state
+* failed provider output does not create false learning evidence
+* successful fallback continues normal post-processing
+* private/local route cannot leak to cloud
+* returning to normal clears local-only routing
+
+Clearly mark hardware-dependent Ollama tests pending if no node is connected.
+
+⸻
+
+8. Attention/event flow
+
+Prove a live creator input reaches:
+
+input/event
+→ relevance
+→ attention
+→ claim/processing
+
+Then determine whether meaningful observations can reach bounded autonomy evaluation.
+
+Do not confuse an event object existing with an operational event pathway.
+
+⸻
+
+9. Autonomy
+
+Prove:
+
+trigger/evidence
+→ autonomy evaluation
+→ proposal
+→ persistence/dedupe/prioritization
+
+while preserving:
+
+* proposal-only authority
+* no automatic spending
+* no uncontrolled tool execution
+* no unrestricted loop
+* separate creator confirmation
+
+Generate one harmless bounded proposal if safely possible.
+
+Verify sleep pauses autonomy and wake restores appropriate operation.
+
+⸻
+
+10. Lifecycle
+
+Live-test:
+
+SLEEPING
+→ creator surface connect
+→ ACTIVE
+→ inactivity/visibility behavior where practical
+→ disconnect
+→ SLEEPING
+→ reconnect
+→ same canonical Mary
+
+Verify OFFLINE remains distinct from:
+
+* sleeping
+* network failure
+* Core process failure
+
+Verify sleep suppresses new:
+
+* provider work where designed
+* autonomy work
+* tool dispatch
+* capability-node tasks
+
+without destroying durable state.
+
+⸻
+
+11. Persistence matrix
+
+Build an explicit matrix of every important state class:
+
+State | Intended durable? | Actual durable? | Restart behavior | Reconstruction owner
+
+Include at minimum:
+
+* canonical identity
+* sourcebook
+* dialogue sessions
+* episodic memory
+* semantic memory
+* developed preferences
+* developed personality
+* relationship state/history
+* growth journal
+* shared work
+* autonomy proposals
+* creator surface leases
+* attention queues
+* node trust
+* node sessions
+* node work ownership
+* tool grants
+
+Any disagreement between intended and actual durability is a defect.
+
+⸻
+
+12. Controlled restart/reconstruction
+
+If safe within the deployment workflow, perform one controlled Core restart after taking before-state evidence.
+
+Verify:
+
+durable Mary state before
+→ restart
+→ fresh process/instance
+→ canonical reconstruction
+→ same durable Mary state
+
+while ephemeral state appropriately disappears.
+
+Do not perform this until the persistence state is backed up/understood.
+
+If a production restart is unsafe, perform the highest-fidelity equivalent and classify production restart as unverified.
+
+⸻
+
+13. Failure recovery
+
+Exercise harmless failure cases:
+
+* malformed request
+* invalid auth
+* provider unavailable
+* provider fallback
+* post-processing failure simulation through tests
+* serialization failure through tests
+* expired/stale lifecycle lease
+
+Verify Mary remains coherent afterward.
+
+No failure should partially mutate state in an invalid way.
+
+⸻
+
+14. Core ↔ Mobile projection parity
+
+Compare canonical internal/Core projections with Mobile for:
+
+* character/sourcebook
+* lifecycle
+* memory counts
+* developed state
+* relationship
+* growth/experience
+* provider status
+* node status
+* autonomy status
+* attention
+* errors/request IDs
+
+Detect stale, zeroed, shadow, independently computed, or missing projections.
+
+⸻
+
+15. Tool/capability architecture
+
+Without performing destructive actions, prove:
+
+Mary intent
+→ typed tool/capability request
+→ permission
+→ confirmation where required
+→ resolver/broker
+→ normalized result
+→ MaryApplication/context
+
+Use local harmless tools if available.
+
+If no real external capability is connected, verify through canonical runtime tests and mark physical execution separately.
+
+⸻
+
+16. Permission/security boundaries
+
+Attempt bounded negative tests proving:
+
+* invalid creator auth rejected
+* invalid node auth rejected
+* node credential cannot become creator credential
+* creator surface cannot impersonate node
+* stale sessions rejected
+* sleeping/offline lifecycle gates cannot be bypassed
+* provider cannot invoke tools without canonical authorization
+* guest cannot overwrite creator learning
+* raw secrets/private evidence absent from telemetry
+
+⸻
+
+17. Shared work/task continuity
+
+Verify shared-work durable events are:
+
+* written through canonical ownership
+* reconstructed
+* retrievable
+* not confused with conversation memory
+* not duplicated by Mobile/Desktop
+
+⸻
+
+18. Observability truthfulness
+
+Validate Task #12 instrumentation against real turns and failures.
+
+Confirm telemetry can actually diagnose:
+
+* provider attempted
+* fallback
+* timing
+* stage failure
+* process restart
+* request correlation
+
+while excluding:
+
+* prompts
+* model outputs
+* memory contents
+* sourcebook evidence
+* credentials
+* exception secrets
+
+A status field must reflect canonical reality rather than merely a configured feature flag.
+
+⸻
+
+19. Long-session/soak test
+
+Run a bounded multi-turn session significantly longer than the tiny acceptance conversations.
+
+Observe:
+
+* conversation continuity
+* context trimming
+* memory retrieval
+* provider stability
+* growth journal behavior
+* latency drift
+* state growth
+* duplicate events
+* resource growth
+* errors
+
+Do not spam production APIs or spend significant paid quota.
+
+The goal is to catch degradation that 2-turn tests cannot.
+
+⸻
+
+20. Physical-device deferred matrix
+
+Produce an explicit checklist for anything Replit cannot genuinely verify:
+
+Windows capability node
+
+* existing installation
+* startup task/service
+* enrollment
+* heartbeat
+* Ollama advertisement
+* real inference
+* Core restart reconnect
+* Windows reboot reconnect
+* network interruption/recovery
+
+iPhone
+
+* actual background/foreground
+* OS suspension
+* reconnect
+* stale connection recovery
+* STT
+* TTS
+* audio interruption
+
+Desktop
+
+* real Windows GUI
+* remote Core authority
+* voice
+* capability handoff
+
+Never mark these LIVE VERIFIED based purely on simulated tests.
+
+⸻
+
+21. Test/runtime equivalence check
+
+After Tasks #19/#20, confirm that tests claiming:
+
+* full system
+* release
+* acceptance
+* production
+* persistence
+* integration
+
+use the same composition/path users actually run.
+
+Identify intentionally retained lower-level tests separately.
+
+⸻
+
+22. Cross-system interaction verification
+
+This section is critical.
+
+Do not test subsystems only independently.
+
+Prove interaction chains such as:
+
+memory retrieval → cognition → behavior
+
+feedback → experience → developed preference → later cognition
+
+relationship state → context → dialogue
+
+provider fallback → successful response → growth
+
+event → attention → autonomy proposal
+
+lifecycle sleep → autonomy/tool/node suppression
+
+wake → same state → normal turn
+
+tool/capability result → context/shared work/memory where intended
+
+restart → persistence reconstruction → future retrieval
+
+MaryV2 passes only if the connections between systems work.
+
+⸻
+
+23. No-code-first defect policy
+
+If a failure is found:
+
+1. reproduce it
+2. capture bounded evidence
+3. identify exact ownership/path
+4. classify the defect
+5. do not silently repair during certification
+
+Produce follow-up work items unless the correction is trivial and clearly within an already-approved certification repair scope.
+
+We want certification evidence to remain trustworthy.
+
+⸻
+
+Final certification report
+
+Provide a master matrix:
+
+System | Intended behavior | Live evidence | Cross-system evidence | Persistence evidence | Failure evidence | Verdict | Remaining work
+
+Then provide:
+
+1. overall operational verdict
+2. canonical runtime proof
+3. complete live turn proof
+4. complete learning-loop proof
+5. character integrity result
+6. relationship result
+7. developed-self result
+8. cognition/provider result
+9. attention/events result
+10. autonomy result
+11. lifecycle result
+12. persistence/reconstruction result
+13. capabilities/tools result
+14. security result
+15. projection-parity result
+16. observability result
+17. soak-test result
+18. cross-system interaction result
+19. all real defects found
+20. all remaining hardware-only validation
+21. final unresolved UNKNOWN items
+
+Final verdict must be one of:
+
+* PASS — COHERENT OPERATIONAL SYSTEM
+* PASS WITH CONDITIONS
+* PARTIAL
+* FAIL
+
+Do not use total test count as the primary justification for the verdict.

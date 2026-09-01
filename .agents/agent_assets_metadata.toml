@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "XXhzIsL3LV-iE12chRje9"
+uri = "file://docs/certification/MARYV2_FULL_OPERATIONAL_CERTIFICATION_2026-08-31.md"
+type = "text"
+title = "MaryV2 Full Operational Certification"
+description = "Evidence-first Task 21 certification report with master matrix, live and test-only findings, persistence matrix, defects, hardware checklist, unknowns, and final PARTIAL verdict."
+logical_id = "891936e2-b9b9-4e34-9539-dc76fc535b04"
+content_hash = "sha256:b718e37b375187c80814b7ac29b1f5a5bee33aecf2664beb1e2acf3b0a8107a0"
+size = 46480
+mtime_ms = 1788224493875
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:00f1ce7a-b57d-48a1-bb8b-a1bff8da913e/891936e2-b9b9-4e34-9539-dc76fc535b04/5513e356-a6f9-4afd-9a1a-14ab3253f7ae"
+storage_version_token = "1788224533899465"
+content_type = "text/markdown"
