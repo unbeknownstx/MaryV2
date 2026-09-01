@@ -15,11 +15,29 @@ import os
 from typing import Any
 
 from mary.distributed import DeviceTaskBroker, NodeRegistry
-from mary.llm.interface import LLMInterface, LLMMessage, LLMProviderError, LLMResponse
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationPrivacy,
+    LLMInterface,
+    LLMMessage,
+    LLMProviderError,
+    LLMResponse,
+    ProviderRoute,
+)
 
 
 class DeviceOllamaProvider(LLMInterface):
     """Expose a connected device's bounded Ollama executor as provider ``ollama``."""
+
+    def route_capabilities(self) -> ProviderRoute:
+        return ProviderRoute(
+            privacy_modes=frozenset({
+                GenerationPrivacy.CLOUD_OK.value,
+                GenerationPrivacy.REDACT_FIRST.value,
+                GenerationPrivacy.LOCAL_ONLY.value,
+            }),
+            cost_class=GenerationCost.ZERO_LOCAL.value,
+        )
 
     def __init__(
         self,

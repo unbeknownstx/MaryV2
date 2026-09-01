@@ -22,6 +22,7 @@ Ollama without sending the prompt to a cloud provider.
 from __future__ import annotations
 
 import os
+import json
 import time
 from typing import Any, Callable
 
@@ -36,8 +37,13 @@ from mary.runtime.turn_observability import (
 from .output_quality import inspect_output_quality
 
 from .interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
     LLMInterface,
     LLMMessage,
+    ProviderRoute,
     LLMResponse,
     LLMProviderError,
     LLMRateLimitError,
@@ -81,6 +87,7 @@ class LLMRouter:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.providers: dict[str, LLMInterface] = {}
+        self._provider_routes: dict[str, ProviderRoute] = {}
         self._purpose_providers: dict[tuple[str, str], LLMInterface] = {}
         # Attempts are structural telemetry only. Provider exception messages
         # and response metadata must never be retained here.
@@ -239,8 +246,40 @@ class LLMRouter:
         self,
         name: str,
         provider: LLMInterface,
+        *,
+        route_capabilities: ProviderRoute | None = None,
     ) -> None:
-        self.providers[str(name).lower().strip()] = provider
+        provider_name = str(name).lower().strip()
+        self.providers[provider_name] = provider
+        capability_method = getattr(provider, "route_capabilities", None)
+        advertised = (
+            route_capabilities
+            if route_capabilities is not None
+            else (
+                capability_method()
+                if callable(capability_method)
+                else ProviderRoute()
+            )
+        )
+        # Keep long-standing custom test/integration providers compatible when
+        # they stand in for Mary's built-in route names. Integrations that need
+        # different behavior pass an explicit route_capabilities descriptor.
+        if route_capabilities is None and advertised == ProviderRoute():
+            if provider_name == "ollama":
+                advertised = ProviderRoute(
+                    privacy_modes=frozenset({
+                        GenerationPrivacy.CLOUD_OK.value,
+                        GenerationPrivacy.REDACT_FIRST.value,
+                        GenerationPrivacy.LOCAL_ONLY.value,
+                    }),
+                    cost_class=GenerationCost.ZERO_LOCAL.value,
+                )
+            elif provider_name == "openai":
+                advertised = ProviderRoute(
+                    cost_class=GenerationCost.PAID_LOW.value,
+                    fallback_eligible=False,
+                )
+        self._provider_routes[provider_name] = advertised
 
     def get_provider(
         self,
@@ -254,6 +293,12 @@ class LLMRouter:
         if provider is None:
             provider = self._create_provider(provider_name)
             self.providers[provider_name] = provider
+            capability_method = getattr(provider, "route_capabilities", None)
+            self._provider_routes[provider_name] = (
+                capability_method()
+                if callable(capability_method)
+                else ProviderRoute()
+            )
 
         return provider
 
@@ -505,6 +550,58 @@ class LLMRouter:
 
         return self._provider_order(None, purpose="conversation")
 
+    def provider_route(self, provider_name: str) -> ProviderRoute:
+        """Return one provider's public capability advertisement."""
+
+        name = str(provider_name).lower().strip()
+        provider = self.get_provider(name)
+        route = self._provider_routes.get(name)
+        if route is None:
+            capability_method = getattr(provider, "route_capabilities", None)
+            route = (
+                capability_method()
+                if callable(capability_method)
+                else ProviderRoute()
+            )
+            self._provider_routes[name] = route
+        return route
+
+    def route_order(
+        self,
+        request: GenerationRequest,
+        *,
+        provider: str | None = None,
+        route: str | None = None,
+        purpose: str | None = None,
+    ) -> list[str]:
+        """Return providers eligible for this operation and its constraints.
+
+        A provider that opts out of fallback may still be used when it is the
+        first explicitly selected route, but it is never entered after another
+        provider fails.
+        """
+
+        ordered = self._provider_order(
+            provider,
+            route=route,
+            purpose=purpose or request.purpose,
+        )
+        eligible: list[str] = []
+        for position, name in enumerate(ordered):
+            try:
+                advertised = self.provider_route(name)
+            except Exception:
+                # Preserve unavailable/unknown providers in the route so the
+                # normal attempt telemetry records why they were skipped.
+                eligible.append(name)
+                continue
+            if not advertised.supports(request):
+                continue
+            if position > 0 and not advertised.fallback_eligible:
+                continue
+            eligible.append(name)
+        return eligible
+
     # ============================================================
     # RATE-LIMIT COOLDOWN
     # ============================================================
@@ -619,7 +716,6 @@ class LLMRouter:
         normalized_provider = str(
             getattr(exc, "provider", None) or provider_name or "unknown"
         )
-
         # A provider can report a token-budget problem with rate-limit wording
         # while using HTTP 413. That is a property of this request, not evidence
         # that the provider itself is exhausted, so do not place it on cooldown.
@@ -634,6 +730,7 @@ class LLMRouter:
                 provider=normalized_provider,
                 retryable=False,
                 status_code=status_code,
+                category="invalid_request",
             )
 
         if (
@@ -653,11 +750,68 @@ class LLMRouter:
                 status_code=status_code,
             )
 
+        if (
+            isinstance(exc, TimeoutError)
+            or status_code in {408, 504}
+            or "timed out" in lowered
+            or "timeout" in lowered
+        ):
+            return LLMProviderError(
+                "provider_timeout",
+                provider=normalized_provider,
+                retryable=True,
+                status_code=status_code,
+                category="timeout",
+            )
+        if status_code == 401:
+            return LLMProviderError(
+                "provider_authentication_failed",
+                provider=normalized_provider,
+                retryable=False,
+                status_code=status_code,
+                category="authentication",
+            )
+        if status_code == 403:
+            return LLMProviderError(
+                "provider_permission_denied",
+                provider=normalized_provider,
+                retryable=False,
+                status_code=status_code,
+                category="permission",
+            )
+        if status_code in {400, 404, 409, 422}:
+            return LLMProviderError(
+                "provider_invalid_request",
+                provider=normalized_provider,
+                retryable=False,
+                status_code=status_code,
+                category="invalid_request",
+            )
+        if (
+            status_code is not None
+            and status_code >= 500
+        ) or isinstance(exc, ConnectionError):
+            return LLMProviderError(
+                "provider_unavailable",
+                provider=normalized_provider,
+                retryable=True,
+                status_code=status_code,
+                category="unavailable",
+            )
+        if isinstance(exc, LLMProviderError):
+            return LLMProviderError(
+                f"provider_{exc.category}",
+                provider=normalized_provider,
+                retryable=exc.retryable,
+                status_code=status_code,
+                category=exc.category,
+            )
         return LLMProviderError(
             "provider_request_failed",
             provider=normalized_provider,
             retryable=bool(getattr(exc, "retryable", False)),
             status_code=status_code,
+            category="provider_error",
         )
 
     @staticmethod
@@ -726,12 +880,38 @@ class LLMRouter:
         max_tokens: int | None = None,
         route: str | None = None,
         purpose: str | None = None,
+        operation: str = GenerationOperation.CONVERSATION.value,
+        privacy: str = GenerationPrivacy.CLOUD_OK.value,
+        cost_class: str = GenerationCost.CONFIGURED.value,
+        structured_output: bool = False,
+        structured_schema_json: str | None = None,
+        deadline_seconds: float | None = None,
+        correlation_id: str | None = None,
+        _request: GenerationRequest | None = None,
     ) -> LLMResponse:
         """Generate through the first healthy provider in Mary's route."""
 
         if self._execution_policy is not None:
             self._execution_policy("llm.generate")
 
+        request = _request or GenerationRequest(
+            messages=tuple(messages),
+            operation=operation,
+            privacy=privacy,
+            cost_class=cost_class,
+            structured_output=structured_output,
+            structured_schema_json=structured_schema_json,
+            deadline_seconds=deadline_seconds,
+            correlation_id=correlation_id,
+            purpose=purpose,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        messages = list(request.messages)
+        temperature = request.temperature
+        max_tokens = request.max_tokens
+        purpose = request.purpose
+        generation_started = time.monotonic()
         self.last_generation_attempts = []
         self.last_generation_attempt_timings = []
         last_error: LLMProviderError | None = None
@@ -745,18 +925,25 @@ class LLMRouter:
                 effective_route = self._session_route_override
                 effective_purpose = None
 
-        order = self.resource_governor.provider_order(
-            self._provider_order(
-                effective_provider,
-                route=effective_route,
-                purpose=effective_purpose,
-            )
-        )
+        order = self.resource_governor.provider_order(self.route_order(
+            request,
+            provider=effective_provider,
+            route=effective_route,
+            purpose=effective_purpose,
+        ))
         self.last_generation_route = {
             "requested_provider": effective_provider,
             "route": effective_route,
             "purpose": effective_purpose,
             "route_purpose": str(effective_purpose or "general"),
+            "operation": request.operation,
+            "privacy": request.privacy,
+            "cost_class": request.cost_class,
+            "structured_output": request.structured_output,
+            "structured_schema_present": request.structured_schema_json is not None,
+            "redaction_applied": request.redaction_receipt is not None,
+            "deadline_seconds": request.deadline_seconds,
+            "correlation_id_present": request.correlation_id is not None,
             "strategy": self.routing_strategy(),
             "order": list(order),
             "selected_provider": None,
@@ -776,6 +963,25 @@ class LLMRouter:
         fallback_recorded = False
         for attempt_number, provider_name in enumerate(order, start=1):
             attempt_started = time.monotonic()
+            if (
+                request.deadline_seconds is not None
+                and attempt_started - generation_started >= request.deadline_seconds
+            ):
+                last_error = LLMProviderError(
+                    "generation_deadline_exceeded",
+                    provider=provider_name,
+                    retryable=True,
+                    category="timeout",
+                )
+                self.last_generation_attempts.append(self._attempt_record(
+                    provider_name,
+                    "deadline_exceeded",
+                    attempt_number,
+                    elapsed_ms=(attempt_started - generation_started) * 1000.0,
+                    failure_category="timeout",
+                    retryable=True,
+                ))
+                break
             cooldown = self._cooldown_remaining(
                 provider_name
             )
@@ -833,7 +1039,7 @@ class LLMRouter:
                     "unavailable",
                     attempt_number,
                     elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
-                    failure_category=classify_failure(exc, default="provider_error"),
+                    failure_category=error.category,
                     status_code=self._safe_status_code(error),
                     retryable=error.retryable,
                 ))
@@ -889,8 +1095,17 @@ class LLMRouter:
                     attempt=attempt_number,
                     failure_kind="provider_error",
                 ):
-                    response = selected.generate(
-                        messages=messages,
+                    effective_request = GenerationRequest(
+                        messages=request.messages,
+                        operation=request.operation,
+                        privacy=request.privacy,
+                        cost_class=request.cost_class,
+                        structured_output=request.structured_output,
+                        structured_schema_json=request.structured_schema_json,
+                        redaction_receipt=request.redaction_receipt,
+                        deadline_seconds=request.deadline_seconds,
+                        correlation_id=request.correlation_id,
+                        purpose=request.purpose,
                         temperature=(
                             temperature
                             if temperature is not None
@@ -902,6 +1117,36 @@ class LLMRouter:
                             else self.config.llm.max_tokens
                         ),
                     )
+                    remaining_deadline = None
+                    if request.deadline_seconds is not None:
+                        remaining_deadline = max(
+                            0.001,
+                            request.deadline_seconds
+                            - (time.monotonic() - generation_started),
+                        )
+                    constrained_generate = getattr(
+                        selected,
+                        "generate_constrained",
+                        None,
+                    )
+                    if callable(constrained_generate):
+                        response = constrained_generate(
+                            effective_request,
+                            timeout_seconds=remaining_deadline,
+                        )
+                    elif remaining_deadline is None:
+                        response = selected.generate(
+                            messages=list(effective_request.messages),
+                            temperature=effective_request.temperature,
+                            max_tokens=effective_request.max_tokens,
+                        )
+                    else:
+                        raise LLMProviderError(
+                            "provider_does_not_enforce_deadlines",
+                            provider=provider_name,
+                            retryable=False,
+                            category="unsupported_constraint",
+                        )
             except Exception as exc:
                 provider_call_ms = round((time.monotonic() - provider_call_started) * 1000.0, 2)
                 error = self._normalize_error(
@@ -928,7 +1173,7 @@ class LLMRouter:
                     failure_category=(
                         "rate_limit"
                         if isinstance(error, LLMRateLimitError)
-                        else classify_failure(exc, default="provider_error")
+                        else error.category
                     ),
                     status_code=self._safe_status_code(error),
                     retryable=error.retryable,
@@ -954,6 +1199,26 @@ class LLMRouter:
                 continue
 
             provider_call_ms = round((time.monotonic() - provider_call_started) * 1000.0, 2)
+            if (
+                request.deadline_seconds is not None
+                and time.monotonic() - generation_started > request.deadline_seconds
+            ):
+                last_error = LLMProviderError(
+                    "generation_deadline_exceeded",
+                    provider=provider_name,
+                    retryable=True,
+                    category="timeout",
+                )
+                self.last_generation_attempts.append(self._attempt_record(
+                    provider_name,
+                    "deadline_exceeded",
+                    attempt_number,
+                    elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
+                    call_ms=provider_call_ms,
+                    failure_category="timeout",
+                    retryable=True,
+                ))
+                break
             quality_issue = inspect_output_quality(
                 response.content,
                 messages,
@@ -991,6 +1256,39 @@ class LLMRouter:
                 )
                 fallback_recorded = True
                 continue
+
+            if request.structured_output:
+                try:
+                    structured_value = json.loads(response.content)
+                    if not isinstance(structured_value, (dict, list)):
+                        raise ValueError("structured output must be an object or array")
+                    if request.structured_schema_json is not None:
+                        schema = json.loads(request.structured_schema_json)
+                        if not self._matches_json_schema(structured_value, schema):
+                            raise ValueError("structured output failed schema validation")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    error = LLMProviderError(
+                        "provider_invalid_structured_output",
+                        provider=provider_name,
+                        retryable=True,
+                        category="invalid_output",
+                    )
+                    self.last_generation_attempts.append(self._attempt_record(
+                        provider_name,
+                        "invalid_output",
+                        attempt_number,
+                        elapsed_ms=(time.monotonic() - attempt_started) * 1000.0,
+                        call_ms=provider_call_ms,
+                        failure_category="invalid_output",
+                        retryable=True,
+                    ))
+                    last_error = error
+                    self.resource_governor.record_attempt(
+                        provider_name,
+                        "invalid_output",
+                    )
+                    fallback_recorded = True
+                    continue
 
             finish_reason = str(
                 response.finish_reason or ""
@@ -1091,9 +1389,10 @@ class LLMRouter:
             else self.provider_name(effective_provider)
         )
         error = LLMProviderError(
-            "No configured language-model provider is currently available.",
+            "No provider supports the requested generation constraints.",
             provider=primary,
-            retryable=True,
+            retryable=False,
+            category="unsupported_operation",
         )
         record_turn_stage(
             "provider_fallback",
@@ -1106,6 +1405,75 @@ class LLMRouter:
             error=error,
         )
         raise error
+
+    def generate_request(
+        self,
+        request: GenerationRequest,
+        *,
+        provider: str | None = None,
+        route: str | None = None,
+    ) -> LLMResponse:
+        """Generate from an explicit immutable request contract."""
+
+        return self.generate(
+            list(request.messages),
+            provider=provider,
+            route=route,
+            _request=request,
+        )
+
+    @classmethod
+    def _matches_json_schema(cls, value: Any, schema: dict[str, Any]) -> bool:
+        """Validate the bounded JSON Schema subset Mary advertises to providers."""
+
+        expected = schema.get("type")
+        type_matches = {
+            "object": isinstance(value, dict),
+            "array": isinstance(value, list),
+            "string": isinstance(value, str),
+            "number": isinstance(value, (int, float)) and not isinstance(value, bool),
+            "integer": isinstance(value, int) and not isinstance(value, bool),
+            "boolean": isinstance(value, bool),
+            "null": value is None,
+        }
+        if isinstance(expected, str) and not type_matches.get(expected, False):
+            return False
+        if "enum" in schema and value not in schema["enum"]:
+            return False
+        if isinstance(value, dict):
+            required = schema.get("required", [])
+            if not isinstance(required, list) or any(key not in value for key in required):
+                return False
+            properties = schema.get("properties", {})
+            if not isinstance(properties, dict):
+                return False
+            if schema.get("additionalProperties") is False and any(
+                key not in properties for key in value
+            ):
+                return False
+            for key, child_schema in properties.items():
+                if key in value and (
+                    not isinstance(child_schema, dict)
+                    or not cls._matches_json_schema(value[key], child_schema)
+                ):
+                    return False
+        if isinstance(value, list):
+            items = schema.get("items")
+            if items is not None and (
+                not isinstance(items, dict)
+                or any(not cls._matches_json_schema(item, items) for item in value)
+            ):
+                return False
+            if "minItems" in schema and len(value) < int(schema["minItems"]):
+                return False
+            if "maxItems" in schema and len(value) > int(schema["maxItems"]):
+                return False
+        if isinstance(value, str):
+            if "minLength" in schema and len(value) < int(schema["minLength"]):
+                return False
+            if "maxLength" in schema and len(value) > int(schema["maxLength"]):
+                return False
+        return True
 
     # ============================================================
     # STATUS
@@ -1141,6 +1509,7 @@ class LLMRouter:
             route_role = "conversation"
             try:
                 selected = self._get_provider_for_purpose(name, "conversation")
+                advertised = self.provider_route(name)
                 available = bool(selected.is_available()) and remaining <= 0.0
                 model = self._safe_model_name(selected.model_name())
                 route_role = str(getattr(selected, "role", route_role))[:32]
@@ -1148,6 +1517,7 @@ class LLMRouter:
                     source = "capability_node"
             except Exception:
                 available = False
+                advertised = ProviderRoute()
             providers.append({
                 "provider": name,
                 "available": available,
@@ -1156,6 +1526,12 @@ class LLMRouter:
                 "route_purpose": "conversation",
                 "route_role": route_role,
                 "cooldown_seconds": round(remaining, 2),
+                "operations": sorted(advertised.operations),
+                "privacy_modes": sorted(advertised.privacy_modes),
+                "cost_class": advertised.cost_class,
+                "structured_output": advertised.structured_output,
+                "deadline_enforced": advertised.deadline_enforced,
+                "fallback_eligible": advertised.fallback_eligible,
             })
 
         return {

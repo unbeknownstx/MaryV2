@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from mary.core.config import Config
-from mary.llm.interface import LLMInterface, LLMResponse
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationPrivacy,
+    LLMInterface,
+    LLMResponse,
+    ProviderRoute,
+)
 from mary.llm.router import LLMRouter
 from mary.orchestration.consultation import ExpertConsultant
 from mary.orchestration.execution import ExecutionStatus, OrchestrationExecutor
@@ -10,13 +16,38 @@ from mary.orchestration.workspace import TaskWorkspaceManager
 
 
 class Provider(LLMInterface):
-    def __init__(self, name): self.name=name; self.calls=0
+    def __init__(self, name): self.name=name; self.calls=0; self.last_messages=[]
     def generate(self, messages, temperature=0.7, max_tokens=2048):
         self.calls += 1
+        self.last_messages = list(messages)
         return LLMResponse(content="useful result", provider=self.name, model="fake")
     def is_available(self): return True
     def provider_name(self): return self.name
     def model_name(self): return "fake"
+    def route_capabilities(self):
+        if self.name == "ollama":
+            return ProviderRoute(
+                privacy_modes=frozenset({
+                    GenerationPrivacy.CLOUD_OK.value,
+                    GenerationPrivacy.REDACT_FIRST.value,
+                    GenerationPrivacy.LOCAL_ONLY.value,
+                }),
+                cost_class=GenerationCost.ZERO_LOCAL.value,
+                deadline_enforced=True,
+            )
+        if self.name == "openai":
+            return ProviderRoute(
+                cost_class=GenerationCost.PAID_LOW.value,
+                deadline_enforced=True,
+                fallback_eligible=False,
+            )
+        return ProviderRoute(deadline_enforced=True)
+    def generate_constrained(self, request, *, timeout_seconds=None):
+        return self.generate(
+            list(request.messages),
+            temperature=0.7 if request.temperature is None else request.temperature,
+            max_tokens=2048 if request.max_tokens is None else request.max_tokens,
+        )
 
 
 def _system():
@@ -106,3 +137,64 @@ def test_forced_expert_route_is_blocked_when_paid_allowed_is_false():
     assert result.status == ExecutionStatus.BLOCKED.value
     assert router.providers["openai"].calls == 0
     assert router.resource_governor.paid_calls == 0
+
+
+def test_generation_plan_constraints_reach_router_request():
+    planner, executor, workspace, router = _system()
+    task = workspace.create_task(
+        "draft structured output",
+        metadata={"structured_output": False, "deadline_seconds": 15},
+    )
+
+    result = executor.execute(planner.plan(task.task_id))
+
+    assert result.success
+    route = router.last_generation_route
+    assert route["operation"] == "task_generation"
+    assert route["privacy"] == "cloud_ok"
+    assert route["cost_class"] == "free_cloud"
+    assert route["deadline_seconds"] == 15.0
+    assert route["correlation_id_present"] is True
+
+
+def test_external_handler_failure_is_normalized_without_exception_prose():
+    planner, executor, workspace, _ = _system()
+    task = workspace.create_task("search current docs")
+    plan = planner.plan(task.task_id)
+
+    def fail(_):
+        raise TimeoutError("internal endpoint and request details")
+
+    result = executor.execute(plan, handlers={"research": fail})
+
+    assert result.status == ExecutionStatus.FAILED.value
+    assert result.error_code == "timeout"
+    assert result.retryable is True
+    assert result.metadata["operation"] == "research"
+    assert "internal endpoint" not in result.content
+
+
+def test_forcing_approval_false_does_not_bypass_redaction_boundary():
+    from dataclasses import replace
+
+    planner, executor, workspace, router = _system()
+    task = workspace.create_task("summarize selected context")
+    plan = planner.plan(task.task_id, privacy="redact_first")
+    forced = replace(plan, requires_approval=False)
+
+    result = executor.execute(forced)
+
+    assert result.status == ExecutionStatus.NEEDS_HANDLER.value
+    assert all(provider.calls == 0 for provider in router.providers.values())
+
+    result = executor.execute(
+        forced,
+        handlers={"redact": lambda _: "safe bounded summary"},
+    )
+
+    assert result.success
+    dispatched = "\n".join(
+        message.content for message in router.providers["groq"].last_messages
+    )
+    assert "safe bounded summary" in dispatched
+    assert task.objective not in dispatched

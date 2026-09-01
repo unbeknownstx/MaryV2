@@ -10,7 +10,15 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from ..interface import LLMInterface, LLMProviderError, LLMResponse
+from ..interface import (
+    GenerationCost,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMInterface,
+    LLMProviderError,
+    LLMResponse,
+    ProviderRoute,
+)
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -18,6 +26,39 @@ _TRUE_VALUES = {"1", "true", "yes", "on"}
 
 class OllamaProvider(LLMInterface):
     """Generate Mary's language responses through a local Ollama server."""
+
+    def route_capabilities(self) -> ProviderRoute:
+        return ProviderRoute(
+            privacy_modes=frozenset({
+                GenerationPrivacy.CLOUD_OK.value,
+                GenerationPrivacy.REDACT_FIRST.value,
+                GenerationPrivacy.LOCAL_ONLY.value,
+            }),
+            cost_class=GenerationCost.ZERO_LOCAL.value,
+            structured_output=True,
+            deadline_enforced=True,
+        )
+
+    def generate_constrained(
+        self,
+        request: GenerationRequest,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        output_format: str | dict[str, Any] | None = None
+        if request.structured_output:
+            output_format = (
+                json.loads(request.structured_schema_json)
+                if request.structured_schema_json is not None
+                else "json"
+            )
+        return self.generate(
+            list(request.messages),
+            temperature=0.7 if request.temperature is None else request.temperature,
+            max_tokens=2048 if request.max_tokens is None else request.max_tokens,
+            _timeout_seconds=timeout_seconds,
+            _output_format=output_format,
+        )
 
     def __init__(
         self,
@@ -75,6 +116,9 @@ class OllamaProvider(LLMInterface):
         messages,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        *,
+        _timeout_seconds: float | None = None,
+        _output_format: str | dict[str, Any] | None = None,
     ) -> LLMResponse:
         payload = {
             "model": self.model,
@@ -94,6 +138,8 @@ class OllamaProvider(LLMInterface):
                 "num_ctx": self.num_ctx,
             },
         }
+        if _output_format is not None:
+            payload["format"] = _output_format
 
         request = urllib.request.Request(
             f"{self.base_url}/api/chat",
@@ -108,7 +154,11 @@ class OllamaProvider(LLMInterface):
         try:
             with urllib.request.urlopen(
                 request,
-                timeout=self.timeout,
+                timeout=(
+                    self.timeout
+                    if _timeout_seconds is None
+                    else max(0.001, min(self.timeout, float(_timeout_seconds)))
+                ),
             ) as response:
                 raw_body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:

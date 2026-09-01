@@ -31,9 +31,15 @@ from mary.llm.router import LLMRouter
 from mary.runtime.turn_policy import TurnPolicyEngine, TurnPolicyDecision
 from mary.conversation import ConversationLane, LaneDecision, classify_conversation_lane
 from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
     LLMMessage,
     LLMProviderError,
     LLMRateLimitError,
+    dispatch_generation,
+    generation_correlation_id,
 )
 
 
@@ -231,8 +237,10 @@ class ReasoningEngine:
             generation_kwargs["purpose"] = routing_purpose
 
         try:
-            response = self.llm.generate(
-                messages=[
+            response = dispatch_generation(
+                self.llm,
+                GenerationRequest(
+                    messages=(
                     LLMMessage(
                         role="system",
                         content=self._system_prompt(context),
@@ -241,8 +249,18 @@ class ReasoningEngine:
                         role="user",
                         content=prompt,
                     ),
-                ],
-                **generation_kwargs,
+                    ),
+                    operation=(
+                        GenerationOperation.CONVERSATION.value
+                        if generation_purpose == "conversation"
+                        else GenerationOperation.TASK_GENERATION.value
+                    ),
+                    privacy=GenerationPrivacy.CLOUD_OK.value,
+                    cost_class=GenerationCost.CONFIGURED.value,
+                    correlation_id=generation_correlation_id("cognitive-turn"),
+                    purpose=generation_kwargs.get("purpose"),
+                    max_tokens=generation_kwargs.get("max_tokens"),
+                ),
             )
         except LLMProviderError as exc:
             rate_limited = isinstance(exc, LLMRateLimitError)

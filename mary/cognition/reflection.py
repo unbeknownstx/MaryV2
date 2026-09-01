@@ -21,7 +21,16 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent
 from mary.cognition.reasoning import ReasoningResult
 from mary.llm.router import LLMRouter
-from mary.llm.interface import LLMMessage, LLMProviderError
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMMessage,
+    LLMProviderError,
+    dispatch_generation,
+    generation_correlation_id,
+)
 from mary.conversation import ConversationLane, choose_reflection_action, local_conversation_repair
 
 
@@ -237,8 +246,10 @@ class ReflectionEngine:
         )
 
         try:
-            response = self.llm.generate(
-                messages=[
+            response = dispatch_generation(
+                self.llm,
+                GenerationRequest(
+                    messages=(
                     LLMMessage(
                         role="system",
                         content=(
@@ -274,13 +285,20 @@ class ReflectionEngine:
                         role="user",
                         content=prompt,
                     ),
-                ],
-                max_tokens=700,
-                **(
-                    {"purpose": str(reasoning.metadata.get("generation_purpose"))}
-                    if reasoning.metadata.get("generation_purpose")
-                    and callable(getattr(self.llm, "conversation_provider_order", None))
-                    else {}
+                    ),
+                    operation=GenerationOperation.EXPERT_REASONING.value,
+                    privacy=GenerationPrivacy.CLOUD_OK.value,
+                    cost_class=GenerationCost.CONFIGURED.value,
+                    correlation_id=generation_correlation_id("reflection"),
+                    purpose=(
+                        str(reasoning.metadata.get("generation_purpose"))
+                        if reasoning.metadata.get("generation_purpose")
+                        and callable(
+                            getattr(self.llm, "conversation_provider_order", None)
+                        )
+                        else None
+                    ),
+                    max_tokens=700,
                 ),
             )
         except LLMProviderError as exc:

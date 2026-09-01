@@ -16,7 +16,14 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMMessage,
+    generation_correlation_id,
+)
 from mary.llm.providers.ollama import OllamaProvider
 from mary.runtime.gateway import RemoteMaryGateway
 
@@ -344,11 +351,29 @@ class DesktopCapabilityNodeAgent:
         if len(messages) != len(raw_messages):
             raise ValueError("llm.ollama task contains an invalid message.")
 
-        response = provider.generate(
-            messages,
+        generation_request = GenerationRequest(
+            messages=tuple(messages),
+            operation=(
+                GenerationOperation.CONVERSATION.value
+                if role in {"conversation", "fast"}
+                else GenerationOperation.TASK_GENERATION.value
+            ),
+            privacy=GenerationPrivacy.LOCAL_ONLY.value,
+            cost_class=GenerationCost.ZERO_LOCAL.value,
+            correlation_id=generation_correlation_id("device-ollama"),
+            purpose=f"device_ollama_{role}",
             temperature=float(args.get("temperature", 0.7)),
             max_tokens=int(args.get("max_tokens", 1024)),
         )
+        constrained = getattr(provider, "generate_constrained", None)
+        if callable(constrained):
+            response = constrained(generation_request)
+        else:
+            response = provider.generate(
+                list(generation_request.messages),
+                temperature=generation_request.temperature,
+                max_tokens=generation_request.max_tokens,
+            )
         content = str(response.content or "").strip()
         if not content:
             raise RuntimeError("Ollama returned an empty response.")

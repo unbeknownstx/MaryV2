@@ -354,6 +354,11 @@ class TaskOrchestrator:
             metadata={
                 "planner": "task_orchestrator_v1",
                 "executes_actions": False,
+                "structured_output": bool(metadata.get("structured_output", False)),
+                "structured_schema_json": metadata.get("structured_schema_json"),
+                "deadline_seconds": self._bounded_deadline(
+                    metadata.get("deadline_seconds")
+                ),
             },
         )
 
@@ -371,6 +376,15 @@ class TaskOrchestrator:
         )
         self._last_plan = plan
         return plan
+
+    @staticmethod
+    def _bounded_deadline(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return max(0.1, min(float(value), 600.0))
+        except (TypeError, ValueError):
+            return None
 
     @classmethod
     def _contains_any(cls, text: str, terms: tuple[str, ...]) -> bool:

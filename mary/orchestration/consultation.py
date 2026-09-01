@@ -10,7 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMMessage,
+    RedactionReceipt,
+    _create_message_redaction_receipt,
+)
 from mary.llm.router import LLMRouter
 from mary.orchestration.models import ProvenanceSource
 from mary.orchestration.workspace import TaskWorkspaceManager
@@ -41,7 +49,13 @@ class ExpertConsultant:
         self.workspace = workspace
 
     def status(self) -> dict[str, Any]:
-        order = self.router._provider_order(None, route="expert")
+        request = GenerationRequest(
+            messages=(LLMMessage(role="user", content="status probe"),),
+            operation=GenerationOperation.EXPERT_REASONING.value,
+            privacy=GenerationPrivacy.CLOUD_OK.value,
+            cost_class=GenerationCost.PAID_LOW.value,
+        )
+        order = self.router.route_order(request, route="expert")
         provider = order[0] if order else "unknown"
         return {
             "route": "expert",
@@ -64,6 +78,11 @@ class ExpertConsultant:
         max_evidence: int = 8,
         max_tokens: int | None = None,
         allow_paid: bool | None = None,
+        privacy: str = GenerationPrivacy.CLOUD_OK.value,
+        deadline_seconds: float | None = None,
+        structured_output: bool = False,
+        structured_schema_json: str | None = None,
+        _redaction_receipt: RedactionReceipt | None = None,
     ) -> ExpertConsultationResult:
         task = self.workspace.get(task_id)
         if task is None:
@@ -91,15 +110,23 @@ class ExpertConsultant:
                 f"limit={governor.limits.paid_calls_per_task}."
             )
 
+        redact_first = privacy == GenerationPrivacy.REDACT_FIRST.value
+        if redact_first and (
+            _redaction_receipt is None
+            or not _redaction_receipt.matches_text(question)
+        ):
+            raise PermissionError(
+                "Redact-first consultation requires trusted redacted question text."
+            )
         prompt = self._build_prompt(
             task_id=task_id,
             question=question,
             context=context,
             max_evidence=max_evidence,
+            include_task_context=not redact_first,
         )
 
-        response = self.router.generate(
-            [
+        generation_messages = (
                 LLMMessage(
                     role="system",
                     content=(
@@ -113,12 +140,33 @@ class ExpertConsultant:
                     ),
                 ),
                 LLMMessage(role="user", content=prompt),
-            ],
-            route="expert",
-            max_tokens=min(
-                int(max_tokens or self.router.config.governance.expert_max_output_tokens),
-                int(self.router.config.governance.expert_max_output_tokens),
+        )
+        message_receipt = (
+            _create_message_redaction_receipt(
+                generation_messages,
+                provenance=_redaction_receipt.provenance,
+            )
+            if _redaction_receipt is not None
+            else None
+        )
+        response = self.router.generate_request(
+            GenerationRequest(
+                messages=generation_messages,
+                operation=GenerationOperation.EXPERT_REASONING.value,
+                privacy=privacy,
+                cost_class=GenerationCost.PAID_LOW.value,
+                structured_output=structured_output,
+                structured_schema_json=structured_schema_json,
+                redaction_receipt=message_receipt,
+                deadline_seconds=deadline_seconds,
+                correlation_id=task.task_id,
+                purpose="expert",
+                max_tokens=min(
+                    int(max_tokens or self.router.config.governance.expert_max_output_tokens),
+                    int(self.router.config.governance.expert_max_output_tokens),
+                ),
             ),
+            route="expert",
         )
 
         attempts = tuple(
@@ -176,15 +224,16 @@ class ExpertConsultant:
         question: str,
         context: Iterable[str],
         max_evidence: int,
+        include_task_context: bool = True,
     ) -> str:
         task = self.workspace.get(task_id)
         if task is None:
             raise KeyError(f"Unknown task: {task_id}")
 
-        lines = [
-            f"TASK OBJECTIVE:\n{task.objective}",
-            f"\nQUESTION FOR THE SPECIALIST:\n{str(question).strip()}",
-        ]
+        lines = []
+        if include_task_context:
+            lines.append(f"TASK OBJECTIVE:\n{task.objective}")
+        lines.append(f"\nQUESTION FOR THE SPECIALIST:\n{str(question).strip()}")
 
         bounded_context = [
             str(item).strip()
@@ -196,7 +245,11 @@ class ExpertConsultant:
             for item in bounded_context[:8]:
                 lines.append(f"- {item[:1600]}")
 
-        evidence = task.evidence[-max(0, int(max_evidence)) :]
+        evidence = (
+            task.evidence[-max(0, int(max_evidence)) :]
+            if include_task_context
+            else []
+        )
         if evidence:
             lines.append("\nCURRENT TASK EVIDENCE:")
             for item in evidence:

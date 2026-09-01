@@ -13,7 +13,14 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from ..interface import LLMInterface, LLMMessage, LLMResponse
+from ..interface import (
+    GenerationCost,
+    GenerationRequest,
+    LLMInterface,
+    LLMMessage,
+    LLMResponse,
+    ProviderRoute,
+)
 
 
 _REASONING_EFFORTS = {
@@ -28,6 +35,25 @@ _REASONING_EFFORTS = {
 
 class OpenAIProvider(LLMInterface):
     """Paid OpenAI expert provider backed by the Responses API."""
+
+    def route_capabilities(self) -> ProviderRoute:
+        return ProviderRoute(
+            cost_class=GenerationCost.PAID_LOW.value,
+            deadline_enforced=True,
+            fallback_eligible=False,
+        )
+
+    def generate_constrained(
+        self,
+        request: GenerationRequest,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        return self._generate(
+            list(request.messages),
+            max_tokens=2048 if request.max_tokens is None else request.max_tokens,
+            timeout_seconds=timeout_seconds,
+        )
 
     def __init__(
         self,
@@ -111,6 +137,19 @@ class OpenAIProvider(LLMInterface):
         max_tokens: int = 2048,
     ) -> LLMResponse:
         del temperature  # Reasoning-model compatibility: keep sampling provider-owned.
+        return self._generate(
+            messages,
+            max_tokens=max_tokens,
+            timeout_seconds=None,
+        )
+
+    def _generate(
+        self,
+        messages: list[LLMMessage],
+        *,
+        max_tokens: int,
+        timeout_seconds: float | None,
+    ) -> LLMResponse:
 
         if not self.api_key:
             raise RuntimeError(
@@ -141,7 +180,12 @@ class OpenAIProvider(LLMInterface):
         if instructions:
             request["instructions"] = instructions
 
-        response = self.client.responses.create(**request)
+        client = self.client
+        if timeout_seconds is not None:
+            client = client.with_options(
+                timeout=max(0.001, min(self.timeout_seconds, timeout_seconds))
+            )
+        response = client.responses.create(**request)
 
         status = str(getattr(response, "status", "") or "").strip().lower()
         finish_reason: str | None

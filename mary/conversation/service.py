@@ -20,8 +20,13 @@ from __future__ import annotations
 from typing import Sequence
 
 from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
     LLMMessage,
     LLMResponse,
+    generation_correlation_id,
 )
 from mary.llm.router import LLMRouter
 
@@ -48,6 +53,7 @@ class ConversationService:
         provider: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        correlation_id: str | None = None,
     ) -> LLMResponse:
         """
         Generate one conversational response.
@@ -76,9 +82,19 @@ class ConversationService:
             )
         )
 
-        return self.router.generate(
-            messages=messages,
+        return self.router.generate_request(
+            GenerationRequest(
+                messages=tuple(messages),
+                operation=GenerationOperation.CONVERSATION.value,
+                privacy=GenerationPrivacy.CLOUD_OK.value,
+                cost_class=GenerationCost.CONFIGURED.value,
+                correlation_id=(
+                    correlation_id
+                    or generation_correlation_id("conversation")
+                ),
+                purpose="conversation",
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
             provider=provider,
-            temperature=temperature,
-            max_tokens=max_tokens,
         )

@@ -25,7 +25,14 @@ from uuid import uuid4
 
 from mary.core.creator_surface import CreatorSurfaceCoordinator
 from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, preview_capability_task
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMMessage,
+    generation_correlation_id,
+)
 from mary.llm.output_quality import inspect_output_quality
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
 from mary.protocol.models import (
@@ -1768,13 +1775,35 @@ class MaryCoreService:
             }
 
         messages = [LLMMessage(role="user", content=prompt)]
+        diagnostic_request = GenerationRequest(
+            messages=tuple(messages),
+            operation=GenerationOperation.CONVERSATION.value,
+            privacy=(
+                GenerationPrivacy.LOCAL_ONLY.value
+                if provider_name == "ollama"
+                else GenerationPrivacy.CLOUD_OK.value
+            ),
+            cost_class=(
+                GenerationCost.ZERO_LOCAL.value
+                if provider_name == "ollama"
+                else GenerationCost.FREE_CLOUD.value
+            ),
+            correlation_id=generation_correlation_id("provider-probe"),
+            purpose=f"diagnostic_{purpose}",
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         generation_started = monotonic()
         try:
-            response = selected.generate(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            constrained = getattr(selected, "generate_constrained", None)
+            if callable(constrained):
+                response = constrained(diagnostic_request)
+            else:
+                response = selected.generate(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
         except Exception as exc:
             return {
                 "ok": False,

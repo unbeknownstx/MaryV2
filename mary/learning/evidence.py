@@ -26,7 +26,15 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Iterable
 
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMMessage,
+    dispatch_generation,
+    generation_correlation_id,
+)
 
 
 @dataclass
@@ -280,6 +288,7 @@ class EvidenceValidator:
 
         attempts: list[dict[str, Any]] = []
         last_failure: str | None = None
+        correlation_id = generation_correlation_id("evidence-validation")
 
         # GPT-OSS and other reasoning models can consume a substantial part of
         # the completion budget before emitting visible final text. Use a
@@ -290,15 +299,23 @@ class EvidenceValidator:
             start=1,
         ):
             try:
-                result = llm.generate(
-                    messages=[
-                        LLMMessage(
-                            role="user",
-                            content=self._validator_user_message(prompt),
+                result = dispatch_generation(
+                    llm,
+                    GenerationRequest(
+                        messages=(
+                            LLMMessage(
+                                role="user",
+                                content=self._validator_user_message(prompt),
+                            ),
                         ),
-                    ],
-                    temperature=self.VALIDATOR_TEMPERATURE,
-                    max_tokens=max_tokens,
+                        operation=GenerationOperation.RESEARCH_SYNTHESIS.value,
+                        privacy=GenerationPrivacy.CLOUD_OK.value,
+                        cost_class=GenerationCost.CONFIGURED.value,
+                        correlation_id=correlation_id,
+                        purpose="research_validation",
+                        temperature=self.VALIDATOR_TEMPERATURE,
+                        max_tokens=max_tokens,
+                    ),
                 )
             except Exception as exc:
                 last_failure = type(exc).__name__
@@ -414,15 +431,23 @@ class EvidenceValidator:
         prompt = self._build_synthesis_prompt(bundle)
 
         try:
-            result = llm.generate(
-                messages=[
-                    LLMMessage(
-                        role="user",
-                        content=prompt,
+            result = dispatch_generation(
+                llm,
+                GenerationRequest(
+                    messages=(
+                        LLMMessage(
+                            role="user",
+                            content=prompt,
+                        ),
                     ),
-                ],
-                temperature=self.VALIDATOR_TEMPERATURE,
-                max_tokens=self.SYNTHESIS_MAX_TOKENS,
+                    operation=GenerationOperation.RESEARCH_SYNTHESIS.value,
+                    privacy=GenerationPrivacy.CLOUD_OK.value,
+                    cost_class=GenerationCost.CONFIGURED.value,
+                    correlation_id=generation_correlation_id("evidence-synthesis"),
+                    purpose="research_synthesis",
+                    temperature=self.VALIDATOR_TEMPERATURE,
+                    max_tokens=self.SYNTHESIS_MAX_TOKENS,
+                ),
             )
         except Exception as exc:
             return EvidenceValidationResult(

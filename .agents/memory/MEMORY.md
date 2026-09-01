@@ -3,3 +3,4 @@
 - [Railway SSH key discovery](railway-ssh-key-discovery.md) — CLI key registration selects keys discovered under ~/.ssh; arbitrary /tmp paths may be ignored despite help text.
 - [Restart-stable preference loading](production-fingerprint-restart-instability.md) — loaded preference chronology must stay observational; never waive the durable fingerprint gate.
 - [Replit preview auth boundary](replit-preview-auth-boundary.md) — development identity headers never replace Mobile bearer auth; preview convenience stays blocked without signed identity.
+- [Capability routing constraints](capability-routing-constraints.md) — provider constraints are enforcement, not labels; redaction proof binds to exact outbound content.

@@ -24,7 +24,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from mary.llm.interface import LLMMessage
+from mary.llm.interface import (
+    GenerationCost,
+    GenerationOperation,
+    GenerationPrivacy,
+    GenerationRequest,
+    LLMMessage,
+    dispatch_generation,
+    generation_correlation_id,
+)
 from mary.tools.code import CodeChange, CodeClient
 
 
@@ -87,20 +95,28 @@ class CodeChangePlanner:
             instruction,
         )
 
-        response = self.llm.generate(
-            messages=[
-                LLMMessage(
-                    role="user",
-                    content=self._build_prompt(
-                        path=path,
-                        instruction=instruction,
-                        source=planning_source,
-                        source_complete=source_complete,
+        response = dispatch_generation(
+            self.llm,
+            GenerationRequest(
+                messages=(
+                    LLMMessage(
+                        role="user",
+                        content=self._build_prompt(
+                            path=path,
+                            instruction=instruction,
+                            source=planning_source,
+                            source_complete=source_complete,
+                        ),
                     ),
-                )
-            ],
-            temperature=0.5,
-            max_tokens=1800,
+                ),
+                operation=GenerationOperation.TOOL_PLANNING.value,
+                privacy=GenerationPrivacy.CLOUD_OK.value,
+                cost_class=GenerationCost.CONFIGURED.value,
+                correlation_id=generation_correlation_id("code-change-planning"),
+                purpose="code_change_planning",
+                temperature=0.5,
+                max_tokens=1800,
+            ),
         )
 
         payload = self._parse_payload(
