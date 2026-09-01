@@ -2,7 +2,7 @@
 
 **Certification date:** 2026-08-31 America/Los_Angeles  
 **Task:** #23  
-**Final verdict:** **DEPLOYMENT READY — MANUAL ACTION REQUIRED**
+**Final verdict:** **PRE-DEPLOYMENT BACKUP VERIFIED — DEPLOYMENT AUTHORIZATION REQUIRED**
 
 Task #23 implementation is locally committed and independently reviewed. This
 certification document is committed separately after the implementation so it
@@ -11,12 +11,12 @@ commit is recorded in the final handoff and is recoverable with:
 
 `git log -1 --format=%H -- docs/certification/MARYV2_SAFE_PRODUCTION_BACKUP_DEPLOYMENT_RESTART_2026-08-31.md`
 
-The full two-commit Task #23 history is release-clean.
+The reviewed Task #23 history is release-clean.
 No GitHub push, Railway deployment, Railway restart, or production learning
-experiment was performed because the environment has no verified Railway
-project/service/volume/restart/rollback authority. A push may trigger an
-automatic Railway deployment, so stopping before push is the required safe
-behavior.
+experiment was performed. Railway project, service, environment, canonical
+volume, active deployment, restart authority, and rollback history are now
+verified. Because GitHub `main` triggers Railway deployment, stopping before
+push remains required until explicit creator authorization.
 
 The production Core remains healthy on the prior deployment. Its authenticated
 Task #23 durable-state endpoint returns HTTP 404, independently confirming that
@@ -24,7 +24,7 @@ the new code is not live.
 
 ## 1. Task #22 commit hash
 
-`4f21b7bd47e41699312276483d4becb8f797aafd`
+`4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`
 
 Short revision: `4f21b7b`  
 Commit title: `Update agent growth logic and preference evidence processing`
@@ -89,9 +89,16 @@ CharacterSourcebook remains a read-only repository/configuration authority. It
 is fingerprinted in the manifest and reconstructed from deployed authored
 sources; it is not copied into mutable Mary state.
 
-**Unresolved production fact:** repository code cannot prove the Railway volume
-mount or whether production `MARY_DATA_DIR` is inside it. Railway service
-settings are authoritative.
+Authorized Railway inspection established:
+
+- project: `outstanding-charm`;
+- service/environment: `MaryV2` / `production`;
+- volume: `maryv2-volume`, Ready, 500 MB;
+- volume mount: `/data`;
+- canonical `MARY_DATA_DIR`: `/data/production-v1`;
+- active source: `unbeknownstx/MaryV2`, branch `main`;
+- active deployment status: `SUCCESS`;
+- active instance status: `RUNNING`.
 
 ## 5. Backup architecture
 
@@ -134,18 +141,24 @@ name protected persistent storage outside `MARY_DATA_DIR`.
 
 ## 6. Backup manifest/fingerprint result
 
-A real local backup was created against the configured Mary data root after the
-implementation commit and independently inspected.
+A real production pre-deployment backup was exported from Railway without
+deploying or restarting Core. Creator lifecycle was offline, active surfaces and
+nodes were zero, and all 12 remote JSON generations had identical SHA-256 values
+before and after transfer.
 
 - Backup ID:
-  `MaryV2-state-20260901-014729Z-fcb53636e6ea`
+  `MaryV2-state-20260901-021008Z-1cf6c48d29a4`
 - Format: `maryv2-state-backup-v2`
 - Verified: `true`
-- File count: `10`
-- Total bytes: `21,615`
+- File count: `12`
+- Total bytes: `72,291`
 - Environment secrets included: `false`
 - Durable-state fingerprint:
-  `fcb53636e6ea2394c3dfb05386890b3d57b3ae9124839432662d2b69b74d4166`
+  `1cf6c48d29a41a36ca14fdb36aa884139935c08dc55ca744d74f9b4270b64af6`
+- Archive SHA-256:
+  `2b064dfa990919a5fa684b7c4cc9ab8505ed50297cc85870574cc4960b237581`
+- Remote before/after JSON-set SHA-256:
+  `ac22a3dc8380ff70e40c5487514b252660c1d9f997fe8a2ebdf8377c1e394005`
 - Sourcebook version: `1.0`
 - Sourcebook records: `189`
 - Sourcebook hash: `49f3c9963de2b35d108d`
@@ -154,20 +167,24 @@ Content-free category summaries:
 
 | Category | Files | Records | Bytes |
 |---|---:|---:|---:|
-| autonomy | 2 | 0 | 39 |
+| autonomy | 3 | 0 | 62 |
 | developed self | 1 | 5 | 472 |
-| engagement | 1 | 6 | 277 |
-| growth | 1 | 8 | 6,379 |
-| preference candidates | 1 | 0 | 335 |
-| relationship | 2 | 0 | 12,732 |
-| training | 1 | 1 | 905 |
-| voice | 1 | 1 | 476 |
+| engagement | 1 | 6 | 635 |
+| growth | 1 | 61 | 58,328 |
+| knowledge | 1 | 0 | 114 |
+| memory | 1 | 0 | 99 |
+| preference candidates | 1 | 0 | 1,391 |
+| relationship | 2 | 0 | 2,958 |
+| training | 1 | 5 | 8,232 |
 
-This is local state evidence, not a Railway production backup.
+The archive and content-free attestation are gitignored, permission mode 0600,
+and retained under `backups/production/`. Raw export and restore staging trees
+were securely erased after verification. The temporary Railway SSH key was
+removed from Railway and the local environment.
 
 ## 7. Restore/reconstruction test result
 
-**PASS — canonical production-equivalent composition**
+**PASS — real production export and canonical reconstruction**
 
 The test performs:
 
@@ -205,10 +222,10 @@ Required sequence:
 
 pre-deployment health
 → current deployment/Core instance/uptime
-→ authenticated durable fingerprint
+→ quiesced no-deploy production export and verified v2 fingerprint
 → CharacterSourcebook fingerprint
-→ verified Railway manual volume backup
-→ optional verified application v2 backup when available
+→ verified off-volume backup
+→ stage `MARY_BACKUP_DIR` without deploying
 → approved commit and rollback target
 → deploy
 → health/new instance
@@ -236,9 +253,15 @@ Production read-only evidence:
 
 The 404 proves the production process does not contain Task #23.
 
-The deployed Git revision is not exposed by the current Core and cannot be
-obtained without Railway deployment metadata. It must not be guessed from
-`origin/main`.
+Authorized Railway deployment metadata proves the deployed revision is:
+
+`4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`
+
+Active Railway deployment:
+`76cc5e90-5f44-4ab9-acf7-de231f521faa`
+
+Active Railway container instance:
+`d160b4b5-bb86-415a-9142-5839cda3fe76`
 
 ## 10. Pre/post Core instance IDs
 
@@ -247,22 +270,23 @@ Content-free pre-deployment production observation:
 - Existing Core instance ID:
   `0a23147b-1afc-4e49-b240-4836b9ab1d57`
 - Observed uptime: `1,363.22` seconds
+- Railway container instance:
+  `d160b4b5-bb86-415a-9142-5839cda3fe76`
 
 Post-deployment instance ID: **not available; no deployment occurred**.  
 Post-restart instance ID: **not available; no restart occurred**.
 
 ## 11. Pre/post durable-state fingerprints/counts
 
-Production pre-deployment fingerprint: **unavailable on the current revision**;
-the authenticated endpoint returns 404.
+Production pre-deployment durable fingerprint from the stable, strict v2
+off-volume export:
+
+`1cf6c48d29a41a36ca14fdb36aa884139935c08dc55ca744d74f9b4270b64af6`
 
 Production post-deployment fingerprint: **not applicable**.
 
-Production memory/developed-self/growth/relationship/shared-work category
-counts: **not collected**, because the safe content-free endpoint is not
-deployed and raw/private state must not be inferred or exposed.
-
-The local verified fingerprint/count result is recorded in section 6.
+Production content-free category counts are recorded in section 6. The current
+HTTP fingerprint endpoint remains unavailable because Task #23 is not deployed.
 
 ## 12. Expected ephemeral-state clearing
 
@@ -290,7 +314,7 @@ Railway production clearing remains unexecuted.
 **Not executed.**
 
 No Task #22 preference experiment was repeated against Railway because Task #23
-is not deployed and no verified production backup exists.
+is not deployed. The verified production backup now exists.
 
 Required progression after the manual gate:
 
@@ -351,20 +375,24 @@ Production post-deployment/post-restart: **not applicable**.
 
 ## 19. Rollback readiness
 
-**Procedure ready; operator control unverified.**
+**Backup and operator controls verified; deployment authorization pending.**
 
 Documented rollback:
 
 1. stop acceptance and new state writes on mismatch;
-2. select the previous known-good Railway deployment and Rollback;
-3. restore the verified Railway volume backup if state is wrong;
-4. review Railway's staged replacement-volume change before deploying it;
+2. select the prior known-good Railway deployment and Rollback;
+3. restore the verified v2 archive into an empty recovery directory if state is
+   wrong;
+4. point `MARY_DATA_DIR` to that verified reconstruction before known-good
+   deployment;
 5. reconstruct and compare fingerprints;
 6. report the discrepancy;
 7. never manually edit Mary's persistent JSON.
 
-The environment has no Railway dashboard/CLI authority to verify or execute
-these controls.
+Authorized Railway CLI access verified deployment history, including the active
+Task #22 deployment and prior rollback candidates. Railway native volume backup
+is unavailable on the current plan, so the off-volume v2 archive is the state
+rollback authority.
 
 ## 20. Focused test results
 
@@ -377,7 +405,8 @@ these controls.
 
 Independent architect review:
 
-**PASS — locally release-ready, with production correctly blocked.**
+**PASS — the verified no-deploy Railway backup closes the infrastructure/backup
+gate; production is correctly blocked solely on explicit creator authorization.**
 
 ## 21. Full-suite result
 
@@ -410,32 +439,25 @@ Final output:
 
 `Release verification PASSED (deterministic/offline gate).`
 
-## 23. Creator/manual Railway action required
+## 23. Creator deployment authorization required
 
-**Single creator action required:**
+The required production location, backup, manifest/fingerprint, offline
+reconstruction, deployment identity, and rollback checks are complete.
 
-In the authoritative Railway Core service, complete the seven
-“Railway-native first backup” checks in
-`docs/operations/PRODUCTION_BACKUP_DEPLOYMENT_RESTART.md`, create the manual
-volume backup, and return only this non-secret evidence:
+**Single creator action required:** authorize execution of the documented
+production sequence. That authorization permits:
 
-1. Railway service/environment name;
-2. attached volume mount path;
-3. confirmation that `MARY_DATA_DIR` resolves inside that volume;
-4. `MARY_BACKUP_DIR` path relationship showing it is protected and outside
-   `MARY_DATA_DIR`;
-5. completed manual volume-backup timestamp/status;
-6. current deployment/revision ID;
-7. confirmation that deliberate restart and previous-deployment rollback
-   controls are available.
+1. staging `MARY_BACKUP_DIR=/data/production-backups` with
+   `--skip-deploys`;
+2. pushing the reviewed Task #23 commits to `main`;
+3. observing the automatic Railway deployment;
+4. running the post-deploy fingerprint, Mobile, live-learning, backup, and
+   controlled-restart certification.
 
-Do not provide tokens, credentials, secret values, or state contents.
+Until explicit authorization is received, do not push, deploy, or restart.
 
-Once this evidence is supplied, execute the documented sequence beginning with
-the verified backup. Do not push first.
+# PRE-DEPLOYMENT BACKUP VERIFIED — DEPLOYMENT AUTHORIZATION REQUIRED
 
-# DEPLOYMENT READY — MANUAL ACTION REQUIRED
-
-Task #23 is locally complete and release-clean. Production deployment, live
-learning certification, and real restart persistence remain correctly blocked
-on one explicit Railway operator action.
+Task #23 is release-clean and now has a verified real production pre-deployment
+backup. Production deployment, live learning certification, and real restart
+persistence remain correctly blocked on explicit creator authorization.

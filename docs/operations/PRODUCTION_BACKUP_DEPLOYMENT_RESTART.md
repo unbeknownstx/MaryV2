@@ -2,11 +2,13 @@
 
 ## Safety boundary
 
-Railway is the hosting provider for the authoritative Core, but repository
-configuration does not identify the Railway project, service, environment,
-branch binding, attached volume, or volume mount path. A GitHub push may trigger
-a deployment. Therefore **do not push, deploy, restart, or run live acceptance**
-until the Railway checks in this runbook are complete.
+Railway is the hosting provider for the authoritative Core. Authorized
+production inspection on 2026-08-31 established project `outstanding-charm`,
+service `MaryV2`, environment `production`, branch `main`, volume
+`maryv2-volume`, mount `/data`, and canonical `MARY_DATA_DIR`
+`/data/production-v1`. A GitHub push triggers a deployment. Therefore **do not
+push, deploy, restart, or run live acceptance** until the backup and creator
+authorization gates in this runbook are complete.
 
 `MARY_DATA_DIR` is the canonical application state root. `MARY_BACKUP_DIR` is a
 separate protected artifact destination. A configured path alone is not proof
@@ -71,12 +73,12 @@ node tokens are never persisted or exported.
 
 ## Backup architecture
 
-### Railway-native first backup
+### Pre-deployment bootstrap backup
 
-The first safe deployment must be protected by a Railway manual volume backup,
-because the application endpoint cannot exist in production before the code
-containing it is deployed. Railway documents that a mounted volume can be
-manually backed up and restored from the service **Backups** tab.
+The first safe deployment must be protected before the application endpoint
+exists in production. A Railway manual volume backup is preferred. On the
+current plan Railway reports **No Backups** and requires a higher plan for
+native Backups/PITR, so Task #23 used the no-deploy export fallback below.
 
 Creator/operator must verify:
 
@@ -84,11 +86,38 @@ Creator/operator must verify:
 2. an attached Railway volume;
 3. the volume mount path;
 4. `MARY_DATA_DIR` resolves inside that mount;
-5. a manual volume backup completes successfully and its timestamp is recorded;
+5. either a manual volume backup completes or a no-deploy export is completed
+   and transferred off the Railway volume;
 6. the prior deployment can be selected for rollback;
 7. the operator can deliberately restart the Core service.
 
 If any item is unknown, stop.
+
+#### No-deploy export fallback
+
+When Railway-native backup is unavailable:
+
+1. authenticate Railway CLI without placing a token in source or chat;
+2. verify the exact project, service, environment, active deployment, volume,
+   mount, and configured `MARY_DATA_DIR`;
+3. disconnect creator surfaces, set creator lifecycle offline, and require zero
+   connected nodes;
+4. record SHA-256 for every JSON generation below `MARY_DATA_DIR`;
+5. use Railway's volume file channel to download only the canonical data root to
+   a permission-restricted off-Railway staging directory;
+6. recompute the remote SHA-256 set and require exact equality;
+7. run the Task #23 strict v2 allowlist/secret scan against the stable copy;
+8. verify ZIP CRC, manifest hashes, whole-state fingerprint, and sourcebook;
+9. restore into an empty offline root and construct a fresh Mary application;
+10. retain only the mode-0600 v2 archive and content-free attestation in a
+    gitignored, access-controlled backup directory;
+11. securely erase raw and restored staging trees;
+12. remove temporary SSH authority and return creator lifecycle online.
+
+This fallback occurred on 2026-08-31 without a push, deployment, or Core
+restart. The retained archive is off the Railway volume at
+`backups/production/MaryV2-state-20260901-021008Z-1cf6c48d29a4.zip`;
+it is gitignored and mode 0600.
 
 ### Application-level verified backup
 
@@ -110,6 +139,12 @@ After Task #23 code is running:
 
 `GET /v1/admin/durable-state` returns the current content-free fingerprint,
 counts, Core instance ID, and uptime for pre/post comparisons.
+
+For this service, stage `MARY_BACKUP_DIR=/data/production-backups` with
+Railway's `--skip-deploys` option before pushing. It is outside canonical
+`/data/production-v1` but on the attached volume. Every application backup
+needed for disaster recovery must then be exported off that volume and
+validated; a same-volume copy alone is not sufficient.
 
 ## Offline restore and recovery validation
 
@@ -136,8 +171,8 @@ Record only content-free operational evidence.
 2. Call `/v1/health`; record old Core instance ID and uptime.
 3. Call authenticated `/v1/admin/durable-state`; record counts/fingerprints.
 4. Record CharacterSourcebook count/version/hash.
-5. Create and verify a Railway manual volume backup.
-6. Create and verify an application v2 backup if Task #23 is already deployed.
+5. Require the verified pre-deployment native backup or no-deploy v2 export.
+6. Stage `MARY_BACKUP_DIR` without triggering a deployment.
 7. Confirm the approved commit and rollback target.
 8. Deploy the approved commit through the known Railway deployment control.
 9. Wait for `/v1/health` to pass; record new deployment/Core instance and uptime.
@@ -159,11 +194,15 @@ If health, reconstruction, fingerprints, counts, or sourcebook checks disagree:
 
 1. stop acceptance testing and avoid further canonical writes;
 2. use Railway **Deployments → last known-good deployment → Rollback**;
-3. if state itself is wrong, restore the verified Railway volume backup and
-   review the staged volume change before deploying it;
-4. reconstruct and compare fingerprints again;
-5. report the discrepancy;
-6. never repair Mary by editing persistent JSON manually.
+3. if native backup exists and state itself is wrong, restore the verified
+   Railway volume backup and review the staged volume change before deploying
+   it;
+4. if native backup is unavailable, restore the verified v2 archive offline
+   into a new empty directory on the volume, point `MARY_DATA_DIR` to that
+   reconstruction, and deploy only the known-good code;
+5. reconstruct and compare fingerprints again;
+6. report the discrepancy;
+7. never repair Mary by editing persistent JSON manually.
 
 Railway documents that a code rollback restores a previous deployment image and
 variables as a new active deployment. Railway volume restore stages a replacement
@@ -172,18 +211,15 @@ unmounted.
 
 ## Current manual gate
 
-This environment has no Railway project/service/environment identifiers, linked
-CLI context, or restart/rollback authority. GitHub `main` may be bound to
-automatic Railway deployment, so even a push is unsafe before that is known.
+The authoritative production location, restart control, and rollback history
+are now verified. A stable off-volume v2 backup and offline reconstruction proof
+are complete. Production still runs Task #22 commit
+`4f21b7b81cbaf0c5fb79cbd44d98623d2b9fcc7f`; Task #23 is not deployed.
 
-**Single creator action required:** in the authoritative Railway Core service,
-complete the seven “Railway-native first backup” checks above, create the manual
-volume backup, and return the non-secret evidence (service/environment name,
-volume mount path, `MARY_DATA_DIR` and `MARY_BACKUP_DIR` path relationship,
-backup completion timestamp, current deployment/revision ID, and confirmation
-that restart and rollback controls are available).
-
-Do not provide tokens, credentials, secret values, or state contents.
+**Single creator action required:** explicitly authorize execution of the
+controlled production sequence beginning with staging `MARY_BACKUP_DIR` using
+`--skip-deploys`, then pushing the reviewed Task #23 commits. Until that
+authorization is received, do not push, deploy, or restart.
 
 ## Railway references
 
