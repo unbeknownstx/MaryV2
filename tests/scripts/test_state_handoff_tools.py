@@ -355,6 +355,131 @@ def test_state_backup_fingerprint_is_deterministic_for_same_state(tmp_path):
     )
 
 
+def test_developed_preference_load_and_shutdown_are_fingerprint_stable(tmp_path):
+    from mary.runtime.application import create_application
+
+    data = tmp_path / "data"
+    memory_path = data / "memory" / "memory.json"
+    developed_path = data / "personality" / "developed_self.json"
+    promotion_path = data / "personality" / "preference_promotion.json"
+    knowledge_path = data / "knowledge" / "knowledge.json"
+
+    first = create_application(
+        memory_path=memory_path,
+        developed_self_path=developed_path,
+        preference_promotion_path=promotion_path,
+        knowledge_path=knowledge_path,
+        name="fingerprint-seed",
+    )
+    first.mary.set_developed_preference(
+        "creator interaction response length",
+        category="interaction",
+        strength=0.8,
+        confidence=0.9,
+        source="creator_explicit",
+    )
+    assert first.close() is True
+    before = durable_fingerprint(data)
+
+    second = create_application(
+        memory_path=memory_path,
+        developed_self_path=developed_path,
+        preference_promotion_path=promotion_path,
+        knowledge_path=knowledge_path,
+        name="fingerprint-restart",
+    )
+    loaded = second.mary.preferences.get_preference(
+        "creator interaction response length"
+    )
+    assert loaded is not None
+    assert second.close() is True
+    after = durable_fingerprint(data)
+
+    assert after["durable_state_fingerprint"] == before["durable_state_fingerprint"]
+    developed_record = next(
+        item
+        for item in before["files"]
+        if item["path"] == "data/personality/developed_self.json"
+    )
+    assert developed_record["category"] == "developed_self"
+
+
+def test_preference_load_preserves_timestamp_metadata_exactly():
+    from mary.personality.preferences import Preferences
+
+    stored = {
+        "historical": {
+            "name": "historical",
+            "category": "interaction",
+            "strength": 0.7,
+            "polarity": 1.0,
+            "confidence": 0.9,
+            "source": "creator_explicit",
+            "created_at": "2026-08-31T01:02:03+00:00",
+            "updated_at": "2026-08-31T04:05:06+00:00",
+        },
+        "legacy_missing": {
+            "name": "legacy_missing",
+            "source": "experience",
+        },
+        "legacy_malformed": {
+            "name": "legacy_malformed",
+            "source": "experience",
+            "created_at": 17,
+            "updated_at": None,
+        },
+    }
+
+    preferences = Preferences()
+    preferences.load(stored)
+    serialized = preferences.to_dict()
+
+    assert serialized["historical"]["created_at"] == stored["historical"]["created_at"]
+    assert serialized["historical"]["updated_at"] == stored["historical"]["updated_at"]
+    assert "created_at" not in serialized["legacy_missing"]
+    assert "updated_at" not in serialized["legacy_missing"]
+    assert serialized["legacy_malformed"]["created_at"] == 17
+    assert serialized["legacy_malformed"]["updated_at"] is None
+
+
+def test_real_durable_developed_preference_mutation_changes_fingerprint(tmp_path):
+    from mary.runtime.application import create_application
+
+    data = tmp_path / "data"
+    app = create_application(
+        memory_path=data / "memory" / "memory.json",
+        developed_self_path=data / "personality" / "developed_self.json",
+        preference_promotion_path=data / "personality" / "preference_promotion.json",
+        knowledge_path=data / "knowledge" / "knowledge.json",
+        name="fingerprint-mutation",
+    )
+    app.mary.set_developed_preference(
+        "creator interaction response length",
+        strength=0.7,
+        confidence=0.9,
+        source="creator_explicit",
+    )
+    app.close()
+    before = durable_fingerprint(data)
+
+    app = create_application(
+        memory_path=data / "memory" / "memory.json",
+        developed_self_path=data / "personality" / "developed_self.json",
+        preference_promotion_path=data / "personality" / "preference_promotion.json",
+        knowledge_path=data / "knowledge" / "knowledge.json",
+        name="fingerprint-mutation-reload",
+    )
+    app.mary.adjust_developed_preference(
+        "creator interaction response length",
+        0.1,
+        source="creator_explicit",
+    )
+    app.close()
+    after = durable_fingerprint(data)
+
+    assert after["durable_state_fingerprint"] != before["durable_state_fingerprint"]
+
+
 def test_state_backup_fails_closed_for_unclassified_durable_json(tmp_path):
     data = tmp_path / "data"
     unknown = data / "relationship" / "shadow_authority.json"

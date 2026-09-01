@@ -561,7 +561,7 @@ class Preferences:
             ):
                 continue
 
-            self.set_preference(
+            loaded = self.set_preference(
                 name=preference.get(
                     "name",
                     name,
@@ -587,6 +587,20 @@ class Preferences:
                     "system",
                 ),
             )
+
+            # Loading durable state must be observational. ``set_preference``
+            # supplies timestamps for genuinely new mutations, but replaying a
+            # serialized preference must preserve its original chronology.
+            normalized_name = str(loaded.get("name") or "")
+            stored = self.preferences.get(normalized_name)
+            if stored is not None:
+                for timestamp_key in ("created_at", "updated_at"):
+                    if timestamp_key in preference:
+                        stored[timestamp_key] = deepcopy(
+                            preference[timestamp_key]
+                        )
+                    else:
+                        stored.pop(timestamp_key, None)
 
     # ============================================================
     # RESET
