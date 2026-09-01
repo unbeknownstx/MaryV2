@@ -88,6 +88,7 @@ class CreatorOfflineRequest:
 @dataclass(frozen=True)
 class TurnRequest:
     text: str
+    turn_id: str = field(default_factory=lambda: f"turn_{uuid4().hex}")
     conversation_id: str = field(default_factory=lambda: f"conversation_{uuid4().hex}")
     device_id: str = "unknown-device"
     surface: str = "client"
@@ -104,6 +105,10 @@ class TurnRequest:
         if len(text) > 32_000:
             raise ValueError("text exceeds the 32,000 character protocol limit.")
         conversation_id = str(payload.get("conversation_id") or f"conversation_{uuid4().hex}").strip()
+        turn_id = _node_id(
+            payload.get("turn_id") or f"turn_{uuid4().hex}",
+            field_name="turn_id",
+        )
         device_id = str(payload.get("device_id") or "unknown-device").strip()
         surface = str(payload.get("surface") or "client").strip().lower()[:64]
         voice_input = bool(payload.get("voice_input", False))
@@ -113,6 +118,7 @@ class TurnRequest:
             raise ValueError(f"requested_mode must be one of: {', '.join(sorted(_ALLOWED_MODES))}.")
         return cls(
             text=text,
+            turn_id=turn_id,
             conversation_id=conversation_id[:160],
             device_id=device_id[:160],
             surface=surface or "client",

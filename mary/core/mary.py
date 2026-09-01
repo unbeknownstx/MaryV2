@@ -703,7 +703,11 @@ class Mary:
             turn_origin in {"mary_presence", "mary_initiative", "presence"}
             or input_authority in {"environment_context_only", "context_only"}
         )
-        creator_authored_turn = not initiative_turn
+        creator_authored_turn = bool(
+            not initiative_turn
+            and turn_origin == "creator"
+            and input_authority == "creator"
+        )
 
         conversation_id = str(
             (
@@ -1459,6 +1463,13 @@ class Mary:
             if isinstance(runtime_context, dict)
             else "creator"
         )
+        turn_envelope = (
+            runtime_context.get("turn", {})
+            if isinstance(runtime_context, dict)
+            else {}
+        )
+        if not isinstance(turn_envelope, dict):
+            turn_envelope = {}
 
         if not initiative_turn:
             result = self._apply_conversation_emotion(
@@ -1616,6 +1627,21 @@ class Mary:
                     result.metadata["growth"] = self.growth.observe_turn(
                         input_text=input_text,
                         result=result,
+                        creator_authored=bool(
+                            not initiative_turn
+                            and str(
+                                runtime_context.get("turn_origin") or ""
+                            ).strip().lower()
+                            == "creator"
+                            and str(
+                                runtime_context.get("input_authority") or ""
+                            ).strip().lower()
+                            == "creator"
+                        ),
+                        input_authority=str(
+                            runtime_context.get("input_authority") or "creator"
+                        ),
+                        turn_id=str(turn_envelope.get("turn_id") or ""),
                     )
             except Exception as exc:
                 result.metadata["growth_error"] = f"{type(exc).__name__}: {exc}"

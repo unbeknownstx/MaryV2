@@ -9,7 +9,7 @@ existing cognition, memory, relationship, growth, routing, or realtime systems.
 from __future__ import annotations
 
 from copy import deepcopy
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -110,6 +110,8 @@ class MaryCoreService:
         self.instance_id = str(instance_id or uuid4())
         self.started_monotonic = monotonic()
         self._turn_lock = RLock()
+        self._turn_replays: OrderedDict[str, tuple[str, TurnResponse]] = OrderedDict()
+        self._turn_replay_capacity = 256
         self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
         self.creator_surfaces = creator_surface_coordinator or CreatorSurfaceCoordinator(
             idle_seconds=creator_idle_seconds,
@@ -189,23 +191,59 @@ class MaryCoreService:
             # A lease can expire while a turn waits for the canonical writer
             # lock, so re-check at the actual application execution boundary.
             self.enforce_execution_policy("turn.execute")
+            replay_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "text": turn.text,
+                        "conversation_id": turn.conversation_id,
+                        "device_id": turn.device_id,
+                        "surface": turn.surface,
+                        "voice_input": turn.voice_input,
+                        "requested_mode": turn.requested_mode,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
+            replay = self._turn_replays.get(turn.turn_id)
+            if replay is not None:
+                previous_digest, previous_response = replay
+                if previous_digest != replay_digest:
+                    raise ValueError(
+                        "turn_id was already used for a different turn request."
+                    )
+                self._turn_replays.move_to_end(turn.turn_id)
+                payload = previous_response.to_dict()
+                trace = current_turn_trace()
+                payload["request_id"] = trace.request_id if trace is not None else ""
+                return TurnResponse(**payload)
+
             before = self._state_fingerprint()
             if turn.requested_mode:
                 self.mary.engagement.set_mode(turn.requested_mode)
 
             pipeline_started = monotonic()
             with observe_turn_stage("application_turn"):
-                result = self.application.run(
-                    turn.text,
-                    metadata={
+                application_metadata = {
                         "surface": turn.surface or "client",
                         "transport": "core",
                         "conversation_id": turn.conversation_id,
                         "device_id": turn.device_id,
                         "requested_mode": turn.requested_mode,
                         "voice_input": bool(turn.voice_input),
-                    },
-                )
+                }
+                application_run = self.application.run
+                if "turn_id" in inspect.signature(application_run).parameters:
+                    result = application_run(
+                        turn.text,
+                        turn_id=turn.turn_id,
+                        metadata=application_metadata,
+                    )
+                else:
+                    result = application_run(
+                        turn.text,
+                        metadata=application_metadata,
+                    )
             trace = current_turn_trace()
             if trace is not None:
                 trace.set_turn_id(result.turn_id)
@@ -219,7 +257,7 @@ class MaryCoreService:
             last_plan = dict(engagement.get("last_plan", {}) or {})
             response_text = str(result.output or "")
 
-            return TurnResponse(
+            response = TurnResponse(
                 response=response_text,
                 conversation_id=turn.conversation_id,
                 turn_id=str(result.turn_id or ""),
@@ -233,6 +271,11 @@ class MaryCoreService:
                     pipeline_ms=pipeline_ms,
                 ),
             )
+            self._turn_replays[turn.turn_id] = (replay_digest, response)
+            self._turn_replays.move_to_end(turn.turn_id)
+            while len(self._turn_replays) > self._turn_replay_capacity:
+                self._turn_replays.popitem(last=False)
+            return response
         finally:
             self._turn_lock.release()
 

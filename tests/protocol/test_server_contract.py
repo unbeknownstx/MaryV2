@@ -33,11 +33,41 @@ def test_http_contract_requires_creator_auth(monkeypatch):
         response = client.post(
             "/v1/turn",
             headers=headers,
-            json={"text": "hello", "conversation_id": "c1", "device_id": "iphone"},
+            json={
+                "text": "hello",
+                "turn_id": "client-turn-1",
+                "conversation_id": "c1",
+                "device_id": "iphone",
+            },
         )
         assert response.status_code == 200
         assert response.json()["response"] == "hi"
         assert response.json()["conversation_id"] == "c1"
+        replay = client.post(
+            "/v1/turn",
+            headers=headers,
+            json={
+                "text": "hello",
+                "turn_id": "client-turn-1",
+                "conversation_id": "c1",
+                "device_id": "iphone",
+            },
+        )
+        assert replay.status_code == 200
+        assert replay.json()["turn_id"] == "client-turn-1"
+        assert len(app.state.mary_core.application.calls) == 1
+
+        conflicting_reuse = client.post(
+            "/v1/turn",
+            headers=headers,
+            json={
+                "text": "different text",
+                "turn_id": "client-turn-1",
+                "conversation_id": "c1",
+                "device_id": "iphone",
+            },
+        )
+        assert conflicting_reuse.status_code == 422
 
 
 def test_websocket_contract_first_frame_auth(monkeypatch):

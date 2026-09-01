@@ -327,12 +327,14 @@ class MaryClient:
         self,
         text: str,
         *,
+        turn_id: str | None = None,
         conversation_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
     ) -> TurnResponse:
         payload = TurnRequest.from_dict({
             "text": text,
+            "turn_id": turn_id,
             "conversation_id": conversation_id,
             "device_id": self.device_id,
             "surface": self.surface,

@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from .experience import ExperienceJournal
+from .preference_evidence import (
+    extract_preference_evidence,
+    stable_evidence_id,
+)
 
 
 _ACHIEVEMENT_RE = re.compile(
@@ -55,7 +59,15 @@ class GrowthEngine:
             pass
         return ok
 
-    def observe_turn(self, *, input_text: str, result: Any) -> dict[str, Any]:
+    def observe_turn(
+        self,
+        *,
+        input_text: str,
+        result: Any,
+        creator_authored: bool = True,
+        input_authority: str = "creator",
+        turn_id: str = "",
+    ) -> dict[str, Any]:
         metadata = dict(getattr(result, "metadata", {}) or {})
         reasoning = dict(getattr(getattr(result, "reasoning", None), "metadata", {}) or {})
         emotion = dict(metadata.get("emotion_appraisal", {}) or {})
@@ -91,6 +103,15 @@ class GrowthEngine:
             },
         })
 
+        preference_evidence = self._observe_creator_preference(
+            input_text=input_text,
+            experience_id=str(experience.get("id") or ""),
+            creator_authored=creator_authored,
+            input_authority=input_authority,
+            turn_id=turn_id,
+            generation_succeeded=not bool(reasoning.get("llm_unavailable", False)),
+        )
+
         promoted_semantic = 0
         if self.auto_consolidate and importance >= 0.55:
             try:
@@ -103,6 +124,13 @@ class GrowthEngine:
         if self.auto_develop_preferences:
             promoted_preferences = self._promote_strict_preference_candidates()
             self.preference_promotions += len(promoted_preferences)
+        if preference_evidence.get("detected"):
+            preference_evidence["disposition"] = (
+                "promoted"
+                if preference_evidence.get("_candidate_name") in promoted_preferences
+                else preference_evidence.get("disposition", "deferred")
+            )
+        preference_evidence.pop("_candidate_name", None)
 
         milestones: list[dict[str, Any]] = []
         if _ACHIEVEMENT_RE.search(str(input_text)) and (shared_work.get("recorded") or importance >= 0.75):
@@ -132,11 +160,90 @@ class GrowthEngine:
             "experience_id": experience.get("id"),
             "importance": importance,
             "semantic_promotions": promoted_semantic,
-            "preference_promotions": promoted_preferences,
+            "preference_promotions": len(promoted_preferences),
+            "preference_evidence": preference_evidence,
             "milestones": [m.get("id") for m in milestones],
             "timestamp": datetime.now().isoformat(),
         }
         return dict(self.last_growth)
+
+    def _observe_creator_preference(
+        self,
+        *,
+        input_text: str,
+        experience_id: str,
+        creator_authored: bool,
+        input_authority: str,
+        turn_id: str,
+        generation_succeeded: bool,
+    ) -> dict[str, Any]:
+        """Record one allow-listed creator signal without exposing its text."""
+
+        authority = str(input_authority or "").strip().lower()
+        if not creator_authored or authority != "creator":
+            return {
+                "detected": False,
+                "disposition": "blocked",
+                "block_reason": "non_creator_authority",
+            }
+
+        evidence = extract_preference_evidence(input_text)
+        if evidence is None:
+            return {
+                "detected": False,
+                "disposition": "not_applicable",
+            }
+        if not generation_succeeded:
+            return {
+                "detected": False,
+                "evidence_class": evidence.evidence_class,
+                "signal": evidence.signal,
+                "disposition": "blocked",
+                "block_reason": "failed_turn",
+            }
+
+        evidence_id = stable_evidence_id(
+            turn_id=turn_id,
+            fallback_id=experience_id,
+            evidence=evidence,
+        )
+        existing = self.mary.preference_promotion.get_candidate(evidence.name)
+        existing_observations = (
+            list(existing.get("observations", []) or [])
+            if isinstance(existing, dict)
+            else []
+        )
+        duplicate = self.mary.preference_promotion.has_evidence_id(
+            evidence.name,
+            evidence_id,
+        )
+
+        evaluation = self.mary.observe_preference_experience(
+            evidence.name,
+            category=evidence.category,
+            strength=evidence.strength,
+            polarity=evidence.polarity,
+            confidence=evidence.confidence,
+            source=f"creator_{evidence.evidence_class}",
+            reason=f"{evidence.evidence_class}:{evidence.signal}",
+            evidence_id=evidence_id,
+        )
+        return {
+            "detected": True,
+            "evidence_class": evidence.evidence_class,
+            "signal": evidence.signal,
+            "candidate_created": existing is None and not duplicate,
+            "observation_count": int(evaluation.get("observation_count", 0) or 0),
+            "gate_outcome": (
+                "duplicate"
+                if duplicate
+                else "base_eligible"
+                if evaluation.get("eligible")
+                else "deferred"
+            ),
+            "disposition": "duplicate" if duplicate else "deferred",
+            "_candidate_name": evidence.name,
+        }
 
     def _promote_strict_preference_candidates(self) -> list[str]:
         promoted: list[str] = []

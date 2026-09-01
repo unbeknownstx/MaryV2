@@ -255,6 +255,7 @@ class TurnMindStateBuilder:
             recent_conversation=recent_conversation or [],
             active_curiosity=bool(agency.get("active_curiosities")),
         ).to_dict()
+        preferences = self._preference_snapshot()
         disposition = self._build_disposition(
             input_text=input_text,
             intent_type=intent_type,
@@ -264,9 +265,9 @@ class TurnMindStateBuilder:
             agency=agency,
             emotion=emotion,
             continuity=continuity,
+            preferences=preferences,
         )
         values = self._value_snapshot()
-        preferences = self._preference_snapshot()
         character_expression = self._active_character_expression(
             input_text=input_text,
             intent_type=intent_type,
@@ -783,7 +784,22 @@ class TurnMindStateBuilder:
         if not callable(get_strongest):
             return []
 
-        raw = list(get_strongest(limit=10))
+        raw = list(get_strongest(limit=None))
+        interaction_preferences = [
+            item
+            for item in raw
+            if isinstance(item, dict)
+            and str(item.get("category") or "").strip().lower()
+            == "creator_interaction"
+            and str(item.get("source") or "").strip().lower()
+            == "experience_promotion"
+        ]
+        other_preferences = [
+            item
+            for item in raw
+            if item not in interaction_preferences
+        ]
+        raw = (interaction_preferences + other_preferences)[:10]
         compact: list[dict[str, Any]] = []
         for item in raw:
             if not isinstance(item, dict):
@@ -1088,6 +1104,7 @@ class TurnMindStateBuilder:
         agency: dict[str, Any],
         emotion: dict[str, Any],
         continuity: dict[str, Any],
+        preferences: list[dict[str, Any]] = (),
     ) -> ResponseDisposition:
         traits = _safe_dict(personality.get("traits"))
         style = _safe_dict(personality.get("style"))
@@ -1134,6 +1151,47 @@ class TurnMindStateBuilder:
         elif any(word in creator_style for word in ("detailed", "thorough", "long")):
             verbosity = max(verbosity, 0.72)
 
+        interaction_preferences = {
+            str(item.get("name") or "").strip().lower(): item
+            for item in preferences
+            if isinstance(item, dict)
+            and str(item.get("category") or "").strip().lower()
+            == "creator_interaction"
+            and str(item.get("source") or "").strip().lower()
+            == "experience_promotion"
+        }
+        learned_instructions: list[str] = []
+
+        length_preference = interaction_preferences.get(
+            "creator interaction response length"
+        )
+        if length_preference:
+            if float(length_preference.get("polarity", 0.0) or 0.0) > 0:
+                verbosity = min(verbosity, 0.34)
+                learned_instructions.append(
+                    "Honor the developed interaction preference for concise responses."
+                )
+            else:
+                verbosity = max(verbosity, 0.76)
+                learned_instructions.append(
+                    "Honor the developed interaction preference for detailed responses."
+                )
+
+        directness_preference = interaction_preferences.get(
+            "creator interaction directness"
+        )
+        if directness_preference:
+            if float(directness_preference.get("polarity", 0.0) or 0.0) > 0:
+                directness = max(directness, 0.9)
+                learned_instructions.append(
+                    "Honor the developed interaction preference for direct answers."
+                )
+            else:
+                directness = min(directness, 0.48)
+                learned_instructions.append(
+                    "Honor the developed interaction preference for tactful delivery."
+                )
+
         drive = str(continuity.get("drive", "react"))
         emotion_intensity = _clamp(emotion.get("turn_intensity", emotion.get("intensity", 0.0)) or 0.0)
         try:
@@ -1150,6 +1208,15 @@ class TurnMindStateBuilder:
                 verbosity = max(verbosity, 0.48)
             elif drive == "react":
                 verbosity = min(max(verbosity, 0.36), 0.56)
+
+        # Learned interaction length is applied after transient cadence. A
+        # durable, governed creator preference should shape delivery without a
+        # routine conversational clamp silently overriding it.
+        if length_preference:
+            if float(length_preference.get("polarity", 0.0) or 0.0) > 0:
+                verbosity = min(verbosity, 0.34)
+            else:
+                verbosity = max(verbosity, 0.76)
 
         words = [part for part in str(input_text or "").split() if part]
         short_social_reaction = (
@@ -1172,6 +1239,31 @@ class TurnMindStateBuilder:
         follow_up_urge = _clamp(
             float(traits.get("curiosity", 0.8)) * (0.32 if active_curiosity else 0.12)
         ) if question_allowed else 0.0
+
+        follow_up_preference = interaction_preferences.get(
+            "creator interaction follow-up questions"
+        )
+        if follow_up_preference:
+            if float(follow_up_preference.get("polarity", 0.0) or 0.0) < 0:
+                question_allowed = False
+                follow_up_urge = 0.0
+                learned_instructions.append(
+                    "Honor the developed interaction preference by not asking follow-up questions."
+                )
+            else:
+                learned_instructions.append(
+                    "A relevant follow-up question is welcome when the turn naturally supports one."
+                )
+
+        list_preference = interaction_preferences.get(
+            "creator interaction list structure"
+        )
+        if list_preference:
+            learned_instructions.append(
+                "Use bullet or numbered lists when structure helps."
+                if float(list_preference.get("polarity", 0.0) or 0.0) > 0
+                else "Prefer natural prose over bullet or numbered lists."
+            )
 
         emotion_name = str(emotion.get("turn_primary", emotion.get("primary", "neutral")))
         cadence_instruction = (
@@ -1221,6 +1313,7 @@ class TurnMindStateBuilder:
             "When preferred length is micro, give one compact natural social beat, usually one or two sentences, and stop unless the creator explicitly asked for more.",
             "Ask at most one follow-up question, and only when it grows naturally from the conversation or an active curiosity. Follow the continuity question budget; curiosity does not require a question.",
             "Use callbacks to recent conversation or relevant memories when they genuinely fit; do not force them.",
+            *tuple(learned_instructions),
             *tuple(continuity.get("instructions", [])),
             "Disagree respectfully when Mary's reasoning or values point somewhere different instead of reflexively agreeing.",
             (

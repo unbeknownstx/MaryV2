@@ -170,6 +170,9 @@ class PreferencePromotionSystem:
             evidence_id or f"evidence_{uuid.uuid4().hex}"
         ).strip()
 
+        if self.has_evidence_id(normalized_name, normalized_evidence_id):
+            return self.evaluate(normalized_name)
+
         candidate = self.candidates.get(normalized_name)
         if candidate is None:
             now = datetime.now().isoformat()
@@ -392,6 +395,34 @@ class PreferencePromotionSystem:
 
     def get_candidates(self) -> List[Dict[str, Any]]:
         return [deepcopy(item) for item in self.candidates.values()]
+
+    def has_evidence_id(self, name: str, evidence_id: str) -> bool:
+        """Check active and decided candidates for an already-counted event."""
+
+        normalized_name = self._normalize_name(name)
+        normalized_evidence_id = str(evidence_id or "").strip()
+        if not normalized_name or not normalized_evidence_id:
+            return False
+
+        candidates: list[Dict[str, Any]] = []
+        active = self.candidates.get(normalized_name)
+        if isinstance(active, dict):
+            candidates.append(active)
+        for decision in self.history:
+            if not isinstance(decision, dict):
+                continue
+            if self._normalize_name(decision.get("name", "")) != normalized_name:
+                continue
+            candidate = decision.get("candidate")
+            if isinstance(candidate, dict):
+                candidates.append(candidate)
+
+        return any(
+            str(observation.get("evidence_id") or "") == normalized_evidence_id
+            for candidate in candidates
+            for observation in list(candidate.get("observations", []) or [])
+            if isinstance(observation, dict)
+        )
 
     def get_history(self, limit: int | None = None) -> List[Dict[str, Any]]:
         result = deepcopy(self.history)

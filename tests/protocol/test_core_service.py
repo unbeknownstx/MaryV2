@@ -53,9 +53,9 @@ class FakeApplication:
         self.mary = FakeMary()
         self.state = SimpleNamespace(to_dict=lambda: {"status": "ready"})
         self.calls = []
-    def run(self, text, metadata=None):
+    def run(self, text, turn_id=None, metadata=None):
         self.calls.append((text, dict(metadata or {})))
-        return SimpleNamespace(success=True, output="hi", error=None, turn_id="turn-1", metadata={"pipeline_values": {}})
+        return SimpleNamespace(success=True, output="hi", error=None, turn_id=turn_id or "turn-1", metadata={"pipeline_values": {}})
     def save(self):
         return True
     def close(self):

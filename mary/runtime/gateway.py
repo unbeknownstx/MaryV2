@@ -48,6 +48,7 @@ class MaryRuntimeGateway(Protocol):
         text: str,
         *,
         conversation_id: str,
+        turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
     ) -> GatewayTurnResult: ...
@@ -130,6 +131,7 @@ class LocalMaryGateway:
 
         result = self.application.run(
             text,
+            turn_id=turn_id,
             metadata={
                 "surface": self.surface,
                 "transport": "in_process",
@@ -487,6 +489,7 @@ class RemoteMaryGateway:
         text: str,
         *,
         conversation_id: str,
+        turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
     ) -> GatewayTurnResult:
@@ -499,11 +502,16 @@ class RemoteMaryGateway:
             # Hold the surface boundary through the accepted turn. Closing a
             # presentation waits for in-flight work, then disconnects last, so
             # the turn cannot resurrect an ownerless creator lease.
+            turn_kwargs = {
+                "conversation_id": conversation_id,
+                "requested_mode": requested_mode,
+                "voice_input": bool(voice_input),
+            }
+            if turn_id is not None:
+                turn_kwargs["turn_id"] = turn_id
             response = self.client.turn(
                 text,
-                conversation_id=conversation_id,
-                requested_mode=requested_mode,
-                voice_input=bool(voice_input),
+                **turn_kwargs,
             )
         return GatewayTurnResult(
             text=response.response,
