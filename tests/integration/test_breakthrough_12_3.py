@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from mary.core.config import Config
 from mary.core.mary import Mary
 from mary.cognition.intent import IntentType
@@ -9,6 +11,33 @@ from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.runtime.environment import RuntimeEnvironment
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class CapturingProvider(LLMInterface):
@@ -77,12 +106,13 @@ def _clear_host_env(monkeypatch) -> None:
 
 def test_macbook_first_time_reaction_is_personal_not_runtime_dump(monkeypatch):
     _clear_host_env(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
 
     with patch("mary.runtime.environment.platform.system", return_value="Darwin"):
-        result = mary.process("hey Mary, we're running on my MacBook for the first time. what do you think?")
+        result = _run(app, "hey Mary, we're running on my MacBook for the first time. what do you think?")
 
     assert result.intent.intent_type != IntentType.SELF_QUERY
     assert result.reasoning.metadata["generation_purpose"] == "conversation"
@@ -93,12 +123,13 @@ def test_macbook_first_time_reaction_is_personal_not_runtime_dump(monkeypatch):
 
 def test_hybrid_runtime_turn_injects_grounded_macos_context(monkeypatch):
     _clear_host_env(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
 
     with patch("mary.runtime.environment.platform.system", return_value="Darwin"):
-        mary.process("we're running on my MacBook for the first time what do u think")
+        app.run("we're running on my MacBook for the first time what do u think")
 
     combined = "\n".join(str(message.content) for message in providers["groq"].last_messages)
     assert "runtime_context" in combined
@@ -110,12 +141,13 @@ def test_hybrid_runtime_turn_injects_grounded_macos_context(monkeypatch):
 
 def test_pure_models_question_remains_deterministic_runtime_introspection(monkeypatch):
     _clear_host_env(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
 
     with patch("mary.runtime.environment.platform.system", return_value="Darwin"):
-        result = mary.process("what models can you use right now?")
+        result = _run(app, "what models can you use right now?")
 
     assert result.intent.intent_type == IntentType.SELF_QUERY
     assert result.reasoning.metadata["generation_purpose"] == "runtime_introspection"
@@ -125,12 +157,13 @@ def test_pure_models_question_remains_deterministic_runtime_introspection(monkey
 
 def test_pure_host_change_question_remains_deterministic(monkeypatch):
     _clear_host_env(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
 
     with patch("mary.runtime.environment.platform.system", return_value="Darwin"):
-        result = mary.process("does anything about how you work change because were not on my pc?")
+        result = _run(app, "does anything about how you work change because were not on my pc?")
 
     assert result.intent.intent_type == IntentType.SELF_QUERY
     assert providers["groq"].calls == 0

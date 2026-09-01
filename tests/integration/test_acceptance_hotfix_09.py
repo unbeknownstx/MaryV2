@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.cognition.intent import IntentType
 from mary.core.config import Config
 from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.llm.router import LLMRouter
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class FakeProvider(LLMInterface):
@@ -111,7 +137,8 @@ def test_session_override_beats_default_conversation_policy():
 
 def test_natural_go_into_ollama_phrase_is_detected(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("go into ollama llm")
     assert intent.intent_type == IntentType.TOOL_USE
     assert intent.parameters["operation"] == "set_session"
@@ -120,7 +147,8 @@ def test_natural_go_into_ollama_phrase_is_detected(tmp_path, monkeypatch):
 
 def test_how_can_i_let_you_use_ollama_is_runtime_query_not_model_guess(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("how can i let you use ollama?")
     assert intent.intent_type == IntentType.SELF_QUERY
     assert intent.parameters["self_query_type"] == "runtime_architecture"
@@ -128,12 +156,13 @@ def test_how_can_i_let_you_use_ollama_is_runtime_query_not_model_guess(tmp_path,
 
 def test_normal_mary_conversation_uses_local_first_without_manual_switch(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     providers["ollama"].content = "Yeah, I'm here. We can just talk."
     _wire(mary, router)
 
-    result = mary.process("idk i just wanna talk for a bit")
+    result = _run(app, "idk i just wanna talk for a bit")
 
     assert result.reasoning.metadata["provider"] == "ollama"
     assert result.reasoning.metadata["generation_purpose"] == "conversation"
@@ -143,7 +172,8 @@ def test_normal_mary_conversation_uses_local_first_without_manual_switch(tmp_pat
 
 def test_request_intent_keeps_task_general_route_available(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     _wire(mary, router)
 
@@ -161,7 +191,8 @@ def test_request_intent_keeps_task_general_route_available(tmp_path, monkeypatch
 
 def test_status_exposes_both_conversation_and_task_routes(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     status = mary.status()["cognition"]
     assert status["provider_order"][0] == "groq"
     assert status["conversation_provider_order"][0] == "ollama"

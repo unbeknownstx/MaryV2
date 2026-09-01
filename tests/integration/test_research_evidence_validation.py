@@ -1,5 +1,5 @@
-from mary.core.mary import Mary
 from mary.llm.interface import LLMResponse
+from mary.runtime.application import create_application
 from mary.tools.web import SearchResult
 
 
@@ -58,25 +58,35 @@ class FakeRouter:
         return True
 
 
-def test_live_research_path_repairs_draft_before_final_response():
-    mary = Mary()
-    fake = FakeRouter()
-
-    mary.llm = fake
-    mary.reasoning.llm = fake
-    mary.reflection.llm = fake
-    mary.evaluator.llm = fake
-    mary.tools.web.search_provider = FakeSearchProvider()
-
-    result = mary.process(
-        "search the web for the latest Python release"
+def test_live_research_path_repairs_draft_before_final_response(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "data"))
+    app = create_application(
+        memory_path=tmp_path / "state" / "memory.json",
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
     )
+    mary = app.mary
+    fake = FakeRouter()
+    try:
+        mary.llm = fake
+        mary.reasoning.llm = fake
+        mary.reflection.llm = fake
+        mary.evaluator.llm = fake
+        mary.tools.web.search_provider = FakeSearchProvider()
 
-    assert "preview release" in result.final_response
-    assert "rolling out" not in result.final_response
-    assert "Sources:" in result.final_response
-    assert result.reasoning.metadata["evidence_validation"]["validated"] is True
-    assert result.reasoning.metadata["research_mode"] == "single_pass_grounded_synthesis"
-    assert result.reflection.metadata["mode"] == "evidence_validation_reuse"
-    assert len(fake.calls) == 1
-    assert mary.reasoning.evidence_validator is mary.evidence_validator
+        result = app.run("search the web for the latest Python release")
+        cycle = result.metadata["pipeline_values"]["cognitive_cycle"]
+
+        assert "preview release" in result.output
+        assert "rolling out" not in result.output
+        assert "Sources:" in result.output
+        assert cycle.reasoning.metadata["evidence_validation"]["validated"] is True
+        assert cycle.reasoning.metadata["research_mode"] == "single_pass_grounded_synthesis"
+        assert cycle.reflection.metadata["mode"] == "evidence_validation_reuse"
+        assert len(fake.calls) == 1
+        assert mary.reasoning.evidence_validator is mary.evidence_validator
+    finally:
+        app.close()

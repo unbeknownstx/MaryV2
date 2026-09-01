@@ -1,13 +1,14 @@
 """Deterministic verifier for the MaryV2 convergence upgrade."""
 from __future__ import annotations
 
-from mary.core.mary import Mary
 from mary.creative import ProductionFormat, Shot, build_production_plan, capability_jobs
+from mary.runtime.application import create_application
 from mary.runtime.root_authority import MaryRootAuthority
 
 
 def main() -> int:
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
     checks = []
 
     def check(label: str, condition: bool) -> None:
@@ -32,17 +33,20 @@ def main() -> int:
     check("animation production plans reference + motion + edit jobs", [x["kind"] for x in jobs] == ["image.generate", "video.render", "edit.assemble"])
     check("creative planning does not silently authorize jobs", all(bool(x.get("requires_approval")) for x in jobs))
 
-    print("=" * 72)
-    print("MARYV2 CONVERGENCE VERIFICATION")
-    print("=" * 72)
-    for label, ok in checks:
-        print(f"{'PASS' if ok else 'FAIL'}  {label}")
-    print("=" * 72)
-    if all(ok for _, ok in checks):
-        print("MARYV2 CONVERGENCE INSTALLED CORRECTLY")
-        return 0
-    print("MARYV2 CONVERGENCE VERIFICATION FAILED")
-    return 1
+    try:
+        print("=" * 72)
+        print("MARYV2 CONVERGENCE VERIFICATION")
+        print("=" * 72)
+        for label, ok in checks:
+            print(f"{'PASS' if ok else 'FAIL'}  {label}")
+        print("=" * 72)
+        if all(ok for _, ok in checks):
+            print("MARYV2 CONVERGENCE INSTALLED CORRECTLY")
+            return 0
+        print("MARYV2 CONVERGENCE VERIFICATION FAILED")
+        return 1
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

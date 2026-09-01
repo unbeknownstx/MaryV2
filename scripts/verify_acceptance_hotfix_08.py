@@ -10,10 +10,10 @@ from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import IntentType
 from mary.cognition.reasoning import ReasoningResult
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.expression.emotion import Emotion
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.llm.router import LLMRouter
+from mary.runtime.application import create_application
 
 
 class FakeProvider(LLMInterface):
@@ -60,13 +60,17 @@ def router_fixture() -> tuple[LLMRouter, dict[str, FakeProvider]]:
     return router, providers
 
 
-def wire_router(mary: Mary, router: LLMRouter) -> None:
+def wire_router(mary, router: LLMRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
     mary.expert_consultant.router = router
     mary.task_orchestrator.router = router
     mary.task_executor.router = router
+
+
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def main() -> None:
@@ -77,16 +81,23 @@ def main() -> None:
     original = Path.cwd()
     with tempfile.TemporaryDirectory(prefix="maryv2_hotfix08_") as directory:
         os.chdir(directory)
+        app = None
+        paid_app = None
         try:
-            mary = Mary()
+            app = create_application(
+                memory_path=Path(directory) / "data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary = app.mary
             intent = mary.cognition.detect_intent("go ahead and use ollama my local llm")
             check("natural Ollama command selects process-local model control", intent.intent_type == IntentType.TOOL_USE and intent.parameters.get("operation") == "set_session")
 
             router, providers = router_fixture()
             providers["ollama"].content = "A fish is an aquatic vertebrate that typically breathes through gills."
             wire_router(mary, router)
-            control = mary.process("go ahead and use ollama my local llm")
-            answer = mary.process("what is a fish?")
+            control = _turn(app, "go ahead and use ollama my local llm")
+            answer = _turn(app, "what is a fish?")
             check("route control becomes active without roleplaying a call", "Local-only generation is active" in control.final_response)
             check("next real generated turn actually uses Ollama", answer.reasoning.metadata.get("provider") == "ollama" and providers["groq"].calls == 0)
 
@@ -124,12 +135,17 @@ def main() -> None:
             )
             check("disagreement produces attentive curiosity instead of defensiveness", appraisal.emotion == Emotion.CURIOSITY and appraisal.relationship_relevance >= 0.9)
 
-            paid_mary = Mary()
+            paid_app = create_application(
+                memory_path=Path(directory) / "paid_data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            paid_mary = paid_app.mary
             paid_router, paid_providers = router_fixture()
             paid_providers["openai"].content = "Expert: separate subjective language from verified capability use."
             paid_providers["groq"].content = "Yeah. I can go deeper while still being exact about what my runtime actually did."
             wire_router(paid_mary, paid_router)
-            paid_result = paid_mary.process("go ahead and call open ai and think bigger about this interaction")
+            paid_result = _turn(paid_app, "go ahead and call open ai and think bigger about this interaction")
             check("explicit OpenAI request performs exactly one paid expert call", paid_providers["openai"].calls == 1 and paid_router.resource_governor.paid_calls == 1)
             check("Mary records paid expert provenance while synthesizing as herself", paid_result.reasoning.metadata.get("expert_consultation", {}).get("provider") == "openai" and paid_result.reasoning.metadata.get("provider") == "groq")
 
@@ -145,6 +161,10 @@ def main() -> None:
             fallback = str(feeling.get("fallback_response", "")).lower()
             check("neutral emotion meter still exposes grounded relational attentiveness", "steady" in fallback and "care" in fallback)
         finally:
+            if paid_app is not None:
+                paid_app.close()
+            if app is not None:
+                app.close()
             os.chdir(original)
 
     print("=" * 72)

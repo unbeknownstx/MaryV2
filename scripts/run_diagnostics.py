@@ -6,19 +6,16 @@ Mary's existing diagnostic system.
 """
 
 from mary.core.diagnostics import MaryDiagnostics
-from mary.core.mary import Mary
+from mary.runtime.application import create_application
 
 
 def main() -> None:
-    mary = Mary()
-
-    diagnostics = MaryDiagnostics(
-        mary
-    )
-
-    print(
-        diagnostics.report()
-    )
+    app = create_application()
+    try:
+        diagnostics = MaryDiagnostics(app.mary)
+        print(diagnostics.report())
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

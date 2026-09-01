@@ -1,10 +1,27 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.cognition.intent import IntentType
 from mary.core.mary import Mary
 from mary.expression.emotion import Emotion
 from mary.llm.interface import LLMResponse
 from mary.runtime.state_audit import audit_creator_state
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class SequenceRouter:
@@ -39,18 +56,24 @@ class SequenceRouter:
         return ["test"]
 
 
-def _mary(router: SequenceRouter | None = None) -> Mary:
-    mary = Mary()
+def _mary(router: SequenceRouter | None = None) -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    mary = app.mary
     router = router or SequenceRouter()
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
-    return mary
+    return app
 
 
 def test_imperfect_self_question_routes_without_question_mark(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = _mary()
+    app = _mary()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what do u feel in our interactions")
     assert intent.intent_type == IntentType.SELF_QUERY
     assert intent.parameters["self_query_type"] == "relationship_feelings"
@@ -59,7 +82,8 @@ def test_imperfect_self_question_routes_without_question_mark(tmp_path, monkeypa
 
 def test_imperfect_creator_questions_stay_local(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = _mary()
+    app = _mary()
+    mary = app.mary
 
     relationship = mary.cognition.detect_intent(
         "what do u currently understand about me and our relationship"
@@ -77,7 +101,8 @@ def test_imperfect_creator_questions_stay_local(tmp_path, monkeypatch):
 
 def test_relational_compliment_is_feedback_not_speech_query(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = _mary()
+    app = _mary()
+    mary = app.mary
     intent = mary.cognition.detect_intent(
         "i notice thats where u shine i can see a difference you actually care how u talk to me"
     )
@@ -88,8 +113,9 @@ def test_relational_compliment_is_feedback_not_speech_query(tmp_path, monkeypatc
 def test_imperfect_relational_compliment_colors_same_turn_with_warmth(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     router = SequenceRouter(["That means a lot to me. I want the way I talk with you to feel honest and like me."])
-    mary = _mary(router)
-    result = mary.process(
+    app = _mary(router)
+    mary = app.mary
+    result = _run(app,
         "thats where u shine i can see a difference you actually care how u talk to me"
     )
 
@@ -104,8 +130,9 @@ def test_relationship_feeling_question_is_self_grounded(tmp_path, monkeypatch):
     router = SequenceRouter([
         "In my current represented state, talking with you feels warm and attentive. I care about being honest with you."
     ])
-    mary = _mary(router)
-    result = mary.process("what do u feel in our interactions")
+    app = _mary(router)
+    mary = app.mary
+    result = _run(app, "what do u feel in our interactions")
 
     assert result.intent.intent_type == IntentType.SELF_QUERY
     assert result.intent.parameters["self_query_type"] == "relationship_feelings"
@@ -115,9 +142,10 @@ def test_relationship_feeling_question_is_self_grounded(tmp_path, monkeypatch):
 
 def test_shorthand_creator_preference_can_learn_without_rewriting_evidence(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = _mary(SequenceRouter(["Yeah, I can do that."]))
+    app = _mary(SequenceRouter(["Yeah, I can do that."]))
+    mary = app.mary
     original = "i prefer u to be direct"
-    result = mary.process(original)
+    result = _run(app, original)
 
     learning = result.metadata.get("natural_relationship_learning", {})
     assert learning.get("learned") is True
@@ -131,7 +159,8 @@ def test_shorthand_creator_preference_can_learn_without_rewriting_evidence(tmp_p
 
 def test_durable_goal_can_answer_shared_work_without_assistant_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = _mary()
+    app = _mary()
+    mary = app.mary
     learned = mary.relationship.learn_explicit(
         "my goal is finish MaryV2",
         source="creator_explicit",
@@ -147,7 +176,8 @@ def test_durable_goal_can_answer_shared_work_without_assistant_history(tmp_path,
 
 def test_probe_profile_stays_auditable_but_is_hidden_from_normal_creator_overview(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = _mary()
+    app = _mary()
+    mary = app.mary
     learned = mary.relationship.learn_explicit(
         "my test animal is a red panda",
         source="creator_explicit",

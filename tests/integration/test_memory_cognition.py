@@ -1,5 +1,21 @@
-from mary.core.mary import Mary
+import pytest
+
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
+from mary.runtime.application import create_application
+
+_applications = []
+
+
+@pytest.fixture(autouse=True)
+def _isolated_canonical_application(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "data"))
+    _applications.clear()
+    try:
+        yield
+    finally:
+        for app in reversed(_applications):
+            app.close()
+        _applications.clear()
 
 
 class FakeLLM(LLMInterface):
@@ -30,8 +46,16 @@ class FakeLLM(LLMInterface):
         return "test-model"
 
 
-def create_test_mary() -> Mary:
-    mary = Mary()
+def create_test_mary():
+    app = create_application(
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    _applications.append(app)
+    mary = app.mary
 
     mary.llm.register_provider(
         "fake",

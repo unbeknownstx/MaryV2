@@ -2,28 +2,31 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mary.core.mary import Mary
-from mary.ecosystem import MaryEcosystem
 from mary.presence import PresenceEventType, PresenceManager
+from mary.runtime.application import create_application
 
 
 def test_companion_pulse_reads_existing_workspaces_without_new_owner(tmp_path, monkeypatch):
     monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "data"))
-    mary = Mary()
-    ecosystem = MaryEcosystem(mary)
+    app = create_application(auto_save=False, load_memory=False,
+                             load_developed_self=False, load_preference_promotion=False,
+                             load_knowledge=False)
+    try:
+        ecosystem = app.ecosystem
+        ecosystem.command.add("Polish Mary Home", kind="project", priority=4)
+        project = ecosystem.study.create_project("CompTIA")
+        ecosystem.study.add_card(project["id"], "HTTPS port?", "443")
+        ecosystem.inbox.add("Quiet note", importance=.5)
 
-    ecosystem.command.add("Polish Mary Home", kind="project", priority=4)
-    project = ecosystem.study.create_project("CompTIA")
-    ecosystem.study.add_card(project["id"], "HTTPS port?", "443")
-    ecosystem.inbox.add("Quiet note", importance=.5)
-
-    pulse = ecosystem.companion_snapshot()
-    assert pulse["counts"]["active_tasks"] == 1
-    assert pulse["counts"]["study_due"] == 1
-    assert pulse["counts"]["inbox_unread"] == 1
-    assert pulse["top_tasks"][0]["title"] == "Polish Mary Home"
-    assert "not an autonomous planner" in pulse["semantics"]
-    assert not (ecosystem.root / "companion.json").exists()
+        pulse = ecosystem.companion_snapshot()
+        assert pulse["counts"]["active_tasks"] == 1
+        assert pulse["counts"]["study_due"] == 1
+        assert pulse["counts"]["inbox_unread"] == 1
+        assert pulse["top_tasks"][0]["title"] == "Polish Mary Home"
+        assert "not an autonomous planner" in pulse["semantics"]
+        assert not (ecosystem.root / "companion.json").exists()
+    finally:
+        app.close()
 
 
 def test_workspace_presence_pathways_do_not_force_interruption(tmp_path):
@@ -64,11 +67,16 @@ def test_focus_idle_behavior_is_local_animation_only(tmp_path):
 
 def test_companion_pulse_focus_mode_has_priority(tmp_path, monkeypatch):
     monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "data"))
-    mary = Mary()
-    ecosystem = MaryEcosystem(mary)
-    ecosystem.command.add("One task")
-    ecosystem.focus.start(25, task="Finish the desktop pass")
-    pulse = ecosystem.companion_snapshot()
-    assert pulse["mode"] == "focus"
-    assert pulse["focus"]["active"] is True
-    assert pulse["primary_action"]["screen"] == "focus"
+    app = create_application(auto_save=False, load_memory=False,
+                             load_developed_self=False, load_preference_promotion=False,
+                             load_knowledge=False)
+    try:
+        ecosystem = app.ecosystem
+        ecosystem.command.add("One task")
+        ecosystem.focus.start(25, task="Finish the desktop pass")
+        pulse = ecosystem.companion_snapshot()
+        assert pulse["mode"] == "focus"
+        assert pulse["focus"]["active"] is True
+        assert pulse["primary_action"]["screen"] == "focus"
+    finally:
+        app.close()

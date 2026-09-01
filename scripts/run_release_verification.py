@@ -244,12 +244,23 @@ def run_pytest() -> bool:
 def run_diagnostics() -> bool:
     _heading("SYSTEM DIAGNOSTICS")
     from mary.core.diagnostics import MaryDiagnostics
-    from mary.core.mary import Mary
+    from mary.runtime.application import create_application
     with _offline_process_environment():
-        mary = Mary()
-        diagnostics = MaryDiagnostics(mary)
-        print(diagnostics.report())
-        summary = diagnostics.summary()
+        with tempfile.TemporaryDirectory(prefix="maryv2_release_diagnostics_") as directory:
+            app = create_application(
+                memory_path=Path(directory) / "data" / "memory" / "memory.json",
+                auto_save=False,
+                load_memory=False,
+                load_developed_self=False,
+                load_preference_promotion=False,
+                load_knowledge=False,
+            )
+            try:
+                diagnostics = MaryDiagnostics(app.mary)
+                print(diagnostics.report())
+                summary = diagnostics.summary()
+            finally:
+                app.close()
     return bool(
         summary.get("healthy")
         and summary.get("failed") == 0
@@ -395,6 +406,7 @@ def run_live_web() -> bool:
         memory_path = Path(directory) / "memory.json"
         saved_data_dir = os.environ.get("MARY_DATA_DIR")
         os.environ["MARY_DATA_DIR"] = str(Path(directory) / "data")
+        app = None
         try:
             app = create_application(
                 memory_path=memory_path,
@@ -405,6 +417,8 @@ def run_live_web() -> bool:
                 "search the web for the latest Python news"
             )
         finally:
+            if app is not None:
+                app.close()
             if saved_data_dir is None:
                 os.environ.pop("MARY_DATA_DIR", None)
             else:

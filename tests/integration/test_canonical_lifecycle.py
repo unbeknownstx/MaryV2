@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from mary.autonomy.actions import ActionPermission
 from mary.core.service import MaryCoreService
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.protocol.server import create_app
 from mary.runtime.application import create_application
@@ -18,6 +18,20 @@ from mary.runtime.turn_observability import (
     bind_turn_trace,
     reset_turn_trace,
 )
+
+_applications = []
+
+
+@pytest.fixture(autouse=True)
+def _close_canonical_applications():
+    """Ensure each composed runtime releases its owned services."""
+    _applications.clear()
+    try:
+        yield
+    finally:
+        for application in reversed(_applications):
+            application.close()
+        _applications.clear()
 
 
 class LifecycleFakeLLM(LLMInterface):
@@ -68,11 +82,7 @@ def _application(
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "mary-data"))
-    mary = Mary()
-    mary.llm.register_provider("lifecycle-fake", LifecycleFakeLLM(response))
-    mary.config.llm.provider = "lifecycle-fake"
-    return create_application(
-        mary=mary,
+    app = create_application(
         memory_path=tmp_path / "state" / "memory" / "memory.json",
         developed_self_path=tmp_path / "state" / "personality" / "developed_self.json",
         preference_promotion_path=tmp_path / "state" / "personality" / "preference_promotion.json",
@@ -84,9 +94,14 @@ def _application(
         load_knowledge=False,
         name="canonical-lifecycle-integration",
     )
+    mary = app.mary
+    mary.llm.register_provider("lifecycle-fake", LifecycleFakeLLM(response))
+    mary.config.llm.provider = "lifecycle-fake"
+    _applications.append(app)
+    return app
 
 
-def _authoritative_state(mary: Mary) -> dict[str, Any]:
+def _authoritative_state(mary) -> dict[str, Any]:
     """Capture only authorities a provider response is not allowed to rewrite."""
 
     return {

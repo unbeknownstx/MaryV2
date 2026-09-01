@@ -64,17 +64,21 @@ def main() -> int:
             developed_self_path=root / "personality" / "developed.json",
             preference_promotion_path=root / "personality" / "promotion.json",
         )
-        mary = app.mary
-        before = mary.growth.status()["journal"]["records"]
-        result = mary.process("go ahead and ask me some questions and get to know me")
-        after = mary.growth.status()["journal"]["records"]
-        _check("learning invitation uses a real conversational question", "?" in result.final_response)
-        _check("completed meaningful turn enters the experience journal", after == before + 1)
-        _check(
-            "model dialogue is not durable self-development evidence",
-            mary.growth.status()["policy"]["model_dialogue_counts_as_self_evidence"] is False,
-        )
-        app.close()
+        try:
+            mary = app.mary
+            before = mary.growth.status()["journal"]["records"]
+            result = app.run(
+                "go ahead and ask me some questions and get to know me"
+            ).metadata["pipeline_values"]["cognitive_cycle"]
+            after = mary.growth.status()["journal"]["records"]
+            _check("learning invitation uses a real conversational question", "?" in result.final_response)
+            _check("completed meaningful turn enters the experience journal", after == before + 1)
+            _check(
+                "model dialogue is not durable self-development evidence",
+                mary.growth.status()["policy"]["model_dialogue_counts_as_self_evidence"] is False,
+            )
+        finally:
+            app.close()
 
     mobile = (ROOT / "mobile_web" / "app.js").read_text(encoding="utf-8")
     html = (ROOT / "mobile_web" / "index.html").read_text(encoding="utf-8")

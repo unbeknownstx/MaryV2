@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from mary.cognition.intent import IntentType
-from mary.core.mary import Mary
+from mary.runtime.application import create_application
 
 
 def check(label: str, condition: bool) -> None:
@@ -17,7 +17,8 @@ def main() -> None:
     print("MARY V2 LONG-SESSION HARDENING")
     print("=" * 72)
 
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
 
     feeling = mary.cognition.detect_intent(
         "Hey Mary, we've been working on you for quite a while today. "
@@ -131,9 +132,12 @@ def main() -> None:
         "routing_strategy" in status and bool(status.get("provider_order")),
     )
 
-    print("-" * 72)
-    print("RESULT: PASS")
-    print("The first long-session routing/memory/continuity regressions are guarded.")
+    try:
+        print("-" * 72)
+        print("RESULT: PASS")
+        print("The first long-session routing/memory/continuity regressions are guarded.")
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

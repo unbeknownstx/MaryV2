@@ -1,7 +1,7 @@
 """Verify MaryV2 bounded resource and paid-call governance."""
 from __future__ import annotations
 
-from mary.core.mary import Mary
+from mary.runtime.application import create_application
 
 
 def check(label: str, condition: bool) -> None:
@@ -14,7 +14,8 @@ def main() -> int:
     print("=" * 72)
     print("MARYV2 RESOURCE GOVERNANCE")
     print("=" * 72)
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
     limits = mary.config.governance
     governor = mary.llm.resource_governor
 
@@ -25,9 +26,12 @@ def main() -> int:
     check("paid calls are capped per task", limits.paid_calls_per_task >= 1 and governor.paid_remaining("probe") == limits.paid_calls_per_task)
     status = governor.status()
     check("resource status contains counters but no prompt/message bodies", "messages" not in status and "content" not in repr(status.get("last_generation", {})).lower())
-    print("=" * 72)
-    print("RESOURCE GOVERNANCE VERIFIED")
-    return 0
+    try:
+        print("=" * 72)
+        print("RESOURCE GOVERNANCE VERIFIED")
+        return 0
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

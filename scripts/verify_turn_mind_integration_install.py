@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
 from mary.llm.interface import LLMResponse
+from mary.runtime.application import create_application
 
 
 class FakeRouter:
@@ -39,7 +39,7 @@ class FakeRouter:
         return True
 
 
-def _wire(mary: Mary, router: FakeRouter) -> None:
+def _wire(mary, router: FakeRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
@@ -64,10 +64,11 @@ def main() -> int:
             os.environ["MARY_LOCAL_MIND_ENABLED"] = "false"
 
             router = FakeRouter()
-            mary = Mary()
+            app = create_application()
+            mary = app.mary
             _wire(mary, router)
 
-            first = mary.process("Hello Mary")
+            first = app.run("Hello Mary").metadata["pipeline_values"]["cognitive_cycle"]
             mind = first.context.mind_state
             required = {
                 "identity", "biography", "personality", "character", "values",
@@ -83,7 +84,7 @@ def main() -> int:
                 raise AssertionError("natural response spent an unnecessary reflection LLM call")
             _pass("natural Mary response uses one LLM call; reflection is local")
 
-            second = mary.process("That was interesting.")
+            second = app.run("That was interesting.").metadata["pipeline_values"]["cognitive_cycle"]
             history = second.context.conversation
             if not any(item.get("role") == "user" and item.get("content") == "Hello Mary" for item in history):
                 raise AssertionError("previous creator turn was not fed into cognition")
@@ -101,9 +102,12 @@ def main() -> int:
             generic = FakeRouter(
                 "Great to hear that! Anything else you'd like to tackle next?"
             )
-            mary2 = Mary()
+            app2 = create_application()
+            mary2 = app2.mary
             _wire(mary2, generic)
-            revised = mary2.process("I finally got it working and all the tests passed.")
+            revised = app2.run(
+                "I finally got it working and all the tests passed."
+            ).metadata["pipeline_values"]["cognitive_cycle"]
             if revised.final_response != "Finally. That one fought us way harder than it should have.":
                 raise AssertionError("generic assistant response was not actually revised")
             if len(generic.calls) != 2:
@@ -115,6 +119,10 @@ def main() -> int:
             _pass("normal Mary turns are committed through the existing dialogue/expression systems")
 
         finally:
+            if 'app2' in locals():
+                app2.close()
+            if 'app' in locals():
+                app.close()
             if previous_local_mind is None:
                 os.environ.pop("MARY_LOCAL_MIND_ENABLED", None)
             else:

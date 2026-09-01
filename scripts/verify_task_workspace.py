@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from mary.core.mary import Mary
 from mary.orchestration import ProvenanceSource, TaskStatus
+from mary.runtime.application import create_application
 
 
 def _pass(message: str) -> None:
@@ -15,7 +15,8 @@ def main() -> int:
     print("MARY V2 TASK WORKSPACE V1")
     print("=" * 72)
 
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
     manager = mary.task_workspace
 
     before_memory = mary.memory.status()
@@ -83,13 +84,16 @@ def main() -> int:
     assert status["promotion_policy"] == "explicit_existing_paths_only"
     _pass("runtime status exposes the task persistence/promotion boundary")
 
-    print("-" * 72)
-    print("RESULT: PASS")
-    print(
-        "Mary now has a structured temporary place to organize work without "
-        "turning model/tool output into durable identity or memory."
-    )
-    return 0
+    try:
+        print("-" * 72)
+        print("RESULT: PASS")
+        print(
+            "Mary now has a structured temporary place to organize work without "
+            "turning model/tool output into durable identity or memory."
+        )
+        return 0
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

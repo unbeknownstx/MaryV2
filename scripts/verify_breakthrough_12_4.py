@@ -5,13 +5,17 @@ import tempfile
 from pathlib import Path
 
 from mary.cognition.intent import Intent, IntentType
-from mary.core.mary import Mary
+from mary.runtime.application import create_application
 
 
 def check(label: str, condition: bool) -> None:
     if not condition:
         raise AssertionError(label)
     print(f"PASS {label}")
+
+
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def main() -> None:
@@ -22,8 +26,14 @@ def main() -> None:
     original = Path.cwd()
     with tempfile.TemporaryDirectory(prefix="maryv2_bt12_4_") as directory:
         os.chdir(directory)
+        restarted_app = None
         try:
-            mary = Mary()
+            app = create_application(
+                memory_path=Path(directory) / "data" / "memory" / "memory.json",
+                auto_save=True, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary = app.mary
             query = mary.cognition.detect_intent(
                 "what do you remember about what we've been working on together?"
             )
@@ -36,8 +46,14 @@ def main() -> None:
             )
             check("shared-work event recorded", bool(learned and learned.get("recorded")))
 
-            restarted = Mary()
-            recalled = restarted.process("what have we worked on together?")
+            app.close()
+            restarted_app = create_application(
+                memory_path=Path(directory) / "data" / "memory" / "memory.json",
+                auto_save=False, load_memory=True, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            restarted = restarted_app.mary
+            recalled = _turn(restarted_app, "what have we worked on together?")
             check("shared-work recall survives restart", "maryv2" in recalled.final_response.lower())
             check("shared-work recall remains local", recalled.reasoning.metadata.get("llm_skipped") is True)
 
@@ -47,7 +63,7 @@ def main() -> None:
                 importance=0.8,
                 metadata={"owner": "creator", "event_type": "creator_natural_share"},
             )
-            recalled_again = restarted.process("what have we worked on together?")
+            recalled_again = _turn(restarted_app, "what have we worked on together?")
             check("unrelated preference does not become project history", "rainy" not in recalled_again.final_response.lower())
 
             semantic = restarted.remember(
@@ -66,6 +82,9 @@ def main() -> None:
             check("normal conversation does not auto-consolidate", status["consolidation"]["automatic"] is False)
             check("memory lifecycle exposes eligible candidates", status["consolidation"]["eligible_candidates"] >= 1)
         finally:
+            if restarted_app is not None:
+                restarted_app.close()
+            app.close()
             os.chdir(original)
 
     print("=" * 72)

@@ -8,9 +8,9 @@ from pathlib import Path
 
 from mary.cognition.intent import IntentType
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.llm.router import LLMRouter
+from mary.runtime.application import create_application
 
 
 class FakeProvider(LLMInterface):
@@ -64,13 +64,17 @@ def router_fixture(*, ollama_available: bool = True):
     return router, providers
 
 
-def wire(mary: Mary, router: LLMRouter) -> None:
+def wire(mary, router: LLMRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
     mary.expert_consultant.router = router
     mary.task_orchestrator.router = router
     mary.task_executor.router = router
+
+
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def main() -> None:
@@ -109,8 +113,14 @@ def main() -> None:
     original = Path.cwd()
     with tempfile.TemporaryDirectory(prefix="maryv2_hotfix09_") as directory:
         os.chdir(directory)
+        app = None
         try:
-            mary = Mary()
+            app = create_application(
+                memory_path=Path(directory) / "data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary = app.mary
             intent = mary.cognition.detect_intent("go into ollama llm")
             check(
                 "natural 'go into ollama llm' phrasing is recognized",
@@ -127,7 +137,7 @@ def main() -> None:
 
             real_router, real_providers = router_fixture()
             wire(mary, real_router)
-            result = mary.process("idk i just wanna talk for a bit")
+            result = _turn(app, "idk i just wanna talk for a bit")
             check(
                 "Mary ordinary conversation automatically uses local-first purpose",
                 result.reasoning.metadata.get("generation_purpose") == "conversation"
@@ -135,7 +145,7 @@ def main() -> None:
             )
 
             real_router.set_session_override(provider="gemini")
-            overridden = mary.process("still just talking")
+            overridden = _turn(app, "still just talking")
             check(
                 "explicit temporary provider override still beats conversation default",
                 overridden.reasoning.metadata.get("provider") == "gemini",
@@ -148,6 +158,8 @@ def main() -> None:
                 and status.get("provider_order", [None])[0] == "groq",
             )
         finally:
+            if app is not None:
+                app.close()
             os.chdir(original)
 
     print("=" * 72)

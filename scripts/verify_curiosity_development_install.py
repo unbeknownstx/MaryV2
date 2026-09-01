@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.runtime.application import create_application
 
@@ -34,14 +33,14 @@ class NoLLMProvider(LLMInterface):
         return "curiosity-development-local"
 
 
-def _configure(mary: Mary) -> NoLLMProvider:
+def _configure(mary) -> NoLLMProvider:
     provider = NoLLMProvider()
     mary.llm.register_provider("verification", provider)
     mary.config.llm.provider = "verification"
     return provider
 
 
-def _children(mary: Mary) -> list[dict]:
+def _children(mary) -> list[dict]:
     return [
         item
         for item in mary.agency.curiosities.get_curiosities()
@@ -63,12 +62,12 @@ def main() -> int:
         temp = Path(temp_dir)
         try:
             os.chdir(temp)
-            mary = Mary()
-            provider = _configure(mary)
             app = create_application(
-                mary=mary,
                 memory_path=temp / "memory" / "memory.json",
+                auto_save=True,
             )
+            mary = app.mary
+            provider = _configure(mary)
 
             app.run("remember this: my favorite color is green")
             app.run("remember this: I love creating stories")
@@ -147,12 +146,12 @@ def main() -> int:
 
             app.close()
 
-            restarted = Mary()
-            restarted_provider = _configure(restarted)
             restarted_app = create_application(
-                mary=restarted,
                 memory_path=temp / "memory" / "memory.json",
+                auto_save=False,
             )
+            restarted = restarted_app.mary
+            restarted_provider = _configure(restarted)
             restarted_output = str(
                 restarted_app.run("What are you still curious about regarding me?").output
             ).lower()
@@ -174,10 +173,7 @@ def main() -> int:
             if restarted_app is not None:
                 restarted_app.close()
             if app is not None:
-                try:
-                    app.mary.mind.close()
-                except Exception:
-                    pass
+                app.close()
             os.chdir(original_cwd)
 
     print("=" * 72)

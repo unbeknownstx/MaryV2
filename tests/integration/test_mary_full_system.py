@@ -7,11 +7,27 @@ but share the correct objects and cooperate across subsystem boundaries.
 No internet, real LLM provider, microphone, speaker, or avatar engine is used.
 """
 
-from mary.core.mary import Mary
+import pytest
+
 from mary.core.lifecycle import LifecycleState
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.expression.emotion import Emotion
 from mary.autonomy.runtime import AutonomyRuntimeStatus
+from mary.runtime.application import create_application
+
+_applications = []
+
+
+@pytest.fixture(autouse=True)
+def _close_canonical_applications(tmp_path, monkeypatch):
+    monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "data"))
+    _applications.clear()
+    try:
+        yield
+    finally:
+        for app in reversed(_applications):
+            app.close()
+        _applications.clear()
 
 
 class FakeLLMProvider(LLMInterface):
@@ -57,7 +73,23 @@ class FakeLLMProvider(LLMInterface):
         return "test-model"
 
 
-def configure_fake_llm(mary: Mary) -> FakeLLMProvider:
+def _mary(tmp_path):
+    app = create_application(
+        memory_path=tmp_path / "state" / "memory.json",
+        developed_self_path=tmp_path / "state" / "developed_self.json",
+        preference_promotion_path=tmp_path / "state" / "preference_promotion.json",
+        knowledge_path=tmp_path / "state" / "knowledge.json",
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    _applications.append(app)
+    return app.mary
+
+
+def configure_fake_llm(mary) -> FakeLLMProvider:
     provider = FakeLLMProvider()
     mary.llm.register_provider("fake", provider)
     mary.config.llm.provider = "fake"
@@ -66,7 +98,7 @@ def configure_fake_llm(mary: Mary) -> FakeLLMProvider:
 
 def test_shared_subsystem_identity(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
 
     assert mary.self_model.personality is mary.personality
     assert mary.self_model.character is mary.character
@@ -88,7 +120,7 @@ def test_shared_subsystem_identity(tmp_path, monkeypatch):
 
 def test_identity_biography_character_consistency(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
 
     assert mary.self_model.name == "Mary"
     assert mary.personality.name == "Mary"
@@ -111,21 +143,25 @@ def test_memory_persists_across_fresh_mary_instances(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     memory_path = tmp_path / "memory" / "memory.json"
 
-    first = Mary()
-    first.memory.configure_persistence(
-        memory_path,
+    first_app = create_application(
+        memory_path=memory_path,
         auto_save=True,
-        load=True,
+        load_memory=True,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
     )
+    _applications.append(first_app)
+    first = first_app.mary
     configure_fake_llm(first)
 
-    stored = first.process(
+    stored = first_app.run(
         "remember that my favorite color is blue"
     )
 
     assert (
         "your favorite color is blue"
-        in stored.final_response.lower()
+        in stored.output.lower()
     )
     assert memory_path.exists()
 
@@ -134,21 +170,25 @@ def test_memory_persists_across_fresh_mary_instances(tmp_path, monkeypatch):
     assert stored_memory.metadata["owner"] == "creator"
     assert stored_memory.metadata["speaker"] == "Unbe"
 
-    second = Mary()
-    second.memory.configure_persistence(
-        memory_path,
+    second_app = create_application(
+        memory_path=memory_path,
         auto_save=True,
-        load=True,
+        load_memory=True,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
     )
+    _applications.append(second_app)
+    second = second_app.mary
     configure_fake_llm(second)
 
-    recalled = second.process(
+    recalled = second_app.run(
         "what is my favorite color?"
     )
 
     assert (
         "your favorite color is blue"
-        in recalled.final_response.lower()
+        in recalled.output.lower()
     )
     assert second.memory.episodic.count() >= 1
 
@@ -162,7 +202,7 @@ def test_knowledge_learning_evaluation_and_research_boundary(
     monkeypatch,
 ):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
 
     concept = mary.knowledge.learn(
         name="MaryV2 integration",
@@ -205,7 +245,7 @@ def test_knowledge_learning_evaluation_and_research_boundary(
 
 def test_agency_to_decision_does_not_auto_execute(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
 
     goal = mary.agency.goals.add_goal(
         "Finish MaryV2 integration verification",
@@ -247,7 +287,7 @@ def test_expression_dialogue_avatar_and_audio_are_coherent(
     monkeypatch,
 ):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
 
     mary.dialogue.begin_turn("Hello Mary")
 
@@ -284,7 +324,7 @@ def test_expression_dialogue_avatar_and_audio_are_coherent(
 
 def test_conversation_uses_shared_router(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
     configure_fake_llm(mary)
 
     response = mary.conversation.respond("Hello Mary")
@@ -296,7 +336,7 @@ def test_conversation_uses_shared_router(tmp_path, monkeypatch):
 
 def test_lifecycle_transitions_are_explicit(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    mary = _mary(tmp_path)
 
     assert mary.lifecycle.state == LifecycleState.READY
     assert mary.lifecycle.is_awake is False

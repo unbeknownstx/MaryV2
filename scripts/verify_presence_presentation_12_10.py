@@ -6,10 +6,9 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
-from mary.ecosystem import MaryEcosystem
 from mary.presence import PresenceEventType
 from mary.runtime.release import APP_VERSION, DESKTOP_PHASE
+from mary.runtime.application import create_application
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -58,8 +57,9 @@ def main() -> int:
     try:
         with TemporaryDirectory(prefix="maryv2_12_10_verify_") as tmp:
             os.environ["MARY_DATA_DIR"] = str(Path(tmp) / "data")
-            mary = Mary()
-            ecosystem = MaryEcosystem(mary)
+            app = create_application()
+            mary = app.mary
+            ecosystem = app.ecosystem
             ecosystem.command.add("Verifier command item")
             project = ecosystem.study.create_project("Verifier study")
             ecosystem.study.add_card(project["id"], "One?", "One.")
@@ -74,6 +74,8 @@ def main() -> int:
             idle = ecosystem.presence.idle_tick(focus_active=True)
             check("focus idle behavior is animation-only", idle["focus_quiet"] and idle["action"]["kind"] == "animation")
     finally:
+        if 'app' in locals():
+            app.close()
         if old_data is None:
             os.environ.pop("MARY_DATA_DIR", None)
         else:

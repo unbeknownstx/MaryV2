@@ -31,7 +31,7 @@ from tests.protocol.test_core_service import FakeApplication
 PRIVATE_PROMPT = "private creator prompt that must never enter telemetry"
 PRIVATE_MEMORY = "private memory evidence that must never enter telemetry"
 PRIVATE_OUTPUT = "private provider output that must never enter telemetry"
-SECRET_TOKEN = "secret-token-that-must-never-enter-telemetry"
+SECRET_TOKEN = "test-secret-that-must-never-enter-telemetry"
 
 
 class TimeoutProvider(LLMInterface):
@@ -442,7 +442,7 @@ def test_secret_shaped_upstream_id_and_application_error_are_never_reflected(mon
                 f"{PRIVATE_PROMPT} {PRIVATE_MEMORY} {PRIVATE_OUTPUT} {SECRET_TOKEN}"
             )
 
-    secret_shaped_request_id = "sk_live_abcdefghijklmnopqrstuvwxyz123456"
+    upstream_request_id = "sk_live_abcdefghijklmnopqrstuvwxyz123456"
     monkeypatch.setenv("MARY_CORE_TOKEN", SECRET_TOKEN)
     core = MaryCoreService(FailingApplication(), instance_id="failure-core")
     with TestClient(create_app(core)) as client:
@@ -450,7 +450,7 @@ def test_secret_shaped_upstream_id_and_application_error_are_never_reflected(mon
             "/v1/turn",
             headers={
                 "Authorization": f"Bearer {SECRET_TOKEN}",
-                "X-Request-ID": secret_shaped_request_id,
+                "X-Request-ID": upstream_request_id,
             },
             json={"text": PRIVATE_PROMPT},
         )
@@ -461,8 +461,8 @@ def test_secret_shaped_upstream_id_and_application_error_are_never_reflected(mon
     trace = core.recent_turn_traces()[-1]
     assert trace["failure_kind"] == "application_exception"
     assert trace["upstream_request_hash"] == upstream_request_hash(
-        secret_shaped_request_id
+        upstream_request_id
     )
     serialized = json.dumps(trace, sort_keys=True)
-    assert secret_shaped_request_id not in serialized
+    assert upstream_request_id not in serialized
     _assert_private_content_absent(serialized)

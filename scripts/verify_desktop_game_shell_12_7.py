@@ -5,10 +5,10 @@ import os
 from pathlib import Path
 import tempfile
 
-from mary.core.mary import Mary
 from mary.desktop.dashboard import build_desktop_dashboard_state
 from mary.desktop.integrations import DesktopIntegrationRegistry
 from mary.launcher.update import UpdateManifest, UpdateService
+from mary.runtime.application import create_application
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -166,12 +166,17 @@ def main() -> int:
     )
 
     original_data = os.environ.get("MARY_DATA_DIR")
+    app = None
     try:
         with tempfile.TemporaryDirectory(prefix="maryv2_desktop_12_7_") as directory:
             data_root = Path(directory) / "data"
             os.environ["MARY_DATA_DIR"] = str(data_root)
-            mary = Mary()
-            state = build_desktop_dashboard_state(mary)
+            app = create_application(
+                memory_path=data_root / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            state = build_desktop_dashboard_state(app.mary)
             check(
                 "dashboard state builds from a real Mary instance",
                 isinstance(state, dict)
@@ -218,6 +223,8 @@ def main() -> int:
                 service.is_newer(manifest.version) and manifest.sha256 == "a" * 64,
             )
     finally:
+        if app is not None:
+            app.close()
         if original_data is None:
             os.environ.pop("MARY_DATA_DIR", None)
         else:

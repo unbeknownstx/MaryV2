@@ -8,7 +8,7 @@ import tempfile
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import IntentType
 from mary.cognition.reasoning import ReasoningResult
-from mary.core.mary import Mary
+from mary.runtime.application import create_application
 
 
 def check(label: str, condition: bool) -> None:
@@ -27,7 +27,8 @@ def main() -> int:
         root = Path(directory)
         os.environ["MARY_DATA_DIR"] = str(root / "data")
         try:
-            mary = Mary()
+            app = create_application()
+            mary = app.mary
 
             check(
                 "relationship state follows configured private data root",
@@ -121,6 +122,7 @@ def main() -> int:
                 and any("handoff boundary" in issue.lower() for issue in issues),
             )
         finally:
+            app.close()
             if original_data is None:
                 os.environ.pop("MARY_DATA_DIR", None)
             else:

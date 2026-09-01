@@ -6,8 +6,11 @@ quota, and does not write to Mary's durable memory.
 
 from __future__ import annotations
 
-from mary.core.mary import Mary
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from contextlib import ExitStack
 from mary.llm.interface import LLMResponse
+from mary.runtime.application import create_application
 
 
 class ProbeRouter:
@@ -34,25 +37,36 @@ class ProbeRouter:
         return True
 
 
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
 def main() -> int:
     print("=" * 72)
     print("MARY V2 MULTI-TURN CONTEXT LIFECYCLE")
     print("=" * 72)
 
-    mary = Mary()
-    router = ProbeRouter()
-    mary.llm = router
-    mary.reasoning.llm = router
-    mary.reflection.llm = router
-
-    for index in range(12):
-        mary.process(
-            f"Long session turn {index}: "
-            + ("This is deliberate extra dialogue used to pressure the active context window. " * 7)
+    with TemporaryDirectory(prefix="maryv2_context_lifecycle_") as directory, ExitStack() as cleanup:
+        app = create_application(
+            memory_path=Path(directory) / "data" / "memory" / "memory.json",
+            auto_save=False, load_memory=False, load_developed_self=False,
+            load_preference_promotion=False, load_knowledge=False,
         )
+        cleanup.callback(app.close)
+        mary = app.mary
+        router = ProbeRouter()
+        mary.llm = router
+        mary.reasoning.llm = router
+        mary.reflection.llm = router
 
-    result = mary.process("What matters from the thread right now?")
-    lifecycle = result.context.mind_state.get("conversation", {}).get("lifecycle", {})
+        for index in range(12):
+            _turn(app,
+                f"Long session turn {index}: "
+                + ("This is deliberate extra dialogue used to pressure the active context window. " * 7)
+            )
+
+        result = _turn(app, "What matters from the thread right now?")
+        lifecycle = result.context.mind_state.get("conversation", {}).get("lifecycle", {})
 
     print(f"Total prior messages:    {lifecycle.get('total_messages')}")
     print(f"Selected messages:       {lifecycle.get('selected_messages')}")

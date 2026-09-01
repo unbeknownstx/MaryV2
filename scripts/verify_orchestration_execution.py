@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from mary.core.mary import Mary
 from mary.orchestration.execution import ExecutionStatus
 from mary.orchestration.orchestrator import OrchestrationRoute
+from mary.runtime.application import create_application
 
 
 def check(label: str, condition: bool) -> None:
@@ -18,7 +18,8 @@ def main() -> int:
     print("=" * 72)
     print("MARYV2 ORCHESTRATION EXECUTION")
     print("=" * 72)
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
 
     tool_task = mary.task_workspace.create_task(
         "Inspect a local file",
@@ -104,9 +105,12 @@ def main() -> int:
         and mary.llm.resource_governor.paid_calls == paid_before,
     )
 
-    print("=" * 72)
-    print("ORCHESTRATION EXECUTION VERIFIED")
-    return 0
+    try:
+        print("=" * 72)
+        print("ORCHESTRATION EXECUTION VERIFIED")
+        return 0
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

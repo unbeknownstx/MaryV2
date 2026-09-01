@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
 from mary.runtime.application import create_application
 
 
@@ -21,10 +21,14 @@ def main() -> None:
     print("MARY V2 DEVELOPED-SELF PERSISTENCE")
     print("=" * 72)
 
-    direct = Mary()
+    direct_app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    direct = direct_app.mary
     check(
-        "plain Mary keeps developed-self persistence disabled",
-        not direct.developed_self_state.configured,
+        "canonical application keeps developed-self persistence isolated when loading is disabled",
+        direct.developed_self_state.configured,
     )
     check(
         "PersonalityDevelopment is wired to Mary's live Values and Preferences",
@@ -36,8 +40,9 @@ def main() -> None:
         "authored character preferences stay canonical instead of being serialized as development",
         direct.developed_self_state.to_dict()["preference_overrides"] == {},
     )
+    direct_app.close()
 
-    with TemporaryDirectory() as directory:
+    with TemporaryDirectory() as directory, ExitStack() as cleanup:
         root = Path(directory)
         memory_path = root / "memory" / "memory.json"
         developed_path = root / "personality" / "developed_self.json"
@@ -47,6 +52,7 @@ def main() -> None:
             developed_self_path=developed_path,
             auto_save=True,
         )
+        cleanup.callback(first.close)
         first.mary.set_developed_preference(
             "quiet bookstores",
             category="places",
@@ -75,6 +81,7 @@ def main() -> None:
             developed_self_path=developed_path,
             auto_save=True,
         )
+        cleanup.callback(second.close)
         restored = second.mary.preferences.get_preference("quiet bookstores")
         check(
             "developed preference survives a fresh persistent Mary runtime",
@@ -90,6 +97,7 @@ def main() -> None:
             developed_self_path=personality_path,
             auto_save=True,
         )
+        cleanup.callback(third.close)
         target_warmth = 0.61
         third.mary.personality.set_trait("warmth", target_warmth)
         third.mary.developed_self_state.record_approved_personality_change(
@@ -102,6 +110,7 @@ def main() -> None:
             developed_self_path=personality_path,
             auto_save=True,
         )
+        cleanup.callback(fourth.close)
         check(
             "approved personality end-state restores as an exact value",
             abs(fourth.mary.personality.get_trait("warmth") - target_warmth) < 1e-9,

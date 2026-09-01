@@ -3,11 +3,37 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from mary.core.config import Config
 from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.runtime.turn_policy import TurnPolicyEngine
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class FakeProvider(LLMInterface):
@@ -105,7 +131,8 @@ def test_turn_policy_messy_relationship_question_is_local_first():
 
 
 def test_turn_policy_plain_fact_question_is_task_general():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what is a fish?")
     decision = mary.turn_policy.decide(
         input_text="what is a fish?",
@@ -117,7 +144,8 @@ def test_turn_policy_plain_fact_question_is_task_general():
 
 def test_turn_policy_technical_request_is_task_general_even_if_coarse_intent_says_conversation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     text = "write me a python function to sort a list"
     intent = mary.cognition.detect_intent(text)
     decision = mary.turn_policy.decide(input_text=text, intent=intent)
@@ -127,11 +155,12 @@ def test_turn_policy_technical_request_is_task_general_even_if_coarse_intent_say
 
 def test_real_personal_turn_uses_ollama_without_manual_override(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     _wire(mary, router)
 
-    result = mary.process("idk i just wanna talk for a bit")
+    result = _run(app, "idk i just wanna talk for a bit")
 
     assert result.reasoning.metadata["provider"] == "ollama"
     assert result.reasoning.metadata["turn_policy"]["local_first"] is True
@@ -140,11 +169,12 @@ def test_real_personal_turn_uses_ollama_without_manual_override(tmp_path, monkey
 
 def test_real_fact_turn_uses_task_general_cloud_first(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     _wire(mary, router)
 
-    result = mary.process("what is a fish?")
+    result = _run(app, "what is a fish?")
 
     assert result.reasoning.metadata["provider"] == "groq"
     assert result.reasoning.metadata["turn_policy"]["category"] == "task_general"
@@ -153,12 +183,13 @@ def test_real_fact_turn_uses_task_general_cloud_first(tmp_path, monkeypatch):
 
 def test_explicit_private_override_still_wins_for_fact_task(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     _wire(mary, router)
     router.set_session_override(route="private")
 
-    result = mary.process("what is a fish?")
+    result = _run(app, "what is a fish?")
 
     assert result.reasoning.metadata["provider"] == "ollama"
     assert providers["groq"].calls == 0
@@ -166,11 +197,12 @@ def test_explicit_private_override_still_wins_for_fact_task(tmp_path, monkeypatc
 
 def test_local_conversation_falls_back_to_free_cloud_if_ollama_is_down(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router(ollama_available=False)
     _wire(mary, router)
 
-    result = mary.process("idk i just wanna talk for a bit")
+    result = _run(app, "idk i just wanna talk for a bit")
 
     assert result.reasoning.metadata["provider"] == "groq"
     assert providers["groq"].calls >= 1
@@ -178,11 +210,12 @@ def test_local_conversation_falls_back_to_free_cloud_if_ollama_is_down(tmp_path,
 
 def test_explicit_learning_invitation_uses_real_relationship_gap_without_llm(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     _wire(mary, router)
 
-    result = mary.process("please ask anything of me an i will help you as best i can you are here to learn")
+    result = _run(app, "please ask anything of me an i will help you as best i can you are here to learn")
     lowered = result.final_response.lower()
 
     assert result.metadata["conversation_learning_invitation"]["handled"] is True
@@ -192,7 +225,8 @@ def test_explicit_learning_invitation_uses_real_relationship_gap_without_llm(tmp
 
 def test_learning_invitation_asks_from_current_unresolved_gap(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
     # Fill four tracked categories. Values remains a real gap.
     assert mary.relationship.learn_explicit("my favorite color is blue") is not None
@@ -212,9 +246,10 @@ def test_learning_invitation_asks_from_current_unresolved_gap(tmp_path, monkeypa
 
 def test_creator_share_after_learning_question_still_uses_existing_relationship_learning(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
-    mary.process("ask me anything")
-    mary.process("i value loyalty a lot")
+    app = _application()
+    mary = app.mary
+    app.run("ask me anything")
+    app.run("i value loyalty a lot")
     profile = mary.relationship.profile()
 
     # This test is intentionally permissive about the generated key; the
@@ -225,7 +260,8 @@ def test_creator_share_after_learning_question_still_uses_existing_relationship_
 
 def test_system_contract_reports_single_authoritative_router_and_local_conversation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     snapshot = mary.system_contract.snapshot(mary)
 
     assert snapshot["single_llm_router"] is True
@@ -237,7 +273,8 @@ def test_system_contract_reports_single_authoritative_router_and_local_conversat
 
 def test_status_exposes_turn_policy_learning_bridge_and_contract(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     status = mary.status()
 
     assert status["turn_policy"]["version"].startswith("v2-breakthrough-")
@@ -247,11 +284,12 @@ def test_status_exposes_turn_policy_learning_bridge_and_contract(tmp_path, monke
 
 def test_turn_metadata_records_policy_category_for_debug_truth(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, _ = _router()
     _wire(mary, router)
 
-    result = mary.process("what do u think about how im building you")
+    result = _run(app, "what do u think about how im building you")
 
     policy = result.reasoning.metadata["turn_policy"]
     assert policy["category"] == "personal_conversation"
@@ -280,7 +318,8 @@ def test_root_run_mary_is_only_a_canonical_launcher_shim():
 
 def test_bad_local_improvisation_is_revised_locally_without_cloud_leak(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     ollama = SequenceProvider(
         "ollama",
@@ -292,7 +331,7 @@ def test_bad_local_improvisation_is_revised_locally_without_cloud_leak(tmp_path,
     router.register_provider("ollama", ollama)
     _wire(mary, router)
 
-    result = mary.process("idk i just wanna talk for a bit")
+    result = _run(app, "idk i just wanna talk for a bit")
 
     assert result.reflection.decision.value == "revise"
     assert "red panda" not in result.final_response.lower()
@@ -303,7 +342,8 @@ def test_bad_local_improvisation_is_revised_locally_without_cloud_leak(tmp_path,
 
 def test_probe_creator_record_does_not_enter_normal_model_projection(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     learned = mary.relationship.learn_explicit("my test animal is a red panda")
     assert learned is not None
 
@@ -312,7 +352,7 @@ def test_probe_creator_record_does_not_enter_normal_model_projection(tmp_path, m
     router.register_provider("ollama", ollama)
     _wire(mary, router)
 
-    mary.process("idk i just wanna talk for a bit")
+    app.run("idk i just wanna talk for a bit")
 
     combined = "\n".join(
         str(message.content)

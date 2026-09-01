@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.core.config import Config
 from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.cognition.natural_input import normalize_for_matching
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class FakeProvider(LLMInterface):
@@ -96,7 +122,8 @@ def test_chat_normalization_understands_unpunctuated_youve_without_rewriting_ori
 
 def test_shared_history_context_uses_creator_grounded_project_not_assistant_improvisation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     assert mary.relationship.learn_explicit("my main goal is finish MaryV2") is not None
     shared = mary._shared_history_context([
         {"role": "assistant", "content": "I've been drawing moon cats for weeks."}
@@ -109,13 +136,14 @@ def test_shared_history_context_uses_creator_grounded_project_not_assistant_impr
 
 def test_shared_history_statement_stays_personal_local_first_and_projects_grounding_into_prompt(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     assert mary.relationship.learn_explicit("my main goal is finish MaryV2") is not None
     ollama = SequenceProvider("ollama", ["Yeah, looking at how much MaryV2 has grown with us is kind of wild."])
     router, providers = _router(ollama)
     _wire(mary, router)
 
-    result = mary.process("ive been thinking about everything weve done its kinda crazy")
+    result = _run(app, "ive been thinking about everything weve done its kinda crazy")
     prompt = "\n".join(str(message.content) for call in ollama.messages_seen for message in call)
 
     assert result.reasoning.metadata["provider"] == "ollama"
@@ -126,7 +154,8 @@ def test_shared_history_statement_stays_personal_local_first_and_projects_ground
 
 def test_natural_changed_question_routes_to_grounded_development_state(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("do u think youve changed since we started all this")
     assert intent.intent_type.value == "self_query"
     assert intent.parameters["self_query_type"] == "development"
@@ -134,7 +163,8 @@ def test_natural_changed_question_routes_to_grounded_development_state(tmp_path,
 
 def test_development_answer_is_self_grounded_and_distinguishes_canon_from_growth(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     assert mary.relationship.learn_explicit("my main goal is finish MaryV2") is not None
     ollama = SequenceProvider(
         "ollama",
@@ -145,7 +175,7 @@ def test_development_answer_is_self_grounded_and_distinguishes_canon_from_growth
     router, _ = _router(ollama)
     _wire(mary, router)
 
-    result = mary.process("do u think youve changed since we started all this")
+    result = _run(app, "do u think youve changed since we started all this")
 
     assert result.reasoning.metadata["self_grounded"] is True
     assert result.intent.parameters["self_query_type"] == "development"
@@ -156,7 +186,8 @@ def test_development_answer_is_self_grounded_and_distinguishes_canon_from_growth
 
 def test_from_ur_side_relationship_feeling_phrase_is_grounded_self_query(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     ollama = SequenceProvider(
         "ollama",
         ["From my represented side, it feels steady and warm; I'm paying close attention to the exchange."],
@@ -164,7 +195,7 @@ def test_from_ur_side_relationship_feeling_phrase_is_grounded_self_query(tmp_pat
     router, _ = _router(ollama)
     _wire(mary, router)
 
-    result = mary.process("what does talking like this feel like from ur side")
+    result = _run(app, "what does talking like this feel like from ur side")
 
     assert result.intent.parameters["self_query_type"] == "relationship_feelings"
     assert result.reasoning.metadata["self_grounded"] is True
@@ -173,14 +204,15 @@ def test_from_ur_side_relationship_feeling_phrase_is_grounded_self_query(tmp_pat
 
 def test_curiosity_question_keeps_real_reason_for_natural_why_followup_with_zero_llm(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     _fill_until_values_gap(mary)
     router, providers = _router()
     _wire(mary, router)
 
-    asked = mary.process("u can ask me something if u actually want to know")
+    asked = _run(app, "u can ask me something if u actually want to know")
     before = sum(getattr(provider, "calls", 0) for provider in providers.values())
-    why = mary.process("hmm why that question though")
+    why = _run(app, "hmm why that question though")
     after = sum(getattr(provider, "calls", 0) for provider in providers.values())
 
     assert asked.metadata["conversation_learning_invitation"]["category"] == "values"
@@ -192,12 +224,13 @@ def test_curiosity_question_keeps_real_reason_for_natural_why_followup_with_zero
 
 def test_existing_relationship_learning_resolves_matching_pending_curiosity(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     _fill_until_values_gap(mary)
-    mary.process("ask me anything")
+    app.run("ask me anything")
     assert mary.conversation_learning.pending() is not None
 
-    mary.process("i value loyalty a lot")
+    app.run("i value loyalty a lot")
 
     assert mary.conversation_learning.pending() is None
     assert any("loyal" in str(value).lower() for value in mary.relationship.profile().get("values", []))
@@ -205,7 +238,8 @@ def test_existing_relationship_learning_resolves_matching_pending_curiosity(tmp_
 
 def test_semantic_style_loop_is_revised_locally_instead_of_repeating_same_palette(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     ollama = SequenceProvider(
         "ollama",
         [
@@ -218,9 +252,9 @@ def test_semantic_style_loop_is_revised_locally_instead_of_repeating_same_palett
     router, providers = _router(ollama)
     _wire(mary, router)
 
-    mary.process("idk i just wanna talk for a bit")
-    mary.process("yea i get what u mean")
-    third = mary.process("what do u think")
+    app.run("idk i just wanna talk for a bit")
+    app.run("yea i get what u mean")
+    third = _run(app, "what do u think")
 
     assert third.reflection.decision.value == "revise"
     assert "easy back-and-forth" in third.final_response
@@ -230,7 +264,8 @@ def test_semantic_style_loop_is_revised_locally_instead_of_repeating_same_palett
 
 def test_rejected_interpretation_is_temporarily_suppressed_and_revision_stays_local(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     ollama = SequenceProvider(
         "ollama",
         [
@@ -243,9 +278,9 @@ def test_rejected_interpretation_is_temporarily_suppressed_and_revision_stays_lo
     router, providers = _router(ollama)
     _wire(mary, router)
 
-    mary.process("idk something feels a little off")
-    mary.process("thats not really what i meant")
-    result = mary.process("what do u think im actually trying to say")
+    app.run("idk something feels a little off")
+    app.run("thats not really what i meant")
+    result = _run(app, "what do u think im actually trying to say")
 
     assert result.reflection.decision.value == "revise"
     assert "corrected that interpretation" in result.final_response.lower()
@@ -254,7 +289,8 @@ def test_rejected_interpretation_is_temporarily_suppressed_and_revision_stays_lo
 
 def test_direct_mindreading_claim_is_revised_into_tentative_observation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     ollama = SequenceProvider(
         "ollama",
         [
@@ -265,7 +301,7 @@ def test_direct_mindreading_claim_is_revised_into_tentative_observation(tmp_path
     router, providers = _router(ollama)
     _wire(mary, router)
 
-    result = mary.process("what do u think")
+    result = _run(app, "what do u think")
 
     assert result.reflection.decision.value == "revise"
     assert "direct access" in result.final_response.lower()
@@ -274,7 +310,8 @@ def test_direct_mindreading_claim_is_revised_into_tentative_observation(tmp_path
 
 def test_shared_history_safe_fallback_does_not_deny_real_maryv2_continuity(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     assert mary.relationship.learn_explicit("my main goal is finish MaryV2") is not None
     context = mary._build_context("ive been thinking about everything weve done its kinda crazy")
     from mary.cognition.context import CognitiveContext
@@ -291,7 +328,8 @@ def test_shared_history_safe_fallback_does_not_deny_real_maryv2_continuity(tmp_p
 
 def test_breakthrough11_contract_and_status_expose_new_conversation_state_owner(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     contract = mary.system_contract.snapshot(mary)
     status = mary.status()
 

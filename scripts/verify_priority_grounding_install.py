@@ -7,7 +7,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from mary.cognition.intent import IntentType
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.runtime.application import create_application
 
@@ -35,7 +34,7 @@ class NoLLMProvider(LLMInterface):
         return "priority-grounding-local"
 
 
-def _configure(mary: Mary) -> NoLLMProvider:
+def _configure(mary) -> NoLLMProvider:
     provider = NoLLMProvider()
     mary.llm.register_provider("verification", provider)
     mary.config.llm.provider = "verification"
@@ -55,12 +54,11 @@ def main() -> int:
         temp = Path(temp_dir)
         try:
             os.chdir(temp)
-            mary = Mary()
-            provider = _configure(mary)
             app = create_application(
-                mary=mary,
                 memory_path=temp / "memory" / "memory.json",
             )
+            mary = app.mary
+            provider = _configure(mary)
 
             # Historical memory must not become the source of Mary's live agency ranking.
             app.run("remember this: unbe is your top priority")
@@ -116,12 +114,11 @@ def main() -> int:
 
             app.close()
 
-            restarted = Mary()
-            restarted_provider = _configure(restarted)
             restarted_app = create_application(
-                mary=restarted,
                 memory_path=temp / "memory" / "memory.json",
             )
+            restarted = restarted_app.mary
+            restarted_provider = _configure(restarted)
             restarted_priority = restarted_app.run("What is your top priority?")
             ok = (
                 restarted_priority.success is True
@@ -157,10 +154,7 @@ def main() -> int:
             if restarted_app is not None:
                 restarted_app.close()
             if app is not None:
-                try:
-                    app.mary.mind.close()
-                except Exception:
-                    pass
+                app.close()
             os.chdir(original_cwd)
 
     print("=" * 72)

@@ -7,11 +7,11 @@ from tempfile import TemporaryDirectory
 
 from mary.cognition.intent import IntentType
 from mary.cognition.reflection import PROVENANCE_AUDIT_VERSION
-from mary.core.mary import Mary
 from mary.expression.emotion import Emotion
 from mary.llm.interface import LLMMessage, LLMResponse
 from mary.llm.output_quality import inspect_output_quality
 from mary.runtime.state_audit import audit_creator_state
+from mary.runtime.application import create_application
 
 
 class SequenceRouter:
@@ -42,10 +42,14 @@ def check(label: str, condition: bool) -> None:
     print(f"PASS {label}")
 
 
-def _attach_router(mary: Mary, router: SequenceRouter) -> None:
+def _attach_router(mary, router: SequenceRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
+
+
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def main() -> None:
@@ -61,8 +65,14 @@ def main() -> None:
     with TemporaryDirectory(prefix="maryv2-acceptance06-") as temp_dir:
         temp_root = Path(temp_dir).resolve()
         os.chdir(temp_root)
+        app = None
         try:
-            mary = Mary()
+            app = create_application(
+                memory_path=temp_root / "data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary = app.mary
             router = SequenceRouter([
                 "That means a lot to me. I want the way I talk with you to feel honest and like me.",
                 "In my current represented state, talking with you feels warm and attentive.",
@@ -77,7 +87,7 @@ def main() -> None:
                 and feelings_intent.parameters.get("self_query_type") == "relationship_feelings",
             )
 
-            compliment = mary.process(
+            compliment = _turn(app,
                 "thats where u shine i can see a difference you actually care how u talk to me"
             )
             check(
@@ -89,7 +99,7 @@ def main() -> None:
                 compliment.context.mind_state.get("emotion", {}).get("turn_primary") == Emotion.WARMTH.value,
             )
 
-            feelings = mary.process("what do u feel in our interactions")
+            feelings = _turn(app, "what do u feel in our interactions")
             check(
                 "relationship-feeling answer is self-grounded and stays off the web",
                 feelings.reasoning.metadata.get("self_grounded") is True
@@ -97,7 +107,7 @@ def main() -> None:
             )
 
             original_share = "i prefer u to be direct"
-            preference = mary.process(original_share)
+            preference = _turn(app, original_share)
             check(
                 "shorthand creator preference learns through conservative normalization",
                 preference.metadata.get("natural_relationship_learning", {}).get("learned") is True
@@ -134,6 +144,8 @@ def main() -> None:
                 and mary.user_model.facts.get("test_animal") == "a red panda",
             )
         finally:
+            if app is not None:
+                app.close()
             os.chdir(original_cwd)
 
     bad = inspect_output_quality(
@@ -153,14 +165,24 @@ def main() -> None:
         allowed is None,
     )
 
-    mary = Mary()
-    repeated = mary.reflection._near_duplicate_response_audit(
-        "I hear you. I still think you're doing a great job; leave a little room for more color, a stray thought, and a little wildness so it doesn't feel too sharp.",
-        ["Earlier thought. I still think you're doing a great job; leave a little room for more color, a stray thought, and a little wildness so it doesn't feel too sharp."],
+    audit_temp = TemporaryDirectory(prefix="maryv2-acceptance06-audit-")
+    app = create_application(
+        memory_path=Path(audit_temp.name) / "data" / "memory" / "memory.json",
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
     )
-    subjective = mary.reflection._subjective_experience_audit(
-        "I don't feel like I'm performing, or pretending. I just see you."
-    )
+    try:
+        mary = app.mary
+        repeated = mary.reflection._near_duplicate_response_audit(
+            "I hear you. I still think you're doing a great job; leave a little room for more color, a stray thought, and a little wildness so it doesn't feel too sharp.",
+            ["Earlier thought. I still think you're doing a great job; leave a little room for more color, a stray thought, and a little wildness so it doesn't feel too sharp."],
+        )
+        subjective = mary.reflection._subjective_experience_audit(
+            "I don't feel like I'm performing, or pretending. I just see you."
+        )
+    finally:
+        app.close()
+        audit_temp.cleanup()
     check("near-duplicate recent prose is caught before delivery", bool(repeated))
     check("unsupported subjective-experience certainty is revised", bool(subjective))
 

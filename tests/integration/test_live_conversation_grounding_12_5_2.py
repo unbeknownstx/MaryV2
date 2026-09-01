@@ -1,8 +1,25 @@
 from __future__ import annotations
 
 from mary.cognition.intent import IntentType
-from mary.core.mary import Mary
+import pytest
+
 from mary.llm.interface import LLMResponse
+from mary.runtime.application import create_application
+
+_applications = []
+
+
+@pytest.fixture(autouse=True)
+def _isolated_canonical_application(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MARY_DATA_DIR", str(tmp_path / "data"))
+    _applications.clear()
+    try:
+        yield
+    finally:
+        for app in reversed(_applications):
+            app.close()
+        _applications.clear()
 
 
 class ConversationRouter:
@@ -38,18 +55,31 @@ class ConversationRouter:
         return ["test"]
 
 
-def _mary(tmp_path, monkeypatch) -> tuple[Mary, ConversationRouter]:
-    monkeypatch.chdir(tmp_path)
-    mary = Mary()
+def _application(tmp_path, monkeypatch):
+    app = create_application(
+        memory_path=tmp_path / "state" / "memory.json",
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    _applications.append(app)
+    mary = app.mary
     router = ConversationRouter()
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
-    return mary, router
+    return app, router
+
+
+def _cycle(result):
+    return result.metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def test_exact_live_shared_work_wording_uses_shared_work_recall(tmp_path, monkeypatch):
-    mary, router = _mary(tmp_path, monkeypatch)
+    app, router = _application(tmp_path, monkeypatch)
+    mary = app.mary
     mary.remember(
         "I like rainy nights when I'm working on creative projects",
         memory_type="episodic",
@@ -63,7 +93,7 @@ def test_exact_live_shared_work_wording_uses_shared_work_recall(tmp_path, monkey
     )
 
     calls_before = len(router.calls)
-    result = mary.process("What do you remember about what we've been building together lately?")
+    result = _cycle(app.run("What do you remember about what we've been building together lately?"))
 
     assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
     assert result.intent.parameters["relationship_query_type"] == "shared_work"
@@ -73,10 +103,10 @@ def test_exact_live_shared_work_wording_uses_shared_work_recall(tmp_path, monkey
 
 
 def test_exact_live_current_curiosity_wording_is_grounded_and_deterministic(tmp_path, monkeypatch):
-    mary, router = _mary(tmp_path, monkeypatch)
+    app, router = _application(tmp_path, monkeypatch)
 
     calls_before = len(router.calls)
-    result = mary.process("what are you currently curious about?")
+    result = _cycle(app.run("what are you currently curious about?"))
 
     assert result.intent.intent_type == IntentType.SELF_QUERY
     assert result.intent.parameters["self_query_type"] == "curiosity"
@@ -89,7 +119,8 @@ def test_exact_live_current_curiosity_wording_is_grounded_and_deterministic(tmp_
 
 
 def test_exact_live_current_curiosity_reports_only_stored_agency_state(tmp_path, monkeypatch):
-    mary, router = _mary(tmp_path, monkeypatch)
+    app, router = _application(tmp_path, monkeypatch)
+    mary = app.mary
     mary.agency.curiosities.add_curiosity(
         "how persistent memory changes conversation continuity",
         importance=0.8,
@@ -97,7 +128,7 @@ def test_exact_live_current_curiosity_reports_only_stored_agency_state(tmp_path,
     )
 
     calls_before = len(router.calls)
-    result = mary.process("what are you currently curious about?")
+    result = _cycle(app.run("what are you currently curious about?"))
 
     assert len(router.calls) == calls_before
     lowered = result.final_response.lower()
@@ -106,12 +137,12 @@ def test_exact_live_current_curiosity_reports_only_stored_agency_state(tmp_path,
 
 
 def test_architecture_opinion_stays_character_conversation(tmp_path, monkeypatch):
-    mary, router = _mary(tmp_path, monkeypatch)
+    app, router = _application(tmp_path, monkeypatch)
 
     calls_before = len(router.calls)
-    result = mary.process(
+    result = _cycle(app.run(
         "i think we may have overcomplicated parts of your architecture. what do you think?"
-    )
+    ))
 
     assert not (
         result.intent.intent_type == IntentType.SELF_QUERY
@@ -124,10 +155,10 @@ def test_architecture_opinion_stays_character_conversation(tmp_path, monkeypatch
 
 
 def test_explicit_architecture_diagnostic_still_routes_locally(tmp_path, monkeypatch):
-    mary, router = _mary(tmp_path, monkeypatch)
+    app, router = _application(tmp_path, monkeypatch)
 
     calls_before = len(router.calls)
-    result = mary.process("what is your architecture?")
+    result = _cycle(app.run("what is your architecture?"))
 
     assert result.intent.intent_type == IntentType.SELF_QUERY
     assert result.intent.parameters["self_query_type"] == "runtime_architecture"

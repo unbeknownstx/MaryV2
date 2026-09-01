@@ -4,7 +4,6 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 import os
 
-from mary.core.mary import Mary
 from mary.llm.interface import LLMResponse
 from mary.runtime.application import create_application
 
@@ -29,7 +28,7 @@ class FakeRouter:
         return True
 
 
-def wire(mary: Mary) -> None:
+def wire(mary) -> None:
     router = FakeRouter()
     mary.llm = router
     mary.reasoning.llm = router
@@ -50,14 +49,18 @@ def main() -> None:
 
     original = Path.cwd()
     with TemporaryDirectory() as temp:
+        app = None
+        first = None
+        second = None
         os.chdir(temp)
         try:
-            mary = Mary()
+            app = create_application()
+            mary = app.mary
             wire(mary)
 
-            result = mary.process(
+            result = app.run(
                 "I prefer you to give me quick updates while you work."
-            )
+            ).metadata["pipeline_values"]["cognitive_cycle"]
             meta = result.metadata.get("natural_relationship_learning", {})
             check(meta.get("learned") is True, "clear creator statement learns without magic prefix")
             profile = mary.relationship.profile()
@@ -81,7 +84,7 @@ def main() -> None:
                 "relationship preview is pure and non-mutating",
             )
 
-            liked = mary.process("I like synthwave music.")
+            liked = app.run("I like synthwave music.").metadata["pipeline_values"]["cognitive_cycle"]
             check(
                 liked.metadata.get("natural_relationship_learning", {}).get("learned") is True
                 and "synthwave" in mary.relationship.answer_query("interests").lower(),
@@ -89,9 +92,9 @@ def main() -> None:
             )
 
             before = mary.memory.episodic.count()
-            duplicate = mary.process(
+            duplicate = app.run(
                 "I prefer you to give me quick updates while you work."
-            )
+            ).metadata["pipeline_values"]["cognitive_cycle"]
             after = mary.memory.episodic.count()
             check(
                 duplicate.metadata["natural_relationship_learning"].get("already_known") is True
@@ -99,7 +102,7 @@ def main() -> None:
                 "duplicate natural share does not duplicate durable memory",
             )
 
-            uncertain = mary.process("I might prefer long detailed updates.")
+            uncertain = app.run("I might prefer long detailed updates.").metadata["pipeline_values"]["cognitive_cycle"]
             check(
                 "natural_relationship_learning" not in uncertain.metadata,
                 "uncertain statement stays ordinary conversation",
@@ -116,8 +119,9 @@ def main() -> None:
                 auto_save=True,
             )
             wire(first.mary)
-            first.mary.process("I'm interested in animation.")
+            first.run("I'm interested in animation.")
             first.close()
+            first = None
 
             second = create_application(
                 memory_path=memory_path,
@@ -130,7 +134,14 @@ def main() -> None:
                 "natural relationship knowledge survives restart",
             )
             second.close()
+            second = None
         finally:
+            if second is not None:
+                second.close()
+            if first is not None:
+                first.close()
+            if app is not None:
+                app.close()
             os.chdir(original)
 
     print("-" * 72)

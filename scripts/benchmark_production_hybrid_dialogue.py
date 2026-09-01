@@ -877,7 +877,6 @@ def run_production_benchmark(
         # Lazy imports are a safety property: MARY_ENV_FILE and MARY_DATA_DIR
         # are already isolated before mary.core.config can import dotenv.
         from mary.core.config import Config
-        from mary.core.mary import Mary
         from mary.runtime.application import create_application
 
         preflight_config = Config()
@@ -885,14 +884,22 @@ def run_production_benchmark(
             raise RuntimeError("benchmark Config resolved a non-isolated data root")
         if paths["env_file"].exists():
             raise RuntimeError("benchmark MARY_ENV_FILE target must remain nonexistent")
-        mary = Mary()
+        app = create_application(
+            memory_path=paths["data"] / "memory" / "memory.json",
+            developed_self_path=paths["data"] / "personality" / "developed_self.json",
+            preference_promotion_path=paths["data"] / "personality" / "preference_promotion.json",
+            auto_save=False, load_memory=False, load_developed_self=False,
+            load_preference_promotion=False, load_knowledge=False,
+            name="production_hybrid_dialogue_benchmark",
+        )
+        mary = app.mary
         resolved_data = mary.config.paths.data.resolve()
         if resolved_data != paths["data"].resolve():
-            mary.mind.close()
+            app.close()
             raise RuntimeError("Mary resolved a data root outside benchmark isolation")
         resolved_workspace = mary.config.paths.workspace.resolve()
         if resolved_workspace != paths["workspace"].resolve():
-            mary.mind.close()
+            app.close()
             raise RuntimeError("Mary resolved a workspace root outside benchmark isolation")
 
         state_evidence: dict[str, Any] = {
@@ -940,23 +947,11 @@ def run_production_benchmark(
 
         mary.llm._create_provider = block_external_provider
 
-        app = None
         original_try_respond = None
         mind_durations: list[float] = []
         samples: list[dict[str, Any]] = []
 
         try:
-            app = create_application(
-                mary=mary,
-                memory_path=paths["data"] / "memory" / "memory.json",
-                developed_self_path=paths["data"] / "personality" / "developed_self.json",
-                preference_promotion_path=paths["data"] / "personality" / "preference_promotion.json",
-                auto_save=False,
-                load_memory=False,
-                load_developed_self=False,
-                load_preference_promotion=False,
-                name="production_hybrid_dialogue_benchmark",
-            )
             _seed_isolated_authority(mary)
             mind_durations, original_try_respond = _install_character_mind_probe(mary)
             for run_number in range(1, runs + 1):
@@ -997,10 +992,7 @@ def run_production_benchmark(
         finally:
             if original_try_respond is not None:
                 mary.mind.try_respond = original_try_respond
-            if app is not None:
-                app.close()
-            else:
-                mary.mind.close()
+            app.close()
 
         state_evidence["dotenv_target_remained_nonexistent"] = not paths["env_file"].exists()
         report = _build_report(

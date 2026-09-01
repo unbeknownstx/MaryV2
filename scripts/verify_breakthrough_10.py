@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.runtime.turn_policy import TurnPolicyEngine
+from mary.runtime.application import create_application
 
 
 class FakeProvider(LLMInterface):
@@ -63,13 +64,17 @@ def router_fixture(*, ollama_available: bool = True):
     return router, providers
 
 
-def wire(mary: Mary, router: LLMRouter) -> None:
+def wire(mary, router: LLMRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
     mary.expert_consultant.router = router
     mary.task_orchestrator.router = router
     mary.task_executor.router = router
+
+
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def main() -> None:
@@ -98,12 +103,18 @@ def main() -> None:
     original = os.getcwd()
     with tempfile.TemporaryDirectory(prefix="maryv2_breakthrough10_") as directory:
         os.chdir(directory)
+        app = None
         try:
-            mary = Mary()
+            app = create_application(
+                memory_path=Path(directory) / "data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary = app.mary
             router, providers = router_fixture()
             wire(mary, router)
 
-            personal = mary.process("idk i just wanna talk for a bit")
+            personal = _turn(app, "idk i just wanna talk for a bit")
             check(
                 "top-down personal turn actually reaches Ollama first",
                 personal.reasoning.metadata.get("provider") == "ollama"
@@ -111,7 +122,7 @@ def main() -> None:
                 and providers["groq"].calls == 0,
             )
 
-            task = mary.process("what is a fish?")
+            task = _turn(app, "what is a fish?")
             check(
                 "top-down factual turn actually reaches task/general cloud route",
                 task.reasoning.metadata.get("provider") == "groq"
@@ -119,7 +130,7 @@ def main() -> None:
             )
 
             before = sum(item.calls for item in providers.values())
-            learning = mary.process(
+            learning = _turn(app,
                 "please ask anything of me an i will help you as best i can you are here to learn"
             )
             after = sum(item.calls for item in providers.values())
@@ -171,6 +182,8 @@ def main() -> None:
                 and status.get("architecture_contract", {}).get("connected") is True,
             )
         finally:
+            if app is not None:
+                app.close()
             os.chdir(original)
 
     fallback_router, fallback = router_fixture(ollama_available=False)

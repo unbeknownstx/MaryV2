@@ -4,11 +4,10 @@ import os
 from pathlib import Path
 import tempfile
 
-from mary.core.mary import Mary
-from mary.ecosystem import MaryEcosystem
 from mary.presence import PresenceEventType
 from mary.skills import SkillRegistry
 from mary.runtime.release import APP_VERSION, DESKTOP_PHASE
+from mary.runtime.application import create_application
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -37,10 +36,11 @@ def main()->int:
     check("core ecosystem skills enabled",skills.enabled("study") and skills.enabled("focus") and skills.enabled("presence"))
     check("external skills default disabled",not skills.enabled("twitch") and not skills.enabled("obs") and not skills.enabled("vision"))
     old=os.environ.get("MARY_DATA_DIR")
+    app = None
     try:
         with tempfile.TemporaryDirectory(prefix="maryv2_12_8_") as directory:
             data=Path(directory)/"data"; os.environ["MARY_DATA_DIR"]=str(data)
-            mary=Mary(); eco=MaryEcosystem(mary)
+            app=create_application(memory_path=data/"memory"/"memory.json",auto_save=False,load_memory=False,load_developed_self=False,load_preference_promotion=False,load_knowledge=False); eco=app.ecosystem
             eco.command.add("Verifier task")
             project=eco.study.create_project("Verifier study")
             eco.study.add_card(project["id"],"Question","Answer")
@@ -51,6 +51,7 @@ def main()->int:
             snapshot=eco.snapshot()
             check("dashboard ecosystem snapshot is bounded and credential-free","GROQ_API_KEY" not in repr(snapshot) and "OPENAI_API_KEY" not in repr(snapshot))
     finally:
+        if app is not None: app.close()
         if old is None: os.environ.pop("MARY_DATA_DIR",None)
         else: os.environ["MARY_DATA_DIR"]=old
     print("="*72); print("MARYV2 12.8 ECOSYSTEM + PRESENCE VERIFIED"); return 0

@@ -1,8 +1,33 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.cognition.intent import Intent, IntentType
 from mary.core.mary import Mary
-from mary.runtime.application import create_application, format_memory_status
+from mary.runtime.application import MaryApplication, create_application, format_memory_status
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 def _conversation_intent() -> Intent:
@@ -15,7 +40,8 @@ def _conversation_intent() -> Intent:
 
 def test_shared_work_question_routes_to_durable_relationship_recall(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
     prompts = (
         "what do you remember about what we've been working on together?",
@@ -30,7 +56,8 @@ def test_shared_work_question_routes_to_durable_relationship_recall(tmp_path, mo
 
 def test_macbook_mixed_turn_becomes_grounded_shared_work_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
     learned = mary._learn_shared_work_statement(
         "hey Mary, we're running on my MacBook for the first time. what do you think?",
@@ -47,7 +74,7 @@ def test_macbook_mixed_turn_becomes_grounded_shared_work_history(tmp_path, monke
     assert second is not None
     assert second["recorded"] is True
 
-    result = mary.process(
+    result = _run(app,
         "remind me what we've actually been building together lately"
     )
 
@@ -64,14 +91,16 @@ def test_macbook_mixed_turn_becomes_grounded_shared_work_history(tmp_path, monke
 
 def test_shared_work_history_survives_restart(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     mary._learn_shared_work_statement(
         "we've been building MaryV2 together on the MacBook",
         intent=_conversation_intent(),
     )
 
-    restarted = Mary()
-    result = restarted.process("what have we worked on together?")
+    restarted_app = _application()
+    restarted = restarted_app.mary
+    result = _run(restarted_app, "what have we worked on together?")
 
     assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
     assert "maryv2" in result.final_response.lower()
@@ -80,7 +109,8 @@ def test_shared_work_history_survives_restart(tmp_path, monkeypatch):
 
 def test_unrelated_creator_preference_does_not_become_shared_project_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     mary.remember(
         "I like rainy nights when I'm working on creative projects",
         memory_type="episodic",
@@ -93,7 +123,7 @@ def test_unrelated_creator_preference_does_not_become_shared_project_history(tmp
         },
     )
 
-    result = mary.process(
+    result = _run(app,
         "what do you remember about what we've been working on together?"
     )
 
@@ -103,7 +133,8 @@ def test_unrelated_creator_preference_does_not_become_shared_project_history(tmp
 
 def test_available_memory_view_combines_episodic_and_semantic_layers(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     episode = mary.remember(
         "We completed a portability check",
         memory_type="episodic",
@@ -129,7 +160,8 @@ def test_available_memory_view_combines_episodic_and_semantic_layers(tmp_path, m
 
 def test_memory_lifecycle_explains_zero_semantic_without_mutating_it(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     mary.remember(
         "I like pizza",
         memory_type="episodic",
@@ -150,7 +182,8 @@ def test_memory_lifecycle_explains_zero_semantic_without_mutating_it(tmp_path, m
 
 def test_memory_status_command_is_display_safe_and_reports_shared_work(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     mary._learn_shared_work_statement(
         "we're testing MaryV2 together on macOS",
         intent=_conversation_intent(),
@@ -161,6 +194,7 @@ def test_memory_status_command_is_display_safe_and_reports_shared_work(tmp_path,
         auto_save=False,
         load_memory=False,
     )
+    _applications.append(app)
 
     output = format_memory_status(app)
 

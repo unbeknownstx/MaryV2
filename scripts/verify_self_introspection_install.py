@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.runtime.application import create_application
 
@@ -58,14 +57,11 @@ def main() -> int:
     with TemporaryDirectory() as temp_dir:
         try:
             os.chdir(temp_dir)
-            mary = Mary()
+            app = create_application(memory_path=Path(temp_dir) / "memory.json")
+            mary = app.mary
             mary.llm.register_provider("fake", _RateLimitedProvider())
             mary.config.llm.provider = "fake"
             mary.config.llm.fallback_providers = []
-            app = create_application(
-                mary=mary,
-                memory_path=Path(temp_dir) / "memory.json",
-            )
 
             for query, expected in CHECKS:
                 result = app.run(query)

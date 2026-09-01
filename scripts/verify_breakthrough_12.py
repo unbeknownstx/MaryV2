@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import os
+import tempfile
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.cognition.intent import IntentType
 from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.runtime.environment import RuntimeEnvironment
+from mary.runtime.application import create_application
 
 
 class FakeProvider(LLMInterface):
@@ -32,6 +35,10 @@ def check(label: str, condition: bool) -> None:
     print(f"PASS {label}")
 
 
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
 def main() -> None:
     print("=" * 72)
     print("MARY V2 BREAKTHROUGH 12 - HOST AWARENESS / DYNAMIC CAPABILITIES")
@@ -49,7 +56,7 @@ def main() -> None:
     for name, provider in providers.items():
         router.register_provider(name, provider)
 
-    with patch.dict(os.environ, {"REPL_ID": "verification-repl"}, clear=False):
+    with tempfile.TemporaryDirectory(prefix="maryv2_bt12_") as directory, ExitStack() as cleanup, patch.dict(os.environ, {"REPL_ID": "verification-repl"}, clear=False):
         env = RuntimeEnvironment(config=config, router=router)
         snap = env.snapshot()
         check("Replit host is detected without changing Mary's core", snap["host_type"] == "replit")
@@ -57,7 +64,13 @@ def main() -> None:
         check("effective Replit conversation route skips unavailable Ollama", snap["effective_conversation_route"] == ["groq", "gemini", "openrouter"])
         check("task/general route remains available through configured cloud providers", snap["effective_task_route"][:3] == ["groq", "gemini", "openrouter"])
 
-        mary = Mary()
+        app = create_application(
+            memory_path=Path(directory) / "data" / "memory" / "memory.json",
+            auto_save=False, load_memory=False, load_developed_self=False,
+            load_preference_promotion=False, load_knowledge=False,
+        )
+        cleanup.callback(app.close)
+        mary = app.mary
         mary.llm = router
         mary.reasoning.llm = router
         mary.reflection.llm = router
@@ -78,7 +91,7 @@ def main() -> None:
         check("runtime answer truthfully reports Ollama unavailable", "ollama is not reachable" in response)
         check("runtime answer exposes effective cloud fallback", "groq -> gemini -> openrouter" in response)
 
-        result = mary.process("idk i just wanna talk for a bit")
+        result = _turn(app, "idk i just wanna talk for a bit")
         check("real conversational generation continues through available provider", result.reasoning.metadata.get("provider") == "groq")
         check("unavailable Ollama is not asked to generate", providers["ollama"].calls == 0)
 

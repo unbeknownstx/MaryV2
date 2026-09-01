@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from mary.cognition.intent import IntentType
-from mary.core.mary import Mary
 from mary.llm.interface import LLMResponse
+from mary.runtime.application import create_application
 
 
 class FakeRouter:
@@ -37,10 +38,14 @@ class FakeRouter:
         return True
 
 
-def _wire(mary: Mary, router: FakeRouter) -> None:
+def _wire(mary, router: FakeRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
+
+
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
 
 
 def _pass(label: str) -> None:
@@ -53,6 +58,8 @@ def main() -> int:
 
     original = os.getcwd()
     with TemporaryDirectory(prefix="maryv2_continuity_", ignore_cleanup_errors=True) as temp:
+        app = None
+        app2 = None
         try:
             os.chdir(temp)
 
@@ -60,11 +67,16 @@ def main() -> int:
                 "What part of the build gave you the most satisfaction?",
                 "Which parts do you feel are the most over-engineered?",
             ])
-            mary = Mary()
+            app = create_application(
+                memory_path=Path(temp) / "data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary = app.mary
             _wire(mary, router)
 
-            first = mary.process("We've spent all day building you.")
-            second = mary.process("I think we might have overengineered some of this.")
+            first = _turn(app, "We've spent all day building you.")
+            second = _turn(app, "I think we might have overengineered some of this.")
             continuity = second.context.mind_state.get("continuity", {})
             if continuity.get("drive") != "opine":
                 raise AssertionError("overengineering turn did not select OPINE drive")
@@ -79,13 +91,13 @@ def main() -> int:
                 raise AssertionError("opinion turn still ended with an unnecessary follow-up question")
             _pass("conversational drives and question budget shape actual responses")
 
-            disagree = mary.process("You can disagree with me, you know.")
+            disagree = _turn(app, "You can disagree with me, you know.")
             if disagree.context.mind_state.get("continuity", {}).get("drive") != "disagree":
                 raise AssertionError("explicit disagreement invitation did not select DISAGREE")
             _pass("Mary can select disagreement/opinion instead of reflexive follow-up")
 
             calls_before = len(router.calls)
-            recalled = mary.process("What do you remember from what we were just talking about?")
+            recalled = _turn(app, "What do you remember from what we were just talking about?")
             if recalled.intent.intent_type != IntentType.CONVERSATION_RECALL:
                 raise AssertionError("recent-dialogue recall was misrouted to long-term memory")
             if len(router.calls) != calls_before:
@@ -98,10 +110,15 @@ def main() -> int:
                 "Sounds like a classic too-many-knobs scenario.",
                 "Sounds like a classic feature-fatigue moment.",
             ])
-            mary2 = Mary()
+            app2 = create_application(
+                memory_path=Path(temp) / "second_data" / "memory" / "memory.json",
+                auto_save=False, load_memory=False, load_developed_self=False,
+                load_preference_promotion=False, load_knowledge=False,
+            )
+            mary2 = app2.mary
             _wire(mary2, repeat_router)
-            mary2.process("We may have overbuilt this.")
-            repeated = mary2.process("Some of it still feels too complicated.")
+            _turn(app2, "We may have overbuilt this.")
+            repeated = _turn(app2, "Some of it still feels too complicated.")
             if repeated.final_response.lower().startswith("sounds like a classic"):
                 raise AssertionError("recent opening repetition was not revised")
             _pass("recent opening/metaphor-pattern repetition is audited and revised")
@@ -111,6 +128,10 @@ def main() -> int:
             _pass("ConversationContinuity is shared through the authoritative TurnMindState")
 
         finally:
+            if app2 is not None:
+                app2.close()
+            if app is not None:
+                app.close()
             os.chdir(original)
 
     print("=" * 72)

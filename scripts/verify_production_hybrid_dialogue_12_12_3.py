@@ -93,8 +93,8 @@ def _run_isolated_checks() -> int:
     # context.  Importing this verifier alone must never trigger dotenv or
     # persistent-state discovery.
     from mary.core.config import Config
-    from mary.core.mary import Mary
     from mary.llm.router import LLMRouter
+    from mary.runtime.application import create_application
     from mary.runtime.release import APP_VERSION
 
     print("=" * 76)
@@ -153,7 +153,8 @@ def _run_isolated_checks() -> int:
         "qwen3:1.7b is not a production response engine",
     ))
 
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
     try:
         provider_calls = 0
 
@@ -163,7 +164,7 @@ def _run_isolated_checks() -> int:
             raise AssertionError("eligible local response reached a provider")
 
         mary.llm.generate = forbidden_provider  # type: ignore[method-assign]
-        result = mary.process("hey mary")
+        result = app.run("hey mary").metadata["pipeline_values"]["cognitive_cycle"]
         reasoning = dict(result.reasoning.metadata or {})
         checks.append(check(
             result.metadata.get("handled_by") == "mary_local_mind"
@@ -195,7 +196,7 @@ def _run_isolated_checks() -> int:
             "production Qwen shadow remains disabled",
         ))
     finally:
-        mary.mind.close()
+        app.close()
 
     ok = all(checks)
     print("=" * 76)

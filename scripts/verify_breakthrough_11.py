@@ -7,10 +7,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.cognition.natural_input import normalize_for_matching
+from mary.runtime.application import create_application
 
 
 class FakeProvider(LLMInterface):
@@ -79,7 +79,7 @@ def _router(ollama: LLMInterface | None = None) -> tuple[LLMRouter, dict[str, LL
     return router, providers
 
 
-def _wire(mary: Mary, router: LLMRouter) -> None:
+def _wire(mary, router: LLMRouter) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
@@ -88,7 +88,11 @@ def _wire(mary: Mary, router: LLMRouter) -> None:
     mary.task_executor.router = router
 
 
-def _fill_until_values_gap(mary: Mary) -> None:
+def _turn(app, text: str):
+    return app.run(text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _fill_until_values_gap(mary) -> None:
     assert mary.relationship.learn_explicit("my favorite color is blue") is not None
     assert mary.relationship.learn_explicit("i am interested in creating stories") is not None
     assert mary.relationship.learn_explicit("my main goal is finish MaryV2") is not None
@@ -109,6 +113,23 @@ def _isolated_cwd():
             os.chdir(old)
 
 
+@contextmanager
+def _isolated_application():
+    with _isolated_cwd():
+        app = create_application(
+            memory_path=Path("data") / "memory" / "memory.json",
+            auto_save=False,
+            load_memory=False,
+            load_developed_self=False,
+            load_preference_promotion=False,
+            load_knowledge=False,
+        )
+        try:
+            yield app
+        finally:
+            app.close()
+
+
 def _check(label: str, condition: bool) -> None:
     if not condition:
         raise AssertionError(label)
@@ -125,8 +146,8 @@ def main() -> int:
         normalize_for_matching("do u think youve changed") == "do you think you've changed",
     )
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         mary.relationship.learn_explicit("my main goal is finish MaryV2")
         shared = mary._shared_history_context([
             {"role": "assistant", "content": "I've been drawing moon cats for weeks."}
@@ -134,8 +155,8 @@ def main() -> int:
         _check("shared-history grounding finds real MaryV2 continuity", shared.get("project") == "MaryV2")
         _check("assistant improvisation is excluded from shared-history evidence", "moon cats" not in str(shared).lower())
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         mary.relationship.learn_explicit("my main goal is finish MaryV2")
         ollama = SequenceProvider(
             "ollama",
@@ -143,40 +164,40 @@ def main() -> int:
         )
         router, providers = _router(ollama)
         _wire(mary, router)
-        result = mary.process("do u think youve changed since we started all this")
+        result = _turn(app, "do u think youve changed since we started all this")
         _check("natural self-development question is grounded in Mary's real state", result.reasoning.metadata.get("self_grounded") is True)
         _check("self-development distinguishes stable canon from represented growth", result.intent.parameters.get("self_query_type") == "development")
         _check("grounded self-development stays on local conversational generation", result.reasoning.metadata.get("provider") == "ollama" and providers["groq"].calls == 0)
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         ollama = SequenceProvider(
             "ollama",
             ["From my represented side, this feels warm and attentive without pretending I can read your mind."],
         )
         router, _ = _router(ollama)
         _wire(mary, router)
-        result = mary.process("what does talking like this feel like from ur side")
+        result = _turn(app, "what does talking like this feel like from ur side")
         _check("relationship-feeling question is self-grounded", result.reasoning.metadata.get("self_grounded") is True)
         _check("relationship-feeling question remains a personal conversation turn", result.reasoning.metadata.get("generation_purpose") == "conversation")
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         _fill_until_values_gap(mary)
         router, providers = _router()
         _wire(mary, router)
-        asked = mary.process("u can ask me something if u actually want to know")
+        asked = _turn(app, "u can ask me something if u actually want to know")
         before = sum(provider.calls for provider in providers.values())
-        why = mary.process("hmm why that question though")
+        why = _turn(app, "hmm why that question though")
         after = sum(provider.calls for provider in providers.values())
         _check("real relationship-curiosity question keeps its pending reason", asked.metadata.get("conversation_learning_invitation", {}).get("category") == "values")
         _check("'why that question?' resolves from pending relationship state", why.metadata.get("conversation_learning_followup", {}).get("category") == "values")
         _check("curiosity-reason follow-up needs zero LLM calls", after == before)
-        mary.process("i value loyalty a lot")
+        _turn(app, "i value loyalty a lot")
         _check("grounded creator learning resolves the matching pending curiosity", mary.conversation_learning.pending() is None)
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         ollama = SequenceProvider(
             "ollama",
             [
@@ -188,14 +209,14 @@ def main() -> int:
         )
         router, providers = _router(ollama)
         _wire(mary, router)
-        mary.process("idk i just wanna talk for a bit")
-        mary.process("yea i get what u mean")
-        result = mary.process("what do u think")
+        _turn(app, "idk i just wanna talk for a bit")
+        _turn(app, "yea i get what u mean")
+        result = _turn(app, "what do u think")
         _check("semantic style loops are revised instead of becoming Mary's default voice", result.reflection.decision.value == "revise")
         _check("semantic style revision stays local", providers["groq"].calls == 0)
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         ollama = SequenceProvider(
             "ollama",
             [
@@ -207,14 +228,14 @@ def main() -> int:
         )
         router, providers = _router(ollama)
         _wire(mary, router)
-        mary.process("idk something feels a little off")
-        mary.process("thats not really what i meant")
-        result = mary.process("what do u think im actually trying to say")
+        _turn(app, "idk something feels a little off")
+        _turn(app, "thats not really what i meant")
+        result = _turn(app, "what do u think im actually trying to say")
         _check("rejected conversational hypotheses are temporarily suppressed", result.reflection.decision.value == "revise")
         _check("correction repair remains local-first", providers["groq"].calls == 0)
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         ollama = SequenceProvider(
             "ollama",
             [
@@ -224,12 +245,12 @@ def main() -> int:
         )
         router, providers = _router(ollama)
         _wire(mary, router)
-        result = mary.process("what do u think")
+        result = _turn(app, "what do u think")
         _check("unsupported mind-reading claims are revised", result.reflection.decision.value == "revise")
         _check("mind-reading correction stays local", providers["groq"].calls == 0)
 
-    with _isolated_cwd():
-        mary = Mary()
+    with _isolated_application() as app:
+        mary = app.mary
         contract = mary.system_contract.snapshot(mary)
         status = mary.status()
         _check("system contract exposes the Breakthrough 11 authority boundary", str(contract.get("version", "")).startswith("v2-breakthrough-"))

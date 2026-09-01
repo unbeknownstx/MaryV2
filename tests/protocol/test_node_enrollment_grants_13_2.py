@@ -202,7 +202,7 @@ def test_client_sends_grant_alongside_stale_node_token(monkeypatch):
         enrollment_grant="bounded-grant",
         device_id="device-a",
     )
-    client._node_token = "stale-session-token"
+    client._node_token = "test-stale-session-token"
     client.register_node(
         display_name="device-a",
         host_type="desktop",
@@ -210,7 +210,7 @@ def test_client_sends_grant_alongside_stale_node_token(monkeypatch):
         surface="desktop",
         capabilities=[],
     )
-    assert observed["X-mary-node-token"] == "stale-session-token"
+    assert observed["X-mary-node-token"] == "test-stale-session-token"
     assert observed["X-mary-enrollment-grant"] == "bounded-grant"
     assert "Authorization" not in observed
 

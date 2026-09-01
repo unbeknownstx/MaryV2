@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.runtime.application import create_application
 
@@ -34,7 +33,7 @@ class NoLLMProvider(LLMInterface):
         return "relationship-local"
 
 
-def _configure(mary: Mary) -> NoLLMProvider:
+def _configure(mary) -> NoLLMProvider:
     provider = NoLLMProvider()
     mary.llm.register_provider("verification", provider)
     mary.config.llm.provider = "verification"
@@ -53,12 +52,11 @@ def main() -> int:
         try:
             os.chdir(temp)
 
-            mary = Mary()
-            provider = _configure(mary)
             app = create_application(
-                mary=mary,
                 memory_path=temp / "memory" / "memory.json",
             )
+            mary = app.mary
+            provider = _configure(mary)
 
             app.run("you should be curious about me top priority")
             app.run("remember this: I love creating stories")
@@ -108,12 +106,11 @@ def main() -> int:
 
             app.close()
 
-            restarted = Mary()
-            restarted_provider = _configure(restarted)
             restarted_app = create_application(
-                mary=restarted,
                 memory_path=temp / "memory" / "memory.json",
             )
+            restarted = restarted_app.mary
+            restarted_provider = _configure(restarted)
             restarted_query = restarted_app.run("What do you know about me?")
             output = str(restarted_query.output).lower()
             if "creating stories" not in output or "favorite color: green" not in output:
@@ -128,10 +125,7 @@ def main() -> int:
             if restarted_app is not None:
                 restarted_app.close()
             if app is not None:
-                try:
-                    app.mary.mind.close()
-                except Exception:
-                    pass
+                app.close()
             os.chdir(original_cwd)
 
     print("=" * 72)

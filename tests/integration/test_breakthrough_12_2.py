@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from mary.core.config import Config
 from mary.core.mary import Mary
 from mary.cognition.intent import IntentType
@@ -9,6 +11,30 @@ from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.runtime.environment import RuntimeEnvironment
 from mary.runtime.introspection import RuntimeIntrospection
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class FakeProvider(LLMInterface):
@@ -85,11 +111,12 @@ def _simulate_replit(monkeypatch) -> None:
 
 def test_models_question_is_concise_runtime_answer_on_replit(monkeypatch):
     _simulate_replit(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
 
-    result = mary.process("what models can you use right now?")
+    result = _run(app, "what models can you use right now?")
     text = result.final_response.lower()
 
     assert "right now on replit / linux" in text
@@ -104,11 +131,12 @@ def test_models_question_is_concise_runtime_answer_on_replit(monkeypatch):
 def test_host_change_question_gets_portability_answer_not_architecture_dump(monkeypatch):
     _clear_host_env(monkeypatch)
     monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, _ = _router(ollama=False)
     _wire(mary, config, router)
 
-    result = mary.process("does anything about how you work change because were not on my pc?")
+    result = _run(app, "does anything about how you work change because were not on my pc?")
     text = result.final_response.lower()
 
     assert "my core maryv2 architecture does not change" in text
@@ -119,11 +147,12 @@ def test_host_change_question_gets_portability_answer_not_architecture_dump(monk
 
 def test_where_are_you_running_is_host_only_answer(monkeypatch):
     _simulate_replit(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, _ = _router(ollama=False)
     _wire(mary, config, router)
 
-    result = mary.process("where are you running right now?")
+    result = _run(app, "where are you running right now?")
     text = result.final_response.lower()
 
     assert text.startswith("i'm running on replit / linux")
@@ -134,11 +163,12 @@ def test_where_are_you_running_is_host_only_answer(monkeypatch):
 def test_ollama_specific_question_reports_unavailable_without_llm(monkeypatch):
     _clear_host_env(monkeypatch)
     monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, providers = _router(ollama=False)
     _wire(mary, config, router)
 
-    result = mary.process("can u use ollama here?")
+    result = _run(app, "can u use ollama here?")
     text = result.final_response.lower()
 
     assert "ollama is configured" in text
@@ -149,11 +179,12 @@ def test_ollama_specific_question_reports_unavailable_without_llm(monkeypatch):
 def test_openai_specific_answer_preserves_explicit_expert_boundary(monkeypatch):
     _clear_host_env(monkeypatch)
     monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, _ = _router(ollama=False, openai=True)
     _wire(mary, config, router)
 
-    result = mary.process("can you use openai right now?")
+    result = _run(app, "can you use openai right now?")
     text = result.final_response.lower()
 
     assert "explicitly authorized one-task expert" in text
@@ -162,11 +193,12 @@ def test_openai_specific_answer_preserves_explicit_expert_boundary(monkeypatch):
 def test_runtime_last_metadata_is_truthful_and_specific(monkeypatch):
     _clear_host_env(monkeypatch)
     monkeypatch.setenv("REPL_ID", "portable-test")
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, _ = _router(ollama=False)
     _wire(mary, config, router)
 
-    result = mary.process("what models can you use right now?")
+    result = _run(app, "what models can you use right now?")
     meta = result.reasoning.metadata
 
     assert meta["provider"] == "local/system"
@@ -178,11 +210,12 @@ def test_runtime_last_metadata_is_truthful_and_specific(monkeypatch):
 
 def test_broad_architecture_question_still_gets_full_architecture_answer(monkeypatch):
     _simulate_replit(monkeypatch)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     config, router, _ = _router(ollama=False)
     _wire(mary, config, router)
 
-    result = mary.process("what is your underlying architecture?")
+    result = _run(app, "what is your underlying architecture?")
     text = result.final_response.lower()
 
     assert "my identity, memory, personality" in text
@@ -191,7 +224,8 @@ def test_broad_architecture_question_still_gets_full_architecture_answer(monkeyp
 
 
 def test_external_latest_model_question_is_still_web_intent():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what is the latest OpenAI model right now?")
     assert intent.intent_type == IntentType.WEB_SEARCH
 

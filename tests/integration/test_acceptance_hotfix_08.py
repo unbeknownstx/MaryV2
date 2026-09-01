@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import IntentType
 from mary.cognition.reasoning import ReasoningResult
@@ -8,6 +10,30 @@ from mary.core.mary import Mary
 from mary.expression.emotion import Emotion
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.llm.router import LLMRouter
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application() -> MaryApplication:
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class FakeProvider(LLMInterface):
@@ -83,7 +109,8 @@ def test_normal_slash_free_first_wording_clears_local_only_and_restores_cloud(
     monkeypatch,
 ):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
 
     mary.llm = router
@@ -93,11 +120,11 @@ def test_normal_slash_free_first_wording_clears_local_only_and_restores_cloud(
     mary.task_orchestrator.router = router
     mary.task_executor.router = router
 
-    enabled = mary.process("go ahead and use ollama my local llm")
-    local_answer = mary.process("idk i just wanna talk for a bit")
+    enabled = _run(app, "go ahead and use ollama my local llm")
+    local_answer = _run(app, "idk i just wanna talk for a bit")
     providers["ollama"].available = False
-    cleared = mary.process("Use the normal/free-first route.")
-    cloud_answer = mary.process("i still just wanna talk for a bit")
+    cleared = _run(app, "Use the normal/free-first route.")
+    cloud_answer = _run(app, "i still just wanna talk for a bit")
 
     assert "Local-only generation is active" in enabled.final_response
     assert local_answer.reasoning.metadata["provider"] == "ollama"
@@ -122,7 +149,8 @@ def test_explicit_expert_route_beats_private_session_override():
 
 def test_natural_local_model_command_routes_to_llm_control(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
     intent = mary.cognition.detect_intent(
         "cheeky go ahead and use ollama my local llm i give you permission"
@@ -136,7 +164,8 @@ def test_natural_local_model_command_routes_to_llm_control(tmp_path, monkeypatch
 
 def test_local_model_capability_question_does_not_change_route(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
     intent = mary.cognition.detect_intent("can you use local llm?")
 
@@ -147,7 +176,8 @@ def test_local_model_capability_question_does_not_change_route(tmp_path, monkeyp
 
 def test_explicit_openai_command_is_one_task_paid_expert_intent(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
     intent = mary.cognition.detect_intent(
         "no fr go ahead and call open ai and think bigger about this"
@@ -161,9 +191,10 @@ def test_explicit_openai_command_is_one_task_paid_expert_intent(tmp_path, monkey
 
 def test_process_local_route_control_changes_router_without_model_call(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
 
-    result = mary.process("go ahead and use ollama my local llm")
+    result = _run(app, "go ahead and use ollama my local llm")
 
     assert mary.llm.session_override_status()["route"] == "private"
     assert "Local-only generation is active" in result.final_response
@@ -172,7 +203,8 @@ def test_process_local_route_control_changes_router_without_model_call(tmp_path,
 
 def test_pronoun_followup_after_route_change_becomes_runtime_self_query(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     mary.llm.set_session_override(route="private")
 
     intent = mary._detect_intent("you are using it arent you")
@@ -183,7 +215,8 @@ def test_pronoun_followup_after_route_change_becomes_runtime_self_query(tmp_path
 
 def test_false_current_ollama_claim_is_audited(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     context = CognitiveContext(input_text="are you using ollama?")
     reasoning = ReasoningResult(
         response="Yeah, I'm on the local LLM now—no cloud detour.",
@@ -198,7 +231,8 @@ def test_false_current_ollama_claim_is_audited(tmp_path, monkeypatch):
 
 def test_recorded_openai_expert_evidence_allows_truthful_consultation_claim(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     context = CognitiveContext(
         input_text="go ahead and call openai",
         relevant_knowledge=[{
@@ -218,7 +252,8 @@ def test_recorded_openai_expert_evidence_allows_truthful_consultation_claim(tmp_
 
 def test_simple_disagreement_cannot_be_reframed_as_hiding(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     context = CognitiveContext(input_text="hmm maybe but i dont agree")
 
     issues = mary.reflection._unsupported_creator_mindreading_audit(
@@ -232,7 +267,8 @@ def test_simple_disagreement_cannot_be_reframed_as_hiding(tmp_path, monkeypatch)
 
 def test_correction_selects_reflect_and_reanchor_instruction(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     snapshot = mary.continuity.build(
         input_text="thats not really what i meant",
         intent_type=IntentType.CONVERSATION,
@@ -245,7 +281,8 @@ def test_correction_selects_reflect_and_reanchor_instruction(tmp_path, monkeypat
 
 def test_disagreement_or_correction_produces_attentive_curiosity(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     appraisal = mary.emotion_appraiser.appraise(
         input_text="hmm maybe but i dont agree",
         response_text="",
@@ -258,7 +295,8 @@ def test_disagreement_or_correction_produces_attentive_curiosity(tmp_path, monke
 
 def test_relationship_feeling_fallback_is_not_blank_when_emotion_meter_is_neutral(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     evidence = mary.self_introspection.build("relationship_feelings", query="what do u feel when we talk")
     fallback = evidence["fallback_response"].lower()
 
@@ -269,7 +307,8 @@ def test_relationship_feeling_fallback_is_not_blank_when_emotion_meter_is_neutra
 
 def test_explicit_openai_request_executes_exactly_one_paid_expert_call_then_mary_synthesizes(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     providers["openai"].content = (
         "The deeper issue is capability truth: distinguish the feeling of continuity from verified runtime actions."
@@ -285,7 +324,7 @@ def test_explicit_openai_request_executes_exactly_one_paid_expert_call_then_mary
     mary.task_orchestrator.router = router
     mary.task_executor.router = router
 
-    result = mary.process(
+    result = _run(app,
         "no fr go ahead and call open ai and think bigger about what this interaction feels like"
     )
 
@@ -298,7 +337,8 @@ def test_explicit_openai_request_executes_exactly_one_paid_expert_call_then_mary
 
 def test_mary_route_command_makes_next_real_generation_use_ollama(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router()
     providers["ollama"].content = "A fish is an aquatic vertebrate that typically breathes through gills."
 
@@ -309,8 +349,8 @@ def test_mary_route_command_makes_next_real_generation_use_ollama(tmp_path, monk
     mary.task_orchestrator.router = router
     mary.task_executor.router = router
 
-    control = mary.process("go ahead and use ollama my local llm")
-    answer = mary.process("what is a fish?")
+    control = _run(app, "go ahead and use ollama my local llm")
+    answer = _run(app, "what is a fish?")
 
     assert "Local-only generation is active" in control.final_response
     assert answer.reasoning.metadata["provider"] == "ollama"

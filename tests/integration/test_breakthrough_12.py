@@ -1,11 +1,40 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.core.config import Config
 from mary.core.mary import Mary
 from mary.cognition.intent import IntentType
 from mary.llm.interface import LLMInterface, LLMResponse
 from mary.llm.router import LLMRouter
 from mary.runtime.environment import RuntimeEnvironment
+from mary.runtime.application import MaryApplication, create_application
+
+
+_applications: list[MaryApplication] = []
+
+
+def _run(app: MaryApplication, input_text: str):
+    return app.run(input_text).metadata["pipeline_values"]["cognitive_cycle"]
+
+
+def _application():
+    app = create_application(
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    _applications.append(app)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def _close_applications():
+    yield
+    while _applications:
+        _applications.pop().close()
 
 
 class FakeProvider(LLMInterface):
@@ -93,21 +122,24 @@ def test_local_host_can_keep_ollama_first_when_available(monkeypatch):
 
 
 def test_models_available_right_now_is_runtime_self_query_not_web():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what models can u use right now?")
     assert intent.intent_type == IntentType.SELF_QUERY
     assert intent.parameters["self_query_type"] == "runtime_architecture"
 
 
 def test_not_on_my_pc_question_is_runtime_self_query_not_web():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("does anything change because were not on my pc?")
     assert intent.intent_type == IntentType.SELF_QUERY
     assert intent.parameters["self_query_type"] == "runtime_architecture"
 
 
 def test_replit_personal_sentence_with_right_now_stays_conversation_not_web():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent(
         "idk im working on u from replit on my phone right now what do u think about that?"
     )
@@ -115,20 +147,23 @@ def test_replit_personal_sentence_with_right_now_stays_conversation_not_web():
 
 
 def test_latest_python_release_still_routes_to_web():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what is the latest Python release?")
     assert intent.intent_type == IntentType.WEB_SEARCH
 
 
 def test_latest_game_news_right_now_still_routes_to_web():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what is the latest game news right now?")
     assert intent.intent_type == IntentType.WEB_SEARCH
 
 
 def test_runtime_environment_response_reports_host_and_effective_route(monkeypatch):
     monkeypatch.setenv("REPL_ID", "test-repl")
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, _ = _router(ollama=False)
     _wire(mary, router)
     response = mary._runtime_architecture_response(query="what models can u use right now?")
@@ -140,10 +175,11 @@ def test_runtime_environment_response_reports_host_and_effective_route(monkeypat
 
 def test_replit_conversation_generation_skips_unavailable_ollama(monkeypatch):
     monkeypatch.setenv("REPL_ID", "test-repl")
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     router, providers = _router(ollama=False)
     _wire(mary, router)
-    result = mary.process("idk i just wanna talk for a bit")
+    result = _run(app, "idk i just wanna talk for a bit")
     assert result.reasoning.metadata["provider"] == "groq"
     assert providers["ollama"].calls == 0
     assert providers["groq"].calls >= 1
@@ -160,14 +196,16 @@ def test_environment_snapshot_is_display_safe(monkeypatch):
 
 
 def test_models_available_typo_still_routes_to_runtime_not_llm():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what models can you ise right now?")
     assert intent.intent_type == IntentType.SELF_QUERY
     assert intent.parameters["self_query_type"] == "runtime_architecture"
 
 
 def test_natural_not_on_pc_wording_routes_to_runtime_not_llm():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent(
         "does anything about how you work change because were not on my pc?"
     )
@@ -176,6 +214,7 @@ def test_natural_not_on_pc_wording_routes_to_runtime_not_llm():
 
 
 def test_provider_runtime_guard_does_not_steal_external_model_news():
-    mary = Mary()
+    app = _application()
+    mary = app.mary
     intent = mary.cognition.detect_intent("what is the latest OpenAI model right now?")
     assert intent.intent_type == IntentType.WEB_SEARCH

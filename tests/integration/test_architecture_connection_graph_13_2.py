@@ -1,13 +1,10 @@
 from mary.core.service import MaryCoreService
-from mary.core.mary import Mary
 from mary.runtime.application import create_application
 from mary.runtime.integration_graph import build_integration_graph
 
 
 def test_full_runtime_connection_graph_has_no_required_disconnects(tmp_path):
-    mary = Mary()
     app = create_application(
-        mary=mary,
         memory_path=tmp_path / "memory" / "memory.json",
         developed_self_path=tmp_path / "personality" / "developed_self.json",
         preference_promotion_path=tmp_path / "personality" / "preference_promotion.json",
@@ -45,8 +42,8 @@ def test_full_runtime_connection_graph_has_no_required_disconnects(tmp_path):
         assert edges["device broker/provider -> canonical node registry"]["connected"] is True
         assert edges["device broker/provider -> canonical node registry"]["required"] is False
 
-        original_router = mary.reasoning.llm
-        mary.reasoning.llm = object()
+        original_router = app.mary.reasoning.llm
+        app.mary.reasoning.llm = object()
         try:
             disconnected = build_integration_graph(application=app, service=service)
             broken_edge = next(
@@ -57,6 +54,7 @@ def test_full_runtime_connection_graph_has_no_required_disconnects(tmp_path):
             assert broken_edge["connected"] is False
             assert broken_edge["name"] in disconnected["required_failures"]
         finally:
-            mary.reasoning.llm = original_router
+            app.mary.reasoning.llm = original_router
     finally:
         service.close()
+        app.close()

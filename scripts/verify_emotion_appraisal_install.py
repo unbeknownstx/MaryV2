@@ -1,15 +1,19 @@
 """Verify Conversation Emotion Appraisal V2 is installed and locally wired."""
 
 from mary.cognition.intent import Intent, IntentType
-from mary.core.mary import Mary
 from mary.expression.emotion import Emotion
+from mary.runtime.application import create_application
 
 
 def main() -> int:
     print("MARYV2 CONVERSATION-EMOTION APPRAISAL VERIFICATION")
     print("=" * 72)
 
-    mary = Mary()
+    app = create_application(
+        auto_save=False, load_memory=False, load_developed_self=False,
+        load_preference_promotion=False, load_knowledge=False,
+    )
+    mary = app.mary
     checks: list[tuple[str, bool]] = []
 
     frustration = mary.emotion_appraiser.appraise(
@@ -54,17 +58,20 @@ def main() -> int:
         not hasattr(mary.emotion_appraiser, "llm"),
     ))
 
-    failed = False
-    for label, ok in checks:
-        print(f"{'PASS' if ok else 'FAIL'}  {label}")
-        failed = failed or not ok
+    try:
+        failed = False
+        for label, ok in checks:
+            print(f"{'PASS' if ok else 'FAIL'}  {label}")
+            failed = failed or not ok
 
-    print("=" * 72)
-    if failed:
-        print("CONVERSATION-EMOTION APPRAISAL VERIFICATION FAILED")
-        return 1
-    print("CONVERSATION-EMOTION APPRAISAL INSTALLED CORRECTLY")
-    return 0
+        print("=" * 72)
+        if failed:
+            print("CONVERSATION-EMOTION APPRAISAL VERIFICATION FAILED")
+            return 1
+        print("CONVERSATION-EMOTION APPRAISAL INSTALLED CORRECTLY")
+        return 0
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

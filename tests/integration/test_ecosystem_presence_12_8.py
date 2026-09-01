@@ -6,9 +6,8 @@ from mary.productivity import CommandCenter, FocusManager, MaryInbox, PersonalSe
 from mary.study import StudyManager
 from mary.presence import PresenceManager, PresenceEventType
 from mary.skills import SkillRegistry
-from mary.ecosystem import MaryEcosystem
-from mary.core.mary import Mary
 from mary.integrations import twitch_policy_from_environment, obs_policy_from_environment
+from mary.runtime.application import create_application
 
 
 def test_command_center_persists_without_touching_other_state(tmp_path):
@@ -120,11 +119,21 @@ def test_twitch_and_obs_policy_expose_no_credentials(monkeypatch):
 def test_mary_ecosystem_uses_canonical_private_data_root(tmp_path, monkeypatch):
     data = tmp_path / "mary-data"
     monkeypatch.setenv("MARY_DATA_DIR", str(data))
-    mary = Mary()
-    ecosystem = MaryEcosystem(mary)
-    ecosystem.command.add("One task")
-    ecosystem.inbox.add("One notice")
-    assert ecosystem.root == data / "ecosystem"
-    assert (data / "ecosystem" / "command_center.json").exists()
-    assert (data / "ecosystem" / "inbox.json").exists()
-    assert not (Path.cwd() / "data" / "ecosystem").exists()
+    app = create_application(
+        memory_path=tmp_path / "state" / "memory.json",
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    try:
+        ecosystem = app.ecosystem
+        ecosystem.command.add("One task")
+        ecosystem.inbox.add("One notice")
+        assert ecosystem.root == data / "ecosystem"
+        assert (data / "ecosystem" / "command_center.json").exists()
+        assert (data / "ecosystem" / "inbox.json").exists()
+        assert not (Path.cwd() / "data" / "ecosystem").exists()
+    finally:
+        app.close()

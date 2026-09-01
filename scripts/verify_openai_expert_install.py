@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.llm.router import LLMRouter
+from mary.runtime.application import create_application
 
 
 def _pass(message: str) -> None:
@@ -34,15 +34,19 @@ def main() -> int:
     assert router.model_name("openai") == "gpt-5.6-luna"
     _pass("low-cost GPT-5.6 Luna is the default paid expert model")
 
-    mary = Mary()
-    assert mary.expert_consultant.workspace is mary.task_workspace
-    assert mary.expert_consultant.router is mary.llm
-    _pass("Mary's expert consultant shares her router and ephemeral task workspace")
+    app = create_application()
+    try:
+        mary = app.mary
+        assert mary.expert_consultant.workspace is mary.task_workspace
+        assert mary.expert_consultant.router is mary.llm
+        _pass("Mary's expert consultant shares her router and ephemeral task workspace")
 
-    status = mary.status()["orchestration"]["expert_consultant"]
-    assert status["authority"] == "advisory_only"
-    assert status["persistence"] == "task_workspace_only"
-    _pass("expert output is advisory and task-local, not durable self-state")
+        status = mary.status()["orchestration"]["expert_consultant"]
+        assert status["authority"] == "advisory_only"
+        assert status["persistence"] == "task_workspace_only"
+        _pass("expert output is advisory and task-local, not durable self-state")
+    finally:
+        app.close()
 
     print("=" * 72)
     print("OPENAI EXPERT BRIDGE INSTALLED CORRECTLY")

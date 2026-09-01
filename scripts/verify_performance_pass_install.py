@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from mary.core.config import Config
-from mary.core.mary import Mary
 from mary.llm.interface import (
     LLMInterface,
     LLMMessage,
@@ -11,6 +10,7 @@ from mary.llm.interface import (
     LLMRateLimitError,
 )
 from mary.llm.router import LLMRouter
+from mary.runtime.application import create_application
 
 
 class SequenceRouter:
@@ -72,7 +72,7 @@ class GoodProvider(LLMInterface):
         return "secondary-model"
 
 
-def _wire(mary: Mary, router) -> None:
+def _wire(mary, router) -> None:
     mary.llm = router
     mary.reasoning.llm = router
     mary.reflection.llm = router
@@ -87,13 +87,16 @@ def main() -> int:
     print("=" * 72)
 
     router = SequenceRouter(["I think that tension matters because systems can become more important than the people they were meant to serve."])
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
     _wire(mary, router)
 
     # A bounded shared-work milestone is now a CharacterMind reflex.  This is
     # intentional: the release verifier must not require an LLM call merely to
     # prove that Mary has a performance plan.
-    milestone = mary.process("I finally got everything working and all the tests passed.")
+    milestone = app.run(
+        "I finally got everything working and all the tests passed."
+    ).metadata["pipeline_values"]["cognitive_cycle"]
     mind = milestone.context.mind_state
     performance = mind.get("performance", {})
     if not performance or performance.get("opening_style") != "immediate_reaction":
@@ -105,9 +108,9 @@ def main() -> int:
     # Use a genuinely open-ended turn to verify the provider-facing character
     # and performance contract.  Open conversation still belongs to Mary's
     # language cortex; only already-represented reflexes bypass it.
-    result = mary.process(
+    result = app.run(
         "I keep thinking about why people build systems that eventually start controlling them."
-    )
+    ).metadata["pipeline_values"]["cognitive_cycle"]
     if not router.calls:
         raise AssertionError("open-ended conversation did not escalate to the language cortex")
     first_prompt = router.calls[0][0]
@@ -156,9 +159,12 @@ def main() -> int:
         raise AssertionError("local provider failure response is not characterful")
     _pass("when all language engines fail, Mary stays in-character instead of dumping a canned error")
 
-    print("=" * 72)
-    print("MARYV2 PERFORMANCE PASS V1 INSTALLED CORRECTLY")
-    return 0
+    try:
+        print("=" * 72)
+        print("MARYV2 PERFORMANCE PASS V1 INSTALLED CORRECTLY")
+        return 0
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

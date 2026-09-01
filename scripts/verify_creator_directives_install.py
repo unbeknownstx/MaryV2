@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from mary.core.mary import Mary
 from mary.llm.interface import LLMInterface, LLMMessage, LLMResponse
 from mary.runtime.application import create_application
 
@@ -49,15 +48,15 @@ def main() -> int:
     with TemporaryDirectory() as temp_dir:
         try:
             os.chdir(temp_dir)
-            mary = Mary()
+            app = create_application(
+                memory_path=Path(temp_dir) / "memory" / "memory.json",
+                auto_save=True,
+            )
+            mary = app.mary
             provider = _RateLimitedProvider()
             mary.llm.register_provider("fake", provider)
             mary.config.llm.provider = "fake"
             mary.config.llm.fallback_providers = []
-            app = create_application(
-                mary=mary,
-                memory_path=Path(temp_dir) / "memory.json",
-            )
 
             directive = app.run("you should be curious about me top priority")
             ok = (
@@ -99,7 +98,11 @@ def main() -> int:
             if not ok:
                 failures.append("priority")
 
-            restarted = Mary()
+            restarted_app = create_application(
+                memory_path=Path(temp_dir) / "memory" / "memory.json",
+                auto_save=False,
+            )
+            restarted = restarted_app.mary
             ok = (
                 len(restarted.creator_directives.get_active()) == 1
                 and any(
@@ -121,6 +124,8 @@ def main() -> int:
         finally:
             if app is not None:
                 app.close()
+            if 'restarted_app' in locals():
+                restarted_app.close()
             os.chdir(original_cwd)
 
     print("=" * 72)

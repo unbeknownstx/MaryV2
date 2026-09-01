@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mary.core.mary import Mary
+from mary.runtime.application import create_application
 
 
 def _pass(message: str) -> None:
@@ -14,7 +14,8 @@ def main() -> int:
     print("MARY V2 TASK ORCHESTRATOR V1")
     print("=" * 72)
 
-    mary = Mary()
+    app = create_application()
+    mary = app.mary
     planner = mary.task_orchestrator
     workspace = mary.task_workspace
 
@@ -92,9 +93,12 @@ def main() -> int:
     assert status["execution_policy"] == "plan_only_no_silent_execution"
     _pass("runtime status exposes cost/authority safeguards")
 
-    print("=" * 72)
-    print("TASK ORCHESTRATOR V1 INSTALLED CORRECTLY")
-    return 0
+    try:
+        print("=" * 72)
+        print("TASK ORCHESTRATOR V1 INSTALLED CORRECTLY")
+        return 0
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":
