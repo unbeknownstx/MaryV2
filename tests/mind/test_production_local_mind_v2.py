@@ -523,6 +523,16 @@ def test_structured_semantic_memory_and_represented_status_are_supported():
     assert status.response.casefold() in {"i am calm.", "i'm calm."}
 
 
+def test_compound_status_question_escalates_instead_of_dropping_substantive_clause():
+    mary = Mary()
+    result = mary.mind.try_respond(
+        "Hey Mary. We just finished getting your Mac capability node connected to Core. How are you doing right now, and what do you understand about where you are running?",
+        intent=_unknown_intent(),
+        context={"mind_state": {"emotion": {"primary": "calm", "confidence": 0.9}}},
+    )
+    assert result.handled is False
+
+
 @pytest.mark.parametrize(
     "text",
     (

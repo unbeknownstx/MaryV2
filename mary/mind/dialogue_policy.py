@@ -23,6 +23,7 @@ _MILESTONE_RE = re.compile(
 )
 _HOW_ARE_YOU_RE = re.compile(r"\b(?:how are you|how're you|how you doing|how you feel|you good)\b", re.I)
 _WHAT_UP_RE = re.compile(r"\b(?:what are you up to|what're you up to|what are you doing|whats up with you|what's up with you)\b", re.I)
+_COMPOUND_FOLLOWUP_RE = re.compile(r"[,;]?\s+(?:and|but|also)\s+(?:what|why|how|where|when|who|can|could|would|do|does|did|are|is|have|has|will|should)\b", re.I)
 _CREATOR_FACT_RE = re.compile(r"\bwhat(?:'s| is) my (?P<field>[a-z0-9 _-]{2,50})\??$", re.I)
 _MARY_PREFERENCE_RE = re.compile(r"\b(?:do you like|how do you feel about|what do you think of) (?P<topic>[^?!.]{2,80})[?!.]*$", re.I)
 _LOCAL_KNOWLEDGE_RE = re.compile(r"\b(?:what do you know about|tell me what you know about) (?P<topic>[^?!.]{2,100})[?!.]*$", re.I)
@@ -78,9 +79,15 @@ class LocalDialoguePolicy:
             return DialoguePlan(DialogueAct.ACKNOWLEDGE, 0.94, "short acknowledgement", local=True)
         if _REACT_RE.search(value):
             return DialoguePlan(DialogueAct.REACT, 0.94, "short reaction", local=True)
-        if _HOW_ARE_YOU_RE.search(value):
+        how_are_you = _HOW_ARE_YOU_RE.search(value)
+        if how_are_you:
+            if _COMPOUND_FOLLOWUP_RE.search(value, how_are_you.end()):
+                return DialoguePlan(DialogueAct.ESCALATE, 1.0, "compound Mary-status question requires full reasoning", local=False)
             return DialoguePlan(DialogueAct.STATUS, 0.97, "represented Mary-state question", local=True, slots={"status_kind": "emotion"})
-        if _WHAT_UP_RE.search(value):
+        what_up = _WHAT_UP_RE.search(value)
+        if what_up:
+            if _COMPOUND_FOLLOWUP_RE.search(value, what_up.end()):
+                return DialoguePlan(DialogueAct.ESCALATE, 1.0, "compound Mary-activity question requires full reasoning", local=False)
             return DialoguePlan(DialogueAct.STATUS, 0.96, "represented Mary activity question", local=True, slots={"status_kind": "activity"})
 
         fact = _CREATOR_FACT_RE.search(value)
