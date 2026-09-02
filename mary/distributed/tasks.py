@@ -16,7 +16,7 @@ from uuid import uuid4
 from .nodes import NodeRegistry
 
 
-_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama"}
+_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp"}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
 ExecutionPolicy = Callable[[str], None]
 
@@ -40,47 +40,48 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             "query": query,
             "limit": max(1, min(12, limit)),
         }
-    if capability == "llm.ollama":
+    if capability in {"llm.ollama", "llm.llama_cpp"}:
+        provider_label = capability
         raw_messages = values.get("messages")
         if not isinstance(raw_messages, list) or not raw_messages:
-            raise ValueError("llm.ollama requires a non-empty messages array.")
+            raise ValueError(f"{provider_label} requires a non-empty messages array.")
         if len(raw_messages) > 12:
-            raise ValueError("llm.ollama supports at most 12 messages per task.")
+            raise ValueError(f"{provider_label} supports at most 12 messages per task.")
 
         messages: list[dict[str, str]] = []
         total_characters = 0
         for raw_message in raw_messages:
             if not isinstance(raw_message, dict):
-                raise ValueError("Each llm.ollama message must be a JSON object.")
+                raise ValueError(f"Each {provider_label} message must be a JSON object.")
             role = str(raw_message.get("role") or "").strip().lower()
             if role not in {"system", "user", "assistant"}:
-                raise ValueError("llm.ollama message role must be system, user, or assistant.")
+                raise ValueError(f"{provider_label} message role must be system, user, or assistant.")
             content = str(raw_message.get("content") or "").strip()
             if not content:
-                raise ValueError("llm.ollama messages cannot be empty.")
+                raise ValueError(f"{provider_label} messages cannot be empty.")
             if len(content) > 12_000:
-                raise ValueError("A single llm.ollama message exceeds the 12000 character limit.")
+                raise ValueError(f"A single {provider_label} message exceeds the 12000 character limit.")
             total_characters += len(content)
             if total_characters > 48_000:
-                raise ValueError("llm.ollama message content exceeds the 48000 character task limit.")
+                raise ValueError(f"{provider_label} message content exceeds the 48000 character task limit.")
             messages.append({"role": role, "content": content})
 
         role = str(values.get("role") or "general").strip().lower()
         if role not in {"general", "conversation", "fast", "utility"}:
             raise ValueError(
-                "llm.ollama role must be general, conversation, fast, or utility."
+                f"{provider_label} role must be general, conversation, fast, or utility."
             )
 
         try:
             temperature = float(values.get("temperature", 0.7))
         except (TypeError, ValueError) as exc:
-            raise ValueError("llm.ollama temperature must be numeric.") from exc
+            raise ValueError(f"{provider_label} temperature must be numeric.") from exc
         temperature = max(0.0, min(1.5, temperature))
 
         try:
             max_tokens = int(values.get("max_tokens", 1024) or 1024)
         except (TypeError, ValueError) as exc:
-            raise ValueError("llm.ollama max_tokens must be an integer.") from exc
+            raise ValueError(f"{provider_label} max_tokens must be an integer.") from exc
 
         return {
             "messages": messages,
@@ -93,7 +94,7 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
 
 def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dict[str, Any]:
     values = dict(result or {})
-    if capability != "llm.ollama":
+    if capability not in {"llm.ollama", "llm.llama_cpp"}:
         return values
 
     content = str(values.get("content") or "").strip()
@@ -113,7 +114,7 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
 
     return {
         "content": content,
-        "provider": "ollama",
+        "provider": "llama_cpp" if capability == "llm.llama_cpp" else "ollama",
         "model": str(values.get("model") or "unknown")[:160],
         "finish_reason": str(values.get("finish_reason") or "")[:80],
         "usage": safe_usage,

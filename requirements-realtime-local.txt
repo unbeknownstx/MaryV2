@@ -1,0 +1,9 @@
+# Optional lightweight realtime extras for MaryV2.
+# None of these are required for Core, desktop, mobile web, or cloud voice.
+#
+# ONNX runtime for lightweight VAD / future classifiers on CPU / Apple Silicon.
+onnxruntime>=1.20,<2
+#
+# sherpa-onnx offers local VAD, ASR, TTS and iOS/macOS support. Install only
+# when testing that backend; Mary does not import it during normal startup.
+sherpa-onnx>=1.12,<2

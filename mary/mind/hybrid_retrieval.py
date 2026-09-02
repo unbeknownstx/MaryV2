@@ -10,6 +10,7 @@ from typing import Any, Iterable
 from .embeddings import OllamaEmbeddingClient
 from .reservoir import CognitiveReservoir, ReservoirHit, ReservoirRecord
 from .vector_index import SemanticVectorIndex, content_hash
+from .contextual_reranker import ContextualReservoirReranker
 
 
 _TRUE = {"1", "true", "yes", "on", "enabled"}
@@ -50,6 +51,7 @@ class HybridReservoirRetriever:
         self._last_query_used_vectors = False
         self._last_build: dict[str, Any] = {}
         self._availability_cache: tuple[float, bool] = (0.0, False)
+        self.contextual_reranker = ContextualReservoirReranker()
 
     @staticmethod
     def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -96,7 +98,14 @@ class HybridReservoirRetriever:
         self._availability_cache = (now, available)
         return available
 
-    def search(self, query: str, *, limit: int = 5, minimum_confidence: float = 0.65) -> list[ReservoirHit]:
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        minimum_confidence: float = 0.65,
+        context: dict[str, Any] | None = None,
+    ) -> list[ReservoirHit]:
         limit = max(1, min(25, int(limit)))
         lexical = self.reservoir.search(query, limit=max(limit * 2, 8), minimum_confidence=minimum_confidence)
         by_id: dict[str, ReservoirHit] = {hit.record_id: hit for hit in lexical}
@@ -150,6 +159,8 @@ class HybridReservoirRetriever:
             }
             ranked.append(replace(hit, score=score, metadata=metadata))
         ranked.sort(key=lambda item: (item.score, item.confidence), reverse=True)
+        if context:
+            ranked = self.contextual_reranker.rerank(ranked, context=context, limit=limit)
         return ranked[:limit]
 
     def rebuild_vectors(self, records: Iterable[ReservoirRecord], *, limit: int | None = None) -> dict[str, Any]:

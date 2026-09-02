@@ -75,11 +75,13 @@ let speechAnalyser = null;
 let speechWaveform = null;
 let activeMouthExpression = null;
 let lipSyncWeight = 0;
+let activeSpeechAlignment = [];
 let currentVrm = null;
 const BASE_DELIVERY_PLAN = { profile: 'neutral', energy: .4, gesture_energy: .3, avatar_expression: 'neutral', gesture_style: 'natural', gaze_style: 'engaged', head_style: 'natural', performance_beats: [] };
 let currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
 let currentPerformanceBeatIndex = -1;
 let currentPerformancePacket = {};
+let currentMotionCue = null;
 let ambientAvatarState = { expression: 'neutral', emotion_intensity: 0 };
 let preReactionCue = null;
 let preReactionUntil = 0;
@@ -335,10 +337,71 @@ function applyPerformanceExpression(beat) {
   try { manager.setValue(preset, intensity); } catch (_) { /* optional preset */ }
 }
 
+function motionCueForSegment(index) {
+  const cues = Array.isArray(currentPerformancePacket?.motion_cues) ? currentPerformancePacket.motion_cues : [];
+  if (!cues.length || index < 0) return null;
+  return cues.find((cue) => Number(cue?.segment_index) === Number(index)) || null;
+}
+
+function motionPoseForCue(cue, elapsed, energy = .35) {
+  const id = String(cue?.motion_id || '').toLowerCase();
+  const sway = Math.sin(elapsed * 1.75) * Math.min(.08, .02 + energy * .045);
+  const pulse = Math.sin(elapsed * 2.1) * Math.min(.10, .02 + energy * .055);
+  let leftUpper = [0, 0, -1.28];
+  let rightUpper = [0, 0, 1.28];
+  let leftLower = [0, -0.10, -0.10];
+  let rightLower = [0, 0.10, 0.10];
+
+  if (id === 'explain_small') {
+    rightUpper = [-.14, -.06, 1.08 + sway]; rightLower = [-.18, .22, .38 + pulse];
+  } else if (id === 'explain_animated') {
+    leftUpper = [-.12, .08, -1.00 - sway]; rightUpper = [-.12, -.08, 1.00 + sway];
+    leftLower = [-.18, -.20, -.34 - pulse]; rightLower = [-.18, .20, .34 + pulse];
+  } else if (id === 'shrug_dry') {
+    leftUpper = [-.05, .05, -1.02]; rightUpper = [-.05, -.05, 1.02];
+    leftLower = [-.25, -.15, -.48]; rightLower = [-.25, .15, .48];
+  } else if (id === 'teasing_point') {
+    rightUpper = [-.28, -.10, .86 + sway * .4]; rightLower = [-.08, .12, .18];
+    leftUpper = [0, 0, -1.22];
+  } else if (id === 'warm_acknowledge') {
+    rightUpper = [-.08, -.03, 1.16]; rightLower = [-.12, .10, .20 + sway * .25];
+  } else if (id === 'serious_hold' || id === 'boundary_small') {
+    leftUpper = [0, 0, -1.20]; rightUpper = [0, 0, 1.20];
+    leftLower = [-.06, -.06, -.14]; rightLower = [-.06, .06, .14];
+  } else if (id === 'thinking_pause') {
+    rightUpper = [-.12, -.03, .98]; rightLower = [-.36, .10, .42];
+  } else if (id === 'surprised_react') {
+    leftUpper = [-.10, .04, -.94]; rightUpper = [-.10, -.04, .94];
+    leftLower = [-.10, -.16, -.24]; rightLower = [-.10, .16, .24];
+  } else if (id === 'laugh_small') {
+    leftUpper = [-.06, .04, -1.10 - sway]; rightUpper = [-.06, -.04, 1.10 + sway];
+    leftLower = [-.16, -.10, -.22]; rightLower = [-.16, .10, .22];
+  } else if (id === 'listen_attentive') {
+    rightUpper = [0, 0, 1.25]; leftUpper = [0, 0, -1.25];
+  } else if (id === 'talk_neutral') {
+    rightUpper = [-.03, 0, 1.22 + sway * .25]; leftUpper = [-.03, 0, -1.22 - sway * .25];
+    rightLower = [-.08, .10, .12 + pulse * .2]; leftLower = [-.08, -.10, -.12 - pulse * .2];
+  }
+
+  return {
+    leftUpperArm: { rotation: quaternionArrayFromEuler(...leftUpper) },
+    rightUpperArm: { rotation: quaternionArrayFromEuler(...rightUpper) },
+    leftLowerArm: { rotation: quaternionArrayFromEuler(...leftLower) },
+    rightLowerArm: { rotation: quaternionArrayFromEuler(...rightLower) },
+  };
+}
+
+function applySemanticMotionPose(cue, elapsed, energy) {
+  const humanoid = currentVrm?.humanoid;
+  if (!humanoid?.setNormalizedPose) return;
+  humanoid.setNormalizedPose(motionPoseForCue(cue, elapsed, energy));
+}
+
 function updatePerformanceBeat() {
   const { index, beat } = performanceBeatState();
   if (index === currentPerformanceBeatIndex) return beat;
   currentPerformanceBeatIndex = index;
+  currentMotionCue = motionCueForSegment(index);
   if (beat) applyPerformanceExpression(beat);
   return beat;
 }
@@ -389,6 +452,7 @@ function settlePerformanceState(delay = 320) {
     currentPerformancePacket = {};
     currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
     currentPerformanceBeatIndex = -1;
+    currentMotionCue = null;
     preReactionCue = null;
     preReactionUntil = 0;
     applyAvatarState(ambientAvatarState);
@@ -510,6 +574,12 @@ function animate(now = performance.now()) {
     else if (idleName === 'stretch_small') { gestureStyle = 'animated'; gestureEnergy = .16; headStyle = 'soft'; gazeStyle = 'engaged'; }
     else if (idleName === 'smile_soft') { gestureStyle = 'soft'; gestureEnergy = .08; gazeStyle = 'soft'; headStyle = 'tilt'; }
 
+    // Semantic motion is a presentation projection from Mary's established
+    // PerformancePacket. These procedural poses are placeholders for future
+    // licensed/local VRMA/FBX clips resolved by the same motion IDs.
+    const semanticCue = currentMotionCue || (conversationState === 'listening' ? { motion_id: 'listen_attentive' } : null);
+    if (semanticCue) applySemanticMotionPose(semanticCue, elapsed, gestureEnergy);
+
     const speakingBoost = conversationState === 'speaking' ? .55 + gestureEnergy * .65 : .45;
     const bounceGain = ['animated','celebrate'].includes(gestureStyle) ? 1.65 : gestureStyle === 'firm' ? .58 : gestureStyle === 'soft' ? .72 : 1.0;
     currentVrm.scene.position.y = modelBaseY + Math.sin(elapsed * (1.15 + gestureEnergy * .22)) * (0.0045 + .003 * speakingBoost) * bounceGain;
@@ -566,6 +636,34 @@ function animate(now = performance.now()) {
 // ---------------------------------------------------------------------------
 
 const MOUTH_PRESET_CANDIDATES = ['aa', 'oh', 'ou', 'ih', 'ee'];
+
+const ALIGNMENT_VOWEL_MAP = {
+  a: 'aa', e: 'ee', i: 'ih', o: 'oh', u: 'ou',
+  y: 'ee',
+};
+
+function alignmentMouthExpressionAt(seconds) {
+  if (!Array.isArray(activeSpeechAlignment) || !activeSpeechAlignment.length) return null;
+  const t = Number(seconds || 0);
+  // Alignment marks are ordered. Binary search keeps this cheap even for long speech.
+  let low = 0;
+  let high = activeSpeechAlignment.length - 1;
+  let found = null;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const mark = activeSpeechAlignment[mid] || {};
+    const start = Number(mark.start_seconds || 0);
+    const end = Number(mark.end_seconds || start);
+    if (t < start) high = mid - 1;
+    else if (t > end) low = mid + 1;
+    else { found = mark; break; }
+  }
+  if (!found) return null;
+  const ch = String(found.text || '').toLowerCase();
+  if (/\s|[.,!?;:]/.test(ch)) return '__closed__';
+  return ALIGNMENT_VOWEL_MAP[ch] || null;
+}
+
 
 function resolveMouthExpression() {
   const manager = currentVrm?.expressionManager;
@@ -640,6 +738,15 @@ function updateLipSync() {
     const gated = Math.max(0, (rms - 0.018) * 7.5);
     target = Math.min(1, Math.sqrt(gated));
   }
+  const alignedExpression = activeSpeechAudio ? alignmentMouthExpressionAt(activeSpeechAudio.currentTime) : null;
+  if (alignedExpression === '__closed__') target = 0;
+  const desiredExpression = alignedExpression && alignedExpression !== '__closed__' ? alignedExpression : activeMouthExpression;
+  if (desiredExpression !== activeMouthExpression && MOUTH_PRESET_CANDIDATES.includes(desiredExpression)) {
+    for (const preset of MOUTH_PRESET_CANDIDATES) {
+      try { manager.setValue(preset, 0); } catch (_) { /* optional */ }
+    }
+    activeMouthExpression = desiredExpression;
+  }
   const response = target > lipSyncWeight ? 0.48 : 0.24;
   lipSyncWeight += (target - lipSyncWeight) * response;
   if (lipSyncWeight < 0.015 && target === 0) lipSyncWeight = 0;
@@ -655,6 +762,7 @@ function stopVoicePlayback({ notifyBridge = true } = {}) {
     } catch (_) { /* best effort */ }
   }
   activeSpeechAudio = null;
+  activeSpeechAlignment = [];
   currentPerformanceBeatIndex = -1;
   disconnectLipSyncGraph();
   restoreAmbientVolume();
@@ -686,6 +794,7 @@ function playVoice(voice = {}) {
   }
   applyAvatarState({ expression: currentDeliveryPlan.avatar_expression || 'neutral', emotion_intensity: currentDeliveryPlan.energy || .3 });
   stopVoicePlayback({ notifyBridge: false });
+  activeSpeechAlignment = Array.isArray(voice?.alignment?.characters) ? voice.alignment.characters.slice(0, 12000) : [];
   bridge?.voicePlaybackStage?.('payload_received');
   const prepared = audioSourceFromVoice(voice);
   if (!prepared.source) return;
@@ -717,6 +826,7 @@ function playVoice(voice = {}) {
     cleanupSource();
     if (activeSpeechAudio === audio) {
       activeSpeechAudio = null;
+      activeSpeechAlignment = [];
       currentPerformanceBeatIndex = -1;
       disconnectLipSyncGraph();
       restoreAmbientVolume();
@@ -727,6 +837,7 @@ function playVoice(voice = {}) {
   audio.addEventListener('error', () => {
     cleanupSource();
     if (activeSpeechAudio === audio) activeSpeechAudio = null;
+    activeSpeechAlignment = [];
     disconnectLipSyncGraph();
     restoreAmbientVolume();
     settlePerformanceState(120);
@@ -738,6 +849,7 @@ function playVoice(voice = {}) {
   audio.play().catch((error) => {
     cleanupSource();
     if (activeSpeechAudio === audio) activeSpeechAudio = null;
+    activeSpeechAlignment = [];
     disconnectLipSyncGraph();
     restoreAmbientVolume();
     settlePerformanceState(120);
@@ -1013,12 +1125,29 @@ function applyCompanionPulse(ecosystem = ecosystemState) {
   app.dataset.focus = focus.active ? 'active' : 'idle';
 }
 
+function applyLiveSceneSummary(ecosystem = ecosystemState) {
+  const scene = ecosystem?.character_runtime?.live_scene || ecosystem?.presence?.scene || {};
+  const realtime = ecosystem?.character_runtime?.realtime || dashboardState.realtime || runtimeStatus.realtime || {};
+  const arbiter = realtime.speech_arbiter || {};
+  const environment = scene.environment || {};
+  const setText = (selector, value) => { const node = $(selector); if (node) node.textContent = value; };
+  setText('#scene-mode', titleCase(scene.mode || 'conversation'));
+  setText('#scene-floor', titleCase(scene.floor_owner || 'none'));
+  setText('#scene-phase', titleCase(scene.realtime_phase || realtime.phase || 'idle'));
+  const context = scene.project || scene.activity || scene.workspace || scene.selected_asset || 'No focused scene';
+  setText('#scene-context', context);
+  const env = environment.foreground_app || environment.obs_scene || Object.values(environment)[0] || 'No live environment signal';
+  setText('#scene-environment', env);
+  setText('#scene-speech-queue', arbiter.queue_depth ?? 0);
+}
+
 function applyDashboardState(raw) {
   const payload = parsePayload(raw);
   dashboardState = payload;
   ecosystemState = payload.ecosystem || ecosystemState || {};
   if (ecosystemState.last_turn) applyTurnTrace(ecosystemState.last_turn);
   applyCompanionPulse(ecosystemState);
+  applyLiveSceneSummary(ecosystemState);
   const live = payload.live || {};
   const character = live.character || {};
   const emotion = payload.emotion || {};
@@ -1124,6 +1253,10 @@ function renderMind() {
   const last = mind.last_local_decision || {};
   const plan = last.plan || {};
   const models = mind.local_model_catalog || [];
+  const adapterLab = ecosystemState.adapter_lab || {};
+  const candidateCatalog = ecosystemState.model_candidates || {};
+  const candidates = candidateCatalog.candidates || [];
+  const leaderboard = adapterLab.leaderboard || [];
   const sizeMb = Number(reservoir.size_bytes || 0) / (1024 * 1024);
   const modelRows = models.map((item) => `
     <div class="command-row">
@@ -1131,6 +1264,16 @@ function renderMind() {
       <div><strong>${escapeHtml(item.model)}</strong><small>${escapeHtml(titleCase(item.role))} · ~${escapeHtml(item.approx_size_gb)} GB · ${escapeHtml(item.notes)}</small></div>
       <span class="status-chip">P${escapeHtml(item.priority)}</span>
     </div>`).join('');
+  const candidateRows = candidates.map((item) => {
+    const roles = item.roles || [];
+    return `<div class="command-row model-candidate-row">
+      <span class="kind">${item.kind === 'lora_adapter' ? '↯' : item.kind === 'stt_model' ? '◉' : item.kind === 'vad_model' ? '⌁' : '◇'}</span>
+      <div><strong>${escapeHtml(item.id || item.filename || 'candidate')}</strong><small>${escapeHtml(item.runtime || 'runtime')} · ${escapeHtml(item.metadata?.approx_size || item.metadata?.approx_size_gb || item.metadata?.asset_group || '')}${roles.length ? ` · ${escapeHtml(roles.join(' / '))}` : ''}</small></div>
+      <span class="status-chip">${escapeHtml(item.license || 'review')}</span>
+    </div>`;
+  }).join('');
+  const leaderboardRows = leaderboard.map((item, index) => `<div class="data-row"><span>#${index + 1} ${escapeHtml(item.config_id || 'config')}</span><strong>${Math.round(Number(item.mary_fit || 0) * 100)}%</strong></div>`).join('');
+  const modelRoot = ecosystemState.paths?.model_root || 'platform-local Mary model directory';
   return `
     <div class="workspace-grid three">
       <div class="workspace-panel accent"><h3>Local Mind</h3><div class="data-row"><span>Status</span><strong>${mind.enabled ? 'Running' : 'Off'}</strong></div><div class="data-row"><span>Dialogue reflex</span><strong>${mind.local_dialogue_enabled ? 'Enabled' : 'Off'}</strong></div><div class="data-row"><span>Hot state</span><strong>${hot.loaded ? 'In RAM' : 'Cold'}</strong></div><p>Fast character decisions happen before a provider call. This layer is a projection over Mary—not a replacement identity.</p></div>
@@ -1142,13 +1285,19 @@ function renderMind() {
       <div class="workspace-panel hero-panel"><h3>Mary first, models second</h3><div class="trace-stack">
         <div class="trace-row"><span>Reflex / local dialogue</span><i style="width:8%"></i><strong>&lt; 200 ms target</strong></div>
         <div class="trace-row"><span>Reservoir retrieval</span><i style="width:14%"></i><strong>local</strong></div>
-        <div class="trace-row"><span>Fast language cortex</span><i style="width:42%"></i><strong>Groq / small local</strong></div>
+        <div class="trace-row"><span>Fast language cortex</span><i style="width:42%"></i><strong>cloud / small local</strong></div>
         <div class="trace-row"><span>Thinking / expert</span><i style="width:100%"></i><strong>only when warranted</strong></div>
       </div></div>
-      <div class="workspace-panel"><h3>Escalation rule</h3><p>Known represented state can be answered locally. Novel open-ended language escalates to a fast language model. Hard reasoning can visibly enter Thinking. OpenAI stays an explicit expert instead of Mary's heartbeat.</p><div class="chip-row"><span class="chip">LOCAL STATE</span><span class="chip">RESERVOIR</span><span class="chip">FAST LLM</span><span class="chip">THINKING</span><span class="chip">EXPERT</span></div></div>
+      <div class="workspace-panel"><h3>Escalation rule</h3><p>Known represented state can be answered locally. Novel open-ended language escalates to a fast language model. Hard reasoning can visibly enter Thinking. The provider remains replaceable; Mary remains Core-owned.</p><div class="chip-row"><span class="chip">LOCAL STATE</span><span class="chip">RESERVOIR</span><span class="chip">FAST BRAIN</span><span class="chip">MAIN BRAIN</span><span class="chip">EXPERT</span></div></div>
     </div>
-    <div class="section-title">LOCAL MODEL LAB</div>
-    <div class="workspace-panel"><p>These are candidates sized for the current 32 GB RAM / 4 GB VRAM machine. They are not auto-downloaded. Run <code>scripts\benchmark_local_models_windows.ps1</code> after pulling whichever models you want to test.</p><div class="command-list">${modelRows || '<div class="workspace-empty">No model catalog.</div>'}</div></div>`;
+    <div class="section-title">ADAPTER LAB · REVIEWED OPTIONAL ASSETS</div>
+    <div class="workspace-grid">
+      <div class="workspace-panel hero-panel"><h3>Model candidates</h3><p>Weights stay outside Git. This catalog records exact artifacts, compatibility, licenses and hashes so Mac and Windows can pull local muscle without changing Mary.</p><div class="command-list compact-scroll">${candidateRows || '<div class="workspace-empty">No reviewed candidates yet.</div>'}</div></div>
+      <div class="workspace-panel"><h3>Mary-fit leaderboard</h3>${leaderboardRows || '<div class="workspace-empty">No adapter evaluations yet. Baselines stay neutral until measured.</div>'}<div class="data-row"><span>Configurations</span><strong>${(adapterLab.configurations || []).length}</strong></div><small>Policy: ${escapeHtml(adapterLab.policy || 'generation influence only')}</small></div>
+    </div>
+    <div class="workspace-panel model-root-panel"><span>LOCAL MODEL ROOT</span><code>${escapeHtml(modelRoot)}</code><small>Per-machine runtime assets. Never canonical identity or repository state.</small></div>
+    <div class="section-title">LEGACY LOCAL MODEL CATALOG</div>
+    <div class="workspace-panel"><div class="command-list">${modelRows || '<div class="workspace-empty">No legacy model catalog.</div>'}</div></div>`;
 }
 
 function renderMemories() {
@@ -1356,11 +1505,56 @@ function renderFocus() {
 }
 
 function renderStream() {
-  const presence=ecosystemState.presence || {}; const skills=ecosystemState.skills || []; const byKey=Object.fromEntries(skills.map(x=>[x.key,x]));
-  const stage=dashboardState.performance_context || runtimeStatus.performance_context || {}; const mode=stage.mode || 'private'; const modes=['private','casual','focus','stream','performance'];
-  return `<div class="presence-status"><div class="presence-node ready"><strong>Presence Core</strong><span>${escapeHtml(titleCase(presence.mode || 'companion'))} · initiative + silence</span></div><div class="presence-node ready"><strong>Character Stage</strong><span>${escapeHtml(titleCase(mode))} · same Mary, different projection</span></div><div class="presence-node"><strong>Twitch / OBS</strong><span>${byKey.twitch?.enabled||byKey.obs?.enabled?'Connected':'Optional adapters'}</span></div></div>
-  <div class="workspace-grid" style="margin-top:12px"><div class="workspace-panel hero-panel"><h3>Mary Presence</h3><p>The part that moves Mary beyond prompt → response: live context, pending thoughts, cheap idle behavior, and a decision layer where staying quiet is valid.</p><div class="data-row"><span>Pending thoughts</span><strong>${(presence.pending_thoughts||[]).length}</strong></div><div class="data-row"><span>Recent context events</span><strong>${(presence.recent||[]).length}</strong></div><button class="primary-small" id="presence-idle-test" style="height:34px;margin-top:8px">Preview an idle behavior</button></div><div class="workspace-panel accent"><h3>Social Stage</h3><p>These are performance contexts, not alternate personas. Public modes project Mary more clearly while keeping private creator/relationship context out of the room.</p><div class="chip-row">${modes.map(x=>`<button class="chip ${x===mode?'active':''}" data-performance-context="${x}">${escapeHtml(titleCase(x))}</button>`).join('')}</div><div class="data-row"><span>Audience</span><strong>${escapeHtml(titleCase(stage.audience||'creator'))}</strong></div><div class="data-row"><span>Privacy</span><strong>${stage.public?'PUBLIC GUARD':'PRIVATE'}</strong></div></div></div>
-  <div class="workspace-panel" style="margin-top:12px"><h3>External performer adapters</h3><p>Twitch, OBS and vision remain optional inputs/outputs. They never own Mary; they publish context or render actions through Core.</p><div class="chip-row">${['twitch','obs','vision'].map(k=>`<span class="chip">${byKey[k]?.enabled?'●':'○'} ${escapeHtml(titleCase(k))}</span>`).join('')}</div></div>`;
+  const presence = ecosystemState.presence || {};
+  const skills = ecosystemState.skills || [];
+  const byKey = Object.fromEntries(skills.map((x) => [x.key, x]));
+  const stage = dashboardState.performance_context || runtimeStatus.performance_context || {};
+  const mode = stage.mode || 'private';
+  const modes = ['private','casual','focus','stream','performance'];
+  const runtime = ecosystemState.character_runtime?.realtime || dashboardState.realtime || runtimeStatus.realtime || {};
+  const scene = ecosystemState.character_runtime?.live_scene || presence.scene || {};
+  const streaming = ecosystemState.streaming || {};
+  const streamStats = streaming.stats || {};
+  const chat = streaming.chat || {};
+  const chatRecent = chat.recent || [];
+  const repeated = chat.repeated_phrases || [];
+  const fastBrain = streaming.fast_brain || {};
+  const speech = runtime.speech_arbiter || {};
+  const decisionTrace = runtime.decision_trace || {};
+  const decisionRows = (decisionTrace.recent || []).slice(-8).reverse().map((item) => `<div class="scene-event"><span>${escapeHtml(titleCase(item.kind || 'decision'))} · ${escapeHtml(titleCase(item.outcome || 'unknown'))}</span><strong>${escapeHtml(item.reason || '')}</strong></div>`).join('');
+  const world = ecosystemState.world_context || {};
+  const pulse = ecosystemState.world_pulse || {};
+  const dueWorld = pulse.due || [];
+  const recentWorld = world.recent || [];
+  const sceneEvents = scene.recent_events || [];
+  const environment = scene.environment || {};
+  const chatRows = chatRecent.slice(-8).reverse().map((item) => `<div class="stream-chat-line ${item.direct_to_mary ? 'direct' : ''}"><strong>${escapeHtml(item.display_name || 'viewer')}</strong><span>${escapeHtml(item.text || '')}</span><small>${escapeHtml(item.platform || 'stream')}</small></div>`).join('');
+  const eventRows = sceneEvents.slice(-6).reverse().map((item) => `<div class="scene-event"><span>${escapeHtml(titleCase(item.kind || 'event'))}</span><strong>${escapeHtml(item.summary || '')}</strong></div>`).join('');
+  const worldRows = recentWorld.slice(-6).reverse().map((item) => `<div class="world-pulse-row"><span>${escapeHtml(titleCase(item.lane || 'world'))}</span><strong>${escapeHtml(item.topic || '')}</strong><small>${escapeHtml(item.source || '')}</small></div>`).join('');
+  const environmentText = Object.entries(environment).slice(0, 6).map(([key, value]) => `${titleCase(key)}: ${value}`).join(' · ');
+  return `<div class="presence-status">
+    <div class="presence-node ready"><strong>Presence Core</strong><span>${escapeHtml(titleCase(presence.mode || 'companion'))} · initiative + silence</span></div>
+    <div class="presence-node ready"><strong>Live Scene</strong><span>${escapeHtml(titleCase(scene.floor_owner || 'none'))} floor · ${escapeHtml(titleCase(scene.realtime_phase || runtime.phase || 'idle'))}</span></div>
+    <div class="presence-node ${streamStats.received ? 'ready' : ''}"><strong>Stream Input</strong><span>${streamStats.received ?? 0} seen · ${streamStats.respond_candidates ?? 0} response candidates</span></div>
+    <div class="presence-node"><strong>Speech Floor</strong><span>${speech.active ? 'Mary speaking' : 'Open'} · queue ${speech.queue_depth ?? 0}</span></div>
+  </div>
+  <div class="workspace-grid three" style="margin-top:12px">
+    <div class="workspace-panel hero-panel live-scene-panel"><h3>Live Scene</h3><p>This is Mary's short-lived awareness of now—not memory and not identity.</p><div class="data-row"><span>Mode</span><strong>${escapeHtml(titleCase(scene.mode || 'conversation'))}</strong></div><div class="data-row"><span>Activity</span><strong>${escapeHtml(scene.activity || '—')}</strong></div><div class="data-row"><span>Project</span><strong>${escapeHtml(scene.project || '—')}</strong></div><div class="data-row"><span>Target</span><strong>${escapeHtml(scene.mary_target || 'creator')}</strong></div><small>${escapeHtml(environmentText || 'No live environment observation yet.')}</small></div>
+    <div class="workspace-panel accent"><h3>Social Stage</h3><p>Performance contexts are projections of the same Mary. Public mode gets stronger privacy boundaries, not a different personality.</p><div class="chip-row">${modes.map((x)=>`<button class="chip ${x===mode?'active':''}" data-performance-context="${x}">${escapeHtml(titleCase(x))}</button>`).join('')}</div><div class="data-row"><span>Audience</span><strong>${escapeHtml(titleCase(stage.audience||'creator'))}</strong></div><div class="data-row"><span>Privacy</span><strong>${stage.public?'PUBLIC GUARD':'PRIVATE'}</strong></div></div>
+    <div class="workspace-panel"><h3>Speech Arbiter</h3><div class="data-row"><span>Active</span><strong>${escapeHtml(speech.active?.target || 'OPEN')}</strong></div><div class="data-row"><span>Queued</span><strong>${speech.queue_depth ?? 0}</strong></div><div class="data-row"><span>Played / dropped</span><strong>${speech.stats?.played ?? 0} / ${speech.stats?.dropped ?? 0}</strong></div><div class="data-row"><span>Interrupts</span><strong>${speech.stats?.interrupts ?? 0}</strong></div><p>One Mary voice owns the floor. Realtime output decides play, queue, drop or interrupt before TTS.</p></div>
+  </div>
+  <div class="workspace-grid" style="margin-top:12px">
+    <div class="workspace-panel"><h3>Stream Attention</h3><div class="data-row"><span>Received</span><strong>${streamStats.received ?? 0}</strong></div><div class="data-row"><span>Ignored</span><strong>${streamStats.ignored ?? 0}</strong></div><div class="data-row"><span>Noticed</span><strong>${streamStats.noticed ?? 0}</strong></div><div class="data-row"><span>Response candidates</span><strong>${streamStats.respond_candidates ?? 0}</strong></div><div class="data-row"><span>Fast brain</span><strong>${escapeHtml(fastBrain.type || 'deterministic')}</strong></div><p>The fast brain can rank interest; deterministic Presence still owns conversational floor and authority.</p></div>
+    <div class="workspace-panel stream-chat-panel"><h3>Recent Chat</h3><div class="stream-chat-list">${chatRows || '<div class="workspace-empty">No stream chat ingested yet.</div>'}</div>${repeated.length ? `<small>Repeated: ${escapeHtml(repeated.slice(0,3).map((x)=>Array.isArray(x)?`${x[0]} ×${x[1]}`:String(x)).join(' · '))}</small>` : ''}</div>
+  </div>
+  <div class="workspace-grid" style="margin-top:12px">
+    <div class="workspace-panel"><h3>Scene Event Trail</h3>${eventRows || '<div class="workspace-empty">No current scene events.</div>'}</div>
+    <div class="workspace-panel"><h3>Why Mary Did That</h3>${decisionRows || '<div class="workspace-empty">No realtime decisions recorded yet.</div>'}<small>Bounded causal labels only — no raw dialogue, prompts, audio, identity or memory state.</small></div>
+  </div>
+  <div class="workspace-grid" style="margin-top:12px">
+    <div class="workspace-panel"><h3>World Pulse</h3><div class="data-row"><span>Current items</span><strong>${world.count ?? 0}</strong></div><div class="data-row"><span>Refresh lanes due</span><strong>${dueWorld.length}</strong></div>${worldRows || '<div class="workspace-empty compact">No ephemeral world context loaded yet.</div>'}<small>Current culture expires. It never silently becomes Mary canon.</small></div>
+  </div>
+  <div class="workspace-panel" style="margin-top:12px"><h3>External performer adapters</h3><p>Twitch, OBS and perception are capability inputs around Core. None of them owns Mary, memory or tool authority.</p><div class="chip-row">${['twitch','obs','vision'].map((k)=>`<span class="chip">${byKey[k]?.enabled?'●':'○'} ${escapeHtml(titleCase(k))}</span>`).join('')}</div><div class="data-row"><span>Twitch</span><strong>EventSub → Core chat</strong></div><div class="data-row"><span>OBS</span><strong>WebSocket events → perception</strong></div><button class="primary-small" id="presence-idle-test" style="height:34px;margin-top:8px">Preview an idle behavior</button></div>`;
 }
 
 function renderSearch() {

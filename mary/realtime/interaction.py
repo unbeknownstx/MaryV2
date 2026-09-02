@@ -15,6 +15,10 @@ from typing import Any
 import uuid
 
 from .attention import AttentionBus, AttentionSource
+from .decision_trace import RealtimeDecisionTrace
+from .speaker_scheduler import SpeakerScheduler
+from .data_plane import RealtimeDataPlane, RealtimeDatum
+from .speech_arbiter import SpeechOutputArbiter, SpeechRequest
 
 
 class InteractionPhase(str, Enum):
@@ -50,7 +54,16 @@ class RealtimeInteractionCoordinator:
     VERSION = "13.1"
 
     def __init__(self, *, attention: AttentionBus | None = None, anti_echo: bool = True) -> None:
-        self.attention = attention or AttentionBus()
+        self.decision_trace = RealtimeDecisionTrace()
+        self.attention = attention or AttentionBus(decision_trace=self.decision_trace)
+        if getattr(self.attention, "decision_trace", None) is None:
+            try:
+                self.attention.decision_trace = self.decision_trace
+            except Exception:
+                pass
+        self.data_plane = RealtimeDataPlane()
+        self.speech_arbiter = SpeechOutputArbiter()
+        self.speaker_scheduler = SpeakerScheduler(trace=self.decision_trace)
         self.anti_echo = bool(anti_echo)
         self._lock = RLock()
         self._phase = InteractionPhase.IDLE
@@ -63,6 +76,15 @@ class RealtimeInteractionCoordinator:
             "speech_starts": 0,
             "interruptions": 0,
             "suppressed_echo_inputs": 0,
+            "vad_candidates": 0,
+            "vad_confirmed_starts": 0,
+            "vad_false_starts": 0,
+        }
+        self._voice_activity = {
+            "active": False,
+            "confirmed": False,
+            "source": "",
+            "confidence": None,
         }
         self._last_transition = {
             "from": InteractionPhase.IDLE.value,
@@ -102,6 +124,15 @@ class RealtimeInteractionCoordinator:
             if self._phase == InteractionPhase.SPEAKING:
                 self.interrupt(reason="new_creator_input", by_source="creator_speech" if voice else "creator_text")
             source = self._source_for_surface(surface, voice=voice)
+            self.data_plane.publish(
+                RealtimeDatum(
+                    kind="creator_speech" if voice else "creator_text",
+                    source=str(surface or "runtime"),
+                    summary=value,
+                    salience=1.0,
+                    metadata={"transport": transport},
+                )
+            )
             event = self.attention.publish(
                 source,
                 value,
@@ -183,27 +214,117 @@ class RealtimeInteractionCoordinator:
         with self._lock:
             self._speech_turn_id = str(turn_id or "") or None
             self._stats["speech_starts"] += 1
+            self.data_plane.publish(
+                RealtimeDatum(
+                    kind="mary_speech_started",
+                    source=source,
+                    summary=str(turn_id or "speech"),
+                    salience=.65,
+                )
+            )
+            self.speaker_scheduler.set_floor("mary", reason=f"speech_started:{source}")
+            self.decision_trace.record("speech", "started", "Mary audio acquired presentation floor", source=source, target="audience")
             self._transition(InteractionPhase.SPEAKING, reason=f"speech_started:{source}")
 
     def speech_ended(self, *, reason: str = "speech_finished") -> None:
         with self._lock:
             self._speech_turn_id = None
+            self.speech_arbiter.finish_active()
+            self.data_plane.publish(
+                RealtimeDatum(
+                    kind="mary_speech_ended",
+                    source="speech_output",
+                    summary=reason,
+                    salience=.45,
+                )
+            )
+            self.speaker_scheduler.set_floor("none", reason=reason)
+            self.decision_trace.record("speech", "ended", reason, source="mary", target="audience")
             self._transition(InteractionPhase.IDLE, reason=reason)
+
+
+    def report_voice_activity(
+        self,
+        active: bool,
+        *,
+        confirmed: bool = False,
+        source: str = "vad",
+        confidence: float | None = None,
+    ) -> dict[str, Any]:
+        """Report VAD activity without letting a false start interrupt Mary.
+
+        Open-LLM-VTuber and similar realtime systems distinguish raw VAD onset
+        from a confirmed human speech start.  Candidate activity is useful for
+        UI/latency preparation, but only *confirmed* speech may claim the human
+        floor or barge into active Mary audio. Existing ``mark_listening``
+        remains the backwards-compatible explicit-listening path.
+        """
+        with self._lock:
+            source_value = str(source or "vad")[:64]
+            confidence_value = None if confidence is None else max(0.0, min(1.0, float(confidence)))
+            previous_active = bool(self._voice_activity.get("active"))
+            previous_confirmed = bool(self._voice_activity.get("confirmed"))
+            self._voice_activity = {
+                "active": bool(active),
+                "confirmed": bool(active and confirmed),
+                "source": source_value,
+                "confidence": confidence_value,
+            }
+
+            if active and not confirmed:
+                if not previous_active:
+                    self._stats["vad_candidates"] += 1
+                self.data_plane.publish(RealtimeDatum(
+                    kind="voice_activity_candidate", source=source_value,
+                    summary="possible human speech", salience=.35,
+                    metadata={"confirmed": False, "confidence": confidence_value},
+                ))
+                self.decision_trace.record(
+                    "barge_in", "candidate",
+                    "voice activity observed but speech start is not confirmed",
+                    score=confidence_value, source=source_value, target="mary",
+                )
+            elif active and confirmed:
+                if not previous_confirmed:
+                    self._stats["vad_confirmed_starts"] += 1
+                self.decision_trace.record(
+                    "barge_in", "confirmed", "confirmed human speech start",
+                    score=confidence_value, source=source_value, target="mary",
+                )
+                # RLock is re-entrant; reuse the canonical explicit-listening
+                # transition rather than creating a second interruption path.
+                self.mark_listening(True, source=source_value)
+            else:
+                if previous_active and not previous_confirmed:
+                    self._stats["vad_false_starts"] += 1
+                    self.decision_trace.record(
+                        "barge_in", "dismissed",
+                        "voice activity ended before confirmed speech",
+                        source=source_value, target="mary",
+                    )
+                if previous_confirmed and self._phase == InteractionPhase.LISTENING:
+                    self.mark_listening(False, source=source_value)
+
+            return dict(self._voice_activity)
 
     def mark_listening(self, active: bool, *, source: str = "microphone") -> None:
         with self._lock:
             if active:
                 if self._phase == InteractionPhase.SPEAKING:
                     self.interrupt(reason="microphone_barge_in", by_source=source)
+                self.speaker_scheduler.set_floor("creator", reason=f"listening:{source}")
                 self._transition(InteractionPhase.LISTENING, reason=f"listening:{source}")
             elif self._phase == InteractionPhase.LISTENING:
+                self.speaker_scheduler.set_floor("none", reason=f"listening_stopped:{source}")
                 self._transition(InteractionPhase.IDLE, reason=f"listening_stopped:{source}")
 
     def mark_transcribing(self, active: bool, *, source: str = "stt") -> None:
         with self._lock:
             if active:
+                self.speaker_scheduler.set_floor("creator", reason=f"transcribing:{source}")
                 self._transition(InteractionPhase.TRANSCRIBING, reason=f"transcribing:{source}")
             elif self._phase == InteractionPhase.TRANSCRIBING:
+                self.speaker_scheduler.set_floor("none", reason=f"transcription_finished:{source}")
                 self._transition(InteractionPhase.IDLE, reason=f"transcription_finished:{source}")
 
     def interrupt(self, *, reason: str = "barge_in", by_source: str = "creator") -> int:
@@ -214,8 +335,57 @@ class RealtimeInteractionCoordinator:
                 self._active_turn.interrupted = True
                 self._active_turn.interruption_reason = str(reason)[:160]
             self._speech_turn_id = None
+            interrupted = self.speech_arbiter.interrupt_active(reason=reason)
+            self.speaker_scheduler.set_floor("creator" if "creator" in str(by_source).casefold() or "microphone" in str(by_source).casefold() else "none", reason=f"interrupt:{reason}")
+            self.decision_trace.record(
+                "speech", "interrupted", reason, source=by_source, target="mary",
+                metadata={"had_active_speech": interrupted is not None},
+            )
+            self.data_plane.publish(
+                RealtimeDatum(
+                    kind="speech_interrupted",
+                    source=by_source,
+                    summary=reason,
+                    salience=.95,
+                )
+            )
             self._transition(InteractionPhase.INTERRUPTED, reason=f"{reason}:{by_source}")
             return self._interrupt_generation
+
+    def request_speech(
+        self,
+        text: str,
+        *,
+        source: str = "mary",
+        target: str = "creator",
+        priority: int = 50,
+        interruptible: bool = True,
+        can_interrupt: bool = False,
+        ttl_seconds: float = 30.0,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Ask the shared speech floor to schedule one Mary utterance.
+
+        Surfaces may use this before beginning TTS.  Existing clients remain
+        compatible because lifecycle callbacks still work independently.
+        """
+        request = SpeechRequest(
+            text=str(text or ""),
+            source=source,
+            target=target,
+            priority=priority,
+            interruptible=interruptible,
+            can_interrupt=can_interrupt,
+            ttl_seconds=ttl_seconds,
+            metadata=dict(metadata or {}),
+        )
+        decision = self.speech_arbiter.request(request)
+        self.decision_trace.record(
+            "speech_arbitration", decision.disposition.value, decision.reason,
+            source=request.source, target=request.target,
+            metadata={"priority": int(request.priority)},
+        )
+        return {"request": request.to_dict(), "arbitration": decision.to_dict()}
 
     def should_accept_audio_input(self, *, source: str = "microphone") -> bool:
         with self._lock:
@@ -241,5 +411,10 @@ class RealtimeInteractionCoordinator:
                 "last_transition": dict(self._last_transition),
                 "stats": dict(self._stats),
                 "attention": self.attention.snapshot(),
+                "data_plane": self.data_plane.snapshot(),
+                "speech_arbiter": self.speech_arbiter.status(),
+                "speaker_scheduler": self.speaker_scheduler.status(),
+                "decision_trace": self.decision_trace.snapshot(),
+                "voice_activity": dict(self._voice_activity),
                 "semantics": "coordination state only; no identity or memory authority",
             }

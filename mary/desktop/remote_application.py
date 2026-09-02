@@ -75,6 +75,15 @@ class _RemoteRealtimeView:
             {"reason": reason, "by_source": by_source},
         )
 
+    def report_voice_activity(
+        self, value: bool, *, confirmed: bool = False,
+        source: str = "desktop_vad", confidence: float | None = None,
+    ) -> None:
+        self.gateway.runtime_action(
+            "realtime.voice_activity",
+            {"active": bool(value), "confirmed": bool(confirmed), "source": source, "confidence": confidence},
+        )
+
     def mark_listening(self, value: bool, *, source: str = "desktop_microphone") -> None:
         self.gateway.runtime_action(
             "realtime.listening",

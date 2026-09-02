@@ -1,0 +1,350 @@
+{
+  "schema_version": 2,
+  "updated": "2026-09-01T19:00:00-07:00",
+  "policy": {
+    "external_projects_are_authorities": false,
+    "public_evidence_only_for_claims": true,
+    "integrate_into_existing_mary_owner": true,
+    "license_review_required_before_code_or_asset_reuse": true
+  },
+  "projects": [
+    {
+      "name": "Neuro SDK",
+      "role": "behavior/game integration benchmark",
+      "takeaways": [
+        "dynamic valid-action windows",
+        "structured action schemas",
+        "high-level decisions over low-level control"
+      ],
+      "mary_owner": [
+        "distributed.action_windows",
+        "capability/task authorization"
+      ],
+      "status": "integrated_pattern",
+      "source": "https://github.com/VedalAI/neuro-sdk",
+      "implemented": [
+        "dynamic action windows",
+        "revision checks",
+        "disposable action selection",
+        "structured current-valid actions"
+      ]
+    },
+    {
+      "name": "ProjectBEA",
+      "role": "attention/autonomy benchmark",
+      "takeaways": [
+        "REACT/NOTE/DROP",
+        "peripheral awareness",
+        "cross-stage notes",
+        "one-mind-many-places"
+      ],
+      "mary_owner": [
+        "realtime.attention",
+        "presence",
+        "conversation.cross_surface"
+      ],
+      "status": "integrated_pattern",
+      "implemented": [
+        "REACT/NOTE/DROP",
+        "peripheral note digest",
+        "cross-surface stage notes"
+      ]
+    },
+    {
+      "name": "Lumi/Nox",
+      "role": "realtime social-performance benchmark",
+      "takeaways": [
+        "speaker arbitration",
+        "fast brain",
+        "stage notes",
+        "viewer familiarity",
+        "high-level game planning"
+      ],
+      "mary_owner": [
+        "realtime.speaker_scheduler",
+        "realtime.speech_arbiter",
+        "streaming",
+        "distributed"
+      ],
+      "status": "integrated_pattern",
+      "implemented": [
+        "shared social floor scheduler",
+        "session audience roster",
+        "cross-surface stage awareness",
+        "fast-brain bounded ranking"
+      ]
+    },
+    {
+      "name": "AIRI",
+      "role": "plugin/node/avatar benchmark",
+      "takeaways": [
+        "control/data plane split",
+        "typed plugins",
+        "IO tracing",
+        "semantic motion retrieval"
+      ],
+      "mary_owner": [
+        "distributed",
+        "realtime",
+        "expression.motion_library",
+        "runtime.turn_observability"
+      ],
+      "status": "integrated_pattern",
+      "source": "https://github.com/moeru-ai/airi",
+      "implemented": [
+        "control/data plane split",
+        "safe causal decision trace",
+        "semantic motion slots",
+        "typed capability contracts"
+      ]
+    },
+    {
+      "name": "Open-LLM-VTuber",
+      "role": "voice/avatar/provider benchmark",
+      "takeaways": [
+        "swappable ASR/TTS/LLM",
+        "barge-in",
+        "visual perception",
+        "proactive speech"
+      ],
+      "mary_owner": [
+        "voice",
+        "realtime",
+        "perception",
+        "presence"
+      ],
+      "status": "compare_continuously",
+      "source": "https://github.com/coco-research/open-llm-vtuber",
+      "implemented": [
+        "confirmed VAD before barge-in",
+        "provider-neutral voice/perception owners preserved"
+      ]
+    },
+    {
+      "name": "Warashi",
+      "role": "companion presence benchmark",
+      "takeaways": [
+        "deep recall",
+        "proactive topics",
+        "current-world context",
+        "sleep/quiet"
+      ],
+      "mary_owner": [
+        "mind retrieval",
+        "world pulse",
+        "presence",
+        "lifecycle"
+      ],
+      "status": "compare_continuously",
+      "source": "https://github.com/inni918/warashi"
+    },
+    {
+      "name": "Riko public repo",
+      "role": "presentation simplicity benchmark",
+      "takeaways": [
+        "voice/timing/character direction can dominate perceived complexity"
+      ],
+      "mary_owner": [
+        "performance",
+        "voice",
+        "adapter lab"
+      ],
+      "status": "public_repo_is_basic; private architecture unknown",
+      "source": "https://github.com/rayenfeng/riko_project"
+    },
+    {
+      "name": "YuriOS",
+      "role": "continuous-inner-life benchmark",
+      "takeaways": [
+        "auditable mind loop",
+        "goals/provenance",
+        "reach-out gating",
+        "tool budgets",
+        "promise accountability"
+      ],
+      "mary_owner": [
+        "growth experience journal",
+        "presence initiative",
+        "agency/autonomy",
+        "resource governance",
+        "task workspace"
+      ],
+      "status": "mine_without_duplicate_mind",
+      "source": "https://github.com/yuri-os/YuriOS"
+    },
+    {
+      "name": "chasm",
+      "role": "agentic NPC benchmark",
+      "takeaways": [
+        "personal witness memory",
+        "thin game bridges",
+        "high-level actions",
+        "world grounding"
+      ],
+      "mary_owner": [
+        "live scene",
+        "perception provenance",
+        "action windows",
+        "future world bridge"
+      ],
+      "status": "future_world_reference",
+      "source": "https://github.com/chasmlol/chasm"
+    },
+    {
+      "name": "MotionMind",
+      "role": "motion ingestion benchmark",
+      "takeaways": [
+        "video motion capture",
+        "VRM retarget",
+        "semantic motion index",
+        "physics validation"
+      ],
+      "mary_owner": [
+        "expression.motion_library",
+        "future performer/world node"
+      ],
+      "status": "future_motion_import_reference",
+      "source": "https://github.com/rohitacharyams/MotionMind"
+    },
+    {
+      "name": "AI Companion (Pipecat/TalkingHead)",
+      "role": "low-latency voice benchmark",
+      "takeaways": [
+        "sentence pipelining",
+        "timestamp-driven visemes",
+        "barge-in"
+      ],
+      "mary_owner": [
+        "voice",
+        "desktop avatar",
+        "speech arbiter"
+      ],
+      "status": "timestamp_alignment_integrated",
+      "source": "https://github.com/xanguera/aicompanion"
+    },
+    {
+      "name": "Project Gabriel Remastered",
+      "role": "VRChat embodiment benchmark",
+      "takeaways": [
+        "VRChat optional surface",
+        "native realtime audio",
+        "computer vision perception",
+        "OSC avatar control"
+      ],
+      "mary_owner": [
+        "future VRChat capability node",
+        "realtime",
+        "perception",
+        "expression"
+      ],
+      "status": "future_embodiment_reference",
+      "source": "https://github.com/HoppouAI/ProjectGabriel-Remastered"
+    },
+    {
+      "name": "Neocortex Unity SDK",
+      "role": "semantic world / multi-character benchmark",
+      "takeaways": [
+        "tagged semantic scene objects",
+        "ordered line-level emotion/actions",
+        "group roster",
+        "explicit speaker director"
+      ],
+      "mary_owner": [
+        "future world bridge",
+        "realtime.speaker_scheduler",
+        "expression.performance",
+        "live scene"
+      ],
+      "status": "future_world_reference",
+      "source": "https://github.com/neocortex-link/neocortex-unity-sdk"
+    },
+    {
+      "name": "Emora AI Companion",
+      "role": "companion performance benchmark",
+      "takeaways": [
+        "companion brain drives voice style",
+        "VRM gaze/gesture/expression",
+        "selective memory",
+        "room presence"
+      ],
+      "mary_owner": [
+        "expression.performance_packet",
+        "presence",
+        "voice",
+        "live scene"
+      ],
+      "status": "performance_pattern_already_aligned",
+      "source": "https://github.com/MaheshReddy-ML/AI-Companion"
+    },
+    {
+      "name": "Rexclaw",
+      "role": "multimodal conversation continuity benchmark",
+      "takeaways": [
+        "same conversation across voice and text",
+        "realtime barge-in",
+        "VRM gesture/emotion",
+        "persistent tool/memory continuity"
+      ],
+      "mary_owner": [
+        "canonical Core conversation",
+        "realtime",
+        "expression"
+      ],
+      "status": "surface_continuity_pattern_already_aligned",
+      "source": "https://github.com/Codemarchant/rexclaw"
+    },
+    {
+      "name": "Meuxe",
+      "role": "low-latency desktop companion benchmark",
+      "takeaways": [
+        "parallel segmented TTS",
+        "streaming expression tags",
+        "VRM/Live2D interchange",
+        "transparent mini mode"
+      ],
+      "mary_owner": [
+        "voice performance segments",
+        "speech arbiter",
+        "desktop presentation"
+      ],
+      "status": "parallel_tts_deferred_until_live_latency",
+      "source": "https://github.com/meet447/Meuxe"
+    },
+    {
+      "name": "Chati",
+      "role": "VRChat interruption/perception benchmark",
+      "takeaways": [
+        "in-flight generation cancellation on barge-in",
+        "speaker loopback STT",
+        "OSC movement/head/gesture",
+        "vision change detection"
+      ],
+      "mary_owner": [
+        "realtime",
+        "future provider cancellation contract",
+        "future VRChat node",
+        "perception"
+      ],
+      "status": "provider_cancellation_future_reference",
+      "source": "https://github.com/ekontoTURBO/chati-project"
+    },
+    {
+      "name": "AITuber OnAir",
+      "role": "modular AI VTuber toolkit benchmark",
+      "takeaways": [
+        "modular TypeScript packages",
+        "memory/chat/voice/avatar separation",
+        "VRM/Live2D/PNG surfaces",
+        "stream-ready composition"
+      ],
+      "mary_owner": [
+        "streaming",
+        "voice",
+        "expression",
+        "surface clients"
+      ],
+      "status": "compare_continuously",
+      "source": "https://github.com/555rrw/aivuber-onair-pro"
+    }
+  ]
+}

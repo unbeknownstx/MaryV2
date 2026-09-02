@@ -6,7 +6,7 @@ execute work on a device.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import os
 from threading import RLock
@@ -42,7 +42,7 @@ class NodeDescriptor:
 
     def supports(self, capability: str) -> bool:
         item = self.capabilities.get(str(capability).strip().lower())
-        return bool(item and item.available)
+        return bool(item and item.routable)
 
     def to_dict(self, *, stale_after: float = 90.0) -> dict[str, Any]:
         age = max(0.0, monotonic() - self.last_heartbeat_monotonic)
@@ -107,6 +107,39 @@ class NodeRegistry:
             node.heartbeat()
             return True
 
+    def update_capability_readiness(
+        self,
+        node_id: str,
+        capability: str,
+        readiness: str,
+        *,
+        available: bool | None = None,
+    ) -> bool:
+        """Update one advertised capability health without changing ownership.
+
+        Nodes can advertise a runtime that exists but is still starting or is
+        temporarily degraded.  Routing consumes this readiness rather than
+        assuming registration means executable-now.
+        """
+        normalized = str(capability or "").strip().lower()
+        state = str(readiness or "").strip().lower()
+        if state not in {"ready", "degraded", "starting", "unavailable"}:
+            raise ValueError("capability readiness must be ready, degraded, starting, or unavailable")
+        with self._lock:
+            node = self._nodes.get(str(node_id))
+            if node is None or normalized not in node.capabilities:
+                return False
+            current = node.capabilities[normalized]
+            effective_available = bool(current.available if available is None else available)
+            if state == "unavailable":
+                effective_available = False
+            node.capabilities[normalized] = replace(
+                current,
+                available=effective_available,
+                readiness=state,
+            )
+            return True
+
     def disconnect(self, node_id: str) -> bool:
         with self._lock:
             node = self._nodes.get(str(node_id))
@@ -147,9 +180,10 @@ class NodeRegistry:
         if not candidates:
             return None
 
-        def score(node: NodeDescriptor) -> tuple[int, int, int, str]:
+        def score(node: NodeDescriptor) -> tuple[int, int, int, int, str]:
             cap = node.capabilities[normalized]
             return (
+                0 if str(cap.readiness).strip().lower() == "ready" else 1,
                 0 if (prefer_private and cap.private) else 1,
                 0 if (prefer_local and cap.local) else 1,
                 0 if cap.cost in {"free", "local"} else 1,
@@ -177,6 +211,10 @@ class NodeRegistry:
             "available": selected is not None,
             "selected_node_id": selected.node_id if selected is not None else None,
             "candidate_node_ids": [node.node_id for node in candidates],
+            "candidate_readiness": {
+                node.node_id: str(node.capabilities[normalized].readiness)
+                for node in candidates
+            },
             "candidate_count": len(candidates),
             "execution": "not_authorized",
             "policy": "routing selects a capable node only; execution requires a separate authorized device task channel",

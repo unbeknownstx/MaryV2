@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-_SAFE_CAPABILITIES = {"personal_search", "llm.ollama"}
+_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp"}
 
 
 def default_permission_path() -> Path:

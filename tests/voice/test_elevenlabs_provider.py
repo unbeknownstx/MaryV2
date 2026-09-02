@@ -126,3 +126,47 @@ def test_elevenlabs_provider_does_not_bypass_certificate_verification_errors() -
             raise AssertionError("Expected synthesis to fail on certificate verification.")
 
     assert mocked.call_count == 1
+
+
+def test_elevenlabs_provider_can_return_precise_alignment_without_changing_voice_owner() -> None:
+    import base64
+
+    provider = ElevenLabsTextToSpeechProvider(
+        api_key="fake-key",
+        voice_id="mary-voice",
+        model_id="eleven_flash_v2_5",
+    )
+    payload = {
+        "audio_base64": base64.b64encode(b"aligned-mp3").decode("ascii"),
+        "normalized_alignment": {
+            "characters": ["H", "i", " ", "M", "a", "r", "y"],
+            "character_start_times_seconds": [0.0, 0.08, 0.16, 0.20, 0.29, 0.36, 0.43],
+            "character_end_times_seconds": [0.08, 0.16, 0.20, 0.29, 0.36, 0.43, 0.52],
+        },
+    }
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["accept"] = dict(request.header_items()).get("Accept")
+        return _FakeResponse(json.dumps(payload).encode("utf-8"))
+
+    with patch("mary.voice.providers.elevenlabs.urlopen", fake_urlopen):
+        speech = provider.synthesize(
+            "Hi Mary",
+            settings=VoiceSettings(
+                voice="mary-voice",
+                output_format=SpeechAudioFormat.MP3,
+                metadata={"with_timestamps": True},
+            ),
+        )
+
+    assert speech.audio == b"aligned-mp3"
+    assert "/with-timestamps" in captured["url"]
+    assert captured["accept"] == "application/json"
+    alignment = speech.metadata["alignment"]
+    assert alignment["normalized"] is True
+    assert alignment["words"][0]["text"] == "Hi"
+    assert alignment["words"][1]["text"] == "Mary"
+    assert alignment["characters"][-1]["end_seconds"] == 0.52
+    assert speech.metadata["alignment_source"] == "elevenlabs_tts_timestamps"

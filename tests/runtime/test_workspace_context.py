@@ -223,3 +223,51 @@ def test_companion_pulse_includes_study_and_research_context(tmp_path, monkeypat
     assert pulse["research_threads"][0]["title"] == "Mary architecture"
     assert pulse["research_threads"][0]["notes"] == 1
     assert not (ecosystem.root / "companion.json").exists()
+
+
+def test_workspace_context_carries_bounded_live_scene_and_world_context():
+    pulse = _pulse()
+    pulse["live_scene"] = {
+        "mode": "streaming",
+        "activity": "drawing",
+        "project": "Unbeknownst",
+        "floor_owner": "creator",
+        "realtime_phase": "listening",
+        "mary_target": "chat",
+        "environment": {"foreground_app": "Photoshop", "raw_audio": "DROP"},
+        "recent_events": [
+            {
+                "event_id": "e1",
+                "kind": "twitch_mention",
+                "source": "twitch:chat",
+                "summary": "viewer: Mary what do you think?",
+                "importance": 0.8,
+                "secret": "DROP",
+            }
+        ],
+    }
+    pulse["world_relevant"] = [
+        {
+            "id": "world_1",
+            "topic": "current game",
+            "summary": "A game is trending this week.",
+            "source": "source-name",
+            "lane": "games",
+            "confidence": 0.8,
+            "url": "https://example.invalid",
+            "metadata": {"secret": "DROP"},
+        }
+    ]
+    pulse["streaming"] = {
+        "stats": {"received": 20, "ignored": 15, "noticed": 3, "respond_candidates": 2},
+        "chat": {"buffered": 20, "repeated_phrases": [["purple beanie", 4]], "recent": [{"text": "DROP"}]},
+    }
+
+    context = build_workspace_context(pulse)
+
+    assert context["live_scene"]["project"] == "Unbeknownst"
+    assert context["live_scene"]["environment"]["foreground_app"] == "Photoshop"
+    assert "raw_audio" not in context["live_scene"]["environment"]
+    assert context["world_relevant"][0]["lane"] == "games"
+    assert context["streaming"]["stats"]["respond_candidates"] == 2
+    assert "recent" not in context["streaming"]

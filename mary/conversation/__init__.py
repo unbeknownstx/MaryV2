@@ -10,3 +10,5 @@ __all__ = [
     "choose_reflection_action",
     "local_conversation_repair",
 ]
+
+from .cross_surface import CrossSurfaceAwareness, SurfaceNote

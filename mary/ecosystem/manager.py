@@ -12,6 +12,12 @@ from mary.presence import PresenceManager, PresenceEventType
 from mary.skills import SkillRegistry
 from mary.integrations import twitch_policy_from_environment, obs_policy_from_environment
 from mary.integrations.youtube import YouTubeSearch
+from mary.knowledge import WorldContextStore, WorldPulsePlanner
+from mary.learning import AdapterLab, ModelCandidateCatalog
+from mary.streaming import StreamingPresenceCoordinator
+from mary.mind.fast_brain import fast_brain_from_environment
+from mary.conversation.cross_surface import CrossSurfaceAwareness
+from mary.distributed.action_windows import ActionWindowRegistry
 from mary.presence.windows_activity import foreground_window
 from .companion import build_companion_pulse
 
@@ -33,6 +39,21 @@ class MaryEcosystem:
         self.presence = PresenceManager(
             self.root / "presence",
             attention=getattr(getattr(mary, "realtime", None), "attention", None),
+        )
+        self.world = WorldContextStore()
+        self.world_pulse = WorldPulsePlanner()
+        self.streaming = StreamingPresenceCoordinator(
+            self.presence,
+            fast_brain=fast_brain_from_environment(mary),
+            speaker_scheduler=getattr(getattr(mary, "realtime", None), "speaker_scheduler", None),
+        )
+        self.adapter_lab = AdapterLab(self.root / "model_adapter_lab.json")
+        self.cross_surface = CrossSurfaceAwareness()
+        self.action_windows = ActionWindowRegistry(
+            decision_trace=getattr(getattr(mary, "realtime", None), "decision_trace", None),
+        )
+        self.model_candidates = ModelCandidateCatalog(
+            Path(mary.config.paths.root) / "assets" / "models" / "candidates" / "model_candidates.json"
         )
         self.youtube = YouTubeSearch()
         # Creator-selected workspace gets priority over the repository itself.
@@ -59,12 +80,31 @@ class MaryEcosystem:
             "last_turn": self.metrics.last_turn(),
             "skills": self.skills.snapshot(),
             "presence": {**self.presence.snapshot(), "foreground_window": foreground_window()},
+            "world_context": self.world.snapshot(),
+            "world_pulse": self.world_pulse.snapshot(),
+            "streaming": self.streaming.snapshot(),
+            "adapter_lab": self.adapter_lab.snapshot(),
+            "cross_surface": self.cross_surface.snapshot(),
+            "action_windows": self.action_windows.snapshot(),
+            "model_candidates": self.model_candidates.snapshot(),
+            "character_runtime": {
+                "live_scene": self.presence.scene.snapshot(),
+                "realtime": (
+                    self.mary.realtime.status()
+                    if callable(getattr(getattr(self.mary, "realtime", None), "status", None))
+                    else {}
+                ),
+            },
             "external": {
                 "twitch": twitch_policy_from_environment().to_dict(),
                 "obs": obs_policy_from_environment().to_dict(),
                 "youtube": self.youtube.status(),
             },
-            "paths": {"ecosystem_root": str(self.root), "search_roots": [str(x) for x in self.search.roots]},
+            "paths": {
+                "ecosystem_root": str(self.root),
+                "search_roots": [str(x) for x in self.search.roots],
+                "model_root": str(self.mary.config.paths.models),
+            },
             "semantics": {
                 "ecosystem": "workspaces and tools around the same canonical Mary instance",
                 "presence": "ephemeral environmental context is not creator authority or automatic permanent memory",
@@ -115,6 +155,21 @@ class MaryEcosystem:
             },
             "companion": self.companion_snapshot(),
             "presence": self.presence.snapshot(),
+            "world_context": self.world.snapshot(),
+            "world_pulse": self.world_pulse.snapshot(),
+            "streaming": self.streaming.snapshot(),
+            "adapter_lab": self.adapter_lab.snapshot(),
+            "cross_surface": self.cross_surface.snapshot(),
+            "action_windows": self.action_windows.snapshot(),
+            "model_candidates": self.model_candidates.snapshot(),
+            "character_runtime": {
+                "live_scene": self.presence.scene.snapshot(),
+                "realtime": (
+                    self.mary.realtime.status()
+                    if callable(getattr(getattr(self.mary, "realtime", None), "status", None))
+                    else {}
+                ),
+            },
             "semantics": {
                 "authority": "canonical_workspace",
                 "identity_owner": False,
@@ -409,6 +464,10 @@ class MaryEcosystem:
             importance=importance,
             metadata=metadata,
         )
+
+    def ingest_stream_chat(self, message: Any, *, creator_speaking: bool = False) -> dict[str, Any]:
+        """Feed one untrusted social chat message into shared Presence."""
+        return self.streaming.ingest_chat(message, creator_speaking=creator_speaking)
 
     def record_turn(
         self,

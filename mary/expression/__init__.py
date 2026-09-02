@@ -53,6 +53,7 @@ from .delivery_plan import DeliveryPlan
 from .dialogue_plan import DialoguePlan, DialoguePlanner
 from .director import ExpressionDirector
 from .context import PerformanceContext, PerformanceContextManager
+from .motion_library import MotionAsset, MotionCue, MotionLibrary, DEFAULT_MOTION_LIBRARY
 from .performance_packet import (
     PerformancePacket,
     PerformanceSegment,
@@ -103,6 +104,10 @@ __all__ = [
     "PerformanceSegment",
     "MicroReaction",
     "build_performance_packet",
+    "MotionAsset",
+    "MotionCue",
+    "MotionLibrary",
+    "DEFAULT_MOTION_LIBRARY",
 
     # Dialogue
     "DialogueMode",

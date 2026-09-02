@@ -665,6 +665,15 @@ def _snapshot_matches(
 ) -> bool:
     try:
         current, _, _ = _inventory(source)
+        # Ordinary files have already been stable-hashed by ``_inventory``.
+        # Compare those records directly instead of making a second filesystem
+        # copy after quarantine.  The extra copy is unnecessary for immutable
+        # regular files and can produce platform-specific false change reports
+        # on APFS.  SQLite remains special: the installed record came from a
+        # consistent backup snapshot, so normalize the quarantined database
+        # through the same snapshot path before comparing it.
+        if not any(record.sqlite for record in expected.values()):
+            return _records_match(current, expected)
         with tempfile.TemporaryDirectory(
             prefix="maryv2_source_recheck_",
         ) as temporary:

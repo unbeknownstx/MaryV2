@@ -152,9 +152,10 @@ class DesktopVoiceEngine:
         style = _env_float("MARY_TTS_STYLE", 0.0, minimum=0.0, maximum=1.0)
         speed = _env_float("MARY_TTS_SPEED", 1.0, minimum=0.7, maximum=1.2)
         speaker_boost = _env_bool("MARY_TTS_SPEAKER_BOOST", False)
+        with_timestamps = _env_bool("MARY_TTS_ALIGNMENT", False)
         provider = ElevenLabsTextToSpeechProvider(api_key=api_key, voice_id=voice_id, model_id=model_id or "eleven_flash_v2_5", timeout=20.0)
         settings = VoiceSettings(voice=voice_id, speed=speed, output_format=SpeechAudioFormat.MP3,
-            metadata={"stability": stability, "similarity_boost": similarity, "style": style, "use_speaker_boost": speaker_boost})
+            metadata={"stability": stability, "similarity_boost": similarity, "style": style, "use_speaker_boost": speaker_boost, "with_timestamps": with_timestamps})
         return cls(service=create_tts_service(provider, settings=settings), base_settings=settings,
                    status=DesktopVoiceStatus(True, "elevenlabs", voice_id, model_id, False, True))
 
@@ -344,6 +345,8 @@ class DesktopVoiceEngine:
                 "emotion_intensity": active_settings.emotion_intensity,
                 "emotion_profile": emotion_voice_profile_name(emotional_state),
                 "delivery_profile": active_settings.metadata.get("delivery_profile"),
+                "alignment": speech.metadata.get("alignment"),
+                "alignment_source": speech.metadata.get("alignment_source"),
                 "voice_settings": {
                     "stability": active_settings.metadata.get("stability"),
                     "similarity_boost": active_settings.metadata.get("similarity_boost"),

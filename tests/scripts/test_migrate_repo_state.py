@@ -528,3 +528,18 @@ def test_inspection_rejects_nested_source_and_destination(tmp_path):
     _write_state(source)
     with pytest.raises(ValueError, match="separate"):
         inspect_migration(source, source / "nested")
+
+def test_regular_quarantine_recheck_does_not_require_second_filesystem_copy(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "data"
+    _write_state(source, value="stable")
+    expected, _, _ = migration._inventory(source)
+
+    def unexpected_second_copy(*args, **kwargs):
+        raise AssertionError("regular-file quarantine recheck must not copy again")
+
+    monkeypatch.setattr(migration, "_copy_to_staging", unexpected_second_copy)
+
+    assert migration._snapshot_matches(source, expected) is True

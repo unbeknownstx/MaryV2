@@ -14,12 +14,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from collections import deque
 import heapq
 from threading import RLock
 from typing import Any
 import uuid
 
 from mary.runtime.turn_observability import record_turn_stage
+from .decision_trace import RealtimeDecisionTrace
 
 
 class AttentionSource(str, Enum):
@@ -33,6 +35,53 @@ class AttentionSource(str, Enum):
     CURIOSITY = "curiosity"
     SCHEDULE = "schedule"
     BACKGROUND = "background"
+
+
+class AttentionDisposition(str, Enum):
+    """What the attention layer wants cognition to do with an observation."""
+
+    REACT = "react"
+    NOTE = "note"
+    DROP = "drop"
+
+
+@dataclass(frozen=True)
+class AttentionJudgment:
+    disposition: AttentionDisposition
+    score: float
+    reason: str
+    addressed: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "disposition": self.disposition.value,
+            "score": round(max(0.0, min(1.0, float(self.score))), 3),
+            "reason": str(self.reason)[:200],
+            "addressed": bool(self.addressed),
+        }
+
+
+@dataclass
+class PeripheralNote:
+    note_id: str
+    source: AttentionSource
+    summary: str
+    importance: float
+    metadata: dict[str, Any]
+    created_at: str
+    dedupe_key: str
+    times_seen: int = 1
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "note_id": self.note_id,
+            "source": self.source.value,
+            "summary": self.summary[:600],
+            "importance": round(max(0.0, min(1.0, float(self.importance))), 3),
+            "metadata": _safe_metadata(self.metadata),
+            "created_at": self.created_at,
+            "times_seen": max(1, int(self.times_seen)),
+        }
 
 
 _DEFAULT_PRIORITY: dict[AttentionSource, int] = {
@@ -118,7 +167,7 @@ class AttentionBus:
 
     VERSION = "13.1"
 
-    def __init__(self, *, max_pending: int = 256, recent_limit: int = 128) -> None:
+    def __init__(self, *, max_pending: int = 256, recent_limit: int = 128, decision_trace: RealtimeDecisionTrace | None = None) -> None:
         self.max_pending = max(16, min(4096, int(max_pending)))
         self.recent_limit = max(16, min(1024, int(recent_limit)))
         self._lock = RLock()
@@ -129,8 +178,147 @@ class AttentionBus:
         self._claimed = 0
         self._dropped = 0
         self._deduplicated = 0
+        self._triage = {"react": 0, "note": 0, "drop": 0}
+        self._peripheral: deque[PeripheralNote] = deque(maxlen=max(16, min(256, self.recent_limit)))
         self._paused = False
         self._pause_reason: str | None = None
+        self.decision_trace = decision_trace
+
+    def judge(
+        self,
+        source: AttentionSource | str,
+        *,
+        importance: float = 0.5,
+        addressed: bool = False,
+        noise: bool = False,
+        novelty: float = 0.5,
+    ) -> AttentionJudgment:
+        """Pure-ish deterministic gate inspired by live character attention systems.
+
+        Addressed input is deterministic: Mary should not roll dice to decide whether
+        a person who directly addressed her deserves a turn.  Unaddressed ambient
+        observations may be reacted to, merely noted for the next turn, or dropped.
+        This is attention only; it grants no authority and performs no action.
+        """
+
+        resolved = AttentionSource(str(getattr(source, "value", source)).strip().lower())
+        importance_value = max(0.0, min(1.0, float(importance)))
+        novelty_value = max(0.0, min(1.0, float(novelty)))
+        if noise:
+            judgment = AttentionJudgment(AttentionDisposition.DROP, 0.0, "explicit noise", bool(addressed))
+        elif addressed or resolved in {AttentionSource.CREATOR_SPEECH, AttentionSource.CREATOR_TEXT}:
+            judgment = AttentionJudgment(
+                AttentionDisposition.REACT,
+                max(0.82, importance_value),
+                "directly addressed input bypasses probabilistic salience",
+                True,
+            )
+        else:
+            source_bias = {
+                AttentionSource.SYSTEM: .16,
+                AttentionSource.TOOL: .12,
+                AttentionSource.NODE: .08,
+                AttentionSource.VISUAL: .02,
+                AttentionSource.MEMORY: .00,
+                AttentionSource.CURIOSITY: .02,
+                AttentionSource.SCHEDULE: -.02,
+                AttentionSource.BACKGROUND: -.10,
+            }.get(resolved, 0.0)
+            score = max(0.0, min(1.0, importance_value * .78 + novelty_value * .22 + source_bias))
+            if score >= .66:
+                judgment = AttentionJudgment(AttentionDisposition.REACT, score, "ambient event is salient enough to wake cognition")
+            elif score >= .30:
+                judgment = AttentionJudgment(AttentionDisposition.NOTE, score, "ambient event enters peripheral awareness without a model turn")
+            else:
+                judgment = AttentionJudgment(AttentionDisposition.DROP, score, "ambient event is below the cognitive noise floor")
+        with self._lock:
+            self._triage[judgment.disposition.value] += 1
+        record_turn_stage(
+            "attention_judgment",
+            status="success",
+            elapsed_ms=0.0,
+            outcome=judgment.disposition.value,
+        )
+        if self.decision_trace is not None:
+            self.decision_trace.record(
+                "attention",
+                judgment.disposition.value,
+                judgment.reason,
+                score=judgment.score,
+                source=resolved.value,
+                target="cognition",
+                metadata={"addressed": judgment.addressed},
+            )
+        return judgment
+
+    def note_peripheral(
+        self,
+        source: AttentionSource | str,
+        summary: str,
+        *,
+        importance: float = 0.5,
+        metadata: dict[str, Any] | None = None,
+        dedupe_key: str | None = None,
+    ) -> PeripheralNote:
+        """Keep a small zero-LLM 'while you were busy' digest."""
+
+        resolved = AttentionSource(str(getattr(source, "value", source)).strip().lower())
+        text = " ".join(str(summary or "").split()).strip()[:600]
+        if not text:
+            raise ValueError("Peripheral notes require a non-empty summary.")
+        key = " ".join(str(dedupe_key or f"{resolved.value}|{text.casefold()}").split())[:220]
+        with self._lock:
+            for item in reversed(self._peripheral):
+                if item.dedupe_key == key:
+                    item.times_seen += 1
+                    item.importance = max(item.importance, max(0.0, min(1.0, float(importance))))
+                    record_turn_stage(
+                        "peripheral_awareness",
+                        status="success",
+                        elapsed_ms=0.0,
+                        outcome="coalesced",
+                        result_ids={"peripheral_note_id": item.note_id},
+                    )
+                    return item
+            item = PeripheralNote(
+                note_id=f"peripheral_{uuid.uuid4().hex[:12]}",
+                source=resolved,
+                summary=text,
+                importance=max(0.0, min(1.0, float(importance))),
+                metadata=_safe_metadata(metadata),
+                created_at=datetime.now(timezone.utc).isoformat(),
+                dedupe_key=key,
+            )
+            self._peripheral.append(item)
+            record_turn_stage(
+                "peripheral_awareness",
+                status="success",
+                elapsed_ms=0.0,
+                outcome="noted",
+                result_ids={"peripheral_note_id": item.note_id},
+            )
+            return item
+
+    def peripheral(self, limit: int = 6) -> list[PeripheralNote]:
+        with self._lock:
+            ranked = sorted(
+                self._peripheral,
+                key=lambda item: (item.importance, item.times_seen, item.created_at),
+                reverse=True,
+            )
+            return list(ranked[: max(1, min(16, int(limit)))])
+
+    def claim_peripheral(self, note_ids: list[str] | tuple[str, ...]) -> int:
+        ids = {str(item) for item in note_ids if str(item)}
+        if not ids:
+            return 0
+        with self._lock:
+            before = len(self._peripheral)
+            self._peripheral = deque(
+                (item for item in self._peripheral if item.note_id not in ids),
+                maxlen=self._peripheral.maxlen,
+            )
+            return before - len(self._peripheral)
 
     def publish(
         self,
@@ -286,6 +474,8 @@ class AttentionBus:
                 "claimed": self._claimed,
                 "dropped": self._dropped,
                 "deduplicated": self._deduplicated,
+                "triage": dict(self._triage),
+                "peripheral": [item.to_dict() for item in self.peripheral(6)],
                 "paused": self._paused,
                 "pause_reason": self._pause_reason,
                 "next": pending[0].to_dict() if pending else None,

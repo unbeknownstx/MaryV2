@@ -204,3 +204,39 @@ def test_core_broker_discards_unexpected_ollama_result_fields():
     }
     assert "secret" not in repr(completed.result)
     assert "unexpected" not in repr(completed.result)
+
+
+def test_broker_sanitizes_bounded_llama_cpp_chat_task_and_result():
+    broker = DeviceTaskBroker()
+    task = broker.enqueue(
+        _registry("llm.llama_cpp"),
+        capability="llm.llama_cpp",
+        intent="Use Mac local model",
+        args={
+            "messages": [{"role": "user", "content": " Hello Mary "}],
+            "role": "fast",
+            "temperature": 9,
+            "max_tokens": 99999,
+        },
+        requester_device_id="mary-core",
+    )
+    assert task.args["messages"] == [{"role": "user", "content": "Hello Mary"}]
+    assert task.args["role"] == "fast"
+    assert task.args["temperature"] == 1.5
+    assert task.args["max_tokens"] == 2048
+    broker.poll("windows-pc")
+    completed = broker.complete(
+        node_id="windows-pc",
+        task_id=task.task_id,
+        status="completed",
+        result={
+            "content": "local hello",
+            "provider": "spoofed",
+            "model": "Qwen3-0.6B",
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+            "raw": {"secret": "drop"},
+        },
+    )
+    assert completed.result["provider"] == "llama_cpp"
+    assert completed.result["content"] == "local hello"
+    assert "secret" not in repr(completed.result)

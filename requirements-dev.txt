@@ -1,0 +1,2 @@
+# MaryV2 development and verification dependencies
+pytest>=8,<10

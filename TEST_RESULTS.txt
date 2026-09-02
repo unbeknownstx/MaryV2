@@ -1,11 +1,33 @@
-[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                                    [100%][0m
-[32m[32m[1m5 passed[0m[32m in 0.15s[0m[0m
+MaryV2 Character Runtime Synthesis Upgrade — deterministic checkpoint
 
-STDERR:
-Spreadsheet runtime warmup failed during python startup
-Traceback (most recent call last):
-  File "/tmp/tmp.L2TH2Y5coc/artifact_tool_v2-2.8.22/artifact_tool/patches/warm_spreadsheet_runtime_on_startup.py", line 26, in warm_spreadsheet_runtime_on_startup
-  File "/tmp/tmp.L2TH2Y5coc/artifact_tool_v2-2.8.22/artifact_tool/spreadsheet_warmup.py", line 772, in warm_spreadsheet_runtime
-  File "/tmp/tmp.L2TH2Y5coc/artifact_tool_v2-2.8.22/artifact_tool/rpc/connection.py", line 37, in get_or_create_client
-  File "/tmp/tmp.L2TH2Y5coc/artifact_tool_v2-2.8.22/artifact_tool/rpc/daemon.py", line 124, in start_daemon
-TimeoutError: Timed out waiting for artifact tool daemon socket. Set ARTIFACT_TOOL_RPC_DAEMON_STARTUP_TIMEOUT_S=<seconds> to increase the limit.
+pytest:
+  1602 passed, 1 skipped
+
+system diagnostics:
+  61 passed, 0 warnings, 0 failed
+
+release verification:
+  PASS
+
+convergence:
+  PASS
+
+repository structure:
+  PASS
+
+release hygiene:
+  PASS
+
+standalone source readiness:
+  PASS
+
+local tool safety:
+  PASS
+
+Host-only validation still required:
+  - npm ci / npm run check / npm run build on macOS
+  - real llama.cpp / LoRA Mary-fit and latency
+  - real VAD/barge-in audio
+  - ElevenLabs delivery quality
+  - semantic body-motion quality
+  - Twitch/OBS reconnect behavior

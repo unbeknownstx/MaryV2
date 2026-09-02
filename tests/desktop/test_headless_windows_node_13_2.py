@@ -38,6 +38,7 @@ def test_explicit_headless_capabilities_do_not_require_desktop_application():
     assert [item["name"] for item in payload["capabilities"]] == ["llm.ollama"]
 
 
-def test_headless_ollama_capabilities_advertises_nothing_when_ollama_missing(monkeypatch):
+def test_headless_ollama_capabilities_advertises_nothing_when_local_llms_missing(monkeypatch):
     monkeypatch.setattr(device_module, "_ollama_capability", lambda: None)
+    monkeypatch.setattr(device_module, "_llama_cpp_capability", lambda: None)
     assert device_module.headless_ollama_capabilities() == []

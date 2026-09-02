@@ -11,6 +11,13 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 
+_SENSITIVE_CONTEXT_KEYS = {
+    "audio", "audio_bytes", "raw_audio", "image", "frame", "screenshot",
+    "raw_image", "pixels", "base64", "token", "authorization", "api_key",
+    "password", "secret",
+}
+
+
 def _clip(value: Any, limit: int) -> str:
     text = " ".join(str(value or "").split()).strip()
     if len(text) <= limit:
@@ -171,6 +178,108 @@ def build_workspace_context(
         float_fields=("importance",),
     )
 
+    scene_source = source.get("live_scene")
+    scene_source = scene_source if isinstance(scene_source, dict) else {}
+    live_scene: dict[str, Any] = {}
+    if scene_source:
+        live_scene = {
+            "mode": _clip(scene_source.get("mode"), 32),
+            "activity": _clip(scene_source.get("activity"), 160),
+            "project": _clip(scene_source.get("project"), 160),
+            "workspace": _clip(scene_source.get("workspace"), 160),
+            "selected_asset": _clip(scene_source.get("selected_asset"), 260),
+            "floor_owner": _clip(scene_source.get("floor_owner"), 24),
+            "realtime_phase": _clip(scene_source.get("realtime_phase"), 32),
+            "mary_target": _clip(scene_source.get("mary_target"), 100),
+            "mary_goal": _clip(scene_source.get("mary_goal"), 220),
+        }
+        environment = scene_source.get("environment")
+        if isinstance(environment, dict):
+            live_scene["environment"] = {
+                _clip(key, 48): _clip(value, 140)
+                for key, value in list(environment.items())[:8]
+                if _clip(key, 48) and str(key).casefold() not in _SENSITIVE_CONTEXT_KEYS
+            }
+        live_scene["recent_events"] = _items(
+            scene_source.get("recent_events"),
+            limit=4,
+            text_fields={"summary": 220},
+            passthrough=("event_id", "kind", "source"),
+            float_fields=("importance",),
+        )
+        live_scene = {
+            key: value for key, value in live_scene.items()
+            if value not in (None, "", [], {})
+        }
+
+    world_relevant = _items(
+        source.get("world_relevant"),
+        limit=4,
+        text_fields={"topic": 160, "summary": 420, "source": 140, "lane": 48, "url": 360},
+        passthrough=("id", "observed_at", "expires_at"),
+        float_fields=("confidence",),
+    )
+
+    streaming_source = source.get("streaming")
+    streaming_source = streaming_source if isinstance(streaming_source, dict) else {}
+    streaming: dict[str, Any] = {}
+    if streaming_source:
+        stats = streaming_source.get("stats")
+        chat = streaming_source.get("chat")
+        if isinstance(stats, dict):
+            streaming["stats"] = {
+                key: _bounded_int(stats.get(key))
+                for key in ("received", "ignored", "noticed", "respond_candidates")
+            }
+        if isinstance(chat, dict):
+            streaming["buffered"] = _bounded_int(chat.get("buffered"), maximum=100000)
+            streaming["repeated_phrases"] = [
+                [_clip(pair[0], 100), _bounded_int(pair[1], maximum=100000)]
+                for pair in list(chat.get("repeated_phrases") or [])[:4]
+                if isinstance(pair, (list, tuple)) and len(pair) >= 2
+            ]
+
+    peripheral_awareness = _items(
+        source.get("peripheral_awareness"),
+        limit=4,
+        text_fields={"summary": 260, "source": 48},
+        passthrough=("note_id", "created_at", "times_seen"),
+        float_fields=("importance",),
+    )
+
+    cross_surface_notes = _items(
+        source.get("cross_surface_notes"),
+        limit=4,
+        text_fields={"surface": 64, "direction": 24, "role": 32, "summary": 300},
+        passthrough=("note_id", "conversation_id", "created_at"),
+    )
+
+    action_windows_source = source.get("action_windows")
+    action_windows_source = action_windows_source if isinstance(action_windows_source, dict) else {}
+    action_windows: list[dict[str, Any]] = []
+    for window in list(action_windows_source.get("windows") or [])[:3]:
+        if not isinstance(window, dict):
+            continue
+        actions = []
+        for action in list(window.get("actions") or [])[:10]:
+            if not isinstance(action, dict):
+                continue
+            actions.append({
+                "name": _clip(action.get("name"), 80),
+                "description": _clip(action.get("description"), 240),
+                "capability": _clip(action.get("capability"), 120),
+                "disposable": bool(action.get("disposable")),
+            })
+        item = {
+            "window_id": _clip(window.get("window_id"), 120),
+            "surface": _clip(window.get("surface"), 64),
+            "context": _clip(window.get("context"), 300),
+            "revision": _bounded_int(window.get("revision"), maximum=1000000),
+            "actions": [value for value in actions if value.get("name")],
+        }
+        if item["window_id"] and item["actions"]:
+            action_windows.append(item)
+
     has_activity = bool(
         focus["active"]
         or any(counts.values())
@@ -181,6 +290,12 @@ def build_workspace_context(
         or notices
         or pending_thoughts
         or curiosities
+        or live_scene
+        or world_relevant
+        or streaming
+        or peripheral_awareness
+        or cross_surface_notes
+        or action_windows
     )
 
     if not has_activity:
@@ -201,10 +316,19 @@ def build_workspace_context(
         "notices": notices,
         "pending_thoughts": pending_thoughts,
         "curiosities": curiosities,
+        "live_scene": live_scene,
+        "world_relevant": world_relevant,
+        "streaming": streaming,
+        "peripheral_awareness": peripheral_awareness,
+        "cross_surface_notes": cross_surface_notes,
+        "action_windows": action_windows,
         "presence_mode": _clip(source.get("presence_mode"), 32) or "companion",
         "guidance": (
             "Use current workspace state only when it is relevant to the creator's turn. "
             "Do not force project/task references into unrelated conversation. "
-            "This snapshot is not memory and does not prove that Mary performed an action."
+            "Live Scene, peripheral awareness, cross-surface notes and world items are ephemeral context, not creator truth or Mary memory. "
+            "Cross-surface notes describe what Mary was just doing elsewhere; use them only when relevant. "
+            "Action windows list only currently valid high-level actions; selecting one still requires the existing typed capability/tool authorization path. "
+            "This snapshot does not prove that Mary performed an action."
         ),
     }

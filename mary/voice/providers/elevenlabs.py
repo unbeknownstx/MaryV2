@@ -7,6 +7,7 @@ module makes a network request until ``synthesize`` is explicitly called.
 
 from __future__ import annotations
 
+import base64
 import json
 import ssl
 from urllib.error import HTTPError, URLError
@@ -15,6 +16,8 @@ from urllib.request import Request, urlopen
 
 from mary.voice.text_to_speech import (
     SpeechAudio,
+    SpeechAlignment,
+    SpeechAlignmentMark,
     SpeechAudioFormat,
     SpeechStatus,
     SynthesisError,
@@ -107,6 +110,54 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
             or "SSL_HANDSHAKE_FAILURE" in text
         )
 
+    @staticmethod
+    def _alignment_from_payload(payload: dict) -> SpeechAlignment | None:
+        """Normalize ElevenLabs character timing into Mary's TTS contract."""
+
+        raw = payload.get("normalized_alignment") or payload.get("alignment")
+        if not isinstance(raw, dict):
+            return None
+        chars = list(raw.get("characters") or [])
+        starts = list(raw.get("character_start_times_seconds") or [])
+        ends = list(raw.get("character_end_times_seconds") or [])
+        count = min(len(chars), len(starts), len(ends), 12000)
+        marks: list[SpeechAlignmentMark] = []
+        for index in range(count):
+            try:
+                marks.append(
+                    SpeechAlignmentMark(
+                        text=str(chars[index]),
+                        start_seconds=float(starts[index]),
+                        end_seconds=float(ends[index]),
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+
+        # Derive word spans locally so downstream avatar/caption clients do not
+        # need a provider-specific parser.  Character marks remain the precise
+        # source for future viseme generation.
+        words: list[SpeechAlignmentMark] = []
+        buffer: list[SpeechAlignmentMark] = []
+        for mark in marks + [SpeechAlignmentMark(text=" ", start_seconds=marks[-1].end_seconds if marks else 0.0, end_seconds=marks[-1].end_seconds if marks else 0.0)]:
+            if mark.text.isspace():
+                if buffer:
+                    words.append(
+                        SpeechAlignmentMark(
+                            text="".join(item.text for item in buffer),
+                            start_seconds=buffer[0].start_seconds,
+                            end_seconds=buffer[-1].end_seconds,
+                        )
+                    )
+                    buffer = []
+            else:
+                buffer.append(mark)
+        return SpeechAlignment(
+            characters=tuple(marks),
+            words=tuple(words[:2000]),
+            normalized=bool(payload.get("normalized_alignment")),
+        )
+
     def supports_format(self, audio_format: SpeechAudioFormat) -> bool:
         return audio_format == SpeechAudioFormat.MP3
 
@@ -131,8 +182,11 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
                 provider=self.name,
             )
 
+        with_timestamps = bool(active.metadata.get("with_timestamps", False))
+        endpoint = "with-timestamps" if with_timestamps else ""
+        suffix = f"/{endpoint}" if endpoint else ""
         url = (
-            f"{self.base_url}/text-to-speech/{quote(voice_id, safe='')}"
+            f"{self.base_url}/text-to-speech/{quote(voice_id, safe='')}{suffix}"
             f"?output_format={quote(self.output_format, safe='')}"
         )
         voice_settings = {
@@ -165,12 +219,12 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
             headers={
                 "xi-api-key": self.api_key,
                 "Content-Type": "application/json",
-                "Accept": "audio/mpeg",
+                "Accept": "application/json" if with_timestamps else "audio/mpeg",
             },
         )
 
         try:
-            audio = self._open_audio(request)
+            raw_response = self._open_audio(request)
         except HTTPError as exc:
             detail = ""
             try:
@@ -194,6 +248,20 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
                 retryable=True,
             ) from exc
 
+        alignment = None
+        if with_timestamps:
+            try:
+                response_payload = json.loads(raw_response.decode("utf-8"))
+                audio = base64.b64decode(str(response_payload.get("audio_base64") or ""), validate=True)
+                alignment = self._alignment_from_payload(response_payload)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                raise SynthesisError(
+                    "ElevenLabs timestamp response could not be decoded.",
+                    provider=self.name,
+                ) from exc
+        else:
+            audio = raw_response
+
         return SpeechAudio(
             audio=audio,
             status=SpeechStatus.SUCCESS if audio else SpeechStatus.EMPTY,
@@ -205,5 +273,7 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
             emotion=active.emotion,
             metadata={
                 "output_format": self.output_format,
+                "alignment": alignment.to_dict() if alignment is not None else None,
+                "alignment_source": "elevenlabs_tts_timestamps" if alignment is not None else None,
             },
         )

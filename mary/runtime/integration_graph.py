@@ -129,6 +129,58 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
         ),
         _edge("TurnMind -> shared emotion", turn_mind is not None and getattr(turn_mind, "emotion", None) is getattr(mary, "emotion", None), owner="EmotionManager"),
         _edge("Presence -> realtime attention bus", presence is not None and realtime is not None and getattr(presence, "attention", None) is getattr(realtime, "attention", None), owner="AttentionBus/PresenceManager"),
+        _edge(
+            "attention -> shared realtime decision trace",
+            realtime is not None
+            and getattr(getattr(realtime, "attention", None), "decision_trace", None)
+            is getattr(realtime, "decision_trace", None),
+            owner="AttentionBus/RealtimeDecisionTrace",
+        ),
+        _edge(
+            "streaming -> canonical presence",
+            ecosystem is not None
+            and getattr(getattr(ecosystem, "streaming", None), "presence", None) is presence,
+            owner="StreamingPresenceCoordinator/PresenceManager",
+        ),
+        _edge(
+            "streaming -> shared speaker scheduler",
+            ecosystem is not None
+            and realtime is not None
+            and getattr(getattr(ecosystem, "streaming", None), "speaker_scheduler", None)
+            is getattr(realtime, "speaker_scheduler", None),
+            owner="StreamingPresenceCoordinator/SpeakerScheduler",
+        ),
+        _edge(
+            "realtime -> confirmed VAD barge-in gate",
+            realtime is not None and callable(getattr(realtime, "report_voice_activity", None)),
+            owner="RealtimeInteractionCoordinator",
+        ),
+        _edge(
+            "ecosystem -> bounded cross-surface awareness",
+            ecosystem is not None and getattr(ecosystem, "cross_surface", None) is not None,
+            owner="CrossSurfaceAwareness",
+        ),
+        _edge(
+            "ecosystem -> bounded dynamic action windows",
+            ecosystem is not None
+            and realtime is not None
+            and getattr(ecosystem, "action_windows", None) is not None
+            and getattr(getattr(ecosystem, "action_windows", None), "decision_trace", None)
+            is getattr(realtime, "decision_trace", None),
+            owner="ActionWindowRegistry/RealtimeDecisionTrace",
+        ),
+        _edge(
+            "ecosystem -> model adapter lab",
+            ecosystem is not None and getattr(ecosystem, "adapter_lab", None) is not None,
+            owner="AdapterLab",
+        ),
+        _edge(
+            "node routing -> capability readiness",
+            node_registry is not None
+            and callable(getattr(node_registry, "update_capability_readiness", None))
+            and callable(getattr(node_registry, "route_preview", None)),
+            owner="NodeRegistry",
+        ),
         _edge("performance director -> TurnMind", turn_mind is not None and getattr(mary, "performance", None) is getattr(turn_mind, "performance", None), owner="PerformanceDirector"),
         _edge("training feedback -> canonical Mary", getattr(mary, "training_feedback", None) is not None, owner="ResponseFeedbackStore"),
         _edge("production workspace -> canonical ecosystem", ecosystem is not None and getattr(ecosystem, "production", None) is not None, owner="ProductionStudio"),

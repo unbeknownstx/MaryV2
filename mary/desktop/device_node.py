@@ -25,6 +25,7 @@ from mary.llm.interface import (
     generation_correlation_id,
 )
 from mary.llm.providers.ollama import OllamaProvider
+from mary.llm.providers.llama_cpp import LlamaCppProvider
 from mary.runtime.gateway import RemoteMaryGateway
 
 
@@ -85,6 +86,27 @@ def _ollama_capability() -> CapabilityDescriptor | None:
     )
 
 
+
+def _llama_cpp_capability() -> CapabilityDescriptor | None:
+    """Advertise llama.cpp only when the same local server executor is reachable."""
+
+    provider = LlamaCppProvider()
+    if not provider.is_available():
+        return None
+    return CapabilityDescriptor(
+        name="llm.llama_cpp",
+        available=True,
+        private=True,
+        local=True,
+        cost="local",
+        latency="interactive",
+        metadata={
+            "configured_model": provider.model_name(),
+            "runtime": "llama.cpp",
+            "adapter_scales": bool(provider._lora_scales()),
+        },
+    )
+
 def desktop_capabilities(application: Any, bridge: Any) -> list[CapabilityDescriptor]:
     """Build a bounded, path-free advertisement of Desktop-local abilities."""
 
@@ -137,19 +159,29 @@ def desktop_capabilities(application: Any, bridge: Any) -> list[CapabilityDescri
     ollama = _ollama_capability()
     if ollama is not None:
         items.append(ollama)
+    llama_cpp = _llama_cpp_capability()
+    if llama_cpp is not None:
+        items.append(llama_cpp)
+    return items
+
+
+def headless_local_llm_capabilities() -> list[CapabilityDescriptor]:
+    """Return executable local-LLM capabilities for a headless device node."""
+
+    items: list[CapabilityDescriptor] = []
+    ollama = _ollama_capability()
+    if ollama is not None:
+        items.append(ollama)
+    llama_cpp = _llama_cpp_capability()
+    if llama_cpp is not None:
+        items.append(llama_cpp)
     return items
 
 
 def headless_ollama_capabilities() -> list[CapabilityDescriptor]:
-    """Return the bounded capabilities exposed by the headless Windows node.
+    """Compatibility name: return available headless local-LLM executors."""
 
-    The headless node intentionally advertises only local Ollama. It does not
-    imply that Desktop UI, microphone, filesystem, personal-search, or creative
-    workspace capabilities are available while the GUI is closed.
-    """
-
-    ollama = _ollama_capability()
-    return [ollama] if ollama is not None else []
+    return headless_local_llm_capabilities()
 
 
 class DesktopCapabilityNodeAgent:
@@ -302,6 +334,8 @@ class DesktopCapabilityNodeAgent:
                 result_payload = self._execute_personal_search(dict(task.get("args") or {}))
             elif capability == "llm.ollama":
                 result_payload = self._execute_ollama(dict(task.get("args") or {}))
+            elif capability == "llm.llama_cpp":
+                result_payload = self._execute_llama_cpp(dict(task.get("args") or {}))
             else:
                 raise ValueError(f"No bounded device executor exists for {capability}.")
             result = self.gateway.complete_capability_task(
@@ -391,6 +425,42 @@ class DesktopCapabilityNodeAgent:
             "model": str(response.model or provider.model_name())[:160],
             "finish_reason": str(response.finish_reason or "")[:80],
             "usage": safe_usage,
+            "privacy": "generated on selected device; raw provider payload not returned",
+        }
+
+    def _execute_llama_cpp(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Run one bounded generation through this node's configured llama.cpp server."""
+
+        raw_messages = list(args.get("messages") or [])
+        if not raw_messages:
+            raise ValueError("llm.llama_cpp task requires messages.")
+        role = str(args.get("role") or "general").strip().lower()
+        if role not in {"general", "conversation", "fast", "utility"}:
+            raise ValueError("Unsupported llm.llama_cpp model role.")
+        provider = LlamaCppProvider()
+        if not provider.is_available():
+            raise RuntimeError("Configured llama.cpp provider is unavailable on this device.")
+        messages = [
+            LLMMessage(role=str(item.get("role") or "user"), content=str(item.get("content") or ""))
+            for item in raw_messages if isinstance(item, dict)
+        ]
+        if len(messages) != len(raw_messages):
+            raise ValueError("llm.llama_cpp task contains an invalid message.")
+        response = provider.generate(
+            messages,
+            temperature=float(args.get("temperature", 0.7)),
+            max_tokens=int(args.get("max_tokens", 1024)),
+        )
+        content = str(response.content or "").strip()
+        if not content:
+            raise RuntimeError("llama.cpp returned an empty response.")
+        usage = dict(response.usage or {})
+        return {
+            "content": content[:32_000],
+            "provider": "llama_cpp",
+            "model": str(response.model or provider.model_name())[:160],
+            "finish_reason": str(response.finish_reason or "")[:80],
+            "usage": {key: max(0, int(usage.get(key, 0) or 0)) for key in ("prompt_tokens", "completion_tokens", "total_tokens")},
             "privacy": "generated on selected device; raw provider payload not returned",
         }
 

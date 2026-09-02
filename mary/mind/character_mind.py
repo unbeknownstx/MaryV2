@@ -129,10 +129,21 @@ class CharacterMind:
         if rebuild_reservoir:
             self.rebuild_reservoir()
 
-    def prompt_hits(self, text: str, *, limit: int = 5) -> list[dict[str, Any]]:
+    def prompt_hits(
+        self,
+        text: str,
+        *,
+        limit: int = 5,
+        context: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
-        hits = self.retrieval.search(text, limit=limit, minimum_confidence=0.65)
+        hits = self.retrieval.search(
+            text,
+            limit=limit,
+            minimum_confidence=0.65,
+            context=context,
+        )
         return [
             {
                 "content": hit.content,

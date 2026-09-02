@@ -4,6 +4,7 @@ from __future__ import annotations
 from mary.creative import ProductionFormat, Shot, build_production_plan, capability_jobs
 from mary.runtime.application import create_application
 from mary.runtime.root_authority import MaryRootAuthority
+from mary.runtime.integration_graph import build_integration_graph
 
 
 def main() -> int:
@@ -32,6 +33,21 @@ def main() -> int:
     jobs = capability_jobs(plan)
     check("animation production plans reference + motion + edit jobs", [x["kind"] for x in jobs] == ["image.generate", "video.render", "edit.assemble"])
     check("creative planning does not silently authorize jobs", all(bool(x.get("requires_approval")) for x in jobs))
+
+    graph = build_integration_graph(application=app)
+    edges = {item["name"]: item for item in graph.get("edges", [])}
+    check("integration graph has no required disconnects", bool(graph.get("healthy")))
+    for edge_name in (
+        "attention -> shared realtime decision trace",
+        "streaming -> canonical presence",
+        "streaming -> shared speaker scheduler",
+        "realtime -> confirmed VAD barge-in gate",
+        "ecosystem -> bounded cross-surface awareness",
+        "ecosystem -> bounded dynamic action windows",
+        "ecosystem -> model adapter lab",
+        "node routing -> capability readiness",
+    ):
+        check(f"connected: {edge_name}", bool(edges.get(edge_name, {}).get("connected")))
 
     try:
         print("=" * 72)

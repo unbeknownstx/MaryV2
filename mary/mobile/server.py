@@ -1405,6 +1405,67 @@ class MaryRemoteMobileRuntime:
         if name == "getEcosystemState":
             return self.ecosystem_state()
 
+        if name == "getCharacterRuntimeState":
+            return {
+                "scene": self.client.runtime_action("presence.scene.status"),
+                "realtime": self.client.conversation_status().get("realtime", {}),
+                "streaming": self.client.runtime_action("stream.status"),
+                "world": self.client.runtime_action("world.status"),
+                "authority": "remote_mary_core",
+            }
+
+        if name == "getWorldState":
+            return self.client.runtime_action("world.status")
+
+        if name == "getPerceptionState":
+            return self.client.runtime_action("perception.status")
+
+        if name == "reportPresenceObservation":
+            values = list(args or [])
+            payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+            return self.client.runtime_action("presence.observe", payload)
+
+        if name == "reportPerceptionObservation":
+            values = list(args or [])
+            payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+            return self.client.runtime_action("perception.observe", payload)
+
+        if name == "getWorldRefreshPlan":
+            values = list(args or [])
+            return self.client.runtime_action(
+                "world.refresh_plan",
+                {
+                    "limit": int(values[0]) if values else 8,
+                    "force": bool(values[1]) if len(values) > 1 else False,
+                },
+            )
+
+        if name == "getAdapterLabState":
+            return self.client.runtime_action("model.adapter.status")
+
+        if name == "requestMarySpeech":
+            values = list(args or [])
+            return self.client.runtime_action(
+                "realtime.speech_request",
+                {
+                    "text": str(values[0] if values else ""),
+                    "target": str(values[1] if len(values) > 1 else "creator"),
+                    "priority": int(values[2]) if len(values) > 2 else 50,
+                    "can_interrupt": bool(values[3]) if len(values) > 3 else False,
+                    "surface": "mobile",
+                },
+            )
+
+        if name == "ingestStreamChat":
+            values = list(args or [])
+            payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+            return self.client.runtime_action("stream.chat.ingest", payload)
+
+        if name == "ingestWorldContext":
+            values = list(args or [])
+            payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+            return self.client.runtime_action("world.ingest", payload)
+
         if name == "getConversationContext":
             return {
                 "conversation_id": self._conversation_id,
@@ -3093,6 +3154,146 @@ class MaryMobileRuntime:
 
             if name == "getEcosystemState":
                 return self.ecosystem_state()
+
+            if name == "getCharacterRuntimeState":
+                return {
+                    "scene": self.ecosystem.presence.scene.snapshot(),
+                    "realtime": self.application.mary.realtime.status(),
+                    "streaming": self.ecosystem.streaming.snapshot(),
+                    "world": {
+                        "context": self.ecosystem.world.snapshot(),
+                        "pulse": self.ecosystem.world_pulse.snapshot(),
+                    },
+                    "authority": "local_development_runtime",
+                }
+
+            if name == "getWorldState":
+                return {
+                    "context": self.ecosystem.world.snapshot(),
+                    "pulse": self.ecosystem.world_pulse.snapshot(),
+                }
+
+            if name == "getPerceptionState":
+                return self.application.mary.perception_director.snapshot()
+
+            if name == "reportPresenceObservation":
+                payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+                allowed = {
+                    "foreground_app": PresenceEventType.FOREGROUND_APP,
+                    "obs_scene": PresenceEventType.OBS_SCENE,
+                    "media_changed": PresenceEventType.MEDIA_CHANGED,
+                    "project_changed": PresenceEventType.PROJECT_CHANGED,
+                    "creative_changed": PresenceEventType.CREATIVE_CHANGED,
+                    "visual_observation": PresenceEventType.VISUAL_OBSERVATION,
+                    "system": PresenceEventType.SYSTEM,
+                }
+                event_type = allowed.get(
+                    str(payload.get("event_type") or "system").casefold(),
+                    PresenceEventType.SYSTEM,
+                )
+                result = self.ecosystem.presence.publish(
+                    event_type,
+                    str(payload.get("summary") or "")[:700],
+                    source="mobile_local",
+                    importance=max(0.0, min(1.0, float(payload.get("importance", .5)))),
+                    metadata=dict(payload.get("metadata") or {}) if isinstance(payload.get("metadata"), dict) else {},
+                )
+                return {
+                    "ok": True,
+                    "published": result,
+                    "scene": self.ecosystem.presence.scene.snapshot(),
+                }
+
+            if name == "reportPerceptionObservation":
+                payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+                observation = self.application.mary.perception_director.observe(
+                    str(payload.get("description") or "")[:1400],
+                    modality=str(payload.get("modality") or "screen")[:60],
+                    source="mobile_local",
+                    confidence=max(0.0, min(1.0, float(payload.get("confidence", .5)))),
+                    importance=max(0.0, min(1.0, float(payload.get("importance", .5)))),
+                    metadata=dict(payload.get("metadata") or {}) if isinstance(payload.get("metadata"), dict) else {},
+                )
+                self.ecosystem.presence.scene.observe(
+                    event_id=observation.id,
+                    kind="visual_observation",
+                    source=observation.source,
+                    summary=observation.description,
+                    importance=max(0.0, min(1.0, float(payload.get("importance", .5)))),
+                    metadata={
+                        "modality": observation.modality,
+                        "confidence": observation.confidence,
+                    },
+                )
+                return {
+                    "ok": True,
+                    "observation": observation.to_dict(),
+                    "scene": self.ecosystem.presence.scene.snapshot(),
+                }
+
+            if name == "getWorldRefreshPlan":
+                return {
+                    "due": self.ecosystem.world_pulse.due(
+                        limit=max(1, min(16, int(values[0]) if values else 8)),
+                        force=bool(values[1]) if len(values) > 1 else False,
+                    ),
+                    "policy": "research plan only; execute through an approved research boundary",
+                }
+
+            if name == "getAdapterLabState":
+                return {
+                    **self.ecosystem.adapter_lab.snapshot(),
+                    "reviewed_candidates": self.ecosystem.model_candidates.snapshot(),
+                }
+
+            if name == "requestMarySpeech":
+                return self.application.mary.realtime.request_speech(
+                    str(values[0] if values else ""),
+                    source="mobile:local",
+                    target=str(values[1] if len(values) > 1 else "creator"),
+                    priority=max(0, min(100, int(values[2]) if len(values) > 2 else 50)),
+                    can_interrupt=bool(values[3]) if len(values) > 3 else False,
+                    metadata={"surface": "mobile"},
+                )
+
+            if name == "ingestStreamChat":
+                from mary.streaming import ChatMessage
+                payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+                message = ChatMessage(
+                    message_id=str(payload.get("message_id") or "")[:160],
+                    author_id=str(payload.get("author_id") or "unknown")[:160],
+                    display_name=str(payload.get("display_name") or "viewer")[:120],
+                    text=str(payload.get("text") or "")[:1000],
+                    platform=str(payload.get("platform") or "stream")[:40],
+                    channel=str(payload.get("channel") or "")[:120],
+                    direct_to_mary=bool(payload.get("direct_to_mary", False)),
+                    metadata={"surface": "mobile_local"},
+                )
+                creator_speaking = str(self.application.mary.realtime.status().get("phase") or "") in {
+                    "listening", "transcribing", "thinking"
+                }
+                return self.ecosystem.ingest_stream_chat(message, creator_speaking=creator_speaking)
+
+            if name == "ingestWorldContext":
+                from mary.knowledge import WorldContextItem
+                payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+                item = WorldContextItem(
+                    topic=str(payload.get("topic") or "")[:180],
+                    summary=str(payload.get("summary") or "")[:1200],
+                    source=str(payload.get("source") or "mobile_local")[:180],
+                    lane=str(payload.get("lane") or "general")[:60],
+                    confidence=max(0.0, min(1.0, float(payload.get("confidence", .5)))),
+                    ttl_hours=max(.25, min(720.0, float(payload.get("ttl_hours", 24.0)))),
+                    url=str(payload.get("url") or "")[:500],
+                    metadata={"surface": "mobile_local"},
+                )
+                self.ecosystem.world.ingest(item)
+                self.ecosystem.world_pulse.mark_refreshed(item.lane)
+                return {
+                    "ok": True,
+                    "item": item.to_dict(),
+                    "world": self.ecosystem.world.snapshot(),
+                }
 
             if name == "getMindStatus":
                 return self.mind_status()

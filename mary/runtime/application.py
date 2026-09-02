@@ -1491,6 +1491,28 @@ class MaryApplication:
             initiated_by in {"mary_presence", "mary_initiative", "presence"}
             or input_authority in {"environment_context_only", "context_only"}
         )
+        try:
+            _performance_mode = str(self.mary.performance_context.status().get("mode") or "private").strip().lower()
+        except Exception:
+            _performance_mode = "private"
+        surface_visibility = "public" if _performance_mode in {"stream", "performance", "public"} else "private"
+
+        peripheral_note_ids: list[str] = []
+        try:
+            cross_surface = getattr(self.ecosystem, "cross_surface", None)
+            record_surface = getattr(cross_surface, "record", None)
+            if callable(record_surface):
+                record_surface(
+                    surface=surface,
+                    direction="inbound",
+                    role="environment" if initiative_turn else "creator",
+                    summary=input_text,
+                    conversation_id=str(meta.get("conversation_id") or ""),
+                    metadata={"voice": voice, "initiative": initiative_turn},
+                    visibility=surface_visibility,
+                )
+        except Exception:
+            pass
 
         if not initiative_turn:
             try:
@@ -1511,9 +1533,76 @@ class MaryApplication:
         # cannot impersonate canonical Command/Focus/Study/Research state.
         meta.pop("workspace_context", None)
         try:
-            workspace_context = build_workspace_context(
-                self.ecosystem.companion_snapshot()
-            )
+            workspace_pulse = dict(self.ecosystem.companion_snapshot() or {})
+
+            # Add only Core-owned, bounded situational context.  These fields
+            # remain ephemeral context: they are neither memory nor creator
+            # authority, but they let every client converse with the same Mary
+            # about what is happening *now*.
+            try:
+                presence = getattr(self.ecosystem, "presence", None)
+                scene = getattr(presence, "scene", None)
+                snapshot = getattr(scene, "snapshot", None)
+                if callable(snapshot):
+                    workspace_pulse["live_scene"] = snapshot()
+            except Exception:
+                pass
+
+            try:
+                world = getattr(self.ecosystem, "world", None)
+                relevant = getattr(world, "relevant", None)
+                if callable(relevant):
+                    workspace_pulse["world_relevant"] = [
+                        item.to_dict() if callable(getattr(item, "to_dict", None)) else {}
+                        for item in relevant(input_text, limit=4)
+                    ]
+            except Exception:
+                pass
+
+            try:
+                streaming = getattr(self.ecosystem, "streaming", None)
+                snapshot = getattr(streaming, "snapshot", None)
+                if callable(snapshot):
+                    workspace_pulse["streaming"] = snapshot()
+            except Exception:
+                pass
+
+            try:
+                attention = getattr(getattr(self.mary, "realtime", None), "attention", None)
+                peripheral = getattr(attention, "peripheral", None)
+                if callable(peripheral):
+                    notes = peripheral(4)
+                    workspace_pulse["peripheral_awareness"] = [
+                        item.to_dict() if callable(getattr(item, "to_dict", None)) else {}
+                        for item in notes
+                    ]
+                    peripheral_note_ids = [
+                        str(getattr(item, "note_id", "")) for item in notes if getattr(item, "note_id", "")
+                    ]
+            except Exception:
+                peripheral_note_ids = []
+
+            try:
+                cross_surface = getattr(self.ecosystem, "cross_surface", None)
+                elsewhere = getattr(cross_surface, "elsewhere", None)
+                if callable(elsewhere):
+                    workspace_pulse["cross_surface_notes"] = elsewhere(
+                        surface,
+                        limit=4,
+                        current_visibility=surface_visibility,
+                    )
+            except Exception:
+                pass
+
+            try:
+                action_windows = getattr(self.ecosystem, "action_windows", None)
+                snapshot = getattr(action_windows, "snapshot", None)
+                if callable(snapshot):
+                    workspace_pulse["action_windows"] = snapshot()
+            except Exception:
+                pass
+
+            workspace_context = build_workspace_context(workspace_pulse)
         except Exception:
             workspace_context = {}
         if workspace_context:
@@ -1537,6 +1626,14 @@ class MaryApplication:
                 )
         except Exception:
             interaction = None
+
+        try:
+            self.ecosystem.presence.scene.set_floor(
+                "mary" if initiative_turn else "creator",
+                realtime_phase="thinking",
+            )
+        except Exception:
+            pass
 
         try:
             result = self.pipeline.run(
@@ -1596,6 +1693,35 @@ class MaryApplication:
                 "realtime",
                 self.mary.realtime.status(),
             )
+
+            if bool(getattr(result, "success", False)):
+                try:
+                    attention = getattr(getattr(self.mary, "realtime", None), "attention", None)
+                    claim_peripheral = getattr(attention, "claim_peripheral", None)
+                    if peripheral_note_ids and callable(claim_peripheral):
+                        claim_peripheral(peripheral_note_ids)
+                except Exception:
+                    pass
+                try:
+                    cross_surface = getattr(self.ecosystem, "cross_surface", None)
+                    record_surface = getattr(cross_surface, "record", None)
+                    if callable(record_surface) and response_text:
+                        record_surface(
+                            surface=surface,
+                            direction="outbound",
+                            role="mary",
+                            summary=response_text,
+                            conversation_id=str(meta.get("conversation_id") or ""),
+                            metadata={"initiative": initiative_turn},
+                            visibility=surface_visibility,
+                        )
+                except Exception:
+                    pass
+
+            try:
+                self.ecosystem.presence.scene.set_floor("none", realtime_phase="idle")
+            except Exception:
+                pass
 
             if interaction is not None:
                 result.metadata.setdefault(

@@ -1,0 +1,5 @@
+MaryV2 source package — Character Runtime Synthesis Upgrade (2026-09-01)
+Persistent/private state deliberately excluded: .env, data/, virtualenvs, caches, node_modules, model weights.
+Verification: 1602 passed, 1 skipped; 61/61 diagnostics; deterministic release gate PASS.
+Convergence: PASS. Repository structure: PASS. Release hygiene: PASS. Standalone readiness: PASS.
+Frontend note: JavaScript/source convergence is verified, but this container could not reconstruct npm dependencies; run npm ci && npm run check && npm run build on the Mac before host packaging.

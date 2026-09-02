@@ -1876,7 +1876,11 @@ class Mary:
         # and confidence, and the entire reservoir can be rebuilt from canonical
         # Mary state.
         try:
-            reservoir_hits = self.mind.prompt_hits(input_text, limit=5)
+            reservoir_hits = self.mind.prompt_hits(
+                input_text,
+                limit=5,
+                context={"workspace": prompt_mind_state.get("workspace", {})},
+            )
         except Exception:
             reservoir_hits = []
         if reservoir_hits:

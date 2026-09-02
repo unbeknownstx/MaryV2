@@ -87,6 +87,22 @@ def _platform_data_base() -> Path:
     return _platform_home() / ".local" / "share"
 
 
+def _default_model_root() -> Path:
+    """Return the host-local root for large optional model assets.
+
+    Model weights are runtime dependencies, not source and not canonical Mary
+    state. Keep them outside the repository and outside the state backup/fingerprint
+    root by default so every device can maintain the models it can actually run.
+    """
+
+    explicit = os.getenv("MARY_MODEL_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if _truthy_env("MARY_PORTABLE"):
+        return _executable_root() / "models"
+    return _platform_data_base() / "MaryV2" / "models"
+
+
 def _default_data_root(resource_root: Path) -> Path:
     """Return Mary's writable runtime-state root.
 
@@ -187,6 +203,11 @@ class PathConfig:
     @property
     def data(self) -> Path:
         return self.data_root or _default_data_root(self.root)
+
+    @property
+    def models(self) -> Path:
+        """Large optional local models/adapters; never canonical Mary state."""
+        return _default_model_root()
 
     @property
     def workspace(self) -> Path:

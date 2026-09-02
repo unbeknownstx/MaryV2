@@ -10,7 +10,10 @@ from dataclasses import asdict, dataclass, field
 import re
 from typing import Any
 
+from .resource_profile import RuntimeResourceProfile
+
 _CAPABILITY_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,79}$")
+_READINESS = {"ready", "degraded", "starting", "unavailable"}
 _SECRET_KEYS = {
     "token",
     "api_key",
@@ -45,7 +48,12 @@ class CapabilityDescriptor:
     local: bool = True
     cost: str = "free"
     latency: str = "interactive"
+    readiness: str = "ready"
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def routable(self) -> bool:
+        return bool(self.available and str(self.readiness).strip().lower() in {"ready", "degraded"})
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "CapabilityDescriptor":
@@ -56,6 +64,9 @@ class CapabilityDescriptor:
             raise ValueError("Capability name must use lowercase letters, numbers, '.', '_' or '-'.")
         cost = str(payload.get("cost") or "free").strip().lower()[:32] or "free"
         latency = str(payload.get("latency") or "interactive").strip().lower()[:32] or "interactive"
+        readiness = str(payload.get("readiness") or ("ready" if payload.get("available", True) else "unavailable")).strip().lower()
+        if readiness not in _READINESS:
+            readiness = "ready" if bool(payload.get("available", True)) else "unavailable"
         return cls(
             name=name,
             available=bool(payload.get("available", True)),
@@ -63,11 +74,17 @@ class CapabilityDescriptor:
             local=bool(payload.get("local", True)),
             cost=cost,
             latency=latency,
+            readiness=readiness,
             metadata=_safe_metadata(payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
         )
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
+        readiness = str(self.readiness or "ready").strip().lower()
+        payload["readiness"] = readiness if readiness in _READINESS else "ready"
+        if not self.available:
+            payload["readiness"] = "unavailable"
+        payload["routable"] = bool(self.available and payload["readiness"] in {"ready", "degraded"})
         payload["metadata"] = _safe_metadata(self.metadata)
         return payload
 
@@ -89,6 +106,40 @@ def capabilities_from_environment(environment: Any) -> list[CapabilityDescriptor
                 latency="interactive",
             )
         )
+    try:
+        profile = RuntimeResourceProfile.detect()
+        profile_data = profile.to_dict()
+        output.append(
+            CapabilityDescriptor(
+                name="runtime.resource_profile",
+                available=True,
+                private=True,
+                local=True,
+                cost="free",
+                latency="instant",
+                metadata={
+                    "platform": profile_data.get("platform", "unknown"),
+                    "machine": profile_data.get("machine", "unknown"),
+                    "cpu_count": profile_data.get("cpu_count", 1),
+                    "memory_gib": profile_data.get("memory_gib", "unknown"),
+                    "apple_silicon": profile_data.get("apple_silicon", False),
+                    "ollama": profile_data.get("ollama_available", False),
+                    "llama_cpp": profile_data.get("llama_cpp_available", False),
+                    "whisper_cpp": profile_data.get("whisper_cpp_available", False),
+                },
+            )
+        )
+        if profile.llama_cpp_available:
+            output.append(
+                CapabilityDescriptor(
+                    name="llm.llama_cpp", available=True, private=True, local=True,
+                    cost="local", latency="interactive",
+                    metadata={"runtime": "llama.cpp"},
+                )
+            )
+    except Exception:
+        pass
+
     providers = dict(snapshot.get("providers", {}) or {})
     for provider, data in providers.items():
         info = dict(data or {})

@@ -37,6 +37,14 @@ def test_full_runtime_connection_graph_has_no_required_disconnects(tmp_path):
         assert "MaryApplication -> canonical autonomy" in names
         assert "MaryApplication -> proposal-only autonomy policy" in names
         assert "Presence -> realtime attention bus" in names
+        assert "attention -> shared realtime decision trace" in names
+        assert "streaming -> canonical presence" in names
+        assert "streaming -> shared speaker scheduler" in names
+        assert "realtime -> confirmed VAD barge-in gate" in names
+        assert "ecosystem -> bounded cross-surface awareness" in names
+        assert "ecosystem -> bounded dynamic action windows" in names
+        assert "ecosystem -> model adapter lab" in names
+        assert "node routing -> capability readiness" in names
         assert "production workspace -> canonical ecosystem" in names
         assert "device task broker -> Core service" in names
         assert edges["device broker/provider -> canonical node registry"]["connected"] is True

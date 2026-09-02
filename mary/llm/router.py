@@ -171,6 +171,11 @@ class LLMRouter:
                 return OllamaProvider(model=fast_model or None)
             return OllamaProvider()
 
+        if name == "llama_cpp":
+            from .providers.llama_cpp import LlamaCppProvider
+
+            return LlamaCppProvider()
+
         if name == "openai":
             from .providers.openai import OpenAIProvider
 
@@ -355,7 +360,7 @@ class LLMRouter:
                     "Paid OpenAI cannot be enabled as a sticky session override; "
                     "use explicit expert authorization for an individual task."
                 )
-            if normalized_provider not in {"groq", "gemini", "openrouter", "ollama"}:
+            if normalized_provider not in {"groq", "gemini", "openrouter", "ollama", "llama_cpp"}:
                 raise ValueError(f"Unsupported session provider override: {normalized_provider}")
 
         self._session_provider_override = normalized_provider

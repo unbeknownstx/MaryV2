@@ -1,0 +1,2 @@
+# Optional live-stream adapters. Mary Core does not require these to boot.
+websockets>=16,<17

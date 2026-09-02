@@ -185,3 +185,66 @@
   #messages .message,
   .message-row { animation: none !important; }
 }
+
+/* Cognitive-character runtime projections. These panels render canonical Core
+   state; they do not own scene, model, streaming, or speech state. */
+.live-scene-mini {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 8px 0 10px;
+}
+.live-scene-mini > div {
+  border: 1px solid var(--xp-cyan-line);
+  border-radius: 9px;
+  padding: 7px 8px;
+  background: rgba(6, 11, 28, .54);
+}
+.live-scene-mini span,
+.model-root-panel > span {
+  display: block;
+  font-size: 9px;
+  letter-spacing: .13em;
+  opacity: .58;
+}
+.live-scene-mini strong { display:block; margin-top:3px; font-size:11px; }
+.live-scene-card > strong { display:block; margin: 4px 0; }
+.live-scene-card > small { display:block; opacity:.68; line-height:1.35; }
+
+.compact-scroll { max-height: 330px; overflow: auto; padding-right: 4px; }
+.model-candidate-row .status-chip { max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+.model-root-panel { display:grid; gap:6px; }
+.model-root-panel code { overflow-wrap:anywhere; color:var(--xp-glow); font-size:11px; }
+
+.stream-chat-list { display:grid; gap:7px; max-height:330px; overflow:auto; padding-right:4px; }
+.stream-chat-line {
+  display:grid;
+  grid-template-columns: minmax(70px, .35fr) 1fr auto;
+  gap:8px;
+  align-items:start;
+  padding:8px 9px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:9px;
+  background:rgba(4,7,20,.52);
+}
+.stream-chat-line.direct {
+  border-color: color-mix(in srgb, var(--xp-accent) 42%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--xp-accent) 68%, transparent);
+}
+.stream-chat-line strong { font-size:11px; color:var(--xp-glow); }
+.stream-chat-line span { font-size:11px; line-height:1.4; }
+.stream-chat-line small { opacity:.48; font-size:9px; }
+.scene-event,
+.world-pulse-row {
+  display:grid;
+  grid-template-columns:minmax(92px,.34fr) 1fr;
+  gap:8px;
+  padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,.055);
+}
+.scene-event span,
+.world-pulse-row span { font-size:9px; letter-spacing:.08em; opacity:.58; }
+.scene-event strong,
+.world-pulse-row strong { font-size:11px; }
+.world-pulse-row small { grid-column:2; opacity:.48; }
+.live-scene-panel small { display:block; margin-top:10px; line-height:1.45; }

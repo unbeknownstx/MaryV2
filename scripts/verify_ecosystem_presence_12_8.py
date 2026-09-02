@@ -39,7 +39,7 @@ def main()->int:
     app = None
     try:
         with tempfile.TemporaryDirectory(prefix="maryv2_12_8_") as directory:
-            data=Path(directory)/"data"; os.environ["MARY_DATA_DIR"]=str(data)
+            data=(Path(directory)/"data").resolve(); os.environ["MARY_DATA_DIR"]=str(data)
             app=create_application(memory_path=data/"memory"/"memory.json",auto_save=False,load_memory=False,load_developed_self=False,load_preference_promotion=False,load_knowledge=False); eco=app.ecosystem
             eco.command.add("Verifier task")
             project=eco.study.create_project("Verifier study")

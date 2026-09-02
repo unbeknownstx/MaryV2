@@ -970,6 +970,27 @@ def run_server() -> None:
                 "set MARY_CORE_ALLOW_INSECURE_LOCAL=1."
             )
 
+    # Railway terminates public TLS at its edge and forwards the original
+    # scheme to the service. Uvicorn only applies forwarded headers from
+    # trusted proxy addresses, so a Railway-hosted Core must explicitly trust
+    # the platform proxy hop or request.url.scheme remains ``http`` and Mary's
+    # node-credential transport gate correctly rejects registration with 426.
+    #
+    # Keep the normal Uvicorn trust boundary everywhere else. The wildcard is
+    # enabled only inside a Railway runtime, where the edge is the public
+    # ingress and Railway supplies X-Forwarded-Proto for HTTPS requests.
+    railway_runtime = bool(
+        os.getenv("RAILWAY_SERVICE_ID")
+        or os.getenv("RAILWAY_PROJECT_ID")
+        or os.getenv("RAILWAY_ENVIRONMENT_ID")
+    )
+    forwarded_allow_ips = (
+        "*"
+        if railway_runtime
+        else os.getenv("MARY_CORE_FORWARDED_ALLOW_IPS", "127.0.0.1").strip()
+        or "127.0.0.1"
+    )
+
     uvicorn.run(
         create_app(),
         host=host,
@@ -978,6 +999,8 @@ def run_server() -> None:
             "MARY_CORE_LOG_LEVEL",
             "info",
         ),
+        proxy_headers=True,
+        forwarded_allow_ips=forwarded_allow_ips,
     )
 
 

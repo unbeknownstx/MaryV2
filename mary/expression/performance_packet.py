@@ -17,6 +17,7 @@ import re
 from typing import Any, Mapping
 
 from .delivery_plan import DeliveryPlan
+from .motion_library import DEFAULT_MOTION_LIBRARY, MotionCue
 
 
 _PACKET_VERSION = "1"
@@ -71,6 +72,7 @@ class PerformancePacket:
     delivery: dict[str, Any]
     segments: tuple[PerformanceSegment, ...] = ()
     pre_reaction: MicroReaction = field(default_factory=MicroReaction)
+    motion_cues: tuple[MotionCue, ...] = ()
     social_context: str = "private"
     initiative: bool = False
     source_authority: str = "creator_turn"
@@ -88,6 +90,7 @@ class PerformancePacket:
             "delivery": dict(self.delivery),
             "segments": [segment.to_dict() for segment in self.segments],
             "pre_reaction": self.pre_reaction.to_dict(),
+            "motion_cues": [cue.to_dict() for cue in self.motion_cues],
             "social_context": self.social_context,
             "initiative": bool(self.initiative),
             "source_authority": self.source_authority,
@@ -111,12 +114,14 @@ def build_performance_packet(
     context = _social_context(social_context)
     segments = tuple(_segments(value, delivery))
     reaction = _micro_reaction(delivery)
+    motion_cues = DEFAULT_MOTION_LIBRARY.plan(segments, social_context=context)
     interruptible = bool(delivery.get("interruptible", True))
     return PerformancePacket(
         text=value,
         delivery=delivery,
         segments=segments,
         pre_reaction=reaction,
+        motion_cues=motion_cues,
         social_context=context,
         initiative=bool(initiative),
         source_authority=_clip(source_authority or "creator_turn", 80),

@@ -19,13 +19,14 @@ from typing import Any
 import uuid
 
 from mary.mind.behavior import CharacterBehaviorEngine
-from mary.realtime import AttentionBus, AttentionSource
+from mary.realtime import AttentionBus, AttentionSource, AttentionDisposition
 
 from .bus import LiveContextBus
 from .events import PresenceEvent, PresenceEventType
 from .idle import IdleBehavior
 from .initiative import InitiativeAction, InitiativeDecision, InitiativeEngine
 from .pending_thoughts import PendingThoughtStore
+from .live_scene import LiveScene, SceneParticipant
 
 
 _RAW_MEDIA_KEYS = {
@@ -49,6 +50,7 @@ class PresenceManager:
         self.thoughts = PendingThoughtStore(self.root)
         self.idle = IdleBehavior()
         self.behavior = CharacterBehaviorEngine()
+        self.scene = LiveScene()
         self._lock = RLock()
         self._initiative_candidates: deque[PresenceEvent] = deque(maxlen=64)
         self._candidate_created_at: dict[str, float] = {}
@@ -67,6 +69,7 @@ class PresenceManager:
             os.getenv("MARY_PRESENCE_MODE", "companion").strip().lower()
             or "companion"
         )
+        self.scene.set_mode(self.mode)
         self.visual_enabled = (
             os.getenv("MARY_VISUAL_CONTEXT", "off").strip().lower()
             not in {"", "off", "false", "0", "none"}
@@ -86,6 +89,16 @@ class PresenceManager:
 
         with self._lock:
             self._last_creator_activity_at = monotonic()
+        self.scene.set_floor("creator")
+        self.scene.upsert_participant(
+            SceneParticipant(
+                participant_id="creator",
+                role="creator",
+                display_name="creator",
+                speaking=True,
+                attention=1.0,
+            )
+        )
 
     def represented_curiosity_ready(
         self,
@@ -204,6 +217,65 @@ class PresenceManager:
             creator_active=False,
         )
 
+        # The canonical AttentionBus now owns the cheap react/note/drop gate.
+        # Direct/addressed events are deterministic; ambient events may become
+        # peripheral awareness without paying for a model turn.  This does not
+        # grant authority and does not mutate durable memory.
+        attention_judgment = None
+        attention_source = AttentionSource.BACKGROUND
+        if self.attention is not None:
+            source_map = {
+                PresenceEventType.CREATOR_SPEECH: AttentionSource.CREATOR_SPEECH,
+                PresenceEventType.VISUAL_OBSERVATION: AttentionSource.VISUAL,
+                PresenceEventType.SYSTEM: AttentionSource.SYSTEM,
+            }
+            attention_source = source_map.get(event.event_type, AttentionSource.BACKGROUND)
+            addressed = bool(
+                event.event_type in {PresenceEventType.CREATOR_SPEECH, PresenceEventType.TWITCH_MENTION}
+                or safe_meta.get("addressed")
+                or safe_meta.get("direct_to_mary")
+            )
+            noise = bool(safe_meta.get("noise"))
+            try:
+                attention_judgment = self.attention.judge(
+                    attention_source,
+                    importance=event.importance,
+                    addressed=addressed,
+                    noise=noise,
+                    novelty=float(safe_meta.get("novelty", 0.5) or 0.5),
+                )
+                safe_meta["attention_disposition"] = attention_judgment.disposition.value
+                safe_meta["attention_score"] = round(float(attention_judgment.score), 3)
+                event = replace(event, metadata={**event.metadata, **safe_meta})
+                if attention_judgment.disposition == AttentionDisposition.NOTE:
+                    note = self.attention.note_peripheral(
+                        attention_source,
+                        event.summary,
+                        importance=event.importance,
+                        metadata={
+                            "presence_event_id": event.id,
+                            "presence_type": event.event_type.value,
+                            "source": event.source,
+                        },
+                        dedupe_key=self._fingerprint(event.event_type, event.source, event.summary),
+                    )
+                    event = replace(event, metadata={**event.metadata, "peripheral_note_id": note.note_id})
+                    decision = InitiativeDecision(
+                        InitiativeAction.SILENCE,
+                        float(attention_judgment.score),
+                        "peripheral awareness noted without waking cognition",
+                        False,
+                    )
+                elif attention_judgment.disposition == AttentionDisposition.DROP:
+                    decision = InitiativeDecision(
+                        InitiativeAction.SILENCE,
+                        float(attention_judgment.score),
+                        "attention gate dropped low-value ambient event",
+                        False,
+                    )
+            except Exception:
+                attention_judgment = None
+
         fingerprint = self._candidate_fingerprint(event)
         now = monotonic()
         if decision.speak:
@@ -228,13 +300,10 @@ class PresenceManager:
         # Presence and Attention are two views of the same ephemeral event.
         # Keep the attention id on the Presence event so reacting to one also
         # removes its duplicate from the general context queue.
-        if self.attention is not None:
-            source_map = {
-                PresenceEventType.CREATOR_SPEECH: AttentionSource.CREATOR_SPEECH,
-                PresenceEventType.VISUAL_OBSERVATION: AttentionSource.VISUAL,
-                PresenceEventType.SYSTEM: AttentionSource.SYSTEM,
-            }
-            attention_source = source_map.get(event.event_type, AttentionSource.BACKGROUND)
+        if self.attention is not None and (
+            attention_judgment is None
+            or attention_judgment.disposition == AttentionDisposition.REACT
+        ):
             try:
                 attention_event = self.attention.publish(
                     attention_source,
@@ -244,6 +313,9 @@ class PresenceManager:
                         "presence_event_id": event.id,
                         "presence_type": event.event_type.value,
                         "source": event.source,
+                        "attention_disposition": (
+                            attention_judgment.disposition.value if attention_judgment is not None else "react"
+                        ),
                     },
                 )
                 event = replace(
@@ -254,8 +326,24 @@ class PresenceManager:
                 pass
 
         self.bus.publish(event)
+        try:
+            self.scene.observe(
+                event_id=event.id,
+                kind=event.event_type.value,
+                source=event.source,
+                summary=event.summary,
+                importance=event.importance,
+                metadata=event.metadata,
+            )
+        except Exception:
+            # LiveScene is a disposable projection; event ingestion remains
+            # authoritative even if the projection fails.
+            pass
 
-        if decision.action == InitiativeAction.HOLD_THOUGHT:
+        if decision.action == InitiativeAction.HOLD_THOUGHT and not (
+            attention_judgment is not None
+            and attention_judgment.disposition in {AttentionDisposition.NOTE, AttentionDisposition.DROP}
+        ):
             self.thoughts.add(
                 event.summary,
                 context=event.event_type.value,
@@ -332,6 +420,35 @@ class PresenceManager:
         with self._lock:
             stale_dropped = self._prune_stale_candidates_locked(now)
             candidates = list(self._initiative_candidates)
+        if not candidates and self.attention is not None and not focus_active:
+            # A repeatedly noticed peripheral event may become worth mentioning
+            # after the creator has the floor again. This is still grounded in
+            # an observed note; no model invents the topic.
+            try:
+                peripheral = self.attention.peripheral(3)
+            except Exception:
+                peripheral = []
+            for note in peripheral:
+                importance = float(getattr(note, "importance", 0.0) or 0.0)
+                times_seen = int(getattr(note, "times_seen", 1) or 1)
+                if importance < .86 and not (importance >= .62 and times_seen >= 3):
+                    continue
+                candidate = PresenceEvent(
+                    event_type=PresenceEventType.SYSTEM,
+                    summary=str(getattr(note, "summary", ""))[:1000],
+                    source=f"peripheral:{getattr(getattr(note, 'source', None), 'value', 'context')}",
+                    importance=max(importance, .74),
+                    metadata={
+                        "peripheral_note_id": str(getattr(note, "note_id", "")),
+                        "times_seen": times_seen,
+                        "initiative_action": InitiativeAction.REACT.value,
+                    },
+                )
+                with self._lock:
+                    self._initiative_candidates.append(candidate)
+                    self._candidate_created_at[candidate.id] = now
+                    candidates = list(self._initiative_candidates)
+                break
         if not candidates:
             payload = self._no_initiative("no_grounded_candidate")
             payload["stale_dropped"] = stale_dropped
@@ -377,6 +494,22 @@ class PresenceManager:
             except Exception:
                 pass
 
+        peripheral_note_id = str(selected.metadata.get("peripheral_note_id") or "").strip()
+        if peripheral_note_id and self.attention is not None:
+            try:
+                self.attention.claim_peripheral([peripheral_note_id])
+            except Exception:
+                pass
+
+        self.scene.set_floor("mary", realtime_phase="thinking")
+        self.scene.set_context(
+            mary_target=(
+                str(selected.metadata.get("display_name") or "chat")
+                if selected.event_type in {PresenceEventType.TWITCH_CHAT, PresenceEventType.TWITCH_MENTION}
+                else "creator"
+            )
+        )
+
         return {
             "speak": True,
             "candidate": selected.to_dict(),
@@ -387,6 +520,7 @@ class PresenceManager:
 
     def mark_spoken(self, *, event_id: str | None = None) -> None:
         self.initiative.mark_spoken()
+        self.scene.set_floor("none", realtime_phase="idle")
         if event_id:
             self._last_claimed_event_id = str(event_id)[:120]
 
@@ -477,6 +611,7 @@ class PresenceManager:
             ),
             "last_claimed_event_id": self._last_claimed_event_id,
             "attention": self.attention.snapshot() if self.attention is not None else None,
+            "live_scene": self.scene.snapshot(),
             "policy": (
                 "typed ephemeral context; ingestion is separate from speech arbitration; "
                 "silence is valid; environmental text never gains creator/system authority"

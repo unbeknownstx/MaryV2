@@ -288,3 +288,165 @@ def test_runtime_action_contract_accepts_only_bounded_llm_probe_action():
         "device_id": "pc",
     })
     assert request.action == "llm.probe"
+
+
+def _install_character_runtime_fakes(app, tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    from mary.knowledge import WorldContextStore, WorldPulsePlanner
+    from mary.learning import AdapterLab, ModelCandidateCatalog
+    from mary.presence import PresenceManager
+    from mary.perception import PerceptionDirector
+    from mary.realtime import RealtimeInteractionCoordinator
+    from mary.streaming import StreamingPresenceCoordinator
+
+    app.mary.realtime = RealtimeInteractionCoordinator()
+    app.mary.perception_director = PerceptionDirector(app.mary.realtime.attention)
+    presence = PresenceManager(tmp_path / "presence", attention=app.mary.realtime.attention)
+    candidates_path = tmp_path / "candidates.json"
+    candidates_path.write_text(json.dumps({
+        "candidates": [{
+            "id": "tiny",
+            "kind": "base_model",
+            "runtime": "llama.cpp",
+            "repository": "example/tiny",
+            "filename": "tiny.gguf",
+            "license": "Apache-2.0",
+        }]
+    }), encoding="utf-8")
+    ecosystem = SimpleNamespace(
+        presence=presence,
+        streaming=StreamingPresenceCoordinator(presence),
+        world=WorldContextStore(),
+        world_pulse=WorldPulsePlanner(),
+        adapter_lab=AdapterLab(tmp_path / "adapter_lab.json"),
+        model_candidates=ModelCandidateCatalog(candidates_path),
+    )
+    ecosystem.ingest_stream_chat = lambda message, creator_speaking=False: ecosystem.streaming.ingest_chat(
+        message, creator_speaking=creator_speaking
+    )
+    app.ecosystem = ecosystem
+    return ecosystem
+
+
+def test_character_runtime_actions_share_core_scene_stream_world_and_adapter_status(tmp_path):
+    app = FakeApplication()
+    ecosystem = _install_character_runtime_fakes(app, tmp_path)
+    core = _active_core(app)
+
+    scene = core.runtime_action({
+        "action": "presence.scene.status",
+        "args": {},
+        "device_id": "iphone",
+    })
+    assert scene["authority"] == "ephemeral_context_only"
+
+    plan = core.runtime_action({
+        "action": "world.refresh_plan",
+        "args": {"limit": 2, "force": True},
+        "device_id": "mac",
+    })
+    assert len(plan["due"]) == 2
+    assert plan["due"][0]["authority"] == "research_plan_only"
+
+    ingested = core.runtime_action({
+        "action": "world.ingest",
+        "args": {
+            "topic": "Example game",
+            "summary": "A current game topic for bounded world context.",
+            "source": "test-research",
+            "lane": "games",
+            "confidence": .8,
+            "ttl_hours": 4,
+        },
+        "device_id": "mac",
+    })
+    assert ingested["ok"] is True
+    assert ingested["world"]["count"] == 1
+    assert ecosystem.world.relevant("game", limit=2)
+
+    chat = core.runtime_action({
+        "action": "stream.chat.ingest",
+        "args": {
+            "message_id": "stream-1",
+            "author_id": "viewer-1",
+            "display_name": "Viewer",
+            "text": "Mary what do you think about this?",
+            "platform": "twitch",
+            "direct_to_mary": True,
+        },
+        "device_id": "mac",
+    })
+    assert chat["accepted"] is True
+    assert chat["selection"]["action"] == "respond"
+
+    status = core.runtime_action({
+        "action": "model.adapter.status",
+        "args": {},
+        "device_id": "iphone",
+    })
+    assert status["reviewed_candidates"]["count"] == 1
+    assert status["reviewed_candidates"]["candidates"][0]["id"] == "tiny"
+
+
+def test_realtime_speech_request_is_arbitrated_on_canonical_core(tmp_path):
+    app = FakeApplication()
+    _install_character_runtime_fakes(app, tmp_path)
+    core = _active_core(app)
+
+    first = core.runtime_action({
+        "action": "realtime.speech_request",
+        "args": {"text": "hello chat", "priority": 40, "target": "chat"},
+        "device_id": "mac",
+    })
+    assert first["arbitration"]["disposition"] == "play"
+    second = core.runtime_action({
+        "action": "realtime.speech_request",
+        "args": {"text": "important creator reply", "priority": 10, "can_interrupt": True},
+        "device_id": "iphone",
+    })
+    assert second["arbitration"]["disposition"] == "interrupt"
+
+
+def test_device_presence_and_perception_observations_remain_context_only(tmp_path):
+    app = FakeApplication()
+    _install_character_runtime_fakes(app, tmp_path)
+    core = _active_core(app)
+
+    presence = core.runtime_action({
+        "action": "presence.observe",
+        "args": {
+            "event_type": "foreground_app",
+            "summary": "Adobe Photoshop",
+            "importance": .6,
+            "metadata": {"project": "Unbeknownst", "token": "must-not-survive"},
+        },
+        "device_id": "macbook",
+    })
+    assert presence["authority"] == "environment_context_only"
+    assert presence["scene"]["environment"]["foreground_app"] == "Adobe Photoshop"
+    assert "token" not in str(presence)
+
+    perception = core.runtime_action({
+        "action": "perception.observe",
+        "args": {
+            "description": "The foreground canvas appears to contain a red-haired character sketch.",
+            "modality": "screen",
+            "confidence": .8,
+            "importance": .6,
+            "metadata": {"screenshot": "raw-data-must-not-survive", "window": "Photoshop"},
+        },
+        "device_id": "macbook",
+    })
+    assert perception["observation"]["authority"] == "environment_context_only"
+    assert perception["observation"]["durable"] is False
+    assert "screenshot" not in perception["observation"]["metadata"]
+    assert perception["scene"]["recent_events"][-1]["kind"] == "visual_observation"
+
+    status = core.runtime_action({
+        "action": "perception.status",
+        "args": {},
+        "device_id": "iphone",
+    })
+    assert status["recent"][-1]["modality"] == "screen"

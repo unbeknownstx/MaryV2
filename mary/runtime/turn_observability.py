@@ -41,6 +41,12 @@ _STAGES = {
     "memory_consolidation",
     "relationship_learning",
     "attention_publication",
+    "attention_judgment",
+    "peripheral_awareness",
+    "cross_surface_awareness",
+    "fast_brain",
+    "speech_arbitration",
+    "action_window",
     "autonomy_processing",
     "autonomy_evaluation",
     "autonomy_proposal",
@@ -57,6 +63,8 @@ _RESULT_ID_KEYS = {
     "relationship_profile_id", "relationship_history_id", "attention_id",
     "autonomy_cycle_id", "autonomy_evaluation_id", "autonomy_proposal_id",
     "tool_request_id", "capability_request_id",
+    "peripheral_note_id", "speech_request_id", "action_window_id",
+    "action_selection_id",
 }
 _FAILURE_KINDS = {
     "application_exception",

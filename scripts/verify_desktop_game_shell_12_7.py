@@ -169,7 +169,7 @@ def main() -> int:
     app = None
     try:
         with tempfile.TemporaryDirectory(prefix="maryv2_desktop_12_7_") as directory:
-            data_root = Path(directory) / "data"
+            data_root = (Path(directory) / "data").resolve()
             os.environ["MARY_DATA_DIR"] = str(data_root)
             app = create_application(
                 memory_path=data_root / "memory" / "memory.json",

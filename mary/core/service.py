@@ -35,6 +35,7 @@ from mary.llm.interface import (
 )
 from mary.llm.output_quality import inspect_output_quality
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
+from mary.llm.providers.device_llama_cpp import DeviceLlamaCppProvider
 from mary.protocol.models import (
     CapabilityRouteRequest,
     CapabilityTaskDispatchRequest,
@@ -171,7 +172,9 @@ class MaryCoreService:
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
         self._install_execution_policy()
         self._device_ollama_provider: DeviceOllamaProvider | None = None
+        self._device_llama_cpp_provider: DeviceLlamaCppProvider | None = None
         self._attach_device_ollama_provider()
+        self._attach_device_llama_cpp_provider()
         self._sync_creator_lifecycle()
 
     def _attach_device_ollama_provider(self) -> None:
@@ -189,6 +192,28 @@ class MaryCoreService:
             return
         self._device_ollama_provider = DeviceOllamaProvider(registry, self.device_tasks)
         register("ollama", self._device_ollama_provider)
+
+    def _attach_device_llama_cpp_provider(self) -> None:
+        """Expose a connected llama.cpp node through the existing provider route.
+
+        The adapter is registered only when llama_cpp is an explicitly configured
+        route member or MARY_DEVICE_LLAMA_CPP_ENABLED is true. This avoids
+        replacing a local Core's direct llama.cpp provider accidentally.
+        """
+        router = getattr(self.mary, "llm", None)
+        registry = getattr(self.mary, "node_registry", None)
+        register = getattr(router, "register_provider", None)
+        if registry is None or not callable(register):
+            return
+        route_text = " ".join([
+            str(getattr(getattr(getattr(self.mary, "config", None), "llm", None), "provider", "")),
+            *[str(x) for x in list(getattr(getattr(getattr(self.mary, "config", None), "llm", None), "fallback_providers", []) or [])],
+        ]).casefold()
+        explicit = os.getenv("MARY_DEVICE_LLAMA_CPP_ENABLED", "").strip().casefold() in {"1", "true", "yes", "on", "enabled"}
+        if not explicit and "llama_cpp" not in route_text:
+            return
+        self._device_llama_cpp_provider = DeviceLlamaCppProvider(registry, self.device_tasks)
+        register("llama_cpp", self._device_llama_cpp_provider)
 
     def process_turn(self, request: TurnRequest | dict[str, Any]) -> TurnResponse:
         if self._closed:
@@ -1506,6 +1531,18 @@ class MaryCoreService:
         )
         values = dict(action.args or {})
 
+        def scene_floor(owner: str, phase: str) -> None:
+            try:
+                self.application.ecosystem.presence.scene.set_floor(
+                    owner,
+                    realtime_phase=phase,
+                )
+            except Exception:
+                # LiveScene is an optional disposable projection. Runtime
+                # control remains valid for compatibility/test doubles that
+                # expose only RealtimeInteractionCoordinator.
+                pass
+
         with self._turn_lock:
             if action.action == "conversation.set_mode":
                 mode = str(values.get("mode") or "adaptive")
@@ -1530,12 +1567,14 @@ class MaryCoreService:
                     turn_id=str(values.get("turn_id") or "") or None,
                     source=f"protocol:{action.device_id}",
                 )
+                scene_floor("mary", "speaking")
                 return _json_safe(self.mary.realtime.status())
 
             if action.action == "realtime.speech_ended":
                 self.mary.realtime.speech_ended(
                     reason=str(values.get("reason") or "speech_finished")
                 )
+                scene_floor("none", "idle")
                 return _json_safe(self.mary.realtime.status())
 
             if action.action == "realtime.interrupt":
@@ -1547,19 +1586,197 @@ class MaryCoreService:
                 self.mary.realtime.speech_ended(reason="interrupted")
                 return _json_safe(self.mary.realtime.status())
 
+            if action.action == "realtime.voice_activity":
+                active = bool(values.get("active", False))
+                confirmed = bool(values.get("confirmed", False))
+                raw_confidence = values.get("confidence")
+                try:
+                    confidence = None if raw_confidence is None else float(raw_confidence)
+                except (TypeError, ValueError):
+                    confidence = None
+                self.mary.realtime.report_voice_activity(
+                    active, confirmed=confirmed,
+                    source=f"protocol:{action.device_id}", confidence=confidence,
+                )
+                if active and confirmed:
+                    scene_floor("creator", "listening")
+                elif not active:
+                    scene_floor("none", "idle")
+                return _json_safe(self.mary.realtime.status())
+
             if action.action == "realtime.listening":
+                active = bool(values.get("active", False))
                 self.mary.realtime.mark_listening(
-                    bool(values.get("active", False)),
+                    active,
                     source=f"protocol:{action.device_id}",
+                )
+                scene_floor(
+                    "creator" if active else "none",
+                    "listening" if active else "idle",
                 )
                 return _json_safe(self.mary.realtime.status())
 
             if action.action == "realtime.transcribing":
+                active = bool(values.get("active", False))
                 self.mary.realtime.mark_transcribing(
-                    bool(values.get("active", False)),
+                    active,
                     source=f"protocol:{action.device_id}",
                 )
+                scene_floor(
+                    "creator" if active else "none",
+                    "transcribing" if active else "idle",
+                )
                 return _json_safe(self.mary.realtime.status())
+
+            if action.action == "realtime.speech_request":
+                return _json_safe(
+                    self.mary.realtime.request_speech(
+                        str(values.get("text") or ""),
+                        source=f"protocol:{action.device_id}",
+                        target=str(values.get("target") or "creator")[:120],
+                        priority=max(0, min(100, int(values.get("priority", 50)))),
+                        interruptible=bool(values.get("interruptible", True)),
+                        can_interrupt=bool(values.get("can_interrupt", False)),
+                        ttl_seconds=max(1.0, min(300.0, float(values.get("ttl_seconds", 30.0)))),
+                        metadata={"surface": str(values.get("surface") or "remote")[:80]},
+                    )
+                )
+
+            if action.action == "presence.scene.status":
+                return _json_safe(self.application.ecosystem.presence.scene.snapshot())
+
+            if action.action == "presence.observe":
+                from mary.presence import PresenceEventType
+                allowed = {
+                    "foreground_app": PresenceEventType.FOREGROUND_APP,
+                    "obs_scene": PresenceEventType.OBS_SCENE,
+                    "media_changed": PresenceEventType.MEDIA_CHANGED,
+                    "project_changed": PresenceEventType.PROJECT_CHANGED,
+                    "creative_changed": PresenceEventType.CREATIVE_CHANGED,
+                    "visual_observation": PresenceEventType.VISUAL_OBSERVATION,
+                    "system": PresenceEventType.SYSTEM,
+                }
+                requested = str(values.get("event_type") or "system").strip().casefold()
+                event_type = allowed.get(requested, PresenceEventType.SYSTEM)
+                summary = " ".join(str(values.get("summary") or "").split()).strip()[:700]
+                if not summary:
+                    raise ValueError("Presence observations require a summary.")
+                metadata = dict(values.get("metadata") or {}) if isinstance(values.get("metadata"), dict) else {}
+                published = self.application.ecosystem.presence.publish(
+                    event_type,
+                    summary,
+                    source=f"device:{action.device_id}",
+                    importance=max(0.0, min(1.0, float(values.get("importance", .5)))),
+                    metadata={
+                        str(key)[:60]: value
+                        for key, value in list(metadata.items())[:12]
+                        if str(key).casefold() not in {"token", "authorization", "api_key", "secret", "password"}
+                    },
+                )
+                return _json_safe({
+                    "ok": True,
+                    "published": published,
+                    "scene": self.application.ecosystem.presence.scene.snapshot(),
+                    "authority": "environment_context_only",
+                })
+
+            if action.action == "perception.status":
+                return _json_safe(self.mary.perception_director.snapshot())
+
+            if action.action == "perception.observe":
+                description = " ".join(str(values.get("description") or "").split()).strip()[:1400]
+                if not description:
+                    raise ValueError("Perception observations require a description.")
+                metadata = dict(values.get("metadata") or {}) if isinstance(values.get("metadata"), dict) else {}
+                observation = self.mary.perception_director.observe(
+                    description,
+                    modality=str(values.get("modality") or "screen")[:60],
+                    source=f"device:{action.device_id}",
+                    confidence=max(0.0, min(1.0, float(values.get("confidence", .5)))),
+                    importance=max(0.0, min(1.0, float(values.get("importance", .5)))),
+                    metadata=metadata,
+                )
+                self.application.ecosystem.presence.scene.observe(
+                    event_id=observation.id,
+                    kind="visual_observation",
+                    source=observation.source,
+                    summary=observation.description,
+                    importance=max(0.0, min(1.0, float(values.get("importance", .5)))),
+                    metadata={
+                        "modality": observation.modality,
+                        "confidence": observation.confidence,
+                    },
+                )
+                return _json_safe({
+                    "ok": True,
+                    "observation": observation.to_dict(),
+                    "scene": self.application.ecosystem.presence.scene.snapshot(),
+                })
+
+            if action.action == "stream.status":
+                return _json_safe(self.application.ecosystem.streaming.snapshot())
+
+            if action.action == "stream.chat.ingest":
+                from mary.streaming import ChatMessage
+                message = ChatMessage(
+                    message_id=str(values.get("message_id") or "")[:160],
+                    author_id=str(values.get("author_id") or "unknown")[:160],
+                    display_name=str(values.get("display_name") or "viewer")[:120],
+                    text=str(values.get("text") or "")[:1000],
+                    platform=str(values.get("platform") or "stream")[:40],
+                    channel=str(values.get("channel") or "")[:120],
+                    direct_to_mary=bool(values.get("direct_to_mary", False)),
+                    metadata={"device_id": action.device_id},
+                )
+                creator_speaking = str(self.mary.realtime.status().get("phase") or "") in {"listening", "transcribing", "thinking"}
+                return _json_safe(
+                    self.application.ecosystem.ingest_stream_chat(
+                        message,
+                        creator_speaking=creator_speaking,
+                    )
+                )
+
+            if action.action == "world.status":
+                return _json_safe({
+                    "context": self.application.ecosystem.world.snapshot(),
+                    "pulse": self.application.ecosystem.world_pulse.snapshot(),
+                })
+
+            if action.action == "world.refresh_plan":
+                return _json_safe({
+                    "due": self.application.ecosystem.world_pulse.due(
+                        limit=max(1, min(16, int(values.get("limit", 8)))),
+                        force=bool(values.get("force", False)),
+                    ),
+                    "policy": "research plan only; execute through an approved web/research boundary",
+                })
+
+            if action.action == "world.ingest":
+                from mary.knowledge import WorldContextItem
+                item = WorldContextItem(
+                    topic=str(values.get("topic") or "")[:180],
+                    summary=str(values.get("summary") or "")[:1200],
+                    source=str(values.get("source") or f"protocol:{action.device_id}")[:180],
+                    lane=str(values.get("lane") or "general")[:60],
+                    confidence=max(0.0, min(1.0, float(values.get("confidence", .5)))),
+                    ttl_hours=max(.25, min(720.0, float(values.get("ttl_hours", 24.0)))),
+                    url=str(values.get("url") or "")[:500],
+                    metadata={"device_id": action.device_id},
+                )
+                self.application.ecosystem.world.ingest(item)
+                self.application.ecosystem.world_pulse.mark_refreshed(item.lane)
+                return _json_safe({
+                    "ok": True,
+                    "item": item.to_dict(),
+                    "world": self.application.ecosystem.world.snapshot(),
+                    "pulse": self.application.ecosystem.world_pulse.snapshot(),
+                })
+
+            if action.action == "model.adapter.status":
+                return _json_safe({
+                    **self.application.ecosystem.adapter_lab.snapshot(),
+                    "reviewed_candidates": self.application.ecosystem.model_candidates.snapshot(),
+                })
 
             if action.action == "mind.rebuild_reservoir":
                 records = int(self.mary.mind.rebuild_reservoir())
@@ -1718,8 +1935,10 @@ class MaryCoreService:
 
         self.enforce_execution_policy("llm.probe")
         provider_name = str(values.get("provider") or "").strip().lower()
-        if provider_name not in {"groq", "gemini", "openrouter", "ollama"}:
-            raise ValueError("llm.probe provider must be groq, gemini, openrouter, or ollama")
+        if provider_name not in {"groq", "gemini", "openrouter", "ollama", "llama_cpp"}:
+            raise ValueError(
+                "llm.probe provider must be groq, gemini, openrouter, ollama, or llama_cpp"
+            )
 
         purpose = str(values.get("purpose") or "conversation").strip().lower()
         if purpose not in {"social_instant", "conversation", "general"}:

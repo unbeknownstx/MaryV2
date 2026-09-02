@@ -50,6 +50,8 @@ from .speech_to_text import (
 from .text_to_speech import (
     SpeechAudioFormat,
     SpeechStatus,
+    SpeechAlignmentMark,
+    SpeechAlignment,
     VoiceSettings,
     SpeechAudio,
     TextToSpeechError,
@@ -116,6 +118,8 @@ __all__ = [
 
     "SpeechAudioFormat",
     "SpeechStatus",
+    "SpeechAlignmentMark",
+    "SpeechAlignment",
     "VoiceSettings",
     "SpeechAudio",
 

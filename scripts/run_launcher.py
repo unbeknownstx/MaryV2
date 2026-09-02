@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from mary.desktop.webengine_bootstrap import configure_qtwebengine
+
 
 def main() -> int:
+    # Configure Chromium before importing any Qt WebEngine window classes.
+    configure_qtwebengine()
+
     try:
         from mary.launcher.window import run_launcher
     except ModuleNotFoundError as exc:

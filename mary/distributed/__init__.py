@@ -21,3 +21,5 @@ __all__ = [
     "capabilities_from_environment",
     "preview_capability_task",
 ]
+
+from .action_windows import ActionSpec, ActionWindow, ActionSelection, ActionWindowRegistry

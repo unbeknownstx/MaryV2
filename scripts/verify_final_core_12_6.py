@@ -24,7 +24,7 @@ def main() -> int:
 
     original_data = os.environ.get("MARY_DATA_DIR")
     with tempfile.TemporaryDirectory(prefix="maryv2_final_core_12_6_") as directory:
-        root = Path(directory)
+        root = Path(directory).resolve()
         os.environ["MARY_DATA_DIR"] = str(root / "data")
         try:
             app = create_application()

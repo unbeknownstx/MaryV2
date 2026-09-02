@@ -110,3 +110,25 @@ def test_source_checkout_default_state_is_outside_repository(monkeypatch, tmp_pa
     assert paths.data == tmp_path / "LocalAppData" / "MaryV2" / "data"
     assert paths.data != paths.root / "data"
     assert paths.workspace == paths.data / "workspace"
+
+
+def test_model_root_is_outside_repository_and_state_on_macos(monkeypatch, tmp_path):
+    monkeypatch.setattr(config_module.sys, "platform", "darwin")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("MARY_MODEL_DIR", raising=False)
+    monkeypatch.delenv("MARY_PORTABLE", raising=False)
+
+    paths = config_module.PathConfig(root=tmp_path / "repo")
+
+    assert paths.models == tmp_path / "home" / "Library" / "Application Support" / "MaryV2" / "models"
+    assert paths.models != paths.root / "models"
+    assert paths.models != paths.data
+
+
+def test_explicit_model_root_override(monkeypatch, tmp_path):
+    model_root = tmp_path / "external-models"
+    monkeypatch.setenv("MARY_MODEL_DIR", str(model_root))
+
+    paths = config_module.PathConfig(root=tmp_path / "repo")
+
+    assert paths.models == model_root.resolve()

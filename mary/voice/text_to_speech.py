@@ -374,6 +374,51 @@ class SpeechAudio:
         }
 
 
+
+
+@dataclass(frozen=True)
+class SpeechAlignmentMark:
+    """One provider-neutral text/audio alignment mark.
+
+    Alignment is presentation timing only.  It never becomes conversation,
+    memory, identity, or creator evidence.
+    """
+
+    text: str
+    start_seconds: float
+    end_seconds: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", str(self.text or ""))
+        start = max(0.0, float(self.start_seconds))
+        end = max(start, float(self.end_seconds))
+        object.__setattr__(self, "start_seconds", start)
+        object.__setattr__(self, "end_seconds", end)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "start_seconds": self.start_seconds,
+            "end_seconds": self.end_seconds,
+        }
+
+
+@dataclass(frozen=True)
+class SpeechAlignment:
+    """Bounded timing information for avatar/caption synchronization."""
+
+    characters: tuple[SpeechAlignmentMark, ...] = ()
+    words: tuple[SpeechAlignmentMark, ...] = ()
+    normalized: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "characters": [item.to_dict() for item in self.characters],
+            "words": [item.to_dict() for item in self.words],
+            "normalized": bool(self.normalized),
+        }
+
+
 # ================================================================
 # TTS ERRORS
 # ================================================================

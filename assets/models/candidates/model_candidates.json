@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "policy": "Explicit creator-selected downloads only. These are optional generation/specialist assets and never Mary identity authority.",
+  "candidates": [
+    {
+      "id": "qwen3-1.7b-q4km-fast-brain",
+      "kind": "base_model",
+      "role": [
+        "fast_brain",
+        "local_specialist",
+        "offline_fallback_experiment"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "ggml-org/Qwen3-1.7B-GGUF",
+      "filename": "Qwen3-1.7B-Q4_K_M.gguf",
+      "download_url": "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf?download=true",
+      "sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+      "approx_size": "1.28 GB",
+      "license": "Apache-2.0",
+      "notes": "Small current candidate for Mac/local specialist experiments. Do not assume it is Mary's primary conversational model."
+    },
+    {
+      "id": "qwen3-4b-heretic-q4km-roleplay-base",
+      "kind": "base_model",
+      "role": [
+        "adapter_lab",
+        "roleplay_naturalism_experiment"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "bartowski/p-e-w_Qwen3-4B-Instruct-2507-heretic-GGUF",
+      "upstream_base": "p-e-w/Qwen3-4B-Instruct-2507-heretic",
+      "filename": "p-e-w_Qwen3-4B-Instruct-2507-heretic-Q4_K_M.gguf",
+      "download_url": "https://huggingface.co/bartowski/p-e-w_Qwen3-4B-Instruct-2507-heretic-GGUF/resolve/main/p-e-w_Qwen3-4B-Instruct-2507-heretic-Q4_K_M.gguf?download=true",
+      "sha256": "d4d7fcd11d36495fa340f91b514ae3a47f5da21cf27c158d620d736e3bb35a61",
+      "approx_size": "2.50 GB",
+      "license": "Apache-2.0",
+      "notes": "Exact compatible base family for the rockerBOO roleplay LoRA below. Adapter experiments must validate this pairing."
+    },
+    {
+      "id": "rockerboo-qwen3-4b-roleplay-lora-f16",
+      "kind": "lora_adapter",
+      "role": [
+        "adapter_lab",
+        "roleplay_naturalism_experiment"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "rockerBOO/qwen3-4b-roleplay-lora-F16-GGUF",
+      "filename": "qwen3-4b-roleplay-lora-f16.gguf",
+      "download_url": "https://huggingface.co/rockerBOO/qwen3-4b-roleplay-lora-F16-GGUF/resolve/main/qwen3-4b-roleplay-lora-f16.gguf?download=true",
+      "sha256": "d764e4f69052ba9f87cc75140ca13e3860eb30890b87c0b12aa17d419ed8bbf5",
+      "approx_size": "11.8 MB",
+      "license": "Apache-2.0",
+      "required_base": "p-e-w/Qwen3-4B-Instruct-2507-heretic",
+      "training_dataset": "rockerBOO/Gryphe-Sonnet3.5-Charcard-Roleplay-filtered",
+      "notes": "Premade roleplay adapter candidate, not Mary canon. Evaluate at several scales against Mary's held-out character suite before retaining."
+    },
+    {
+      "id": "qwen3-0.6b-q4-fast-brain",
+      "kind": "base_model",
+      "asset_group": "llm",
+      "role": [
+        "fast_brain",
+        "attention_ranker_experiment",
+        "local_specialist"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "ggml-org/Qwen3-0.6B-GGUF",
+      "filename": "Qwen3-0.6B-Q4_0.gguf",
+      "download_url": "https://huggingface.co/ggml-org/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_0.gguf?download=true",
+      "sha256": "da2572f16c06133561ce56accaa822216f2391ef4d37fba427801cd6736417d4",
+      "approx_size": "429 MB",
+      "license": "Apache-2.0",
+      "notes": "Very small current candidate for cheap attention/ranking/intent experiments on Apple Silicon or CPU. Not intended to carry Mary's full conversational identity."
+    },
+    {
+      "id": "whispercpp-tiny-en-q5_1",
+      "kind": "stt_model",
+      "asset_group": "stt",
+      "role": [
+        "local_stt",
+        "apple_silicon",
+        "offline_voice"
+      ],
+      "runtime": "whisper.cpp",
+      "repository": "ggerganov/whisper.cpp",
+      "filename": "ggml-tiny.en-q5_1.bin",
+      "download_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q5_1.bin?download=true",
+      "sha256": "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b",
+      "approx_size": "32.2 MB",
+      "license": "MIT",
+      "notes": "Small English whisper.cpp model for low-latency local Mac experiments; cloud Groq STT can remain the quality route."
+    },
+    {
+      "id": "sherpa-silero-vad",
+      "kind": "vad_model",
+      "asset_group": "vad",
+      "role": [
+        "vad",
+        "turn_taking",
+        "barge_in"
+      ],
+      "runtime": "sherpa-onnx",
+      "repository": "k2-fsa/sherpa-onnx",
+      "filename": "silero_vad.onnx",
+      "download_url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+      "sha256": "",
+      "approx_size": "~1.7 MB",
+      "license": "MIT / upstream model terms",
+      "notes": "Official sherpa-onnx VAD asset used for local turn detection. Hash intentionally omitted until verified from a stable release manifest; downloader still reports the resulting hash for local verification."
+    },
+    {
+      "id": "smollm3-3b-q4km-conversation",
+      "kind": "base_model",
+      "asset_group": "llm",
+      "role": [
+        "adapter_lab",
+        "conversation_candidate",
+        "local_specialist",
+        "fast_brain_large"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "ggml-org/SmolLM3-3B-GGUF",
+      "filename": "SmolLM3-Q4_K_M.gguf",
+      "download_url": "https://huggingface.co/ggml-org/SmolLM3-3B-GGUF/resolve/main/SmolLM3-Q4_K_M.gguf?download=true",
+      "sha256": "8334b850b7bd46238c16b0c550df2138f0889bf433809008cc17a8b05761863e",
+      "approx_size": "1.92 GB",
+      "license": "Apache-2.0",
+      "notes": "Fully open 3B conversational candidate for Apple Silicon/local A-B tests. Compare Mary fit and latency against Qwen before assigning any role."
+    },
+    {
+      "id": "smollm3-npc-q8-roleplay",
+      "kind": "fine_tuned_model",
+      "asset_group": "llm",
+      "role": [
+        "adapter_lab",
+        "roleplay_naturalism_experiment",
+        "actor_experiment"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "mad-lab-ai/smollm3-npc",
+      "filename": "smollm3-npc-q8_0.gguf",
+      "download_url": "https://huggingface.co/mad-lab-ai/smollm3-npc/resolve/main/smollm3-npc-q8_0.gguf?download=true",
+      "sha256": "47843035fe28ea3bbca70dadd22f544f9ecf0155f9af8af2d682caca8bbbc6aa",
+      "approx_size": "3.28 GB",
+      "license": "Apache-2.0",
+      "upstream_base": "HuggingFaceTB/SmolLM3-3B",
+      "notes": "NPC/roleplay fine-tune candidate. Its training style is not Mary; use only as a blinded comparison for embodiment/acting naturalism, never as character authority."
+    }
+  ]
+}

@@ -68,3 +68,18 @@ __MACOSX/
 
 # Prevent generated ChatGPT images at repository root
 /ChatGPT Image*.png
+
+# Large local AI model weights/caches are runtime assets, never source.
+# Metadata/manifests under assets/models/ remain trackable.
+/assets/models/**/*.gguf
+/assets/models/**/*.onnx
+/assets/models/**/*.safetensors
+/assets/models/**/*.bin
+/assets/models/**/*.pt
+/assets/models/**/*.pth
+/assets/models/**/*.ckpt
+/assets/models/**/*.tflite
+/assets/models/**/*.engine
+/models/
+/.models/
+/model_cache/
