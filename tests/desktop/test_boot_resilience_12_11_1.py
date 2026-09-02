@@ -23,3 +23,9 @@ def test_command_palette_keyboard_path_remains_guarded_and_available():
     assert 'if (!commandPalette || !commandInput || !commandResults) return;' in js
     assert "event.key.toLowerCase() === 'k'" in js
     assert 'openCommandPalette();' in js
+
+
+def test_experience_layer_does_not_rewrite_unchanged_ribbon_text():
+    js = (ROOT / 'desktop' / 'src' / 'ui' / 'experienceLayer.js').read_text(encoding='utf-8')
+    assert "const nextText = provider && provider !== '—' ? `${base} · ${provider}` : base;" in js
+    assert "if (ribbon.textContent !== nextText) ribbon.textContent = nextText;" in js

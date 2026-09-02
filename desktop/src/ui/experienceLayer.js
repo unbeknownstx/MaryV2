@@ -65,7 +65,8 @@ function project(app) {
   const ribbon = document.querySelector('.mary-xp-ribbon .xp-ribbon-text');
   if (ribbon) {
     const base = `${state || 'Idle'} · ${mood || 'Neutral'}`;
-    ribbon.textContent = provider && provider !== '—' ? `${base} · ${provider}` : base;
+    const nextText = provider && provider !== '—' ? `${base} · ${provider}` : base;
+    if (ribbon.textContent !== nextText) ribbon.textContent = nextText;
   }
 }
 
