@@ -73,6 +73,7 @@ class GeminiProvider(LLMInterface):
             ],
             temperature=temperature,
             max_tokens=max_tokens,
+            **({"reasoning_effort": os.getenv("MARY_GEMINI_REASONING_EFFORT", "minimal").strip().lower() or "minimal"} if self.model.startswith("gemini-3") else {}),
         )
 
         choice = response.choices[0]
