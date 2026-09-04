@@ -93,5 +93,8 @@ def normalize_chat_notification(payload: Mapping[str, Any]) -> ChatMessage | Non
             "color": str(event.get("color") or "")[:32],
             "message_type": str(event.get("message_type") or "text")[:40],
             "badges": ",".join(str(x.get("set_id") or "") for x in list(event.get("badges") or [])[:8] if isinstance(x, Mapping))[:160],
+            "reply_parent_message_id": str(((event.get("reply") or {}) if isinstance(event.get("reply"), Mapping) else {}).get("parent_message_id") or "")[:160],
+            "reply_parent_user_id": str(((event.get("reply") or {}) if isinstance(event.get("reply"), Mapping) else {}).get("parent_user_id") or "")[:160],
+            "reply_thread_message_id": str(((event.get("reply") or {}) if isinstance(event.get("reply"), Mapping) else {}).get("thread_message_id") or "")[:160],
         },
     )

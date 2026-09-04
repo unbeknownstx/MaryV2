@@ -177,7 +177,7 @@ class DeviceTaskBroker:
     canonical character state, and a Core restart may discard them.
     """
 
-    VERSION = "13.2"
+    VERSION = "13.3"
 
     def __init__(
         self,

@@ -18,6 +18,7 @@ from typing import Any, Mapping
 
 from .delivery_plan import DeliveryPlan
 from .motion_library import DEFAULT_MOTION_LIBRARY, MotionCue
+from mary.voice.speech_renderer import render_spoken_text
 
 
 _PACKET_VERSION = "1"
@@ -66,10 +67,16 @@ class MicroReaction:
 
 @dataclass(frozen=True)
 class PerformancePacket:
-    """One surface-neutral performance score for a completed Mary turn."""
+    """One surface-neutral performance score for a completed Mary turn.
+
+    ``text`` remains Mary's canonical/display wording. ``spoken_text`` is a
+    deterministic TTS rendering so presentation surfaces no longer have to
+    overwrite visible text just to improve pronunciation/cadence.
+    """
 
     text: str
     delivery: dict[str, Any]
+    spoken_text: str = ""
     segments: tuple[PerformanceSegment, ...] = ()
     pre_reaction: MicroReaction = field(default_factory=MicroReaction)
     motion_cues: tuple[MotionCue, ...] = ()
@@ -87,6 +94,8 @@ class PerformancePacket:
         return {
             "version": self.version,
             "text": self.text,
+            "display_text": self.text,
+            "spoken_text": self.spoken_text or self.text,
             "delivery": dict(self.delivery),
             "segments": [segment.to_dict() for segment in self.segments],
             "pre_reaction": self.pre_reaction.to_dict(),
@@ -119,6 +128,7 @@ def build_performance_packet(
     return PerformancePacket(
         text=value,
         delivery=delivery,
+        spoken_text=render_spoken_text(value),
         segments=segments,
         pre_reaction=reaction,
         motion_cues=motion_cues,

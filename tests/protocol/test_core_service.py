@@ -142,3 +142,13 @@ def test_core_turn_projects_bounded_timing_and_lane_observability():
     assert result.display_hints["timings"]["pipeline_ms"] >= 0.0
     assert "private_timing" not in result.display_hints["timings"]
     assert "rationale" not in result.provenance["conversation_lane"]
+
+
+def test_creator_surface_registration_returns_core_continuity_handshake():
+    app = FakeApplication()
+    core = MaryCoreService(app, instance_id="surface-core")
+    payload = core.register_creator_surface({"surface_id": "mac-app"})
+    assert payload["handshake"]["instance_id"] == "surface-core"
+    assert payload["handshake"]["architecture"] == "13.3"
+    assert payload["handshake"]["peer_kind"] == "creator_surface"
+    assert payload["handshake"]["state_authority"] == "core"

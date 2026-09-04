@@ -39,4 +39,4 @@ python -m scripts.sync_mobile_web --sync
 
 or double-click `SYNC_WEB_FROM_PROJECT.command` on macOS. The repository tests also verify that `MaryMobile/www` is an exact generated copy.
 
-MaryV2 13.2 conversation IDs and Core/device-node status are client features; the iPhone app still owns presentation and local iOS speech/haptics only, never Mary identity or canonical memory.
+MaryV2 13.3 conversation IDs and Core/device-node status are client features; the iPhone app still owns presentation and local iOS speech/haptics only, never Mary identity or canonical memory.

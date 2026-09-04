@@ -1,9 +1,9 @@
-"""MaryV2 13.2 unified authoritative core service.
+"""MaryV2 13.3 unified authoritative core service.
 
 This is the host-independent ownership boundary for one live Mary runtime.
 Clients and transports talk to this service; they do not construct their own
 Mary coordinator.  The underlying MaryApplication remains the persistence-aware
-composition root, so 13.2 consolidates ownership without rewriting Mary's
+composition root, so 13.3 consolidates ownership without rewriting Mary's
 existing cognition, memory, relationship, growth, routing, or realtime systems.
 """
 from __future__ import annotations
@@ -60,6 +60,7 @@ from mary.runtime.backup import (
     inspect_backup,
 )
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
+from mary.runtime.session_handshake import build_connected_session_handshake
 from mary.runtime.turn_observability import (
     current_turn_trace,
     emit_core_started,
@@ -75,7 +76,7 @@ def _json_safe(value: Any) -> Any:
 class CoreIdentity:
     service: str = "mary-core"
     protocol_version: str = "1"
-    mary_architecture: str = "13.2"
+    mary_architecture: str = "13.3"
 
 
 @dataclass
@@ -555,7 +556,15 @@ class MaryCoreService:
             foreground=True if model.foreground is None else model.foreground,
             lease_seconds=model.lease_seconds,
         )
-        return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
+        return {
+            **self.creator_lifecycle_status(),
+            "surface_id": model.surface_id,
+            "handshake": build_connected_session_handshake(
+                self,
+                peer_id=model.surface_id,
+                peer_kind="creator_surface",
+            ),
+        }
 
     def renew_creator_surface(self, request: CreatorSurfaceRequest | dict[str, Any]) -> dict[str, Any]:
         model = request if isinstance(request, CreatorSurfaceRequest) else CreatorSurfaceRequest.from_dict(request)
@@ -917,11 +926,18 @@ class MaryCoreService:
                         self._node_token_digest(raw_token)
                     )
             registered = registry.register(descriptor)
+        session_generation = self._node_session_generations.get(model.node_id, 0)
         response = {
             "ok": True,
             "node": registered.to_dict(stale_after=self.mary.node_registry.stale_after),
             "registry": self.mary.node_registry.snapshot(),
-            "session_generation": self._node_session_generations.get(model.node_id, 0),
+            "session_generation": session_generation,
+            "handshake": build_connected_session_handshake(
+                self,
+                peer_id=model.node_id,
+                peer_kind="capability_node",
+                session_generation=session_generation,
+            ),
         }
         # This is the sole disclosure point. It is deliberately not embedded in
         # node/registry objects, diagnostics, tasks, or persisted application state.

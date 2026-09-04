@@ -75,7 +75,7 @@ def test_desktop_transcript_matches_the_exact_spoken_text() -> None:
     assert "canonical_text: str" in bridge
     assert '"canonical_text": self.canonical_text' in bridge
     assert re.search(r'spoken_text\s*=\s*str\(\s*voice_payload\.get\("spoken_text"\)\s*or\s*""\s*\)\.strip\(\)', bridge)
-    assert "display_text = spoken_text or response_text" in bridge
+    assert "display_text = response_text or spoken_text" in bridge
     assert "text=display_text" in bridge
     assert "canonical_text=response_text" in bridge
     # Frontend's normal Mary bubble already displays payload.text, which is

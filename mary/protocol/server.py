@@ -1,4 +1,4 @@
-"""ASGI/HTTP/WebSocket transport for the MaryV2 13.2 unified core."""
+"""ASGI/HTTP/WebSocket transport for the MaryV2 13.3 unified core."""
 from __future__ import annotations
 
 import asyncio
@@ -100,7 +100,7 @@ def create_app(service: MaryCoreService | None = None):
 
     app = FastAPI(
         title="MaryV2 Core",
-        version="13.2",
+        version="13.3",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,

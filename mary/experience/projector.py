@@ -207,7 +207,7 @@ def build_experience_snapshot(
         theme=theme,
         cues=tuple(cues),
         metadata={
-            "architecture": _text(core.get("architecture"), default="13.2"),
+            "architecture": _text(core.get("architecture"), default="13.3"),
             "core_online": core.get("ok", True) is not False,
             "mobile_authority": _text(mobile.get("authority"), default="mary_core"),
             "character_records": _character_record_count(dashboard),

@@ -65,7 +65,7 @@ class DeviceExecutionPermissions:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
-                "version": "13.2",
+                "version": "13.3",
                 "allowed_capabilities": sorted(values),
                 "policy": "local device opt-in; no shell or arbitrary command execution",
             }

@@ -51,7 +51,7 @@ class ResponseFeedback:
 
 
 class ResponseFeedbackStore:
-    VERSION = "13.2"
+    VERSION = "13.3"
 
     def __init__(self, path: str | Path | None = None, *, max_records: int = 5000) -> None:
         self.path = Path(path).expanduser().resolve() if path else None

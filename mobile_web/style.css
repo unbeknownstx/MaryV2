@@ -66,7 +66,7 @@ button.primary,button.ghost,button.action,.action{min-height:46px;border-radius:
 @media(max-width:380px){.conversation-mode-bar{top:45px}.conversation-mode-bar button{padding:5px 7px}.conversation-mode-bar span{display:none}.voice-grid{grid-template-columns:1fr 1fr}}
 .message-feedback{display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,.06)}.message-feedback span{font-size:6px;letter-spacing:.1em;color:var(--dim);margin-right:auto}.message-feedback button{width:25px;height:22px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.03);color:var(--muted);font-size:12px}.message-feedback button:active{transform:scale(.94);color:var(--cyan)}
 
-/* MaryV2 13.2 unified client convergence */
+/* MaryV2 13.3 unified client convergence */
 .thread-pill{margin-left:auto;display:flex;align-items:flex-end;gap:5px;border:1px solid rgba(149,126,255,.26);background:rgba(8,10,25,.66);color:var(--text);border-radius:999px;padding:6px 10px;max-width:48%;min-width:0}
 .thread-pill span{font-size:11px;font-weight:800;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .thread-pill small{font-size:8px;color:var(--muted);text-transform:uppercase;white-space:nowrap}
@@ -94,7 +94,7 @@ button.primary,button.ghost,button.action,.action{min-height:46px;border-radius:
 .portrait-zone[data-expression="sad"] .portrait,.portrait-zone[data-expression="soft"] .portrait{transform:translateY(.35%) scale(.996);filter:saturate(.94) brightness(.96) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
 .portrait-zone[data-expression="angry"] .portrait,.portrait-zone[data-expression="firm"] .portrait{transform:scale(1.006);filter:saturate(1.02) contrast(1.055) drop-shadow(0 18px 42px rgba(0,0,0,.48))}
 
-/* MaryV2 13.2 full-spectrum performer convergence.
+/* MaryV2 13.3 full-spectrum performer convergence.
    Realtime lifecycle and directed performance are presentation signals only;
    they never own Mary's identity or emotional truth. */
 .portrait-zone .portrait{transition:transform .26s ease,filter .26s ease,opacity .2s ease}

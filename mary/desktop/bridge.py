@@ -196,7 +196,7 @@ class _ConversationWorker(QObject):
             spoken_text = str(
                 voice_payload.get("spoken_text") or ""
             ).strip()
-            display_text = spoken_text or response_text
+            display_text = response_text or spoken_text
             worker_total_ms = (monotonic() - started) * 1000.0
 
             trace = build_turn_trace(
@@ -385,7 +385,7 @@ class _PresenceWorker(QObject):
                 voice_payload = self.audio_cache.stage(voice_payload)
 
             spoken_text = str(voice_payload.get("spoken_text") or "").strip()
-            display_text = spoken_text or response_text
+            display_text = response_text or spoken_text
             payload = DesktopTurnPayload(
                 text=display_text,
                 canonical_text=response_text,

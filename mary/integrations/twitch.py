@@ -16,10 +16,23 @@ class TwitchPolicy:
     mode: str
     read_chat: bool
     write_chat: bool
+    bot_user_id: str = ""
+    broadcaster_user_id: str = ""
+    eventsub_transport: str = "websocket"
     def to_dict(self): return asdict(self)
 
 def twitch_policy_from_environment() -> TwitchPolicy:
     enabled=os.getenv("MARY_SKILL_TWITCH","").strip().lower() in {"1","true","yes","on"}
     channels=tuple(x.strip().lower().lstrip('#') for x in os.getenv("MARY_TWITCH_APPROVED_CHANNELS","").split(',') if x.strip())
     mode=os.getenv("MARY_TWITCH_MODE","listen").strip().lower() or "listen"
-    return TwitchPolicy(enabled,os.getenv("MARY_TWITCH_ACCOUNT","").strip(),channels,mode,True,mode in {"mention","companion","cohost"})
+    return TwitchPolicy(
+        enabled,
+        os.getenv("MARY_TWITCH_ACCOUNT", "").strip(),
+        channels,
+        mode,
+        True,
+        mode in {"mention", "companion", "cohost"},
+        os.getenv("MARY_TWITCH_BOT_USER_ID", "").strip()[:160],
+        os.getenv("MARY_TWITCH_BROADCASTER_USER_ID", "").strip()[:160],
+        "websocket",
+    )
