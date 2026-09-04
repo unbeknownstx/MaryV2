@@ -42,3 +42,30 @@ def test_gemini_3_reasoning_effort_can_be_overridden(monkeypatch):
     provider.generate([LLMMessage(role="user", content="hello")], max_tokens=96)
     assert box.kwargs["reasoning_effort"] == "low"
     assert box.kwargs["max_tokens"] == 96
+
+
+def test_gemini_timeout_default_and_override(monkeypatch):
+    seen = []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            seen.append(kwargs)
+            _, client = _client()
+            self.chat = client.chat
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+
+    monkeypatch.delenv("MARY_GEMINI_TIMEOUT_SECONDS", raising=False)
+    GeminiProvider(
+        model="gemini-3.6-flash",
+        api_key="test-key",
+    ).generate([LLMMessage(role="user", content="hello")])
+
+    monkeypatch.setenv("MARY_GEMINI_TIMEOUT_SECONDS", "12.5")
+    GeminiProvider(
+        model="gemini-3.6-flash",
+        api_key="test-key",
+    ).generate([LLMMessage(role="user", content="hello")])
+
+    assert seen[0]["timeout"] == 8.0
+    assert seen[1]["timeout"] == 12.5

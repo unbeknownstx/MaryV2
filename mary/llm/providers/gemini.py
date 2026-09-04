@@ -58,7 +58,7 @@ class GeminiProvider(LLMInterface):
                     "https://generativelanguage.googleapis.com/"
                     "v1beta/openai/"
                 ),
-                timeout=20.0,
+                timeout=float(os.getenv("MARY_GEMINI_TIMEOUT_SECONDS", "8")),
                 max_retries=0,
             )
 
