@@ -123,12 +123,20 @@ class _ParentGuard:
             and source_guard._windows_handle is not None
             and self._windows_handle is not None
         ):
-            _windows_replace_relative(
-                source_guard,
-                source_name,
-                self,
-                destination_name,
+            # Windows: use Python's native atomic same-volume replace after
+            # validating both guarded parents. The previous FILE_RENAME_INFO
+            # relative-handle path is not portable across Windows versions.
+            #
+            # Fail closed if either guarded parent has changed rather than
+            # allowing rollback/install to follow a redirected path.
+            source_guard.assert_current()
+            self.assert_current()
+            os.replace(
+                source_guard.path / source_name,
+                self.path / destination_name,
             )
+            source_guard.assert_current()
+            self.assert_current()
         elif (
             source_guard._descriptor is not None
             and self._descriptor is not None
@@ -273,7 +281,13 @@ def _windows_replace_relative(
             raise ValueError(
                 "Windows transaction child changed or is a reparse point."
             )
-        encoded_name = destination_name.encode("utf-16-le")
+        # Use the absolute-path FILE_RENAME_INFO form on Windows.
+        # Some supported Windows configurations reject the directory-handle
+        # relative form with ERROR_INVALID_PARAMETER (87).
+        destination_path = str(
+            destination_guard.path / destination_name
+        )
+        encoded_name = destination_path.encode("utf-16-le")
         buffer_size = max(
             ctypes.sizeof(FileRenameInfo),
             FileRenameInfo.FileName.offset + len(encoded_name),
@@ -281,9 +295,7 @@ def _windows_replace_relative(
         buffer = ctypes.create_string_buffer(buffer_size)
         rename_info = FileRenameInfo.from_buffer(buffer)
         rename_info.ReplaceIfExists = 0
-        rename_info.RootDirectory = wintypes.HANDLE(
-            destination_guard._windows_handle
-        )
+        rename_info.RootDirectory = wintypes.HANDLE()
         rename_info.FileNameLength = len(encoded_name)
         ctypes.memmove(
             ctypes.addressof(buffer) + FileRenameInfo.FileName.offset,
