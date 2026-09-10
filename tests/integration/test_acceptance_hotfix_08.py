@@ -162,6 +162,23 @@ def test_natural_local_model_command_routes_to_llm_control(tmp_path, monkeypatch
     assert intent.parameters["route"] == "private"
 
 
+def test_natural_mac_llama_cpp_command_routes_to_process_local_provider(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _application()
+    mary = app.mary
+
+    intent = mary.cognition.detect_intent(
+        "go ahead and use the Mac model through llama.cpp"
+    )
+
+    assert intent.intent_type == IntentType.TOOL_USE
+    assert intent.parameters["action"] == "llm_control"
+    assert intent.parameters["operation"] == "set_session"
+    assert intent.parameters["provider"] == "llama_cpp"
+    assert intent.parameters["route"] is None
+    assert intent.parameters["requested_provider"] == "llama_cpp"
+
+
 def test_local_model_capability_question_does_not_change_route(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     app = _application()

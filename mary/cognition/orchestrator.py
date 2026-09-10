@@ -758,6 +758,10 @@ class CognitiveOrchestrator:
         normalized = normalize_for_matching(text)
 
         provider_terms = {
+            "llama.cpp": "llama_cpp",
+            "llama cpp": "llama_cpp",
+            "mac llm": "llama_cpp",
+            "mac model": "llama_cpp",
             "ollama": "ollama",
             "local llm": "ollama",
             "local model": "ollama",

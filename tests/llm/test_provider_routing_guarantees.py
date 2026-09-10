@@ -70,7 +70,7 @@ def _free_first_router() -> tuple[LLMRouter, dict[str, FakeProvider]]:
     router = LLMRouter(config)
     providers = {
         name: FakeProvider(name)
-        for name in ("groq", "gemini", "openrouter", "ollama", "openai")
+        for name in ("groq", "gemini", "openrouter", "ollama", "llama_cpp", "openai")
     }
     for name, provider in providers.items():
         router.register_provider(name, provider)
@@ -289,3 +289,38 @@ def test_explicit_provider_override_bypasses_free_first_order():
     assert [(item["provider"], item["status"]) for item in router.last_generation_attempts] == [
         ("gemini", "success"),
     ]
+
+
+def test_llama_cpp_can_be_explicitly_inserted_into_free_first_without_changing_defaults():
+    router, providers = _free_first_router()
+    router.config.llm.free_provider_order = [
+        "groq",
+        "llama_cpp",
+        "gemini",
+        "openrouter",
+        "ollama",
+    ]
+    providers["groq"].generation_error = RuntimeError("groq failed")
+
+    response = router.generate(_message())
+
+    assert response.provider == "llama_cpp"
+    assert providers["llama_cpp"].calls == 1
+    assert providers["gemini"].calls == 0
+    assert [item["provider"] for item in router.last_generation_attempts] == [
+        "groq",
+        "llama_cpp",
+    ]
+
+
+def test_llama_cpp_can_be_first_in_conversation_policy_when_creator_configures_it():
+    router, _providers = _free_first_router()
+    router.config.llm.conversation_provider_order = [
+        "llama_cpp",
+        "groq",
+        "gemini",
+        "openrouter",
+        "ollama",
+    ]
+
+    assert router.conversation_provider_order()[0] == "llama_cpp"

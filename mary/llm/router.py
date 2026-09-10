@@ -55,6 +55,7 @@ _FREE_PROVIDER_NAMES = (
     "gemini",
     "openrouter",
     "ollama",
+    "llama_cpp",
 )
 
 _PRIVATE_ROUTES = {
@@ -533,7 +534,7 @@ class LLMRouter:
         purpose_name = str(purpose or "").lower().strip()
         if (
             purpose_name in _CONVERSATION_PURPOSES
-            and primary in {"groq", "gemini", "openrouter", "ollama", "openai"}
+            and primary in {"groq", "gemini", "openrouter", "ollama", "llama_cpp", "openai"}
         ):
             return self._conversation_provider_order()
         if (
@@ -543,6 +544,7 @@ class LLMRouter:
                 "gemini",
                 "openrouter",
                 "ollama",
+                "llama_cpp",
                 "openai",
             }
         ):

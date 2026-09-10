@@ -164,18 +164,43 @@ class ProviderFastBrain:
         return result
 
 
+class RouterFastBrain:
+    """Late-bind a tiny classifier to Mary's current local provider route.
+
+    Remote capability nodes can connect after the canonical Core has already
+    started. Resolving the provider on every small classification lets a Mac/PC
+    llama.cpp node become useful without restarting Mary, while preserving the
+    deterministic baseline whenever that replaceable device is unavailable.
+    """
+
+    def __init__(self, mary: Any, *, provider_name: str) -> None:
+        self.mary = mary
+        self.provider_name = str(provider_name or "local").strip().casefold()
+        self.fallback = DeterministicFastBrain()
+
+    def classify(self, request: FastBrainRequest) -> FastBrainResult:
+        try:
+            router = getattr(self.mary, "llm", None)
+            provider = router.get_provider(self.provider_name) if router is not None else None
+            if provider is None or not provider.is_available():
+                return self.fallback.classify(request)
+            return ProviderFastBrain(
+                provider,
+                provider_name=self.provider_name,
+            ).classify(request)
+        except Exception:
+            return self.fallback.classify(request)
+
+
 def fast_brain_from_environment(mary: Any) -> FastBrainProvider:
-    """Resolve an optional local specialist without making it launch-critical."""
+    """Resolve an optional local specialist without making it launch-critical.
+
+    Provider-backed FastBrain routes are intentionally late-bound so a durable
+    capability node may connect or reconnect after Mary Core starts.
+    """
     import os
 
     name = os.getenv("MARY_FAST_BRAIN_PROVIDER", "deterministic").strip().casefold()
     if name not in {"llama_cpp", "ollama"}:
         return DeterministicFastBrain()
-    try:
-        router = getattr(mary, "llm", None)
-        provider = router.get_provider(name) if router is not None else None
-        if provider is None or not provider.is_available():
-            return DeterministicFastBrain()
-        return ProviderFastBrain(provider, provider_name=name)
-    except Exception:
-        return DeterministicFastBrain()
+    return RouterFastBrain(mary, provider_name=name)
