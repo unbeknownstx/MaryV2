@@ -67,7 +67,14 @@ def test_desktop_microphone_is_user_initiated_and_transcript_reuses_send_message
     assert re.search(r"self\.transcriptionReady\.emit\(\s*value\s*\)", bridge)
     assert "QMediaDevices.audioInputs()" in microphone
     assert "QMediaRecorder" in microphone
+    assert "MARY_AUDIO_INPUT_DEVICE" in microphone
+    assert "QMediaFormat.FileFormat.Wave" in microphone
+    assert "setAudioSampleRate(16000)" in microphone
+    assert "setAudioChannelCount(1)" in microphone
+    assert "def sendVoiceMessage" in bridge
+    assert '"voice_input": bool(self.voice_input)' in bridge
     assert "bridge.startListening()" in frontend
     assert "bridge.stopListening()" in frontend
+    assert "bridge.sendVoiceMessage(transcript)" in frontend
     assert "bridge.sendMessage(transcript)" in frontend
     assert "stopVoicePlayback({ notifyBridge: false });" in frontend

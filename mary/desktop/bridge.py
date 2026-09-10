@@ -74,12 +74,15 @@ class _ConversationWorker(QObject):
         text: str,
         voice: DesktopVoiceEngine,
         audio_cache: DesktopAudioCache | None = None,
+        *,
+        voice_input: bool = False,
     ) -> None:
         super().__init__()
         self.application = application
         self.text = text
         self.voice = voice
         self.audio_cache = audio_cache
+        self.voice_input = bool(voice_input)
 
     @Slot()
     def run(self) -> None:
@@ -107,7 +110,7 @@ class _ConversationWorker(QObject):
                         "device_id",
                         "desktop",
                     ),
-                    "voice_input": False,
+                    "voice_input": bool(self.voice_input),
                 },
             )
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
@@ -603,6 +606,7 @@ class MaryDesktopBridge(QObject):
             value,
             self.voice,
             self.audio_cache,
+            voice_input=bool(getattr(self, "_next_voice_input", False)),
         )
 
         worker.moveToThread(thread)
@@ -617,6 +621,18 @@ class MaryDesktopBridge(QObject):
         thread.finished.connect(self._on_thread_finished)
 
         thread.start()
+
+    @Slot(str)
+    def sendVoiceMessage(
+        self,
+        text: str,
+    ) -> None:  # noqa: N802 - JS-facing API
+        """Submit one locally transcribed creator utterance as a voice turn."""
+        self._next_voice_input = True
+        try:
+            self.sendMessage(text)
+        finally:
+            self._next_voice_input = False
 
     @Slot()
     def pulsePresence(self) -> None:  # noqa: N802 - JS-facing API

@@ -24,7 +24,7 @@ def main() -> int:
         ("self.transcriptionReady.emit( value )" in bridge_compact or "self.transcriptionReady.emit(value)" in bridge_compact, "successful transcription returns text to the desktop"),
         ('id="mic-button"' in html, "desktop microphone button is installed"),
         ("stopVoicePlayback({ notifyBridge: false });" in frontend, "Mary's own TTS is stopped before microphone capture"),
-        ("bridge.sendMessage(transcript)" in frontend, "spoken transcript enters the canonical Mary conversation path"),
+        ("def sendVoiceMessage" in bridge and "bridge.sendVoiceMessage(transcript)" in frontend and '"voice_input": bool(self.voice_input)' in bridge, "spoken transcript is marked as voice input on the canonical Mary turn"),
     ]
 
     print("MARYV2 DESKTOP VOICE-INPUT INSTALL VERIFICATION")

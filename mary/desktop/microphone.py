@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -11,12 +12,13 @@ from PySide6.QtMultimedia import (
     QAudioInput,
     QMediaCaptureSession,
     QMediaDevices,
+    QMediaFormat,
     QMediaRecorder,
 )
 
 
 class DesktopMicrophoneRecorder(QObject):
-    """Record a short user utterance with Qt Multimedia."""
+    """Record a short creator utterance as Whisper-compatible PCM WAV."""
 
     stateChanged = Signal(str)
     recordingReady = Signal(str)
@@ -25,9 +27,8 @@ class DesktopMicrophoneRecorder(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._session = QMediaCaptureSession()
-        self._audio_input = QAudioInput()
+        self._audio_input: QAudioInput | None = None
         self._recorder = QMediaRecorder()
-        self._session.setAudioInput(self._audio_input)
         self._session.setRecorder(self._recorder)
 
         self._temp_dir: Path | None = None
@@ -46,17 +47,69 @@ class DesktopMicrophoneRecorder(QObject):
             == QMediaRecorder.RecorderState.RecordingState
         )
 
+    @property
+    def input_device_name(self) -> str:
+        if self._audio_input is not None:
+            return str(self._audio_input.device().description() or "").strip()
+        return str(QMediaDevices.defaultAudioInput().description() or "").strip()
+
     @Slot()
     def start(self) -> None:
         if self.is_recording:
             return
-        if not QMediaDevices.audioInputs():
+
+        inputs = list(QMediaDevices.audioInputs())
+        if not inputs:
             self.errorOccurred.emit("No microphone input device is available.")
             return
 
+        preferred = os.getenv("MARY_AUDIO_INPUT_DEVICE", "").strip()
+        device = QMediaDevices.defaultAudioInput()
+
+        if preferred:
+            folded = preferred.casefold()
+            exact = [
+                item
+                for item in inputs
+                if str(item.description() or "").strip().casefold() == folded
+            ]
+            partial = [
+                item
+                for item in inputs
+                if folded in str(item.description() or "").strip().casefold()
+            ]
+            if exact:
+                device = exact[0]
+            elif len(partial) == 1:
+                device = partial[0]
+            else:
+                available = ", ".join(
+                    str(item.description() or "").strip() or "unnamed"
+                    for item in inputs
+                )
+                reason = "ambiguous" if partial else "not found"
+                self.errorOccurred.emit(
+                    f"MARY_AUDIO_INPUT_DEVICE is {reason}: {preferred}. "
+                    f"Available inputs: {available}"
+                )
+                return
+        elif not str(device.description() or "").strip():
+            device = inputs[0]
+
         self.cleanup()
+        self._audio_input = QAudioInput(device)
+        self._audio_input.setVolume(1.0)
+        self._session.setAudioInput(self._audio_input)
+
+        media_format = QMediaFormat()
+        media_format.setFileFormat(QMediaFormat.FileFormat.Wave)
+        media_format.setAudioCodec(QMediaFormat.AudioCodec.Wave)
+        self._recorder.setMediaFormat(media_format)
+        self._recorder.setAudioSampleRate(16000)
+        self._recorder.setAudioChannelCount(1)
+
         self._temp_dir = Path(tempfile.mkdtemp(prefix="maryv2_mic_"))
-        self._requested_path = self._temp_dir / "unbe_input.m4a"
+        self._requested_path = self._temp_dir / "unbe_input.wav"
         self._actual_path = None
         self._stop_requested = False
 

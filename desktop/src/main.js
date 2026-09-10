@@ -2102,7 +2102,11 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
     const transcript = String(text || '').trim();
     if (!transcript || busy) return;
     appendMessage('Unbe', transcript, 'user');
-    bridge.sendMessage(transcript);
+    if (typeof bridge.sendVoiceMessage === 'function') {
+      bridge.sendVoiceMessage(transcript);
+    } else {
+      bridge.sendMessage(transcript);
+    }
   });
 
   bridge.getStatus((raw) => {
