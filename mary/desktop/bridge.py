@@ -22,6 +22,7 @@ from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.desktop.voice import DesktopVoiceEngine
 from mary.desktop.audio_cache import DesktopAudioCache
 from mary.desktop.microphone import DesktopMicrophoneRecorder
+from mary.desktop.resident_hearing import DesktopResidentHearing
 from mary.desktop.stt import DesktopSpeechToText
 from mary.desktop.dashboard import build_desktop_dashboard_state
 from mary.desktop.integrations import DesktopIntegrationRegistry
@@ -473,6 +474,7 @@ class MaryDesktopBridge(QObject):
     errorOccurred = Signal(str)
     listeningStateChanged = Signal(str)
     transcriptionReady = Signal(str)
+    residentHearingStateChanged = Signal(str)
     conversationStateChanged = Signal(str)
     characterStateChanged = Signal(str)
     dashboardStateChanged = Signal(str)
@@ -506,6 +508,7 @@ class MaryDesktopBridge(QObject):
         self.audio_cache = DesktopAudioCache()
         self.stt = DesktopSpeechToText.from_environment()
         self.microphone = DesktopMicrophoneRecorder()
+        self.resident_hearing = DesktopResidentHearing()
 
         self.integrations = DesktopIntegrationRegistry()
         self.creative_workspace = CreativeWorkspaceManager()
@@ -533,6 +536,18 @@ class MaryDesktopBridge(QObject):
         )
         self.microphone.errorOccurred.connect(
             self._on_microphone_error
+        )
+        self.resident_hearing.stateChanged.connect(
+            self._on_resident_hearing_state_changed
+        )
+        self.resident_hearing.voiceActivity.connect(
+            self._on_resident_voice_activity
+        )
+        self.resident_hearing.recordingReady.connect(
+            self._on_resident_recording_ready
+        )
+        self.resident_hearing.errorOccurred.connect(
+            self._on_resident_hearing_error
         )
 
         self.application.mary.avatar.ready()
@@ -576,6 +591,9 @@ class MaryDesktopBridge(QObject):
                 reason="typed_barge_in",
             )
             self.voicePlaybackStopRequested.emit()
+
+        if self.resident_hearing.enabled:
+            self.resident_hearing.pause("turn_active")
 
         self._active_turn_submitted_at = monotonic()
         self._active_feedback_user_text = value
@@ -644,6 +662,8 @@ class MaryDesktopBridge(QObject):
             return
         if self._speech_thread is not None or self.microphone.is_recording:
             return
+        if self.resident_hearing.enabled:
+            return
 
         thread = QThread(self)
         worker = _PresenceWorker(
@@ -711,6 +731,9 @@ class MaryDesktopBridge(QObject):
 
             self.voicePlaybackStopRequested.emit()
 
+        if self.resident_hearing.enabled:
+            self.resident_hearing.pause("push_to_talk")
+
         self.microphone.start()
 
     @Slot()
@@ -718,6 +741,112 @@ class MaryDesktopBridge(QObject):
         self,
     ) -> None:  # noqa: N802 - JS-facing API
         self.microphone.stop()
+
+    @Slot(bool, result=str)
+    def setResidentHearing(
+        self,
+        enabled: bool,
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Explicitly arm/disarm local resident hearing; startup stays OFF."""
+        requested = bool(enabled)
+
+        if not requested:
+            self.resident_hearing.disable()
+            return _json({"ok": True, **self.resident_hearing.status()})
+
+        if not self.stt.enabled:
+            return _json(
+                {
+                    "ok": False,
+                    "error": "Speech input is not configured.",
+                    **self.resident_hearing.status(),
+                }
+            )
+
+        if self._busy or self._speech_thread is not None or self.microphone.is_recording:
+            return _json(
+                {
+                    "ok": False,
+                    "error": "Wait until the current turn or recording finishes.",
+                    **self.resident_hearing.status(),
+                }
+            )
+
+        if self.conversation_runtime.state != DesktopConversationState.IDLE:
+            return _json(
+                {
+                    "ok": False,
+                    "error": "Resident Hearing can be enabled while Mary is idle.",
+                    **self.resident_hearing.status(),
+                }
+            )
+
+        self.resident_hearing.enable()
+        status = self.resident_hearing.status()
+        return _json({"ok": bool(status.get("enabled")), **status})
+
+    @Slot(result=str)
+    def getResidentHearingState(self) -> str:  # noqa: N802 - JS-facing API
+        return _json(self.resident_hearing.status())
+
+    @Slot(str)
+    def _on_resident_hearing_state_changed(self, _state: str) -> None:
+        self.residentHearingStateChanged.emit(
+            _json(self.resident_hearing.status())
+        )
+
+    @Slot(bool, bool, float)
+    def _on_resident_voice_activity(
+        self,
+        active: bool,
+        confirmed: bool,
+        confidence: float,
+    ) -> None:
+        try:
+            self.application.mary.realtime.report_voice_activity(
+                bool(active),
+                confirmed=bool(confirmed),
+                source="desktop_resident_vad",
+                confidence=float(confidence),
+            )
+        except Exception:
+            pass
+
+        if (
+            active
+            and confirmed
+            and self.conversation_runtime.state == DesktopConversationState.IDLE
+        ):
+            self._transition_conversation_state(
+                DesktopConversationState.LISTENING,
+                reason="resident_vad_confirmed",
+            )
+
+    @Slot(str)
+    def _on_resident_recording_ready(self, path: str) -> None:
+        self._transition_conversation_state(
+            DesktopConversationState.TRANSCRIBING,
+            reason="resident_vad_endpoint",
+        )
+        self._on_recording_ready(path)
+
+    @Slot(str)
+    def _on_resident_hearing_error(self, error: str) -> None:
+        self.errorOccurred.emit(str(error))
+        self.residentHearingStateChanged.emit(
+            _json(self.resident_hearing.status())
+        )
+
+    def _resume_resident_hearing_if_idle(self) -> None:
+        if not self.resident_hearing.enabled:
+            return
+        if self._busy or self._speech_thread is not None:
+            return
+        if self.microphone.is_recording:
+            return
+        if self.conversation_runtime.state != DesktopConversationState.IDLE:
+            return
+        self.resident_hearing.resume()
 
     @Slot(str)
     def voicePlaybackStage(
@@ -831,6 +960,7 @@ class MaryDesktopBridge(QObject):
                 "conversation": self.conversation_runtime.snapshot.to_dict(),
                 "voice": self.voice.status.to_dict(),
                 "speech_to_text": self.stt.status.to_dict(),
+                "resident_hearing": self.resident_hearing.status(),
                 "presence_socket": self.presence_socket.status(),
                 "realtime": mary.realtime.status(),
                 "nodes": mary.node_registry.snapshot(),
@@ -2005,6 +2135,7 @@ class MaryDesktopBridge(QObject):
         self,
     ) -> None:
         self.presence_socket.stop()
+        self.resident_hearing.disable()
         self.microphone.stop()
         self.audio_cache.cleanup()
 
@@ -2188,6 +2319,7 @@ class MaryDesktopBridge(QObject):
     ) -> None:
         self._speech_worker = None
         self._speech_thread = None
+        self._resume_resident_hearing_if_idle()
 
     def _finish_speech_thread(
         self,
@@ -2290,6 +2422,9 @@ class MaryDesktopBridge(QObject):
         )
 
         self._emit_character_state()
+
+        if snapshot.state == DesktopConversationState.IDLE:
+            self._resume_resident_hearing_if_idle()
 
     def _set_busy(
         self,

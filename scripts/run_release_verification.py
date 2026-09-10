@@ -91,6 +91,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("emotion_appraisal", "scripts.verify_emotion_appraisal_install"),
     ("desktop_alpha", "scripts.verify_desktop_alpha_install"),
     ("voice_input", "scripts.verify_voice_input_install"),
+    ("resident_hearing_13_4", "scripts.verify_resident_hearing_install"),
     ("conversation_runtime", "scripts.verify_conversation_runtime_install"),
     ("turn_mind", "scripts.verify_turn_mind_integration_install"),
     ("conversation_continuity", "scripts.verify_conversation_continuity_install"),

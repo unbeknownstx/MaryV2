@@ -34,6 +34,7 @@ const composer = $('#composer');
 const input = $('#message-input');
 const sendButton = $('#send-button');
 const micButton = $('#mic-button');
+let residentHearingState = { enabled: false, active: false, state: 'off' };
 const thinking = $('#thinking');
 const statusDot = $('#status-dot');
 const statusText = $('#status-text');
@@ -1664,6 +1665,7 @@ function renderMedia() {
 function renderVoice() {
   const voice = runtimeStatus.voice || {};
   const stt = runtimeStatus.speech_to_text || {};
+  const resident = runtimeStatus.resident_hearing || residentHearingState || {};
   const trace = normalizeTurnTrace(ecosystemState.last_turn || lastTurnTrace);
   const plan = trace.delivery_plan || {};
   const timings = trace.timings || {};
@@ -1680,6 +1682,9 @@ function renderVoice() {
         <h3>Voice</h3>
         <div class="data-row"><span>TTS</span><strong>${voice.enabled ? `ON · ${escapeHtml(voice.provider || 'configured')}` : 'OFF'}</strong></div>
         <div class="data-row"><span>Speech input</span><strong>${stt.enabled ? `ON · ${escapeHtml(stt.provider || 'configured')}` : 'OFF'}</strong></div>
+        <div class="data-row"><span>Resident Hearing</span><strong>${resident.enabled ? `ON · ${escapeHtml(titleCase(resident.state || 'listening'))}` : 'OFF · default'}</strong></div>
+        <div class="data-row"><span>Input device</span><strong>${escapeHtml(resident.input_device || 'OS default microphone')}</strong></div>
+        <button class="action-button" id="resident-hearing-toggle"><strong>${resident.enabled ? 'Turn Resident Hearing Off' : 'Turn Resident Hearing On'}</strong><small>${resident.enabled ? 'Continuous local VAD is armed; raw audio stays on this Mac.' : 'Opt-in for streaming or hands-free use. Push-to-talk remains available separately.'}</small></button>
         <div class="data-row"><span>Conversation state</span><strong>${escapeHtml(titleCase(conversationState))}</strong></div>
         <div class="data-row"><span>Delivery mode</span><strong>${escapeHtml(titleCase(plan.metadata?.performance_mode || 'natural conversation'))}</strong></div>
         <p>Stage 12 keeps neutral conversation natural, but represented Mary character modes now become audible and visible performance instead of being flattened back to one baseline.</p>
@@ -1765,6 +1770,21 @@ function renderWorkspace(screen) {
 }
 
 function bindWorkspaceActions() {
+  $('#resident-hearing-toggle')?.addEventListener('click', () => {
+    if (!bridge?.setResidentHearing) return;
+    const current = runtimeStatus.resident_hearing || residentHearingState || {};
+    bridge.setResidentHearing(!Boolean(current.enabled), (raw) => {
+      const result = parsePayload(raw);
+      if (result.ok === false) {
+        toast(result.error || 'Could not change Resident Hearing.', 'error');
+        return;
+      }
+      residentHearingState = result;
+      runtimeStatus.resident_hearing = result;
+      toast(result.enabled ? 'Resident Hearing on.' : 'Resident Hearing off.');
+      if (currentScreen === 'voice') renderWorkspace('voice');
+    });
+  });
   $('#mind-rebuild')?.addEventListener('click', () => {
     if (!bridge?.rebuildCognitiveReservoir) return;
     bridge.rebuildCognitiveReservoir((raw) => {
@@ -2094,6 +2114,11 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
     toast(message, 'error');
     appendMessage('System', message, 'system');
   });
+  bridge.residentHearingStateChanged?.connect((raw) => {
+    residentHearingState = parsePayload(raw);
+    runtimeStatus.resident_hearing = residentHearingState;
+    if (currentScreen === 'voice') renderWorkspace('voice');
+  });
   bridge.listeningStateChanged.connect((state) => {
     const value = String(state || '').toLowerCase();
     if (['listening', 'transcribing'].includes(value)) setConversationState(value);
@@ -2111,6 +2136,7 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
 
   bridge.getStatus((raw) => {
     runtimeStatus = parsePayload(raw);
+    residentHearingState = runtimeStatus.resident_hearing || residentHearingState;
     const voiceLabel = runtimeStatus.voice?.enabled ? ` · voice:${runtimeStatus.voice.provider}` : '';
     const sttLabel = runtimeStatus.speech_to_text?.enabled ? ` · mic:${runtimeStatus.speech_to_text.provider}` : '';
     modelLabel.textContent = `${runtimeStatus.provider || 'runtime'} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
