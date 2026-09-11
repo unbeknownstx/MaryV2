@@ -3,8 +3,9 @@
 This registry is the current architectural index for MaryV2. Historical stage/release documents live under `docs/history/` and do not override this map.
 
 Companion architecture maps: [data and authority flows](data_flow.md),
-[13.2 reconciliation inventory](RECONCILIATION_13_2.md), and the
-[13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md).
+[13.2 reconciliation inventory](RECONCILIATION_13_2.md), the
+[13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md), and
+[13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -31,11 +32,13 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
 | MCP capability fabric | `mary.distributed.mcp_fabric`, `mary.desktop.device_node` | ACTIVE OPTIONAL 13.4 | OpenDesign/Scrapling/Langflow over preconfigured Streamable HTTP(S); node-local credentials, lazy discovery, exact tool allowlists, sanitized results; no shell/stdio launcher. |
-| OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Future sandboxed software-engineering worker; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
+| OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Sandboxed software-engineering worker boundary; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
+| Platform readiness | `scripts.platform_readiness`, `requirements-host-extras.txt` | ACTIVE OPTIONAL 13.5 | Read-only Mac/Windows/Linux capability/config presence; optional packages never gate Core startup; no shell execution. |
 | Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
 | Desktop | `mary.desktop`, `desktop/` | ACTIVE | Presentation/capability surface. |
-| Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE | Remote surface over Core. |
-| Native mobile | `mobile_native/` | PARTIAL | Native client work; same Core authority rule. |
+| Mobile/PWA | `mary.mobile`, mobile web assets | ACTIVE | Remote surface over Core. |
+| Native iPhone | `ios/MaryV2iOS/` | ACTIVE BUILD-VERIFIED | SwiftUI client using the same Core authority; XcodeGen + unsigned simulator build are CI verified. |
+| Legacy native mobile | `mobile_native/` | PARTIAL / LEGACY SURFACE | Retained work; does not override the native iPhone client or Core authority. |
 | Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. |
 | Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling. |
 | Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. |
