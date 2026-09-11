@@ -64,3 +64,25 @@ jobs:
         run: |
           node --check mobile_web/app.js
           node --check mobile_native/MaryMobile/www/app.js
+
+
+  ios-native-build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate native iPhone project
+        working-directory: ios/MaryV2iOS
+        run: xcodegen generate
+      - name: Build native iPhone app
+        working-directory: ios/MaryV2iOS
+        run: |
+          xcodebuild \
+            -project MaryV2iOS.xcodeproj \
+            -scheme MaryV2iOS \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
