@@ -235,9 +235,33 @@ class MaryCoreService:
             trace.set_turn_id(turn.turn_id)
             trace.set_conversation_id(turn.conversation_id)
         with observe_turn_stage("lifecycle_gate"):
-            if not self.execution_allowed():
+            lifecycle = self.creator_lifecycle_status()
+            if lifecycle.get("state") == "SLEEPING" and not lifecycle.get("offline"):
+                # A creator-authenticated turn may wake only an already known
+                # creator surface. Explicit OFFLINE remains a stronger hard gate.
+                candidates = [
+                    str(turn.device_id or "").strip(),
+                    str(turn.surface or "").strip(),
+                ]
+                active_surface_ids = [
+                    str(item.get("surface_id") or "")
+                    for item in list(lifecycle.get("surfaces") or [])
+                    if str(item.get("surface_id") or "")
+                ]
+                if len(active_surface_ids) == 1:
+                    candidates.append(active_surface_ids[0])
+                for surface_id in candidates:
+                    if not surface_id:
+                        continue
+                    try:
+                        self.creator_surfaces.wake(surface_id)
+                        lifecycle = self.creator_lifecycle_status()
+                        break
+                    except (KeyError, RuntimeError):
+                        continue
+            if lifecycle.get("state") not in {"ACTIVE", "IDLE"}:
                 raise RuntimeError(
-                    "Mary Core is sleeping or offline; wake a creator surface first."
+                    "Mary Core is sleeping or offline; an active authenticated creator surface is required."
                 )
 
         with observe_turn_stage(
@@ -1693,6 +1717,9 @@ class MaryCoreService:
                     )
                 )
 
+            if action.action == "realtime.brain_activity.status":
+                return _json_safe(self.mary.realtime.brain_activity.snapshot())
+
             if action.action == "presence.scene.status":
                 return _json_safe(self.application.ecosystem.presence.scene.snapshot())
 
@@ -1728,6 +1755,29 @@ class MaryCoreService:
                     "ok": True,
                     "published": published,
                     "scene": self.application.ecosystem.presence.scene.snapshot(),
+                    "authority": "environment_context_only",
+                })
+
+            if action.action == "perception.browser.observe":
+                from mary.perception import BrowserContext
+                raw_metadata = values.get("metadata")
+                metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+                context = BrowserContext(
+                    page_title=str(values.get("page_title") or "")[:240],
+                    url=str(values.get("url") or "")[:2000],
+                    visible_text_summary=str(values.get("visible_text_summary") or "")[:700],
+                    video_subtitle_segment=str(values.get("video_subtitle_segment") or "")[:500],
+                    media_state=str(values.get("media_state") or "")[:120],
+                    source=f"browser:{action.device_id}",
+                    metadata=metadata,
+                )
+                observation = self.mary.browser_context_sensor.ingest(
+                    context,
+                    importance=max(0.0, min(1.0, float(values.get("importance", .45)))),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "observation": observation.to_dict(),
                     "authority": "environment_context_only",
                 })
 
@@ -1857,6 +1907,31 @@ class MaryCoreService:
                         focus_active=bool(values.get("focus_active", False))
                     )
                 )
+
+            if action.action == "runtime.performance.status":
+                return _json_safe(self.mary.performance_profiles.status())
+
+            if action.action == "runtime.performance.set":
+                self.mary.performance_profiles.set(
+                    str(values.get("profile") or values.get("name") or "balanced")
+                )
+                return _json_safe(self.mary.performance_profiles.status())
+
+            if action.action == "game.action.preview":
+                from mary.game_control import GameAction
+                raw_constraints = values.get("constraints")
+                constraints = dict(raw_constraints) if isinstance(raw_constraints, dict) else {}
+                action_model = GameAction(
+                    verb=str(values.get("verb") or ""),
+                    target=str(values.get("target") or ""),
+                    game_id=str(values.get("game_id") or ""),
+                    urgency=float(values.get("urgency", .5)),
+                    constraints=constraints,
+                )
+                return _json_safe(self.mary.game_action_router.route(action_model))
+
+            if action.action == "capability.invocations.status":
+                return _json_safe(self.mary.capability_invocations.status())
 
             if action.action == "performance.context.status":
                 return _json_safe(
