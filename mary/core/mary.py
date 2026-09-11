@@ -143,6 +143,7 @@ from mary.distributed import NodeRegistry
 from mary.perception import PerceptionDirector
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 from mary.mind import CharacterMind
+from mary.continuity import ExperientialContinuityRuntime
 from mary.mind.production_bridge import (
     apply_local_cycle_metadata,
     merge_escalated_cycle_metadata,
@@ -375,6 +376,31 @@ class Mary:
             workspace=self.task_workspace,
             expert=self.expert_consultant,
         )
+
+        # ============================================================
+        # EXPERIENTIAL CONTINUITY / RESUMABLE WORK
+        # ============================================================
+
+        # This is a durable evidence/coordination layer around Mary's existing
+        # canonical owners. It is intentionally named separately from
+        # TurnMind's conversation continuity below: it cannot own identity,
+        # relationship, memory truth, tool permission, or autonomy authority.
+        self.experiential_continuity = ExperientialContinuityRuntime(
+            self.config.paths.data / "continuity"
+        )
+        self.experience = self.experiential_continuity.experience
+        self.temporal_knowledge = self.experiential_continuity.temporal
+        self.procedural_skills = self.experiential_continuity.skills
+        self.workflow_checkpoints = self.experiential_continuity.workflows
+        self.action_verification = self.experiential_continuity.verification
+        self.compute_resources = self.experiential_continuity.resources
+        self.action_affordances = self.experiential_continuity.affordances
+        self.prosody_turn_taking = self.experiential_continuity.prosody
+        self.cognition_lanes = self.experiential_continuity.cognition_lanes
+        self.generation_cancellation = self.experiential_continuity.cancellation
+        self.node_recovery = self.experiential_continuity.node_recovery
+        self.memory_lab = self.experiential_continuity.memory_lab
+        self.causal_trace = self.experiential_continuity.traces
 
         # ============================================================
         # TOOLS
