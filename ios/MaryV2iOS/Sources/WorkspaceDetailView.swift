@@ -204,7 +204,7 @@ struct WorkspaceDetailView: View {
                 Eyebrow(text: "Continuity")
                 Text(summary.total == 0 ? "Memory" : "\(summary.total) memory records")
                     .font(.title2.bold())
-                ForEach(Array(summary.lines.enumerated()), id: .offset) { _, line in
+                ForEach(Array(summary.lines.enumerated()), id: \\.offset) { _, line in
                     Text(line).foregroundStyle(MaryTheme.muted)
                 }
             }
@@ -221,7 +221,7 @@ struct WorkspaceDetailView: View {
                     body: "Your Mac or PC can come online as a capability host without owning Mary's identity or memory."
                 )
             }
-            ForEach(Array(cards.enumerated()), id: .offset) { _, card in
+            ForEach(Array(cards.enumerated()), id: \\.offset) { _, card in
                 GlassCard {
                     HStack {
                         Image(systemName: "desktopcomputer")
@@ -254,7 +254,7 @@ struct WorkspaceDetailView: View {
                     body: "Connected services will appear here when Mary Core reports them."
                 )
             }
-            ForEach(Array(items.enumerated()), id: .offset) { _, item in
+            ForEach(Array(items.enumerated()), id: \\.offset) { _, item in
                 GlassCard {
                     HStack {
                         Image(systemName: "link").foregroundStyle(MaryTheme.pink)
@@ -326,7 +326,7 @@ struct WorkspaceDetailView: View {
                 if items.isEmpty {
                     Text(empty).foregroundStyle(MaryTheme.muted)
                 } else {
-                    ForEach(Array(items.prefix(12).enumerated()), id: .offset) { _, item in
+                    ForEach(Array(items.prefix(12).enumerated()), id: \\.offset) { _, item in
                         let row = CoreProjection.dict(item)
                         let title = CoreProjection.string(row["title"] ?? row["name"])
                         HStack {
