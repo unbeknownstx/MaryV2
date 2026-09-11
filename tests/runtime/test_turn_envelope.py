@@ -228,3 +228,39 @@ def test_application_adds_safe_default_turn_transport_metadata(tmp_path):
     assert pipeline.received_metadata["surface"] == "runtime"
     assert pipeline.received_metadata["transport"] == "direct"
     assert pipeline.received_metadata["voice_input"] is False
+
+
+def test_native_ios_turn_projects_trusted_current_surface_into_turn_mind(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from mary.runtime.application import create_application
+
+    app = create_application(
+        auto_save=False,
+        load_memory=False,
+        load_developed_self=False,
+        load_preference_promotion=False,
+        load_knowledge=False,
+    )
+    try:
+        result = app.mary.process(
+            "what is your name?",
+            turn_context={
+                "surface": "ios_native",
+                "transport": "core",
+                "conversation_id": "creator-primary",
+                "device_id": "iphone-native-test",
+                "input_authority": "creator",
+                "initiated_by": "creator",
+            },
+        )
+        runtime = result.context.mind_state["runtime_context"]
+        current = runtime["current_surface"]
+        assert current["surface"] == "ios_native"
+        assert current["surface_kind"] == "native_ios_app"
+        assert current["device_id"] == "iphone-native-test"
+        assert current["transport"] == "core"
+        assert current["state_authority"] == "canonical_mary_core"
+        assert current["authority"] == "ephemeral_runtime_fact"
+        assert current["persistence"] == "none"
+    finally:
+        app.close()

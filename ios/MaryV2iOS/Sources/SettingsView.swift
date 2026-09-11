@@ -31,9 +31,22 @@ struct SettingsView: View {
                 }
 
                 Section("Voice") {
-                    Text("Push-to-talk uses iPhone on-device speech recognition when the device supports it. No cloud speech fallback is enabled.")
+                    Toggle("Use Mary's Core voice", isOn: $speakResponses)
+                        .onChange(of: speakResponses) { value in
+                            AppConfiguration.speakResponses = value
+                        }
+                    LabeledContent(
+                        "Core TTS",
+                        value: app.voiceServerAvailable ? app.voiceProvider : "Unavailable"
+                    )
+                    Text("Push-to-talk records only on this iPhone, then uses Apple's on-device speech recognition. Raw microphone audio is not uploaded to Mary Core. Mary's reply audio is synthesized by Core, so provider keys never live on the phone.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let voiceError = app.lastVoiceError, !voiceError.isEmpty {
+                        Text(voiceError)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 Section {

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from mary.core.service import MaryCoreService
+from mary.expression.context import PerformanceContextManager
 from mary.llm.interface import LLMResponse
 from mary.protocol.models import RuntimeActionRequest, TurnRequest
 
@@ -65,6 +66,7 @@ class FakeMary:
         self.runtime_environment = SimpleNamespace(snapshot=lambda: {})
         self.node_registry = SimpleNamespace(snapshot=lambda: {})
         self.training_feedback = FakeFeedbackStore()
+        self.performance_context = PerformanceContextManager()
 
     def live_state(self, runtime_status=None):
         return {"runtime_status": runtime_status}
@@ -116,6 +118,56 @@ def test_turn_request_carries_surface_and_voice_context_to_core():
     assert metadata["device_id"] == "iphone"
     assert metadata["voice_input"] is True
 
+
+
+def test_performance_context_is_scoped_per_creator_device_and_turn():
+    app = FakeApplication()
+    seen_modes = []
+
+    def run(text, metadata=None):
+        seen_modes.append((metadata["device_id"], app.mary.performance_context.mode))
+        return SimpleNamespace(
+            success=True, output="ok", error=None, turn_id=f"turn-{len(seen_modes)}",
+            metadata={"pipeline_values": {}},
+        )
+
+    app.run = run
+    core = _active_core(app)
+
+    iphone = core.runtime_action({
+        "action": "performance.context.set",
+        "args": {"mode": "stream"},
+        "device_id": "iphone",
+    })
+    mac = core.runtime_action({
+        "action": "performance.context.set",
+        "args": {"mode": "private"},
+        "device_id": "mac",
+    })
+
+    assert iphone["mode"] == "stream"
+    assert iphone["scope"] == "device"
+    assert mac["mode"] == "private"
+    assert core.runtime_action({
+        "action": "performance.context.status", "args": {}, "device_id": "iphone"
+    })["mode"] == "stream"
+    assert core.runtime_action({
+        "action": "performance.context.status", "args": {}, "device_id": "mac"
+    })["mode"] == "private"
+
+    core.process_turn({
+        "text": "hello", "turn_id": "surface-iphone",
+        "conversation_id": "creator-primary", "device_id": "iphone",
+        "surface": "ios_native",
+    })
+    core.process_turn({
+        "text": "hello", "turn_id": "surface-mac",
+        "conversation_id": "creator-primary", "device_id": "mac",
+        "surface": "desktop",
+    })
+
+    assert seen_modes == [("iphone", "stream"), ("mac", "private")]
+    assert app.mary.performance_context.mode == "private"
 
 def test_runtime_action_controls_conversation_without_new_mary():
     app = FakeApplication()

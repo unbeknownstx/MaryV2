@@ -40,6 +40,7 @@ from mary.runtime.turn_observability import (
 )
 
 MAX_WORKSPACE_ACTION_BYTES = 16_384
+MAX_VOICE_SYNTHESIS_BYTES = 32_768
 
 
 def _token() -> str:
@@ -415,6 +416,58 @@ def create_app(service: MaryCoreService | None = None):
     async def conversation(request: Request) -> dict[str, Any]:
         await require_creator(request)
         return core.conversation_status()
+
+    @app.get("/v1/voice/status")
+    async def voice_status(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            return await asyncio.to_thread(core.voice_status)
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail="Mary Core voice is unavailable.") from exc
+
+    @app.post("/v1/voice/synthesize")
+    async def voice_synthesize(request: Request) -> Response:
+        await require_creator(request)
+        try:
+            payload = await bounded_json(
+                request,
+                limit=MAX_VOICE_SYNTHESIS_BYTES,
+            )
+            if not isinstance(payload, dict):
+                raise ValueError("Voice synthesis request must be a JSON object.")
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                raise ValueError("text is required.")
+            user_text = str(payload.get("user_text") or "").strip() or None
+            delivery_plan = payload.get("delivery_plan") or {}
+            if not isinstance(delivery_plan, dict):
+                raise ValueError("delivery_plan must be a JSON object.")
+            if len(delivery_plan) > 24:
+                raise ValueError("delivery_plan exceeds the protocol field limit.")
+            speech = await asyncio.to_thread(
+                core.voice_synthesize,
+                text,
+                user_text=user_text,
+                delivery_plan=dict(delivery_plan),
+            )
+            metadata = dict(getattr(speech, "metadata", {}) or {})
+            audio = bytes(getattr(speech, "audio", b"") or b"")
+            mime_type = str(getattr(speech, "mime_type", "") or "application/octet-stream")
+            if not audio:
+                raise RuntimeError(
+                    str(metadata.get("reason") or "Mary Core voice returned no audio.")
+                )
+            headers = {
+                "Cache-Control": "no-store",
+                "X-Mary-Voice-Provider": str(metadata.get("provider") or "unknown")[:80],
+                "X-Mary-Voice-Model": str(metadata.get("model") or "unknown")[:120],
+                "X-Mary-Voice-Cached": "1" if bool(getattr(speech, "cached", False)) else "0",
+            }
+            return Response(content=audio, media_type=mime_type, headers=headers)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail="Mary Core voice synthesis failed safely.") from exc
 
     @app.get("/v1/growth")
     async def growth(request: Request) -> dict[str, Any]:

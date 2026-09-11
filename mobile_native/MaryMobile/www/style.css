@@ -110,3 +110,11 @@ button.primary,button.ghost,button.action,.action{min-height:46px;border-radius:
 .portrait-zone[data-gesture="animated"][data-interaction-state="speaking"] .portrait,.portrait-zone[data-gesture="celebrate"][data-interaction-state="speaking"] .portrait{animation-duration:1.8s}
 @keyframes mary-mobile-speaking{0%,100%{transform:translateY(0) scale(1.004)}50%{transform:translateY(-.35%) scale(1.008)}}
 @media(prefers-reduced-motion:reduce){.portrait-zone .portrait{transition:none}.portrait-zone[data-interaction-state="speaking"] .portrait{animation:none}}
+
+/* Generated Mary stage-art fallback. Presentation only; canonical Mary remains Core-owned. */
+.mary-stage-art{position:absolute!important;inset:0;margin:auto;opacity:0;animation:mary-stage-art-cycle 30s ease-in-out infinite;will-change:opacity,transform}
+.mary-stage-art.art-a{animation-delay:0s}
+.mary-stage-art.art-b{animation-delay:10s}
+.mary-stage-art.art-c{animation-delay:20s}
+@keyframes mary-stage-art-cycle{0%,26%{opacity:1}32%,94%{opacity:0}100%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.mary-stage-art{animation:none;opacity:0}.mary-stage-art.art-a{opacity:1}}

@@ -668,6 +668,16 @@ class CognitiveOrchestrator:
             # relationship continuity, not only the active chat window.  This
             # intentionally runs before generic conversation-recall detection.
             shared_work_patterns = (
+                # Natural creator phrasing often omits “together”. “we” is
+                # already an explicit shared-work cue, so these questions must
+                # use durable shared-work continuity instead of free-form model
+                # guessing from the active chat window.
+                r"\bwhat are we working on(?: right now| now| today)?\b",
+                r"\bwhat have we been working on(?: lately| recently| today)?\b",
+                r"\bwhat did we work on(?: today| lately| recently)?\b",
+                r"\bwhat are we building(?: right now| now| today)?\b",
+                r"\bwhat have we been building(?: lately| recently| today)?\b",
+                r"\bwhere are we with (?:mary|maryv2|the mary project|the project)\b",
                 r"\bwhat do you remember about what we(?:'ve|ve| have) been (?:working on|building|developing|fixing|testing) together(?: lately| recently)?\b",
                 r"\bwhat do you remember about what we(?:'ve|ve| have) (?:worked on|built|developed|fixed|tested) together(?: lately| recently)?\b",
                 r"\bwhat do you remember we(?:'ve|ve| have) been working on together\b",

@@ -108,6 +108,27 @@ def build_workspace_context(
         "pending_thoughts": _bounded_int(counts_source.get("pending_thoughts")),
     }
 
+    current_source = source.get("current_work")
+    current_source = current_source if isinstance(current_source, dict) else {}
+    current_work = {
+        "active": bool(current_source.get("active")),
+        "project": _clip(current_source.get("project"), 120),
+        "stage": _clip(current_source.get("stage"), 48),
+        "summary": _clip(current_source.get("summary"), 260),
+        "authority": "derived_current_work_projection",
+        "persistence": "projection_only",
+    }
+    current_work["recent"] = _items(
+        current_source.get("recent"),
+        limit=4,
+        text_fields={"summary": 240, "project": 120, "stage": 48},
+        passthrough=("kind", "source"),
+    )
+    current_work = {
+        key: value for key, value in current_work.items()
+        if value not in (None, "", [], {}) or key in {"active", "authority", "persistence"}
+    }
+
     focus_source = source.get("focus")
     focus_source = focus_source if isinstance(focus_source, dict) else {}
     focus = {
@@ -287,6 +308,7 @@ def build_workspace_context(
         or study_projects
         or research_threads
         or productions
+        or current_work.get("active")
         or notices
         or pending_thoughts
         or curiosities
@@ -313,6 +335,7 @@ def build_workspace_context(
         "study_projects": study_projects,
         "research_threads": research_threads,
         "productions": productions,
+        "current_work": current_work,
         "notices": notices,
         "pending_thoughts": pending_thoughts,
         "curiosities": curiosities,

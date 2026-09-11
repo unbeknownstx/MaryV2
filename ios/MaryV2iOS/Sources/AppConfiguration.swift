@@ -26,7 +26,7 @@ enum AppConfiguration {
     }
 
     static var speakResponses: Bool {
-        get { d.object(forKey: "mary.speak.responses") as? Bool ?? false }
+        get { d.object(forKey: "mary.speak.responses") as? Bool ?? true }
         set { d.set(newValue, forKey: "mary.speak.responses") }
     }
 }

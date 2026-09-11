@@ -1,4 +1,4 @@
-const CACHE='maryv2-mobile-shell-v13-2-unified';
+const CACHE='maryv2-mobile-shell-v13-2-unified-v13-4-cohesive-candidate';
 const SHELL=[
   '/',
   '/index.html',
@@ -9,6 +9,8 @@ const SHELL=[
   '/assets/mary-icon-192.png',
   '/assets/mary-icon-180.png',
   '/assets/mary-reference.jpeg',
+  '/assets/mary-stream-room-reference.png',
+  '/assets/mary-neon-night-manga.png',
   '/assets/cyber-grid.svg',
   '/assets/mary-sigil.svg'
 ];

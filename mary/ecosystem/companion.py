@@ -231,6 +231,11 @@ def build_companion_pulse(
         "notices": notices,
         "pending_thoughts": thoughts,
         "curiosities": _curiosity_items(mary),
+        "current_work": mary.current_work_projection({
+            "focus": focus_state,
+            "top_tasks": top_tasks,
+            "productions": productions,
+        }) if callable(getattr(mary, "current_work_projection", None)) else {},
         "presence_mode": str(presence_state.get("mode") or "companion"),
         "semantics": (
             "read-only cross-workspace pulse assembled from existing authoritative state; "

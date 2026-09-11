@@ -18,7 +18,7 @@
     <array><string>UIInterfaceOrientationPortrait</string></array>
 
     <key>NSMicrophoneUsageDescription</key>
-    <string>Mary uses the microphone only when you press and hold to talk.</string>
+    <string>Mary records audio only while push-to-talk is active. The recording stays on this iPhone for on-device transcription.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Mary transcribes your push-to-talk speech on this iPhone when on-device recognition is available.</string>
 </dict>

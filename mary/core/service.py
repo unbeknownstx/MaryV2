@@ -119,6 +119,7 @@ class MaryCoreService:
         creator_sleep_seconds: float = 300.0,
         creator_lease_ttl_seconds: float = 90.0,
         creator_surface_coordinator: CreatorSurfaceCoordinator | None = None,
+        mobile_speech_service: Any | None = None,
     ) -> None:
         self.application = application or create_application(name="mary_core")
         self.mary = self.application.mary
@@ -130,6 +131,15 @@ class MaryCoreService:
         self._turn_replay_capacity = 256
         self._recent_turn_traces: deque[dict[str, Any]] = deque(maxlen=40)
         self._turn_trace_lock = RLock()
+        # Presentation/privacy modes are scoped to the creator device that set
+        # them. Mary remains one canonical identity; only the ephemeral social
+        # projection changes per surface. The turn lock serializes temporary
+        # projection changes so one surface can never leak another's context.
+        self._surface_performance_modes: dict[str, str] = {}
+        # Lazily constructed so Core does not require voice dependencies unless
+        # an authenticated voice endpoint is actually used. Tests may inject a
+        # bounded fake through ``mobile_speech_service``.
+        self._mobile_speech_service = mobile_speech_service
         self.creator_surfaces = creator_surface_coordinator or CreatorSurfaceCoordinator(
             idle_seconds=creator_idle_seconds,
             sleep_seconds=creator_sleep_seconds,
@@ -289,17 +299,30 @@ class MaryCoreService:
                         "voice_input": bool(turn.voice_input),
                 }
                 application_run = self.application.run
-                if "turn_id" in inspect.signature(application_run).parameters:
-                    result = application_run(
-                        turn.text,
-                        turn_id=turn.turn_id,
-                        metadata=application_metadata,
-                    )
-                else:
-                    result = application_run(
-                        turn.text,
-                        metadata=application_metadata,
-                    )
+                manager = getattr(self.mary, "performance_context", None)
+                previous_performance_mode = str(
+                    getattr(manager, "mode", "private") or "private"
+                )
+                scoped_performance_mode = self._surface_performance_modes.get(
+                    str(turn.device_id or "")
+                )
+                if scoped_performance_mode and callable(getattr(manager, "set_mode", None)):
+                    manager.set_mode(scoped_performance_mode)
+                try:
+                    if "turn_id" in inspect.signature(application_run).parameters:
+                        result = application_run(
+                            turn.text,
+                            turn_id=turn.turn_id,
+                            metadata=application_metadata,
+                        )
+                    else:
+                        result = application_run(
+                            turn.text,
+                            metadata=application_metadata,
+                        )
+                finally:
+                    if scoped_performance_mode and callable(getattr(manager, "set_mode", None)):
+                        manager.set_mode(previous_performance_mode)
             if trace is not None:
                 trace.set_turn_id(result.turn_id)
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
@@ -1817,12 +1840,15 @@ class MaryCoreService:
                 )
 
             if action.action == "performance.context.status":
-                return _json_safe(self.mary.performance_context.status())
+                return _json_safe(
+                    self._performance_context_status(action.device_id)
+                )
 
             if action.action == "performance.context.set":
                 return _json_safe(
-                    self.mary.performance_context.set_mode(
-                        str(values.get("mode") or "private")
+                    self._set_performance_context(
+                        action.device_id,
+                        str(values.get("mode") or "private"),
                     )
                 )
 
@@ -1873,6 +1899,86 @@ class MaryCoreService:
                 })
 
         raise ValueError(f"Unsupported runtime action: {action.action}")
+
+    def _performance_context_status(self, device_id: str | None) -> dict[str, Any]:
+        """Return the presentation context for one creator surface/device.
+
+        This is deliberately ephemeral. It never creates another Mary identity
+        or persists a mode into canonical memory/relationship state.
+        """
+
+        manager = getattr(self.mary, "performance_context", None)
+        if not callable(getattr(manager, "status", None)):
+            return {
+                "mode": "private",
+                "enabled": False,
+                "scope": "device",
+                "scope_id": str(device_id or "unknown-device")[:160],
+            }
+        scope_id = str(device_id or "unknown-device")[:160]
+        desired = self._surface_performance_modes.get(scope_id)
+        if not desired:
+            payload = dict(manager.status() or {})
+        else:
+            previous = str(getattr(manager, "mode", "private") or "private")
+            manager.set_mode(desired)
+            try:
+                payload = dict(manager.status() or {})
+            finally:
+                manager.set_mode(previous)
+        payload.update({
+            "scope": "device",
+            "scope_id": scope_id,
+            "canonical_identity": "mary_core",
+        })
+        return payload
+
+    def _set_performance_context(
+        self,
+        device_id: str | None,
+        mode: str,
+    ) -> dict[str, Any]:
+        manager = getattr(self.mary, "performance_context", None)
+        if not callable(getattr(manager, "set_mode", None)):
+            raise RuntimeError("Mary performance context is unavailable.")
+        scope_id = str(device_id or "unknown-device")[:160]
+        previous = str(getattr(manager, "mode", "private") or "private")
+        candidate = dict(manager.set_mode(mode) or {})
+        normalized = str(candidate.get("mode") or "private")
+        manager.set_mode(previous)
+        self._surface_performance_modes[scope_id] = normalized
+        candidate.update({
+            "scope": "device",
+            "scope_id": scope_id,
+            "canonical_identity": "mary_core",
+        })
+        return candidate
+
+    def _speech_service(self):
+        if self._mobile_speech_service is None:
+            from mary.mobile.audio import MobileSpeechService
+            self._mobile_speech_service = MobileSpeechService()
+        return self._mobile_speech_service
+
+    def voice_status(self) -> dict[str, Any]:
+        """Return secret-free Core-side voice capability status."""
+
+        return _json_safe(self._speech_service().status())
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ):
+        """Synthesize Mary's configured voice without exposing provider keys."""
+
+        return self._speech_service().synthesize(
+            text,
+            user_text=user_text,
+            delivery_plan=delivery_plan,
+        )
 
     def _presence_pulse(self, values: dict[str, Any], *, device_id: str) -> dict[str, Any]:
         """Expose MaryApplication's canonical Presence cycle over Core protocol.

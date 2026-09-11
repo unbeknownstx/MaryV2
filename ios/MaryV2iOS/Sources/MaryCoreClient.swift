@@ -4,14 +4,24 @@ enum MaryClientError: LocalizedError {
     case invalidResponse
     case http(Int, String)
     case notConfigured
+    case emptyVoiceAudio
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Mary Core returned an invalid response."
         case let .http(code, body): return "Mary Core returned HTTP \(code): \(body)"
         case .notConfigured: return "Mary Core is not configured."
+        case .emptyVoiceAudio: return "Mary Core returned no voice audio."
         }
     }
+}
+
+struct MaryVoiceAudio {
+    let data: Data
+    let mimeType: String
+    let provider: String
+    let model: String
+    let cached: Bool
 }
 
 final class MaryCoreClient {
@@ -25,10 +35,15 @@ final class MaryCoreClient {
         self.deviceID = deviceID
     }
 
-    private func request(path: String, method: String = "GET", json: [String: Any]? = nil, authenticated: Bool = true) throws -> URLRequest {
+    private func request(
+        path: String,
+        method: String = "GET",
+        json: [String: Any]? = nil,
+        authenticated: Bool = true
+    ) throws -> URLRequest {
         var req = URLRequest(url: baseURL.appending(path: path))
         req.httpMethod = method
-        req.timeoutInterval = 35
+        req.timeoutInterval = 45
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if authenticated, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -40,14 +55,20 @@ final class MaryCoreClient {
         return req
     }
 
-    private func send(_ req: URLRequest) async throws -> Data {
+    private func sendResponse(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else { throw MaryClientError.invalidResponse }
+        guard let http = response as? HTTPURLResponse else {
+            throw MaryClientError.invalidResponse
+        }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw MaryClientError.http(http.statusCode, body)
         }
-        return data
+        return (data, http)
+    }
+
+    private func send(_ req: URLRequest) async throws -> Data {
+        try await sendResponse(req).0
     }
 
     private func object(_ data: Data) throws -> [String: Any] {
@@ -74,8 +95,14 @@ final class MaryCoreClient {
     func growthStatus() async throws -> [String: Any] { try await get("/v1/growth") }
     func nodes() async throws -> [String: Any] { try await get("/v1/nodes") }
     func surfaces() async throws -> [String: Any] { try await get("/v1/creator-surfaces/status") }
+    func voiceStatus() async throws -> [String: Any] { try await get("/v1/voice/status") }
 
-    func turn(text: String, conversationID: String, mode: ConversationMode, voiceInput: Bool = false) async throws -> TurnResponse {
+    func turn(
+        text: String,
+        conversationID: String,
+        mode: ConversationMode,
+        voiceInput: Bool = false
+    ) async throws -> TurnResponse {
         let payload: [String: Any] = [
             "text": text,
             "turn_id": "ios-\(UUID().uuidString.lowercased())",
@@ -85,8 +112,38 @@ final class MaryCoreClient {
             "voice_input": voiceInput,
             "requested_mode": mode.rawValue
         ]
-        let data = try await send(try request(path: "/v1/turn", method: "POST", json: payload))
+        let data = try await send(
+            try request(path: "/v1/turn", method: "POST", json: payload)
+        )
         return try JSONDecoder().decode(TurnResponse.self, from: data)
+    }
+
+    func synthesizeVoice(
+        text: String,
+        userText: String? = nil,
+        deliveryPlan: [String: Any] = [:]
+    ) async throws -> MaryVoiceAudio {
+        var payload: [String: Any] = [
+            "text": text,
+            "delivery_plan": deliveryPlan
+        ]
+        if let userText, !userText.isEmpty {
+            payload["user_text"] = userText
+        }
+        let req = try request(
+            path: "/v1/voice/synthesize",
+            method: "POST",
+            json: payload
+        )
+        let (data, response) = try await sendResponse(req)
+        guard !data.isEmpty else { throw MaryClientError.emptyVoiceAudio }
+        return MaryVoiceAudio(
+            data: data,
+            mimeType: response.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream",
+            provider: response.value(forHTTPHeaderField: "X-Mary-Voice-Provider") ?? "unknown",
+            model: response.value(forHTTPHeaderField: "X-Mary-Voice-Model") ?? "unknown",
+            cached: response.value(forHTTPHeaderField: "X-Mary-Voice-Cached") == "1"
+        )
     }
 
     func runtimeAction(_ action: String, args: [String: Any] = [:]) async throws -> [String: Any] {
@@ -112,7 +169,10 @@ final class MaryCoreClient {
     }
 
     func setPerformanceContext(_ mode: PerformanceMode) async throws -> PerformanceMode {
-        let json = try await runtimeAction("performance.context.set", args: ["mode": mode.rawValue])
+        let json = try await runtimeAction(
+            "performance.context.set",
+            args: ["mode": mode.rawValue]
+        )
         let raw = (json["mode"] as? String) ?? mode.rawValue
         return PerformanceMode(rawValue: raw) ?? mode
     }

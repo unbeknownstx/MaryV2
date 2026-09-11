@@ -112,43 +112,16 @@ struct ChatView: View {
                 .stroke(MaryTheme.cyan.opacity(0.10), lineWidth: 1)
                 .frame(width: height * 0.78, height: height * 0.78)
 
-            Group {
-                if let path = Bundle.main.path(forResource: "mary-reference", ofType: "jpeg"),
-                   let image = UIImage(contentsOfFile: path) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .saturation(1.08)
-                        .overlay(
-                            LinearGradient(
-                                colors: [.clear, MaryTheme.bg.opacity(0.90)],
-                                startPoint: .center,
-                                endPoint: .bottom
-                            )
-                        )
-                } else {
-                    ZStack {
-                        RadialGradient(
-                            colors: [MaryTheme.violet.opacity(0.30), .clear],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: height * 0.55
-                        )
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 54))
-                            .foregroundStyle(MaryTheme.cyan)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .clipped()
+            MaryStageArtwork(height: height)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .clipped()
 
             HStack(spacing: 7) {
-                Text(app.voice.isListening ? "LISTENING" : app.isSending ? "THINKING" : "IDLE")
+                Text(app.playback.isPlaying ? "SPEAKING" : app.voice.isListening ? "LISTENING" : app.voice.isTranscribing ? "TRANSCRIBING" : app.isSending ? "THINKING" : "IDLE")
                     .font(.system(size: 8, weight: .black))
                     .tracking(1.1)
-                    .foregroundStyle(app.voice.isListening ? MaryTheme.pink2 : MaryTheme.cyan)
+                    .foregroundStyle((app.voice.isListening || app.playback.isPlaying) ? MaryTheme.pink2 : MaryTheme.cyan)
                 Text(app.performanceMode.title)
                     .font(.system(size: 10, weight: .semibold))
             }
@@ -238,13 +211,9 @@ struct ChatView: View {
                     .onSubmit { Task { await app.send() } }
 
                 Button {
-                    if app.voice.isListening {
-                        app.voice.stop()
-                    } else {
-                        Task { await app.voice.start() }
-                    }
+                    Task { await app.toggleVoiceCapture() }
                 } label: {
-                    Image(systemName: app.voice.isListening ? "stop.fill" : "mic.fill")
+                    Image(systemName: app.voice.isListening ? "stop.fill" : app.voice.isTranscribing ? "waveform" : "mic.fill")
                         .foregroundStyle(app.voice.isListening ? MaryTheme.pink2 : MaryTheme.cyan)
                         .frame(width: 42, height: 42)
                         .background((app.voice.isListening ? MaryTheme.pink : MaryTheme.cyan).opacity(0.07), in: Circle())
@@ -260,7 +229,7 @@ struct ChatView: View {
                         .frame(width: 42, height: 42)
                         .background(MaryTheme.accent, in: Circle())
                 }
-                .disabled(app.isSending || app.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(app.isSending || app.voice.isTranscribing || app.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.horizontal, 9)
             .padding(.bottom, 7)

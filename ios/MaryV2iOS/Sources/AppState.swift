@@ -18,17 +18,24 @@ final class AppState: ObservableObject {
     @Published var showWorkspace = false
     @Published var activeWorkspace: WorkspaceKind?
     @Published var lastError: String?
+    @Published var lastVoiceError: String?
+    @Published var voiceProvider = "Core voice"
+    @Published var voiceServerAvailable = false
     @Published var dashboardData: [String: Any] = [:]
     @Published var workspaceData: [String: Any] = [:]
     @Published var liveData: [String: Any] = [:]
 
     let voice = VoiceCapture()
+    let playback = VoicePlayback()
     private var client: MaryCoreClient?
     private var renewTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     init() {
         voice.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        playback.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
     }
@@ -58,13 +65,14 @@ final class AppState: ObservableObject {
 
         do {
             let h = try await c.health()
-            coreLabel = (h["name"] as? String) ?? "mary-core"
-            coreVersion = (h["version"] as? String) ?? "13.3"
+            coreLabel = (h["service"] as? String) ?? (h["name"] as? String) ?? "mary-core"
+            coreVersion = (h["architecture"] as? String) ?? (h["version"] as? String) ?? "13.3"
             try await c.registerSurface()
             performanceMode = try await c.performanceContext()
             isConnected = true
             statusText = "Online"
             lastError = nil
+            await refreshVoiceStatus()
             await refreshHome()
             startRenewLoop()
         } catch {
@@ -97,6 +105,7 @@ final class AppState: ObservableObject {
         if explicitText == nil { draft = "" }
         messages.append(MaryMessage(role: .user, text: text))
         isSending = true
+        playback.stop()
 
         do {
             let result = try await client.turn(
@@ -109,14 +118,40 @@ final class AppState: ObservableObject {
             isConnected = true
             statusText = "Online"
             lastError = nil
+            isSending = false
+
+            if AppConfiguration.speakResponses, voiceServerAvailable {
+                await speakMaryResponse(result.response, userText: text)
+            }
         } catch {
             messages.append(MaryMessage(role: .system, text: error.localizedDescription))
             isConnected = false
             statusText = "Offline"
             lastError = error.localizedDescription
+            isSending = false
         }
+    }
 
-        isSending = false
+    func toggleVoiceCapture() async {
+        if voice.isListening {
+            let text = await voice.stopAndTranscribe()
+            if let error = voice.errorText, text == nil {
+                lastVoiceError = error
+                return
+            }
+            guard let text, !text.isEmpty else { return }
+            voice.transcript = text
+            await send(text: text, voiceInput: true)
+            voice.transcript = ""
+        } else {
+            playback.stop()
+            await voice.start()
+            if let error = voice.errorText {
+                lastVoiceError = error
+            } else {
+                lastVoiceError = nil
+            }
+        }
     }
 
     func sendVoiceTranscript() async {
@@ -124,6 +159,36 @@ final class AppState: ObservableObject {
         guard !text.isEmpty else { return }
         voice.transcript = ""
         await send(text: text, voiceInput: true)
+    }
+
+    func speakMaryResponse(_ text: String, userText: String? = nil) async {
+        guard let client, AppConfiguration.speakResponses else { return }
+        do {
+            let audio = try await client.synthesizeVoice(text: text, userText: userText)
+            voiceProvider = audio.provider
+            voiceServerAvailable = true
+            try playback.play(audio)
+            lastVoiceError = nil
+        } catch {
+            // Voice is optional presentation. A TTS outage must never make the
+            // canonical Core/chat surface appear offline.
+            lastVoiceError = error.localizedDescription
+        }
+    }
+
+    func refreshVoiceStatus() async {
+        guard let client else { return }
+        do {
+            let status = try await client.voiceStatus()
+            let tts = status["tts"] as? [String: Any] ?? [:]
+            voiceServerAvailable = (tts["enabled"] as? Bool) ?? false
+            voiceProvider = (tts["provider"] as? String) ?? "Core voice"
+            lastVoiceError = nil
+        } catch {
+            voiceServerAvailable = false
+            voiceProvider = "Core voice unavailable"
+            lastVoiceError = error.localizedDescription
+        }
     }
 
     func changePerformanceMode(_ mode: PerformanceMode) async {
@@ -173,7 +238,7 @@ final class AppState: ObservableObject {
             case .media:
                 liveData = try await client.integrationStatus()
             case .voiceAvatar:
-                liveData = try await client.conversationStatus()
+                liveData = try await client.voiceStatus()
             case .runtime:
                 liveData = try await client.dashboard()
             case .nodes:

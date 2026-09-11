@@ -351,7 +351,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   background:linear-gradient(90deg, rgba(6,8,20,.9) 0%, rgba(6,8,20,.18) 28%, rgba(6,8,20,.05) 67%, rgba(6,8,20,.45) 100%);
   display:flex; align-items:stretch; justify-content:flex-end;
 }
-.avatar-fallback img { width:100%; height:100%; object-fit:cover; object-position:center 40%; opacity:.72; filter:saturate(1.15) contrast(1.03); }
+.avatar-fallback .fallback-art-stack { position:absolute; inset:0; overflow:hidden; }
+.avatar-fallback .fallback-art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 40%; opacity:0; filter:saturate(1.15) contrast(1.03); animation:mary-fallback-art-cycle 30s ease-in-out infinite; }
+.avatar-fallback .fallback-art.art-a { animation-delay:0s; }
+.avatar-fallback .fallback-art.art-b { animation-delay:10s; object-position:center 35%; }
+.avatar-fallback .fallback-art.art-c { animation-delay:20s; object-position:center 42%; }
+@keyframes mary-fallback-art-cycle { 0%,26% { opacity:.78; transform:scale(1.01); } 32%,94% { opacity:0; transform:scale(1.035); } 100% { opacity:.78; transform:scale(1.01); } }
 .fallback-caption { position:absolute; left:20px; top:84px; background:rgba(5,10,27,.68); border:1px solid rgba(71,219,255,.35); box-shadow:var(--shadow-cyan); border-radius:10px; padding:10px 12px; display:grid; gap:2px; }
 .fallback-caption strong { color:var(--cyan); font-size:11px; }
 .fallback-caption span { color:#9ba9bd; font-size:8px; }
@@ -705,3 +710,5 @@ button, [role="button"], a, .nav-item, .game-card, .project-file, .action-button
 #main-stage[data-interaction-state="thinking"]::after,#main-stage[data-interaction-state="responding"]::after{animation-duration:1.2s;opacity:.82}
 #main-stage[data-interaction-state="speaking"]::after{animation-duration:2.1s;opacity:.76}
 #main-stage[data-interaction-state="interrupted"]::after{animation-duration:.72s;opacity:.88}
+
+@media (prefers-reduced-motion: reduce) { .avatar-fallback .fallback-art { animation:none; opacity:0; } .avatar-fallback .fallback-art.art-a { opacity:.78; } }

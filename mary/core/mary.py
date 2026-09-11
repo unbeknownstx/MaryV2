@@ -128,6 +128,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.turn_envelope import attach_turn_envelope
+from mary.runtime.current_work import build_current_work_projection
 from mary.runtime.turn_observability import (
     causal_operation_id,
     current_turn_trace,
@@ -924,7 +925,34 @@ class Mary:
                 ),
                 "mary_initiated": initiative_turn,
                 "performance_context": self.performance_context.status(),
+                "current_work": build_current_work_projection(self, workspace_context),
             })
+
+            # Ground Mary's awareness of the surface carrying *this* turn in
+            # transport facts rather than old memories or model inference. This
+            # is intentionally ephemeral/context-only and cannot become identity
+            # or memory authority.
+            turn_envelope = runtime_context.get("turn", {})
+            if isinstance(turn_envelope, dict):
+                surface = str(turn_envelope.get("surface") or "runtime")[:64]
+                surface_kind = {
+                    "ios": "native_ios_app",
+                    "ios_native": "native_ios_app",
+                    "mobile": "mobile_surface",
+                    "pwa": "mobile_web_pwa",
+                    "desktop": "desktop_app",
+                    "mac_desktop": "desktop_app",
+                    "cli": "terminal_client",
+                }.get(surface, surface or "runtime")
+                runtime_context["current_surface"] = {
+                    "surface": surface,
+                    "surface_kind": surface_kind,
+                    "device_id": str(turn_envelope.get("device_id") or "unknown-device")[:160],
+                    "transport": str(turn_envelope.get("transport") or "direct")[:64],
+                    "state_authority": "canonical_mary_core",
+                    "authority": "ephemeral_runtime_fact",
+                    "persistence": "none",
+                }
             if initiative_turn:
                 runtime_context["initiative_context"] = {
                     key: turn_values.get(key)
@@ -4572,6 +4600,22 @@ class Mary:
         # episodic record exists.
         return episodic + semantic
 
+    def current_work_projection(
+        self,
+        workspace: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded derived view of what Mary and her creator are doing now.
+
+        This is presentation/cognition context only.  It deliberately reuses
+        canonical workspace + shared-work evidence instead of creating another
+        project, identity, or memory store.
+        """
+
+        return build_current_work_projection(
+            self,
+            workspace,
+        )
+
     def memory_lifecycle_status(self) -> dict[str, Any]:
         """Return display-safe memory/relationship lifecycle observability."""
 
@@ -4953,6 +4997,7 @@ class Mary:
             "runtime_environment": self.runtime_environment.snapshot(),
             "conversation_learning": self.conversation_learning.status(),
             "conversation_sessions": self.dialogue.session_status(),
+            "current_work": self.current_work_projection(),
             "turn_policy": self.turn_policy.status(),
             "orchestration": {
                 "task_workspace": self.task_workspace.status(),

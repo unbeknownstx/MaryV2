@@ -74,6 +74,15 @@ class MaryEcosystem:
             "study": {**self.study.summary(), "due_cards": self.study.due_cards(limit=20)},
             "research": {**self.research.summary(), "threads": self.research.list(30)},
             "production": self.production.snapshot(),
+            "current_work": (
+                self.mary.current_work_projection({
+                    "command": {**self.command.summary(), "items": self.command.list(limit=12)},
+                    "focus": self.focus.snapshot(),
+                    "production": self.production.snapshot(),
+                })
+                if callable(getattr(self.mary, "current_work_projection", None))
+                else {}
+            ),
             "arcade": {"games": self.arcade.games()},
             "companion": self.companion_snapshot(),
             "metrics": self.metrics.snapshot(),
@@ -131,7 +140,7 @@ class MaryEcosystem:
         windows, host paths, and local integration availability.
         """
 
-        return {
+        snapshot = {
             "command": {
                 **self.command.summary(),
                 "items": self.command.list(limit=60),
@@ -176,6 +185,12 @@ class MaryEcosystem:
                 "device_local_capabilities_included": False,
             },
         }
+        snapshot["current_work"] = (
+            self.mary.current_work_projection(snapshot)
+            if callable(getattr(self.mary, "current_work_projection", None))
+            else {}
+        )
+        return snapshot
 
     def apply_workspace_action(
         self,

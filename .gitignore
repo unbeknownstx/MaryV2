@@ -83,3 +83,6 @@ __MACOSX/
 /models/
 /.models/
 /model_cache/
+
+# Local native-iOS installer backups are recovery artifacts, not source.
+/ios/MaryV2iOS.backup-*/

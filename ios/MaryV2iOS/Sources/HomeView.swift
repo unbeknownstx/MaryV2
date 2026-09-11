@@ -31,6 +31,32 @@ struct HomeView: View {
                     }
                 }
 
+                if let work = app.workspaceData["current_work"] as? [String: Any],
+                   (work["active"] as? Bool) == true {
+                    MaryPanel {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                TinyCaps(text: "CURRENT WORK")
+                                Spacer()
+                                Text(String(describing: work["stage"] ?? "CURRENT").uppercased())
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(MaryTheme.cyan)
+                            }
+
+                            Text(String(describing: work["project"] ?? "Shared work"))
+                                .font(.title3.bold())
+
+                            Text(String(describing: work["summary"] ?? ""))
+                                .font(.subheadline)
+                                .foregroundStyle(MaryTheme.muted)
+
+                            Text("Derived from canonical workspace + shared-work continuity")
+                                .font(.caption2)
+                                .foregroundStyle(MaryTheme.muted.opacity(0.8))
+                        }
+                    }
+                }
+
                 MaryPanel {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {

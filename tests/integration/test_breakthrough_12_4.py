@@ -46,6 +46,9 @@ def test_shared_work_question_routes_to_durable_relationship_recall(tmp_path, mo
     prompts = (
         "what do you remember about what we've been working on together?",
         "remind me what we've actually been building together lately",
+        "what are we working on?",
+        "what have we been working on today?",
+        "where are we with MaryV2?",
     )
 
     for prompt in prompts:
@@ -53,6 +56,27 @@ def test_shared_work_question_routes_to_durable_relationship_recall(tmp_path, mo
         assert intent.intent_type == IntentType.RELATIONSHIP_QUERY
         assert intent.parameters["relationship_query_type"] == "shared_work"
 
+
+
+def test_exact_current_work_question_uses_durable_shared_work_not_model_guess(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _application()
+    mary = app.mary
+
+    learned = mary._learn_shared_work_statement(
+        "We were working on you on the Mac and now have you an iPhone app.",
+        intent=_conversation_intent(),
+    )
+    assert learned is not None
+    assert learned["recorded"] is True
+
+    result = _run(app, "What are we working on?")
+
+    assert result.intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert result.intent.parameters["relationship_query_type"] == "shared_work"
+    assert result.reasoning.metadata["llm_skipped"] is True
+    assert "iphone app" in result.final_response.lower()
+    assert mary._last_memory_recall_trace["selected_count"] >= 1
 
 def test_macbook_mixed_turn_becomes_grounded_shared_work_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

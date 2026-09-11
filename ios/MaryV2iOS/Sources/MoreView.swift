@@ -258,12 +258,49 @@ struct WorkspaceDetailView: View {
             }
 
         case .voiceAvatar:
-            MaryPanel {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Native push-to-talk is enabled in Chat.")
-                    Text("Mary's canonical ElevenLabs playback still belongs behind Core; provider keys stay off the phone.")
-                        .font(.caption)
-                        .foregroundStyle(MaryTheme.muted)
+            VStack(spacing: 12) {
+                MaryPanel {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            TinyCaps(text: "MARY VOICE")
+                            Spacer()
+                            Text(app.voiceServerAvailable ? app.voiceProvider.uppercased() : "CORE VOICE OFFLINE")
+                                .font(.caption2.bold())
+                                .foregroundStyle(app.voiceServerAvailable ? MaryTheme.cyan : MaryTheme.orange)
+                        }
+                        DataRow(label: "Playback", value: app.voiceServerAvailable ? "Mary Core → iPhone" : "Text only")
+                        DataRow(label: "Microphone", value: "On-device transcription")
+                        Text("Provider credentials remain on Mary Core. Raw microphone audio stays on this iPhone and only the transcript is sent to Core.")
+                            .font(.caption)
+                            .foregroundStyle(MaryTheme.muted)
+                        HStack {
+                            Button("Refresh") { Task { await app.refreshVoiceStatus() } }
+                                .buttonStyle(.bordered)
+                            Button("Test Mary voice") {
+                                Task { await app.speakMaryResponse("Hey, I’m here. This is my Core voice playing on your iPhone.") }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MaryTheme.violet)
+                            .disabled(!app.voiceServerAvailable)
+                        }
+                    }
+                }
+
+                MaryPanel {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            TinyCaps(text: "AVATAR / STAGE FALLBACK")
+                            Spacer()
+                            Text("LOCAL ART")
+                                .font(.caption2.bold())
+                                .foregroundStyle(MaryTheme.pink2)
+                        }
+                        MaryStageArtwork(height: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        Text("The native iPhone surface uses Mary's generated local artwork until a live VRM renderer is added. Desktop keeps the VRM when available and falls back to the same art set if loading fails.")
+                            .font(.caption)
+                            .foregroundStyle(MaryTheme.muted)
+                    }
                 }
             }
 
