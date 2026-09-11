@@ -59,7 +59,7 @@ struct VoiceCallView: View {
                         Image(systemName: app.voice.isListening ? "stop.fill" : "mic.fill")
                             .font(.system(size: 30, weight: .bold))
                             .frame(width: 76, height: 76)
-                            .background(app.voice.isListening ? Color.red : MaryTheme.gradient, in: Circle())
+                            .background(app.voice.isListening ? AnyShapeStyle(Color.red) : AnyShapeStyle(MaryTheme.gradient), in: Circle())
                             .foregroundStyle(.white)
                     }
 
