@@ -83,10 +83,7 @@ final class MaryCoreClient {
         try object(await send(try request(path: path, method: "POST", json: json)))
     }
 
-    func health() async throws -> [String: Any] {
-        try await get("/v1/health", authenticated: false)
-    }
-
+    func health() async throws -> [String: Any] { try await get("/v1/health", authenticated: false) }
     func state() async throws -> [String: Any] { try await get("/v1/state") }
     func dashboard() async throws -> [String: Any] { try await get("/v1/dashboard") }
     func workspace() async throws -> [String: Any] { try await get("/v1/workspace") }
@@ -110,7 +107,7 @@ final class MaryCoreClient {
             "device_id": deviceID,
             "surface": "ios_native",
             "voice_input": voiceInput,
-            "requested_mode": mode.rawValue
+            "requested_mode": mode.rawValue,
         ]
         let data = try await send(
             try request(path: "/v1/turn", method: "POST", json: payload)
@@ -125,23 +122,18 @@ final class MaryCoreClient {
     ) async throws -> MaryVoiceAudio {
         var payload: [String: Any] = [
             "text": text,
-            "delivery_plan": deliveryPlan
+            "delivery_plan": deliveryPlan,
         ]
-        if let userText, !userText.isEmpty {
-            payload["user_text"] = userText
-        }
-        let req = try request(
-            path: "/v1/voice/synthesize",
-            method: "POST",
-            json: payload
+        if let userText, !userText.isEmpty { payload["user_text"] = userText }
+        let (data, response) = try await sendResponse(
+            try request(path: "/v1/voice/synthesize", method: "POST", json: payload)
         )
-        let (data, response) = try await sendResponse(req)
         guard !data.isEmpty else { throw MaryClientError.emptyVoiceAudio }
         return MaryVoiceAudio(
             data: data,
             mimeType: response.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream",
-            provider: response.value(forHTTPHeaderField: "X-Mary-Voice-Provider") ?? "unknown",
-            model: response.value(forHTTPHeaderField: "X-Mary-Voice-Model") ?? "unknown",
+            provider: response.value(forHTTPHeaderField: "X-Mary-Voice-Provider") ?? "Core voice",
+            model: response.value(forHTTPHeaderField: "X-Mary-Voice-Model") ?? "",
             cached: response.value(forHTTPHeaderField: "X-Mary-Voice-Cached") == "1"
         )
     }
@@ -150,7 +142,7 @@ final class MaryCoreClient {
         try await post("/v1/runtime/action", json: [
             "action": action,
             "args": args,
-            "device_id": deviceID
+            "device_id": deviceID,
         ])
     }
 
@@ -158,14 +150,30 @@ final class MaryCoreClient {
         try await post("/v1/workspace/action", json: [
             "action": action,
             "args": args,
-            "device_id": deviceID
+            "device_id": deviceID,
         ])
+    }
+
+    func dispatchCapability(
+        _ capability: String,
+        intent: String,
+        args: [String: Any]
+    ) async throws -> [String: Any] {
+        try await post("/v1/nodes/task/dispatch", json: [
+            "capability": capability,
+            "intent": intent,
+            "args": args,
+            "device_id": deviceID,
+        ])
+    }
+
+    func capabilityTaskStatus(_ taskID: String) async throws -> [String: Any] {
+        try await get("/v1/nodes/task/\(taskID)")
     }
 
     func performanceContext() async throws -> PerformanceMode {
         let json = try await runtimeAction("performance.context.status")
-        let raw = (json["mode"] as? String) ?? "private"
-        return PerformanceMode(rawValue: raw) ?? .private
+        return PerformanceMode(rawValue: CoreProjection.string(json["mode"])) ?? .private
     }
 
     func setPerformanceContext(_ mode: PerformanceMode) async throws -> PerformanceMode {
@@ -173,27 +181,72 @@ final class MaryCoreClient {
             "performance.context.set",
             args: ["mode": mode.rawValue]
         )
-        let raw = (json["mode"] as? String) ?? mode.rawValue
-        return PerformanceMode(rawValue: raw) ?? mode
+        return PerformanceMode(rawValue: CoreProjection.string(json["mode"])) ?? mode
+    }
+
+    private func surfacePayload(
+        foreground: Bool,
+        visible: Bool,
+        activity: Bool,
+        leaseSeconds: Int = 120
+    ) -> [String: Any] {
+        [
+            "surface_id": deviceID,
+            "visible": visible,
+            "foreground": foreground,
+            "activity": activity,
+            "lease_seconds": leaseSeconds,
+        ]
     }
 
     func registerSurface(foreground: Bool = true) async throws {
-        _ = try await post("/v1/creator-surfaces/register", json: [
-            "surface_id": deviceID,
-            "visible": true,
-            "foreground": foreground,
-            "activity": true,
-            "lease_seconds": 120
-        ])
+        _ = try await post(
+            "/v1/creator-surfaces/register",
+            json: surfacePayload(
+                foreground: foreground,
+                visible: foreground,
+                activity: true
+            )
+        )
     }
 
     func renewSurface(foreground: Bool = true) async throws {
-        _ = try await post("/v1/creator-surfaces/renew", json: [
-            "surface_id": deviceID,
-            "visible": true,
-            "foreground": foreground,
-            "activity": true,
-            "lease_seconds": 120
-        ])
+        _ = try await post(
+            "/v1/creator-surfaces/renew",
+            json: surfacePayload(
+                foreground: foreground,
+                visible: foreground,
+                activity: false
+            )
+        )
+    }
+
+    func setSurfaceVisibility(foreground: Bool, visible: Bool) async throws {
+        _ = try await post(
+            "/v1/creator-surfaces/visibility",
+            json: surfacePayload(
+                foreground: foreground,
+                visible: visible,
+                activity: foreground
+            )
+        )
+    }
+
+    func wakeSurface() async throws {
+        _ = try await post(
+            "/v1/creator-surfaces/wake",
+            json: surfacePayload(
+                foreground: true,
+                visible: true,
+                activity: true
+            )
+        )
+    }
+
+    func disconnectSurface() async throws {
+        _ = try await post(
+            "/v1/creator-surfaces/disconnect",
+            json: ["surface_id": deviceID]
+        )
     }
 }
