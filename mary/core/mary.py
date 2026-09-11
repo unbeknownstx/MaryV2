@@ -1787,7 +1787,7 @@ class Mary:
         state = self.performance_hardening.observe_emotional_state(
             state,
             source="conversation_emotion",
-            cause=input_text,
+            cause="conversation_appraisal",
         )
         result.metadata["emotion_appraisal"] = appraisal.to_dict()
         result.metadata["emotional_state"] = state.to_dict()
