@@ -59,6 +59,7 @@ from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
 from mary.runtime.performance_hardening import install_performance_hardening
+from mary.runtime.performance_profiles import RuntimePerformanceProfiles
 
 from mary.audio import (
     AudioManager,
@@ -140,8 +141,9 @@ from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.root_authority import MaryRootAuthority
 from mary.runtime.environment import RuntimeEnvironment
 from mary.realtime import RealtimeInteractionCoordinator
-from mary.distributed import NodeRegistry
-from mary.perception import PerceptionDirector
+from mary.distributed import NodeRegistry, CapabilityInvocationLedger
+from mary.perception import PerceptionDirector, BrowserContextSensor
+from mary.game_control import GameActionRouter
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 from mary.mind import CharacterMind
 from mary.continuity import ExperientialContinuityRuntime
@@ -336,6 +338,13 @@ class Mary:
         # node transport without moving Mary's identity into a machine record.
         self.node_registry = NodeRegistry.with_local_runtime(self.runtime_environment)
 
+        # Process-local capability orchestration helpers. They coordinate typed
+        # capability retries and semantic game intent but never authorize device
+        # execution or own Mary state.
+        self.capability_invocations = CapabilityInvocationLedger()
+        self.game_action_router = GameActionRouter(self.node_registry)
+        self.performance_profiles = RuntimePerformanceProfiles()
+
         # External image/video/audio generation services are described through
         # a secret-free registry. It can quote/advertise capabilities but never
         # executes or authorizes spending by itself.
@@ -345,6 +354,7 @@ class Mary:
         # are never stored by this boundary and observations enter the same
         # bounded attention bus as other realtime context.
         self.perception_director = PerceptionDirector(self.realtime.attention)
+        self.browser_context_sensor = BrowserContextSensor(self.perception_director)
 
         # Ephemeral runtime metadata only. This is intentionally not persisted:
         # it records which provider/model generated the most recent successful
