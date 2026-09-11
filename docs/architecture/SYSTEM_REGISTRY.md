@@ -4,8 +4,9 @@ This registry is the current architectural index for MaryV2. Historical stage/re
 
 Companion architecture maps: [data and authority flows](data_flow.md),
 [13.2 reconciliation inventory](RECONCILIATION_13_2.md), the
-[13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md), and
-[13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md).
+[13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md),
+[13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md), and
+[13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -32,6 +33,11 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
 | MCP capability fabric | `mary.distributed.mcp_fabric`, `mary.desktop.device_node` | ACTIVE OPTIONAL 13.4 | OpenDesign/Scrapling/Langflow over preconfigured Streamable HTTP(S); node-local credentials, lazy discovery, exact tool allowlists, sanitized results; no shell/stdio launcher. |
+| Incremental response / sentence TTS | `mary.realtime.streaming`, `mary.voice.streaming_tts` | ACTIVE PRIMITIVES 13.6 | Provider-neutral deltas, sentence assembly, cooperative cancellation, bounded ordered synthesis-ahead; one-shot providers remain valid. |
+| Performer integrations | `mary.streaming.bridge`, `mary.streaming.config` | ACTIVE CONTRACT 13.6 | Twitch input is untrusted audience context; outbound chat/OBS writes require explicit bounded permissions. |
+| Capability invocation coordination | `mary.distributed.invocations` | ACTIVE SUPPORT 13.6 | Process-local idempotency/retry primitive only; no authorization and no canonical-result authority. |
+| Capability simulator | `mary.distributed.simulator` | TEST/DEVELOPMENT 13.6 | Deterministic fake adapter only; never registers as Mary. |
+| Semantic game control | `mary.game_control` | ACTIVE ROUTING CONTRACT 13.6 | High-level intent routes through NodeRegistry; raw key/mouse execution excluded and device permission still required. |
 | OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Sandboxed software-engineering worker boundary; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
 | Platform readiness | `scripts.platform_readiness`, `requirements-host-extras.txt` | ACTIVE OPTIONAL 13.5 | Read-only Mac/Windows/Linux capability/config presence; optional packages never gate Core startup; no shell execution. |
 | Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
@@ -42,6 +48,11 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. |
 | Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling. |
 | Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. |
+| Browser context sensor | `mary.perception.browser` | ACTIVE BOUNDED 13.6 | Page/media summaries enter PerceptionDirector after URL/metadata sanitization; no browser-owned memory/personality. |
+| Runtime performance profiles | `mary.runtime.performance_profiles` | ACTIVE POLICY 13.6 | Light/balanced/performance resource targets only; explicitly cannot switch identity. |
+| Realtime activity projection | `mary.realtime.brain_activity` | ACTIVE READ-ONLY 13.6 | Bounded floor/attention/decision labels for UI/debugging; no chain-of-thought or write authority. |
+| Turn latency evidence | `mary.runtime.turn_timing` | ACTIVE DIAGNOSTIC 13.6 | Secret-free named stage timings; diagnostic only. |
+| Retrieval evaluation | `mary.mind.retrieval_evaluation` | ACTIVE EVALUATION 13.6 | Ranking quality metrics over derived retrieval; cannot promote memory truth. |
 | Creative Studio | `mary.creative`, `mary.desktop.projects` | ACTIVE BASELINE | Cross-media planning/workspace with creator provenance and approvals. |
 | Creative services | `mary.creative.services` | ACTIVE CONTRACT | Capability/cost discovery; real vendor execution adapters remain service-specific. |
 | Unbeknownst workspace | `projects/unbeknownst/` | CANONICAL PROJECT HOME | Book/manga/animation/audio/assets/production organization. |
