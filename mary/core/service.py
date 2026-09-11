@@ -665,6 +665,11 @@ class MaryCoreService:
                 if callable(getattr(getattr(self.mary, "performance_context", None), "status", None))
                 else {"mode": "private", "enabled": False}
             ),
+            "performance_hardening": (
+                self.mary.performance_hardening.snapshot()
+                if callable(getattr(getattr(self.mary, "performance_hardening", None), "snapshot", None))
+                else {"enabled": False}
+            ),
             "character": {
                 "sourcebook": (
                     self.mary.character_sourcebook.snapshot()
@@ -683,6 +688,11 @@ class MaryCoreService:
                 else {}
             ),
             "training": self.mary.training_feedback.status() if hasattr(self.mary, "training_feedback") else {},
+            "experiential_continuity": (
+                self.mary.experiential_continuity.status()
+                if callable(getattr(getattr(self.mary, "experiential_continuity", None), "status", None))
+                else {"enabled": False}
+            ),
             "creative_services": (
                 self.mary.creative_services.snapshot()
                 if callable(getattr(getattr(self.mary, "creative_services", None), "snapshot", None))
@@ -769,7 +779,9 @@ class MaryCoreService:
         payload["retrieval"] = state.get("retrieval", {})
         payload["perception"] = state.get("perception", {})
         payload["performance_context"] = state.get("performance_context", {})
+        payload["performance_hardening"] = state.get("performance_hardening", {})
         payload["training"] = state.get("training", {})
+        payload["experiential_continuity"] = state.get("experiential_continuity", {})
         payload["production"] = state.get("production", {})
         payload["integration"] = state.get("integration", {})
         payload["mary_lifecycle"] = state.get("mary_lifecycle", {})
@@ -1827,6 +1839,13 @@ class MaryCoreService:
 
             if action.action == "mind.maintenance":
                 return _json_safe(self.mary.mind.maintenance())
+
+            if action.action == "continuity.status":
+                return _json_safe(self.mary.experiential_continuity.status())
+
+            if action.action == "continuity.maintenance":
+                self.enforce_execution_policy("continuity.maintenance")
+                return _json_safe(self.mary.experiential_continuity.maintenance())
 
             if action.action == "llm.probe":
                 return _json_safe(self._probe_llm_provider(values))

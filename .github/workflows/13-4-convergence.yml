@@ -1,0 +1,85 @@
+name: MaryV2 13.4 convergence
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      MARY_RUN_LIVE_TESTS: "0"
+      MARY_ENVIRONMENT: "test"
+      MARY_AUTONOMOUS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: "pip"
+      - name: Install desktop runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpulse0 \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+      - name: Install MaryV2
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
+          if [ -f requirements-desktop.txt ]; then python -m pip install -r requirements-desktop.txt; fi
+      - name: Compile active Python
+        run: python -m compileall -q mary scripts tests
+      - name: Repository structure
+        run: python -m scripts.verify_repository_structure
+      - name: Focused 13.4 integration tests
+        run: |
+          python -m pytest -q             tests/protocol             tests/runtime/test_current_work_projection_13_4.py             tests/desktop/test_mcp_node_executor_13_4.py             tests/distributed/test_mcp_fabric_13_4.py             tests/distributed/test_mcp_permissions_13_4.py             tests/distributed/test_mcp_task_broker_13_4.py
+      - name: Full deterministic suite
+        run: python -m pytest -q
+
+  web-syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Mobile JavaScript syntax
+        run: |
+          node --check mobile_web/app.js
+          node --check mobile_native/MaryMobile/www/app.js
+
+
+  ios-native-build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate native iPhone project
+        working-directory: ios/MaryV2iOS
+        run: xcodegen generate
+      - name: Build native iPhone app
+        working-directory: ios/MaryV2iOS
+        run: |
+          xcodebuild \
+            -project MaryV2iOS.xcodeproj \
+            -scheme MaryV2iOS \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build

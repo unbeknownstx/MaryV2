@@ -74,7 +74,7 @@ class NodeDescriptor:
 
 
 class NodeRegistry:
-    VERSION = "13.3"
+    VERSION = "13.4"
 
     def __init__(self, *, stale_after: float = 90.0) -> None:
         self.stale_after = max(10.0, float(stale_after))

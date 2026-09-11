@@ -15,7 +15,12 @@ from time import monotonic
 from typing import Any
 from urllib.request import Request, urlopen
 
-from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
+from mary.distributed import (
+    CapabilityDescriptor,
+    DeviceExecutionPermissions,
+    MCP_CAPABILITIES,
+    MCPFabric,
+)
 from mary.llm.interface import (
     GenerationCost,
     GenerationOperation,
@@ -107,7 +112,11 @@ def _llama_cpp_capability() -> CapabilityDescriptor | None:
         },
     )
 
-def desktop_capabilities(application: Any, bridge: Any) -> list[CapabilityDescriptor]:
+def desktop_capabilities(
+    application: Any,
+    bridge: Any,
+    permissions: DeviceExecutionPermissions | None = None,
+) -> list[CapabilityDescriptor]:
     """Build a bounded, path-free advertisement of Desktop-local abilities."""
 
     search = getattr(getattr(application, "ecosystem", None), "search", None)
@@ -162,6 +171,8 @@ def desktop_capabilities(application: Any, bridge: Any) -> list[CapabilityDescri
     llama_cpp = _llama_cpp_capability()
     if llama_cpp is not None:
         items.append(llama_cpp)
+    if permissions is not None:
+        items.extend(MCPFabric(permissions).capability_descriptors())
     return items
 
 
@@ -176,6 +187,17 @@ def headless_local_llm_capabilities() -> list[CapabilityDescriptor]:
     if llama_cpp is not None:
         items.append(llama_cpp)
     return items
+
+
+def headless_node_capabilities(
+    permissions: DeviceExecutionPermissions,
+) -> list[CapabilityDescriptor]:
+    """Return all configured bounded executors for a headless capability node."""
+
+    return [
+        *headless_local_llm_capabilities(),
+        *MCPFabric(permissions).capability_descriptors(),
+    ]
 
 
 def headless_ollama_capabilities() -> list[CapabilityDescriptor]:
@@ -200,6 +222,7 @@ class DesktopCapabilityNodeAgent:
         task_poll_seconds: float = 0.0,
         task_wait_seconds: float = 20.0,
         permissions: DeviceExecutionPermissions | None = None,
+        mcp_fabric: MCPFabric | None = None,
     ) -> None:
         self.gateway = gateway
         self.application = application
@@ -210,6 +233,7 @@ class DesktopCapabilityNodeAgent:
         self.task_poll_seconds = max(0.0, float(task_poll_seconds))
         self.task_wait_seconds = max(1.0, min(25.0, float(task_wait_seconds)))
         self.permissions = permissions or DeviceExecutionPermissions()
+        self._mcp_fabric = mcp_fabric or MCPFabric(self.permissions)
         self.display_name = (
             os.getenv("MARY_NODE_NAME", "").strip()
             or os.getenv("COMPUTERNAME", "").strip()
@@ -227,7 +251,7 @@ class DesktopCapabilityNodeAgent:
                     "Desktop capability discovery requires application and bridge, "
                     "or an explicit bounded capabilities list."
                 )
-            self._capabilities = desktop_capabilities(application, bridge)
+            self._capabilities = desktop_capabilities(application, bridge, self.permissions)
         else:
             self._capabilities = list(capabilities)
         self._stop = Event()
@@ -297,6 +321,7 @@ class DesktopCapabilityNodeAgent:
             "task_delivery": "long_poll",
             "capabilities": [item.to_dict() for item in self._capabilities],
             "allowed_execution_capabilities": sorted(self.permissions.allowed()),
+            "mcp": self._mcp_fabric.status(),
             "execution_authorized": False,
             "execution_default": "deny",
             "last_task": dict(self._last_task),
@@ -329,6 +354,17 @@ class DesktopCapabilityNodeAgent:
             self._last_task["status"] = "rejected"
             return result
 
+        if capability in MCP_CAPABILITIES:
+            tool = str(dict(task.get("args") or {}).get("tool") or "").strip()
+            if not self.permissions.is_mcp_tool_allowed(capability, tool):
+                result = self.gateway.complete_capability_task(
+                    task_id,
+                    status="rejected",
+                    error=f"Local MCP tool permission does not allow {capability}/{tool}.",
+                )
+                self._last_task["status"] = "rejected"
+                return result
+
         try:
             if capability == "personal_search":
                 result_payload = self._execute_personal_search(dict(task.get("args") or {}))
@@ -336,6 +372,8 @@ class DesktopCapabilityNodeAgent:
                 result_payload = self._execute_ollama(dict(task.get("args") or {}))
             elif capability == "llm.llama_cpp":
                 result_payload = self._execute_llama_cpp(dict(task.get("args") or {}))
+            elif capability in MCP_CAPABILITIES:
+                result_payload = self._execute_mcp(capability, dict(task.get("args") or {}))
             else:
                 raise ValueError(f"No bounded device executor exists for {capability}.")
             result = self.gateway.complete_capability_task(
@@ -359,6 +397,19 @@ class DesktopCapabilityNodeAgent:
             except Exception:
                 return {"ok": False, "error": error}
 
+
+    def _execute_mcp(self, capability: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Execute one exact allow-listed tool on one configured MCP server."""
+
+        tool = str(args.get("tool") or "").strip()
+        arguments = args.get("arguments", {})
+        if not isinstance(arguments, dict):
+            raise ValueError("MCP task arguments must be a JSON object.")
+        return self._mcp_fabric.execute(
+            capability,
+            tool=tool,
+            arguments=dict(arguments),
+        )
 
     def _execute_ollama(self, args: dict[str, Any]) -> dict[str, Any]:
         """Run one bounded chat generation through the PC's configured Ollama."""

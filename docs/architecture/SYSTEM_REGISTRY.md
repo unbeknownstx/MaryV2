@@ -2,8 +2,9 @@
 
 This registry is the current architectural index for MaryV2. Historical stage/release documents live under `docs/history/` and do not override this map.
 
-Companion architecture maps: [data and authority flows](data_flow.md) and
-[13.2 reconciliation inventory](RECONCILIATION_13_2.md).
+Companion architecture maps: [data and authority flows](data_flow.md),
+[13.2 reconciliation inventory](RECONCILIATION_13_2.md), and the
+[13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -27,8 +28,10 @@ Companion architecture maps: [data and authority flows](data_flow.md) and
 | Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional local capability; headless Windows node supported. |
 | Research/evidence | `mary.learning`, `mary.tools.web` | ACTIVE | External evidence remains provenance-bearing and temporary until accepted. |
 | Retrieval/reservoir | `mary.mind` | ACTIVE SUPPORT | FTS/vector/cache layers are derived, not truth authority. |
-| Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated. |
+| Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
+| MCP capability fabric | `mary.distributed.mcp_fabric`, `mary.desktop.device_node` | ACTIVE OPTIONAL 13.4 | OpenDesign/Scrapling/Langflow over preconfigured Streamable HTTP(S); node-local credentials, lazy discovery, exact tool allowlists, sanitized results; no shell/stdio launcher. |
+| OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Future sandboxed software-engineering worker; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
 | Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
 | Desktop | `mary.desktop`, `desktop/` | ACTIVE | Presentation/capability surface. |
 | Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE | Remote surface over Core. |

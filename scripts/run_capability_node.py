@@ -15,7 +15,7 @@ from threading import Event
 
 from dotenv import load_dotenv
 
-from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_local_llm_capabilities
+from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_node_capabilities
 from mary.distributed import DeviceExecutionPermissions
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
 
@@ -32,15 +32,18 @@ def main(argv: list[str] | None = None) -> int:
 
     permissions = DeviceExecutionPermissions()
     allowed = permissions.allowed()
-    available = headless_local_llm_capabilities()
+    available = headless_node_capabilities(permissions)
     capabilities = [item for item in available if item.name in allowed]
     if not capabilities:
         available_names = [item.name for item in available]
-        print("No executable local LLM capability is both available and locally allowed.")
-        print(f"Detected: {', '.join(available_names) if available_names else 'none'}")
+        print("No bounded capability is both configured/detected and locally allowed.")
+        print(f"Detected/configured: {', '.join(available_names) if available_names else 'none'}")
         print("Allow one explicitly, for example:")
         print("  python -m scripts.node_permissions allow llm.llama_cpp")
         print("  python -m scripts.node_permissions allow llm.ollama")
+        print("  python -m scripts.node_permissions allow mcp.opendesign")
+        print("MCP capabilities also require an exact per-tool allow:")
+        print("  python -m scripts.node_permissions allow-tool opendesign recommend_references")
         return 2
 
     device_id = (
@@ -127,7 +130,10 @@ def main(argv: list[str] | None = None) -> int:
     print("Core authority:   remote / canonical")
     print("capabilities:     " + ", ".join(item.name for item in capabilities))
     for item in capabilities:
-        print(f"  {item.name}: {item.metadata.get('configured_model') or item.metadata.get('runtime') or 'ready'}")
+        print(
+            f"  {item.name}: "
+            f"{item.metadata.get('configured_model') or item.metadata.get('runtime') or item.metadata.get('server') or item.readiness}"
+        )
     print("Mary identity:    NOT OWNED BY THIS NODE")
     print("Press Ctrl+C to stop.")
     try:

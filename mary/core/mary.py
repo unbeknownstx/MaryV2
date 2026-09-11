@@ -58,6 +58,7 @@ from mary.expression.performance_packet import build_performance_packet
 from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
+from mary.runtime.performance_hardening import install_performance_hardening
 
 from mary.audio import (
     AudioManager,
@@ -143,6 +144,7 @@ from mary.distributed import NodeRegistry
 from mary.perception import PerceptionDirector
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 from mary.mind import CharacterMind
+from mary.continuity import ExperientialContinuityRuntime
 from mary.mind.production_bridge import (
     apply_local_cycle_metadata,
     merge_escalated_cycle_metadata,
@@ -377,6 +379,31 @@ class Mary:
         )
 
         # ============================================================
+        # EXPERIENTIAL CONTINUITY / RESUMABLE WORK
+        # ============================================================
+
+        # This is a durable evidence/coordination layer around Mary's existing
+        # canonical owners. It is intentionally named separately from
+        # TurnMind's conversation continuity below: it cannot own identity,
+        # relationship, memory truth, tool permission, or autonomy authority.
+        self.experiential_continuity = ExperientialContinuityRuntime(
+            self.config.paths.data / "continuity"
+        )
+        self.experience = self.experiential_continuity.experience
+        self.temporal_knowledge = self.experiential_continuity.temporal
+        self.procedural_skills = self.experiential_continuity.skills
+        self.workflow_checkpoints = self.experiential_continuity.workflows
+        self.action_verification = self.experiential_continuity.verification
+        self.compute_resources = self.experiential_continuity.resources
+        self.action_affordances = self.experiential_continuity.affordances
+        self.prosody_turn_taking = self.experiential_continuity.prosody
+        self.cognition_lanes = self.experiential_continuity.cognition_lanes
+        self.generation_cancellation = self.experiential_continuity.cancellation
+        self.node_recovery = self.experiential_continuity.node_recovery
+        self.memory_lab = self.experiential_continuity.memory_lab
+        self.causal_trace = self.experiential_continuity.traces
+
+        # ============================================================
         # TOOLS
         # ============================================================
 
@@ -454,6 +481,11 @@ class Mary:
                 NullAudioOutputProvider(),
             ),
         )
+
+        # Derived/ephemeral performance hardening. This attaches standing affect
+        # and stream capability descriptors without creating another Core,
+        # memory authority, relationship owner, or execution permission layer.
+        self.performance_hardening = install_performance_hardening(self)
 
         # ============================================================
         # LEARNING
@@ -1752,8 +1784,14 @@ class Mary:
             self.emotion,
             appraisal,
         )
+        state = self.performance_hardening.observe_emotional_state(
+            state,
+            source="conversation_emotion",
+            cause="conversation_appraisal",
+        )
         result.metadata["emotion_appraisal"] = appraisal.to_dict()
         result.metadata["emotional_state"] = state.to_dict()
+        result.metadata["standing_affect"] = self.standing_affect.snapshot()
         return result
 
     # ================================================================

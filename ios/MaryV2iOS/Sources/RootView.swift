@@ -2,160 +2,134 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var app: AppState
+    @State private var path: [WorkspaceKind] = []
 
     var body: some View {
         ZStack {
             MaryBackground()
 
-            VStack(spacing: 0) {
-                TopBar()
+            NavigationStack(path: $path) {
+                VStack(spacing: 0) {
+                    MaryTopBar(onSettings: { app.modalRoute = .settings })
 
-                Group {
-                    switch app.selectedTab {
-                    case .home: HomeView()
-                    case .chat: ChatView()
-                    case .command: CommandView()
-                    case .focus: FocusView()
-                    case .more: MoreView()
+                    Group {
+                        switch app.selectedTab {
+                        case .home: HomeView(navigate: navigate)
+                        case .chat: ChatView()
+                        case .work: WorkView(navigate: navigate)
+                        case .focus: FocusView()
+                        case .more: MoreView(navigate: navigate)
+                        }
                     }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                BottomBar()
+                    MaryTabBar()
+                }
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: WorkspaceKind.self) { kind in
+                    WorkspaceDetailView(kind: kind)
+                        .environmentObject(app)
+                }
             }
         }
-        .sheet(isPresented: $app.showSettings) {
-            SettingsView()
-                .environmentObject(app)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+        .preferredColorScheme(.dark)
+        .sheet(item: $app.modalRoute) { route in
+            switch route {
+            case .settings:
+                SettingsView().environmentObject(app)
+            case .voiceCall:
+                VoiceCallView().environmentObject(app)
+            }
         }
-        .sheet(isPresented: $app.showWorkspace) {
-            MoreView()
-                .environmentObject(app)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $app.activeWorkspace) { kind in
-            WorkspaceDetailView(kind: kind)
-                .environmentObject(app)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-        .alert("Mary", isPresented: Binding(
-            get: { app.lastError != nil },
-            set: { if !$0 { app.lastError = nil } }
-        )) {
+        .alert(
+            "Mary",
+            isPresented: Binding(
+                get: { app.lastError != nil },
+                set: { if !$0 { app.lastError = nil } }
+            )
+        ) {
             Button("OK", role: .cancel) { app.lastError = nil }
         } message: {
             Text(app.lastError ?? "")
         }
     }
-}
 
-struct MaryBackground: View {
-    var body: some View {
-        ZStack {
-            MaryTheme.bg.ignoresSafeArea()
-
-            RadialGradient(
-                colors: [MaryTheme.violet.opacity(0.18), .clear],
-                center: .topTrailing,
-                startRadius: 0,
-                endRadius: 340
-            )
-            .ignoresSafeArea()
-
-            RadialGradient(
-                colors: [MaryTheme.pink.opacity(0.09), .clear],
-                center: .bottomLeading,
-                startRadius: 0,
-                endRadius: 360
-            )
-            .ignoresSafeArea()
+    private func navigate(_ kind: WorkspaceKind) {
+        Task {
+            await app.loadWorkspace(kind)
+            path.append(kind)
         }
     }
 }
 
-struct TopBar: View {
+struct MaryTopBar: View {
     @EnvironmentObject var app: AppState
+    let onSettings: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button { app.showWorkspace = true } label: {
-                Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(MaryTheme.pink2)
+        HStack(spacing: 12) {
+            Button(action: onSettings) {
+                Image(systemName: "square.grid.2x2.fill")
+                    .font(.title3)
+                    .foregroundStyle(MaryTheme.pink)
                     .frame(width: 42, height: 42)
-                    .background(.white.opacity(0.025), in: Circle())
             }
 
             Spacer()
 
-            VStack(spacing: 0) {
-                HStack(spacing: 2) {
-                    Text("Mary")
-                        .font(.system(size: 25, weight: .bold, design: .rounded))
-                    Text("♡")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(MaryTheme.pink)
-                }
-                Text("MOBILE")
-                    .font(.system(size: 7, weight: .black))
-                    .tracking(2.0)
+            VStack(spacing: -2) {
+                Text("Mary♡")
+                    .font(.system(size: 29, weight: .semibold, design: .serif))
+                    .italic()
+                Text("M O B I L E")
+                    .font(.system(size: 8, weight: .bold))
+                    .tracking(2)
                     .foregroundStyle(MaryTheme.muted)
             }
 
             Spacer()
 
-            Button { app.showSettings = true } label: {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(app.isConnected ? MaryTheme.green : Color.red)
-                        .frame(width: 7, height: 7)
-                    Text(app.statusText)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(MaryTheme.muted)
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 34)
-                .background(.white.opacity(0.03), in: Capsule())
-                .overlay(Capsule().stroke(.white.opacity(0.07)))
-            }
+            StatusPill(
+                text: app.isConnected ? app.phase.label : "Offline",
+                online: app.isConnected
+            )
         }
-        .padding(.horizontal, 10)
-        .frame(height: 54)
-        .background(.ultraThinMaterial.opacity(0.28))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .background(MaryTheme.bg.opacity(0.94))
         .overlay(alignment: .bottom) {
-            Rectangle().fill(MaryTheme.line).frame(height: 1)
+            Rectangle().fill(MaryTheme.pink.opacity(0.2)).frame(height: 1)
         }
     }
 }
 
-struct BottomBar: View {
+struct MaryTabBar: View {
     @EnvironmentObject var app: AppState
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack {
             ForEach(MainTab.allCases) { tab in
                 Button {
-                    app.selectedTab = tab
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.symbol)
-                            .font(.system(size: 18, weight: .semibold))
-                        Text(tab.title)
-                            .font(.system(size: 9, weight: .semibold))
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        app.selectedTab = tab
                     }
-                    .foregroundStyle(app.selectedTab == tab ? MaryTheme.pink2 : MaryTheme.muted)
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 19, weight: .semibold))
+                        Text(tab.title)
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(app.selectedTab == tab ? MaryTheme.pink : MaryTheme.muted)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 54)
+                    .padding(.vertical, 9)
                 }
             }
         }
-        .background(.ultraThinMaterial.opacity(0.58))
+        .padding(.horizontal, 8)
+        .background(.ultraThinMaterial)
         .overlay(alignment: .top) {
-            Rectangle().fill(MaryTheme.line).frame(height: 1)
+            Rectangle().fill(MaryTheme.hairline).frame(height: 1)
         }
     }
 }
