@@ -1,53 +1,157 @@
 import SwiftUI
 
-enum MaryTheme {
-    static let bg = Color(red: 0.014, green: 0.016, blue: 0.052)
-    static let bg2 = Color(red: 0.026, green: 0.026, blue: 0.095)
-    static let panel = Color(red: 0.055, green: 0.050, blue: 0.140)
-    static let pink = Color(red: 1.00, green: 0.31, blue: 0.65)
-    static let pink2 = Color(red: 1.00, green: 0.62, blue: 0.80)
-    static let violet = Color(red: 0.55, green: 0.41, blue: 1.00)
-    static let cyan = Color(red: 0.29, green: 0.87, blue: 1.00)
-    static let green = Color(red: 0.29, green: 0.91, blue: 0.65)
-    static let orange = Color(red: 1.00, green: 0.70, blue: 0.36)
-    static let muted = Color(red: 0.66, green: 0.62, blue: 0.70)
-    static let line = Color(red: 1.00, green: 0.30, blue: 0.64).opacity(0.22)
+extension Color {
+    init(hex: UInt, alpha: Double = 1) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xff) / 255,
+            green: Double((hex >> 8) & 0xff) / 255,
+            blue: Double(hex & 0xff) / 255,
+            opacity: alpha
+        )
+    }
+}
 
-    static let accent = LinearGradient(
-        colors: [pink, violet, cyan],
-        startPoint: .leading,
-        endPoint: .trailing
-    )
+enum MaryTheme {
+    static let bg = Color(hex: 0x080715)
+    static let bg2 = Color(hex: 0x0D0B24)
+    static let panel = Color(hex: 0x111025)
+    static let panel2 = Color(hex: 0x17132E)
+    static let text = Color.white
+    static let muted = Color(hex: 0xABA5BD)
+    static let pink = Color(hex: 0xFF72B9)
+    static let pink2 = Color(hex: 0xFF9DD1)
+    static let violet = Color(hex: 0x8F5CFF)
+    static let cyan = Color(hex: 0x57D8FF)
+    static let green = Color(hex: 0x55E7B0)
+    static let orange = Color(hex: 0xFFB55E)
+    static let hairline = Color.white.opacity(0.08)
+    static let line = hairline
+    static let gradient = LinearGradient(colors: [pink, violet, cyan], startPoint: .leading, endPoint: .trailing)
+    static let accent = gradient
+}
+
+struct MaryBackground: View {
+    var body: some View {
+        ZStack {
+            MaryTheme.bg
+            RadialGradient(
+                colors: [MaryTheme.violet.opacity(0.15), .clear],
+                center: .topTrailing,
+                startRadius: 10,
+                endRadius: 430
+            )
+            RadialGradient(
+                colors: [MaryTheme.pink.opacity(0.09), .clear],
+                center: .bottomLeading,
+                startRadius: 30,
+                endRadius: 360
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+struct GlassCard<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        content
+            .padding(16)
+            .background(MaryTheme.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(MaryTheme.hairline))
+    }
 }
 
 struct MaryPanel<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View { GlassCard { content } }
+}
 
+struct Eyebrow: View {
+    let text: String
     var body: some View {
-        content
-            .padding(14)
-            .background(
-                LinearGradient(
-                    colors: [MaryTheme.panel.opacity(0.96), MaryTheme.bg.opacity(0.98)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(MaryTheme.line, lineWidth: 1)
-            )
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .black, design: .rounded))
+            .tracking(2)
+            .foregroundStyle(MaryTheme.pink)
     }
 }
 
 struct TinyCaps: View {
     let text: String
     var body: some View {
-        Text(text)
+        Text(text.uppercased())
             .font(.system(size: 9, weight: .black))
             .tracking(1.6)
             .foregroundStyle(MaryTheme.pink2)
+    }
+}
+
+struct StatusPill: View {
+    let text: String
+    let online: Bool
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle().fill(online ? MaryTheme.green : MaryTheme.orange).frame(width: 8, height: 8)
+            Text(text).font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(MaryTheme.hairline))
+    }
+}
+
+struct MetricChip: View {
+    let symbol: String
+    let value: String
+    let label: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Image(systemName: symbol).foregroundStyle(MaryTheme.cyan)
+            Text(value).font(.title3.bold())
+            Text(label).font(.caption).foregroundStyle(MaryTheme.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+struct DataRow: View {
+    let label: String
+    let value: String
+    var body: some View {
+        HStack(alignment: .top) {
+            Text(label).font(.caption).foregroundStyle(MaryTheme.muted)
+            Spacer()
+            Text(value).font(.caption.weight(.semibold)).multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+struct MaryPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.bold())
+            .foregroundStyle(.white)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 16)
+            .background(MaryTheme.gradient.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+struct MarySecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.bold())
+            .foregroundStyle(.white)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 16)
+            .background(MaryTheme.panel2.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(MaryTheme.hairline))
     }
 }
