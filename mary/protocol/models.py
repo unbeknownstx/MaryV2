@@ -233,6 +233,7 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "realtime.speech_started",
     "realtime.speech_ended",
     "realtime.interrupt",
+    "realtime.voice_activity",
     "realtime.listening",
     "realtime.transcribing",
     "realtime.speech_request",
