@@ -64,9 +64,11 @@ class BrowserContextSensor:
             "page_title": context.page_title[:240],
             "media_state": context.media_state[:120],
         }
+        blocked = {"token", "authorization", "api_key", "apikey", "secret", "password", "cookie", "session"}
         metadata.update({
             str(key)[:60]: str(value)[:160]
             for key, value in list(dict(context.metadata or {}).items())[:8]
+            if str(key).strip().casefold() not in blocked
         })
         return self.perception.observe(
             " | ".join(parts),
