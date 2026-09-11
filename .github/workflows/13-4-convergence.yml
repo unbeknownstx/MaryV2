@@ -1,13 +1,10 @@
 name: MaryV2 13.4 convergence
 
 on:
-  push:
-    branches:
-      - integration/13.4-week-convergence
-      - maryv2-13.4-mcp-capability-fabric
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
