@@ -36,6 +36,20 @@ Live Twitch EventSub/chat and OBS WebSocket transports remain node/surface adapt
 
 `mary.runtime.turn_timing` implements the older latency-profiling plan as a secret-free deterministic primitive. It separates context/cognition/provider/reflection/retrieval/TTS/playback startup/tool timing instead of relying on a single end-to-end number. Surfaces can expose the breakdown locally without making an LLM call or storing prompt/memory content.
 
+### Reclaimed 13.3.1 package components
+
+A Library/repository reconciliation recovered useful code from the September 5 realtime/performance overlay that had never landed on GitHub. The surviving pieces are now connected to current 13.6 owners rather than copied wholesale:
+
+- `mary.perception.browser` → existing `PerceptionDirector`, with URL/secret metadata sanitization
+- `mary.game_control` → existing `NodeRegistry`, semantic intent only and never raw key/mouse control
+- `mary.runtime.performance_profiles` → Core-owned resource policy, explicitly not identity/personality switching
+- `mary.distributed.invocations` → process-local idempotency/retry coordination without execution authorization
+- `mary.distributed.simulator` → deterministic development/test fake only
+- `mary.realtime.brain_activity` → read-only causal/UI projection over the current realtime owner
+- authenticated creator turns may wake an already-known sleeping surface, while explicit OFFLINE remains a hard gate
+
+The old overlay's `SpeechSessionGuard` and `RealtimeSurfaceGate` were intentionally **not** restored. Current `PresentationSessionManager`, Mary Protocol replay/session isolation, durable node enrollment, and the existing realtime coordinator supersede them; restoring parallel guards would create duplicate lifecycle/transport authority.
+
 ## Still deferred intentionally
 
 - provider-specific token-stream adapters are opt-in work per provider; normal completion remains the fallback
