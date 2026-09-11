@@ -1,0 +1,342 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		24A0C2AA2EE0B9519F79520A /* CommandFocusViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEF2CD22A7C8A6FF71DD2121 /* CommandFocusViews.swift */; };
+		3A375FC05AF75EE5EC77C2D4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F91EF5D506E62EF73D141B0 /* SettingsView.swift */; };
+		582132DC5D3447B6BA14C814 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9490802B50216881C535A23 /* AppState.swift */; };
+		6AB8F3905632B9AE89636F67 /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B796CED5A9E4F45EB24EBB4D /* MoreView.swift */; };
+		76F5B0B71AB10E173EE38FE6 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00D767BA10276997D7C5BAD /* ChatView.swift */; };
+		7A977EC8BFC704E1BF4D0115 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6F393FD667A9D80F589506 /* Models.swift */; };
+		7C795DD654CA22489ACBA5DA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C4FFCD5BE62ED251638521D /* Theme.swift */; };
+		7E2D5D9CA35BCE272908B1B4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 306F4D5EC2A51BFA6269274F /* RootView.swift */; };
+		87DBA3D2C0AB706050723674 /* MaryCoreClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42211E479E859D1A01B6DBDE /* MaryCoreClient.swift */; };
+		9365A4EF20B79228B9BCD7CE /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ED8107672C21721111AE26 /* AppConfiguration.swift */; };
+		A3777E7501E48F511BEEC66C /* VoiceCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09C87C8BED64E9147780B73 /* VoiceCapture.swift */; };
+		A42CE25BEF6F3DC60ADF30B1 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E267C3FB9CBB7E06D3230FBB /* KeychainStore.swift */; };
+		A656DBDA1C311D59AC984C6D /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 252C725A0D3574876D273AD5 /* HomeView.swift */; };
+		C2DD416304D3F65C2ED08BB5 /* MaryV2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E76E2A1BC2F245B29FB0D53 /* MaryV2App.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		09ED8107672C21721111AE26 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
+		0E76E2A1BC2F245B29FB0D53 /* MaryV2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaryV2App.swift; sourceTree = "<group>"; };
+		252C725A0D3574876D273AD5 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		306F4D5EC2A51BFA6269274F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		42211E479E859D1A01B6DBDE /* MaryCoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaryCoreClient.swift; sourceTree = "<group>"; };
+		4A6F393FD667A9D80F589506 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		6C4FFCD5BE62ED251638521D /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		6F91EF5D506E62EF73D141B0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		8A1D329021F0CEDE6528F962 /* Mary.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mary.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00D767BA10276997D7C5BAD /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		B796CED5A9E4F45EB24EBB4D /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
+		C9490802B50216881C535A23 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		CEF2CD22A7C8A6FF71DD2121 /* CommandFocusViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandFocusViews.swift; sourceTree = "<group>"; };
+		D09C87C8BED64E9147780B73 /* VoiceCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCapture.swift; sourceTree = "<group>"; };
+		E267C3FB9CBB7E06D3230FBB /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		6E65C23DE402071E393F1AA7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8A1D329021F0CEDE6528F962 /* Mary.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B99F134B86EB10D1EBF74923 = {
+			isa = PBXGroup;
+			children = (
+				E8A3A8B4D25F5D27FC6C6FF5 /* Sources */,
+				6E65C23DE402071E393F1AA7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E8A3A8B4D25F5D27FC6C6FF5 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				09ED8107672C21721111AE26 /* AppConfiguration.swift */,
+				C9490802B50216881C535A23 /* AppState.swift */,
+				A00D767BA10276997D7C5BAD /* ChatView.swift */,
+				CEF2CD22A7C8A6FF71DD2121 /* CommandFocusViews.swift */,
+				252C725A0D3574876D273AD5 /* HomeView.swift */,
+				E267C3FB9CBB7E06D3230FBB /* KeychainStore.swift */,
+				42211E479E859D1A01B6DBDE /* MaryCoreClient.swift */,
+				0E76E2A1BC2F245B29FB0D53 /* MaryV2App.swift */,
+				4A6F393FD667A9D80F589506 /* Models.swift */,
+				B796CED5A9E4F45EB24EBB4D /* MoreView.swift */,
+				306F4D5EC2A51BFA6269274F /* RootView.swift */,
+				6F91EF5D506E62EF73D141B0 /* SettingsView.swift */,
+				6C4FFCD5BE62ED251638521D /* Theme.swift */,
+				D09C87C8BED64E9147780B73 /* VoiceCapture.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE7E12D5AD1BD06D8410D246 /* MaryV2iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 51A6960D5E5388FC4C026527 /* Build configuration list for PBXNativeTarget "MaryV2iOS" */;
+			buildPhases = (
+				3DF9BA1B241A75617755CC81 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MaryV2iOS;
+			packageProductDependencies = (
+			);
+			productName = MaryV2iOS;
+			productReference = 8A1D329021F0CEDE6528F962 /* Mary.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F6A27C9017270106B906CFC5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = 06AE0A49F2E6E4A1CB123C0C /* Build configuration list for PBXProject "MaryV2iOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B99F134B86EB10D1EBF74923;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6E65C23DE402071E393F1AA7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AE7E12D5AD1BD06D8410D246 /* MaryV2iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3DF9BA1B241A75617755CC81 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9365A4EF20B79228B9BCD7CE /* AppConfiguration.swift in Sources */,
+				582132DC5D3447B6BA14C814 /* AppState.swift in Sources */,
+				76F5B0B71AB10E173EE38FE6 /* ChatView.swift in Sources */,
+				24A0C2AA2EE0B9519F79520A /* CommandFocusViews.swift in Sources */,
+				A656DBDA1C311D59AC984C6D /* HomeView.swift in Sources */,
+				A42CE25BEF6F3DC60ADF30B1 /* KeychainStore.swift in Sources */,
+				87DBA3D2C0AB706050723674 /* MaryCoreClient.swift in Sources */,
+				C2DD416304D3F65C2ED08BB5 /* MaryV2App.swift in Sources */,
+				7A977EC8BFC704E1BF4D0115 /* Models.swift in Sources */,
+				6AB8F3905632B9AE89636F67 /* MoreView.swift in Sources */,
+				7E2D5D9CA35BCE272908B1B4 /* RootView.swift in Sources */,
+				3A375FC05AF75EE5EC77C2D4 /* SettingsView.swift in Sources */,
+				7C795DD654CA22489ACBA5DA /* Theme.swift in Sources */,
+				A3777E7501E48F511BEEC66C /* VoiceCapture.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		61AF978F30BB8EE6E99EAC22 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = NV7N2K7RN2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.unbeknownstx.MaryV2iOS;
+				PRODUCT_NAME = Mary;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D3EACD3386581596187073D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		DC21DA810E0FDED75F485FB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = NV7N2K7RN2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.unbeknownstx.MaryV2iOS;
+				PRODUCT_NAME = Mary;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		F923CCB17754F18E6B060C3F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		06AE0A49F2E6E4A1CB123C0C /* Build configuration list for PBXProject "MaryV2iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3EACD3386581596187073D7 /* Debug */,
+				F923CCB17754F18E6B060C3F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		51A6960D5E5388FC4C026527 /* Build configuration list for PBXNativeTarget "MaryV2iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				61AF978F30BB8EE6E99EAC22 /* Debug */,
+				DC21DA810E0FDED75F485FB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F6A27C9017270106B906CFC5 /* Project object */;
+}
