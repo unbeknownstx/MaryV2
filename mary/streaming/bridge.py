@@ -1,4 +1,4 @@
-"""Permission-bounded bridge between Mary and performer/stream surfaces."""
+"""Permission-bounded bridge around Mary's existing performer integrations."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,10 +20,11 @@ class StreamEvent:
 
 
 class PerformerBridge:
-    """Finite action surface for Twitch/OBS integration.
+    """Finite action surface for the existing Twitch/OBS transports.
 
-    This class intentionally does not own network connections. Node/surface
-    adapters translate real service events into these bounded contracts.
+    EventSub normalization/session continuity and OBS protocol helpers stay in
+    ``mary.integrations``. This bridge adds explicit action authorization and
+    audience-trust semantics; it owns no network connection or credentials.
     """
 
     OBS_READ_ACTIONS = frozenset({"get_stream_status", "get_current_scene", "get_scene_list"})
@@ -36,7 +37,7 @@ class PerformerBridge:
     def ingest_chat(self, *, channel: str, author: str, text: str) -> StreamEvent:
         if not self.config.twitch_enabled:
             raise StreamPermissionError("Twitch integration is disabled")
-        normalized_channel = str(channel or "").strip().casefold()
+        normalized_channel = str(channel or "").strip().casefold().lstrip("#")
         if self.config.approved_channels and normalized_channel not in self.config.approved_channels:
             raise StreamPermissionError("Twitch channel is not approved")
         clean_author = " ".join(str(author or "viewer").split())[:80]
@@ -49,9 +50,9 @@ class PerformerBridge:
         )
 
     def authorize_chat_send(self, *, channel: str) -> dict[str, str]:
-        normalized_channel = str(channel or "").strip().casefold()
-        if not self.config.twitch_enabled or self.config.twitch_mode != "interactive":
-            raise StreamPermissionError("Twitch outbound chat is not enabled")
+        normalized_channel = str(channel or "").strip().casefold().lstrip("#")
+        if not self.config.twitch_enabled or not self.config.twitch_write_chat:
+            raise StreamPermissionError("Twitch outbound chat is not enabled by integration policy")
         if self.config.approved_channels and normalized_channel not in self.config.approved_channels:
             raise StreamPermissionError("Twitch channel is not approved")
         if "twitch.send_chat" not in self.allowed_actions:
@@ -64,6 +65,8 @@ class PerformerBridge:
             raise StreamPermissionError("OBS integration is disabled")
         if name not in self.OBS_READ_ACTIONS | self.OBS_WRITE_ACTIONS:
             raise ValueError("OBS action is not in MaryV2's finite allowlist")
+        if name == "set_current_scene" and not self.config.obs_allow_scene_switch:
+            raise StreamPermissionError("OBS scene switching is disabled by integration policy")
         if name in self.OBS_WRITE_ACTIONS and f"obs.{name}" not in self.allowed_actions:
             raise StreamPermissionError(f"obs.{name} permission is required")
         sanitized: dict[str, Any] = {}
@@ -83,5 +86,5 @@ class PerformerBridge:
         return {
             "config": self.config.status(),
             "allowed_actions": sorted(self.allowed_actions),
-            "semantics": "stream audiences are untrusted context; consequential output remains explicitly permission gated",
+            "semantics": "existing transports remain replaceable; audience is untrusted context; consequential output is permission gated",
         }
