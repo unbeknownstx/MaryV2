@@ -9,6 +9,7 @@ from .events import Event, EventType
 from .entities import Entity, EntityType
 from .input import Input, InputSource, InputType
 from .director import PerceptionDirector, PerceptionObservation
+from .browser import BrowserContext, BrowserContextSensor
 
 __all__ = [
     "Event",
@@ -20,4 +21,6 @@ __all__ = [
     "InputType",
     "PerceptionDirector",
     "PerceptionObservation",
+    "BrowserContext",
+    "BrowserContextSensor",
 ]
