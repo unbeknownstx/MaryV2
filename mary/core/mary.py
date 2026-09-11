@@ -58,6 +58,7 @@ from mary.expression.performance_packet import build_performance_packet
 from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
+from mary.runtime.performance_hardening import install_performance_hardening
 
 from mary.audio import (
     AudioManager,
@@ -480,6 +481,11 @@ class Mary:
                 NullAudioOutputProvider(),
             ),
         )
+
+        # Derived/ephemeral performance hardening. This attaches standing affect
+        # and stream capability descriptors without creating another Core,
+        # memory authority, relationship owner, or execution permission layer.
+        self.performance_hardening = install_performance_hardening(self)
 
         # ============================================================
         # LEARNING
@@ -1778,8 +1784,14 @@ class Mary:
             self.emotion,
             appraisal,
         )
+        state = self.performance_hardening.observe_emotional_state(
+            state,
+            source="conversation_emotion",
+            cause=input_text,
+        )
         result.metadata["emotion_appraisal"] = appraisal.to_dict()
         result.metadata["emotional_state"] = state.to_dict()
+        result.metadata["standing_affect"] = self.standing_affect.snapshot()
         return result
 
     # ================================================================
