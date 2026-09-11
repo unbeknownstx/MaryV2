@@ -1,0 +1,55 @@
+name: MaryV2 13.4 convergence
+
+on:
+  push:
+    branches:
+      - integration/13.4-week-convergence
+      - maryv2-13.4-mcp-capability-fabric
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  python-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MARY_RUN_LIVE_TESTS: "0"
+      MARY_ENVIRONMENT: "test"
+      MARY_AUTONOMOUS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install MaryV2
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
+      - name: Compile active Python
+        run: python -m compileall -q mary scripts tests
+      - name: Repository structure
+        run: python -m scripts.verify_repository_structure
+      - name: Focused 13.4 integration tests
+        run: |
+          python -m pytest -q             tests/protocol             tests/runtime/test_current_work_projection_13_4.py             tests/desktop/test_mcp_node_executor_13_4.py             tests/distributed/test_mcp_fabric_13_4.py             tests/distributed/test_mcp_permissions_13_4.py             tests/distributed/test_mcp_task_broker_13_4.py
+      - name: Full deterministic suite
+        run: python -m pytest -q
+
+  web-syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Mobile JavaScript syntax
+        run: |
+          node --check mobile_web/app.js
+          node --check mobile_native/MaryMobile/www/app.js
