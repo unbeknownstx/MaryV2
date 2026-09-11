@@ -248,6 +248,8 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "model.adapter.status",
     "mind.rebuild_reservoir",
     "mind.maintenance",
+    "continuity.status",
+    "continuity.maintenance",
     "llm.probe",
     "presence.idle_tick",
     "presence.pulse",
