@@ -25,7 +25,33 @@ jobs:
       - name: Platform readiness contract
         run: python -m scripts.platform_readiness --strict --json
       - name: Platform readiness tests
-        run: python -m pytest -q tests/scripts/test_platform_readiness_13_5.py
+        run: python -m pytest -q tests/scripts/test_platform_readiness_13_5.py tests/desktop/test_macos_safe_renderer_boot_13_6.py tests/continuity/test_memory_lab_retrieval_13_6.py
+
+  desktop-build:
+    name: Desktop Vite safe-renderer build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Syntax check source and Vite config
+        working-directory: desktop
+        run: |
+          node --check src/main.js
+          node --check vite.config.js
+      - name: Build transformed production frontend
+        working-directory: desktop
+        run: npm run build
+      - name: Verify safe-renderer output markers
+        run: |
+          grep -R "3D renderer intentionally disabled" desktop/dist/assets
+          grep -R "Desktop frontend did not start" desktop/dist
 
   iphone-project:
     name: Native iPhone project generation and build
