@@ -57,6 +57,12 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "creator_directives",
     ),
     DurableStateFile(
+        "relationship/standing_affect.json",
+        "expressive_continuity",
+        "StandingAffectStore",
+        "standing_affect",
+    ),
+    DurableStateFile(
         "knowledge/knowledge.json",
         "knowledge",
         "KnowledgeStateStore",
