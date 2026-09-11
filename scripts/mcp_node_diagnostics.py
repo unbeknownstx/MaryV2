@@ -11,7 +11,7 @@ import json
 
 from dotenv import load_dotenv
 
-from mary.distributed import DeviceExecutionPermissions, MCPFabric
+from mary.distributed import DeviceExecutionPermissions, MCPFabric, sanitize_mcp_error
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
         payload = {
             "ok": False,
             "error_type": type(exc).__name__,
-            "error": str(exc)[:500],
+            "error": sanitize_mcp_error(f"{type(exc).__name__}: {exc}"),
             "status": fabric.status(),
         }
         print(json.dumps(payload, indent=2, ensure_ascii=False))

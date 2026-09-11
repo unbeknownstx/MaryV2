@@ -20,6 +20,7 @@ from mary.distributed import (
     DeviceExecutionPermissions,
     MCP_CAPABILITIES,
     MCPFabric,
+    sanitize_mcp_error,
 )
 from mary.llm.interface import (
     GenerationCost,
@@ -385,7 +386,8 @@ class DesktopCapabilityNodeAgent:
             self._last_error = ""
             return result
         except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"[:500]
+            raw_error = f"{type(exc).__name__}: {exc}"
+            error = sanitize_mcp_error(raw_error) if capability in MCP_CAPABILITIES else raw_error[:500]
             self._last_error = error
             self._last_task["status"] = "failed"
             try:

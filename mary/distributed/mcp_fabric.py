@@ -51,6 +51,7 @@ _SECRET_KEYS = {
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/-]{12,}={0,2}"),
     re.compile(r"(?i)(api[_-]?key\s*[:=]\s*)[^\s,;]{8,}"),
+    re.compile(r"(?i)([?&](?:access_token|api_key|apikey|token|secret|key)=)[^&#\s]+"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
 )
@@ -84,6 +85,29 @@ def _redact_string(value: Any, *, limit: int) -> str:
     if len(text) > limit:
         return text[: max(0, limit - 1)].rstrip() + "…"
     return text
+
+
+def sanitize_mcp_error(value: Any) -> str:
+    """Return a bounded diagnostic string without node-local secrets or full MCP URLs."""
+
+    text = str(value or "")
+    # Collapse exact node-local endpoint values before generic token redaction.
+    # Otherwise redacting a query token can mutate the URL and prevent the
+    # endpoint replacement from matching, leaving userinfo/path material behind.
+    for server in MCP_SERVER_CAPABILITIES:
+        raw_url = os.getenv(f"MARY_MCP_{server.upper()}_URL", "").strip()
+        if not raw_url or raw_url not in text:
+            continue
+        try:
+            parsed = urlparse(raw_url)
+            host = parsed.hostname or "configured"
+            if parsed.port:
+                host = f"{host}:{parsed.port}"
+            summary = f"{parsed.scheme}://{host}"
+        except Exception:
+            summary = "[CONFIGURED-MCP-ENDPOINT]"
+        text = text.replace(raw_url, summary)
+    return _redact_string(text, limit=500)
 
 
 def _sanitize_value(
@@ -366,7 +390,7 @@ class MCPFabric:
             try:
                 config = server_config_from_environment(server)
             except ValueError as exc:
-                self._last_error[server] = str(exc)[:500]
+                self._last_error[server] = sanitize_mcp_error(f"{type(exc).__name__}: {exc}")
                 continue
             if config is not None:
                 output[server] = config
@@ -390,7 +414,7 @@ class MCPFabric:
                 "allowed_tool_count": len(allowed_tools),
                 "allowed_tools": allowed_tools,
                 "discovered_tool_count": len(self._last_discovery.get(server, [])),
-                "last_error": _redact_string(self._last_error.get(server, ""), limit=500),
+                "last_error": sanitize_mcp_error(self._last_error.get(server, "")),
             }
         return {
             "version": "13.4",
@@ -452,7 +476,7 @@ class MCPFabric:
                 "endpoint_scope": config.endpoint_scope,
             }
         except Exception as exc:
-            self._last_error[normalized] = f"{type(exc).__name__}: {exc}"[:500]
+            self._last_error[normalized] = sanitize_mcp_error(f"{type(exc).__name__}: {exc}")
             raise
 
     def diagnostics(self) -> dict[str, Any]:
@@ -463,7 +487,7 @@ class MCPFabric:
             except Exception as exc:
                 results[server] = {
                     "ok": False,
-                    "error": _redact_string(f"{type(exc).__name__}: {exc}", limit=500),
+                    "error": sanitize_mcp_error(f"{type(exc).__name__}: {exc}"),
                 }
         payload = self.status()
         payload["diagnostics"] = results
@@ -487,7 +511,7 @@ class MCPFabric:
             raw = self._transport_factory(config).call_tool(config, clean_tool, dict(safe_args["arguments"]))
             self._last_error.pop(server, None)
         except Exception as exc:
-            self._last_error[server] = f"{type(exc).__name__}: {exc}"[:500]
+            self._last_error[server] = sanitize_mcp_error(f"{type(exc).__name__}: {exc}")
             raise
         payload = dict(raw or {})
         payload["tool"] = clean_tool
