@@ -5,6 +5,7 @@ from .speech_arbiter import SpeechArbitration, SpeechDisposition, SpeechOutputAr
 from .data_plane import RealtimeDataPlane, RealtimeDatum
 from .decision_trace import DecisionTraceEntry, RealtimeDecisionTrace
 from .speaker_scheduler import FloorDecision, FloorDisposition, SpeakerOpportunity, SpeakerScheduler
+from .brain_activity import BrainActivityProjection
 from .streaming import GenerationDelta, SentenceSegment, SentenceStreamAssembler, StreamCancelled, TurnCancellation, segment_deltas
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "FloorDisposition",
     "SpeakerOpportunity",
     "SpeakerScheduler",
+    "BrainActivityProjection",
     "GenerationDelta",
     "SentenceSegment",
     "SentenceStreamAssembler",
