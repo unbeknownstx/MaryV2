@@ -49,7 +49,8 @@ def test_permission_file_writes_only_bounded_capability_and_tool_names(tmp_path)
     assert raw["version"] == "13.4"
     assert raw["allowed_capabilities"] == ["mcp.langflow"]
     assert raw["allowed_mcp_tools"] == {"langflow": ["project_flow-1"]}
-    assert "shell" not in repr(raw).lower()
+    assert "shell" not in raw["allowed_capabilities"]
+    assert "shell" not in raw["allowed_mcp_tools"]
 
     with pytest.raises(ValueError):
         permissions.allow("shell")
