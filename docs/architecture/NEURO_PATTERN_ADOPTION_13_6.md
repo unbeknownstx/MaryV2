@@ -1,6 +1,6 @@
 # MaryV2 13.6 — AI-VTuber / Neuro-pattern adoption
 
-This package converges the public AI-VTuber/companion patterns researched during the 13.1–13.5 work without turning Mary into a clone of another character or creating a second identity/runtime authority.
+This package converges the public AI-VTuber/companion patterns and separate performance/latency plans researched during the 13.1–13.5 work without turning Mary into a clone of another character or creating a second identity/runtime authority.
 
 ## Already adopted before 13.6
 
@@ -32,14 +32,19 @@ This package converges the public AI-VTuber/companion patterns researched during
 
 Live Twitch EventSub/chat and OBS WebSocket transports remain node/surface adapters. They may reconnect or disappear without affecting Mary Core startup or identity/state authority.
 
+### Turn latency evidence
+
+`mary.runtime.turn_timing` implements the older latency-profiling plan as a secret-free deterministic primitive. It separates context/cognition/provider/reflection/retrieval/TTS/playback startup/tool timing instead of relying on a single end-to-end number. Surfaces can expose the breakdown locally without making an LLM call or storing prompt/memory content.
+
 ## Still deferred intentionally
 
 - provider-specific token-stream adapters are opt-in work per provider; normal completion remains the fallback
 - live Twitch OAuth/EventSub and OBS WebSocket sessions require creator credentials and host-side testing
+- exact runtime call sites will adopt `TurnLatencyProfiler` incrementally so timing does not destabilize the canonical turn path
 - avatar/Unity/VRM motor adapters remain presentation capabilities, not identity authority
 - LoRA/fine-tuning remains an explicit offline training workflow; Mary does not automatically train on conversation or feedback
 - autonomous posting, moderation, purchases, shell execution and generic computer control are not granted by this package
 
 ## Architectural rule
 
-The useful lesson from Neuro-like systems is not “copy the character.” It is to reduce latency, keep listening/speaking interruptible, isolate perception/action channels, make performer integrations replaceable, and preserve a durable character layer above whichever model is generating the current tokens.
+The useful lesson from Neuro-like systems is not “copy the character.” It is to reduce latency, keep listening/speaking interruptible, isolate perception/action channels, make performer integrations replaceable, measure the real bottlenecks, and preserve a durable character layer above whichever model is generating the current tokens.
