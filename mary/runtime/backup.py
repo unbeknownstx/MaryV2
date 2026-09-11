@@ -147,6 +147,36 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "PendingThoughtStore",
         "pending_thoughts",
     ),
+    DurableStateFile(
+        "continuity/experience.json",
+        "experiential_continuity",
+        "ExperienceLedger",
+        "experience_ledger",
+    ),
+    DurableStateFile(
+        "continuity/temporal_knowledge.json",
+        "experiential_continuity",
+        "TemporalKnowledgeGraph",
+        "temporal_knowledge",
+    ),
+    DurableStateFile(
+        "continuity/skills.json",
+        "experiential_continuity",
+        "SkillLibrary",
+        "procedural_skills",
+    ),
+    DurableStateFile(
+        "continuity/workflows.json",
+        "experiential_continuity",
+        "DurableWorkflowStore",
+        "workflow_checkpoints",
+    ),
+    DurableStateFile(
+        "continuity/verification.json",
+        "experiential_continuity",
+        "ActionVerificationManager",
+        "action_verification",
+    ),
 )
 
 EXCLUDED_STATE = (
