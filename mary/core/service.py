@@ -665,6 +665,11 @@ class MaryCoreService:
                 if callable(getattr(getattr(self.mary, "performance_context", None), "status", None))
                 else {"mode": "private", "enabled": False}
             ),
+            "performance_hardening": (
+                self.mary.performance_hardening.snapshot()
+                if callable(getattr(getattr(self.mary, "performance_hardening", None), "snapshot", None))
+                else {"enabled": False}
+            ),
             "character": {
                 "sourcebook": (
                     self.mary.character_sourcebook.snapshot()
@@ -774,6 +779,7 @@ class MaryCoreService:
         payload["retrieval"] = state.get("retrieval", {})
         payload["perception"] = state.get("perception", {})
         payload["performance_context"] = state.get("performance_context", {})
+        payload["performance_hardening"] = state.get("performance_hardening", {})
         payload["training"] = state.get("training", {})
         payload["experiential_continuity"] = state.get("experiential_continuity", {})
         payload["production"] = state.get("production", {})
