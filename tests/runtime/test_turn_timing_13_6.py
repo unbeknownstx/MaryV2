@@ -10,7 +10,9 @@ def test_turn_profiler_records_only_allowed_named_stages():
     result = profiler.breakdown()
     assert result["stages_ms"]["provider"] == 42.5
     assert result["stages_ms"]["tts"] == 11.0
-    assert "prompt" not in str(result).casefold()
+    assert set(result) == {"turn_id", "stages_ms", "total_ms", "unaccounted_ms", "semantics"}
+    assert set(result["stages_ms"]).issubset(TurnLatencyProfiler.ALLOWED_STAGES)
+    assert all(isinstance(value, float) for value in result["stages_ms"].values())
 
 
 def test_stage_context_accumulates_and_total_is_nonnegative():
