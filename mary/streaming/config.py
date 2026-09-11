@@ -1,18 +1,11 @@
-"""Secret-safe configuration for optional streaming adapters."""
+"""Secret-safe combined view of Mary's existing Twitch/OBS policies."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 import os
 
-_TRUE = {"1", "true", "yes", "on", "enabled"}
-
-
-def _enabled(name: str) -> bool:
-    return os.getenv(name, "").strip().casefold() in _TRUE
-
-
-def _csv(name: str) -> tuple[str, ...]:
-    return tuple(value.strip().casefold() for value in os.getenv(name, "").split(",") if value.strip())
+from mary.integrations.obs import obs_policy_from_environment
+from mary.integrations.twitch import twitch_policy_from_environment
 
 
 @dataclass(frozen=True)
@@ -20,31 +13,44 @@ class PerformerConfig:
     twitch_enabled: bool
     twitch_mode: str
     approved_channels: tuple[str, ...]
+    twitch_write_chat: bool
     twitch_credentials_configured: bool
     obs_enabled: bool
     obs_host: str
     obs_port: int
+    obs_allow_scene_switch: bool
     obs_password_configured: bool
 
     @classmethod
     def from_env(cls) -> "PerformerConfig":
-        mode = os.getenv("MARY_TWITCH_MODE", "listen").strip().casefold() or "listen"
-        if mode not in {"listen", "interactive"}:
-            mode = "listen"
-        try:
-            port = int(os.getenv("MARY_OBS_PORT", "4455") or 4455)
-        except ValueError:
-            port = 4455
+        twitch = twitch_policy_from_environment()
+        obs = obs_policy_from_environment()
+        broadcaster = (
+            os.getenv("MARY_TWITCH_BROADCASTER_USER_ID", "").strip()
+            or os.getenv("MARY_TWITCH_BROADCASTER_ID", "").strip()
+        )
+        user_id = (
+            os.getenv("MARY_TWITCH_USER_ID", "").strip()
+            or os.getenv("MARY_TWITCH_BOT_USER_ID", "").strip()
+        )
         return cls(
-            twitch_enabled=_enabled("MARY_SKILL_TWITCH"),
-            twitch_mode=mode,
-            approved_channels=_csv("MARY_TWITCH_APPROVED_CHANNELS"),
-            twitch_credentials_configured=all(bool(os.getenv(name, "").strip()) for name in (
-                "MARY_TWITCH_CLIENT_ID", "MARY_TWITCH_OAUTH_TOKEN", "MARY_TWITCH_BROADCASTER_ID"
-            )),
-            obs_enabled=_enabled("MARY_SKILL_OBS"),
-            obs_host=os.getenv("MARY_OBS_HOST", "127.0.0.1").strip() or "127.0.0.1",
-            obs_port=max(1, min(65535, port)),
+            twitch_enabled=twitch.enabled,
+            twitch_mode=twitch.mode,
+            approved_channels=twitch.approved_channels,
+            twitch_write_chat=twitch.write_chat,
+            twitch_credentials_configured=all(
+                bool(value)
+                for value in (
+                    os.getenv("MARY_TWITCH_CLIENT_ID", "").strip(),
+                    os.getenv("MARY_TWITCH_OAUTH_TOKEN", "").strip(),
+                    broadcaster,
+                    user_id,
+                )
+            ),
+            obs_enabled=obs.enabled,
+            obs_host=obs.host,
+            obs_port=obs.port,
+            obs_allow_scene_switch=obs.allow_scene_switch,
             obs_password_configured=bool(os.getenv("MARY_OBS_PASSWORD", "").strip()),
         )
 
@@ -53,12 +59,15 @@ class PerformerConfig:
             "twitch": {
                 "enabled": self.twitch_enabled,
                 "mode": self.twitch_mode,
+                "write_chat": self.twitch_write_chat,
                 "approved_channels": list(self.approved_channels),
                 "credentials_configured": self.twitch_credentials_configured,
             },
             "obs": {
                 "enabled": self.obs_enabled,
                 "endpoint": f"{self.obs_host}:{self.obs_port}",
+                "allow_scene_switch": self.obs_allow_scene_switch,
                 "password_configured": self.obs_password_configured,
             },
+            "policy_source": "mary.integrations.twitch/obs",
         }
