@@ -7,9 +7,11 @@ startup dependency. Cancellation is cooperative and scoped to one turn.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from threading import Event, RLock
+from threading import RLock
 from typing import Iterable, Iterator
 import re
+
+from mary.continuity.cancellation import GenerationCancellationRegistry
 
 
 @dataclass(frozen=True)
@@ -27,17 +29,29 @@ class SentenceSegment:
 
 
 class TurnCancellation:
-    """Cooperative per-turn cancellation shared by generation and speech."""
+    """Turn-scoped view over Mary's canonical cooperative cancellation registry.
 
-    def __init__(self) -> None:
-        self._event = Event()
+    Callers using a live Mary runtime should pass
+    ``mary.experiential_continuity.cancellation``. A private registry is created
+    only for isolated/tests or surface-local speech work.
+    """
+
+    def __init__(
+        self,
+        registry: GenerationCancellationRegistry | None = None,
+        *,
+        correlation_id: str = "",
+    ) -> None:
+        self.registry = registry or GenerationCancellationRegistry()
+        self.handle = self.registry.create(correlation_id=correlation_id)
         self._lock = RLock()
         self._reason = ""
         self._generation = 0
+        self._completed = False
 
     @property
     def cancelled(self) -> bool:
-        return self._event.is_set()
+        return self.registry.cancelled(self.handle.id)
 
     @property
     def reason(self) -> str:
@@ -51,11 +65,17 @@ class TurnCancellation:
 
     def cancel(self, reason: str = "cancelled") -> int:
         with self._lock:
-            if not self._event.is_set():
+            if not self.cancelled:
                 self._reason = " ".join(str(reason or "cancelled").split())[:160]
                 self._generation += 1
-                self._event.set()
+                self.registry.cancel(self.handle.id)
             return self._generation
+
+    def complete(self) -> None:
+        with self._lock:
+            if not self._completed:
+                self.registry.complete(self.handle.id)
+                self._completed = True
 
     def raise_if_cancelled(self) -> None:
         if self.cancelled:
