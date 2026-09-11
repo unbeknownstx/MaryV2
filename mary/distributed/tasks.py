@@ -14,9 +14,10 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from .nodes import NodeRegistry
+from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
 
 
-_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp"}
+_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
 ExecutionPolicy = Callable[[str], None]
 
@@ -89,11 +90,15 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             "temperature": temperature,
             "max_tokens": max(1, min(2048, max_tokens)),
         }
+    if capability in MCP_CAPABILITIES:
+        return sanitize_mcp_task_args(capability, values)
     raise ValueError(f"Capability execution is not supported: {capability}")
 
 
 def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dict[str, Any]:
     values = dict(result or {})
+    if capability in MCP_CAPABILITIES:
+        return sanitize_mcp_result(capability, values)
     if capability not in {"llm.ollama", "llm.llama_cpp"}:
         return values
 
@@ -177,7 +182,7 @@ class DeviceTaskBroker:
     canonical character state, and a Core restart may discard them.
     """
 
-    VERSION = "13.3"
+    VERSION = "13.4"
 
     def __init__(
         self,
