@@ -111,7 +111,7 @@ def test_no_generic_mcp_or_shell_capability_is_executable():
     registry = _registry()
     broker = DeviceTaskBroker(lifecycle_lock=registry.lifecycle_lock, live_node=registry.is_live)
 
-    for capability in ("mcp", "mcp.anything", "shell", "command", "exec"):
+    for capability in ("mcp", "mcp.anything", "mcp.openhands", "shell", "command", "exec"):
         with pytest.raises(ValueError, match="Capability execution is not supported"):
             broker.enqueue(
                 registry,
