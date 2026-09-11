@@ -1,0 +1,85 @@
+name: MaryV2 deterministic gate
+
+on:
+  push:
+    branches:
+      - maryv2-13.4-mcp-capability-fabric
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up repository Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            requirements-desktop.txt
+            requirements-node-mcp.txt
+
+      - name: Install desktop runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpulse0 \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
+      - name: Install deterministic test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-desktop.txt
+
+      - name: Repository structure verification
+        run: python -m scripts.verify_repository_structure
+
+      - name: Targeted capability-fabric and authority tests
+        run: |
+          python -m pytest -q \
+            tests/distributed/test_mcp_fabric_13_4.py \
+            tests/distributed/test_mcp_permissions_13_4.py \
+            tests/distributed/test_mcp_task_broker_13_4.py \
+            tests/desktop/test_mcp_node_executor_13_4.py \
+            tests/protocol/test_capability_authority_boundaries_13_2.py \
+            tests/protocol/test_durable_node_trust_13_2.py \
+            tests/protocol/test_node_enrollment_grants_13_2.py \
+            tests/protocol/test_device_ollama_core_bridge_13_2.py \
+            tests/distributed/test_device_task_broker_13_2.py \
+            tests/llm/test_device_llama_cpp_provider_character_runtime.py \
+            tests/desktop/test_device_node_agent_13_2.py \
+            tests/desktop/test_headless_windows_node_13_2.py
+
+      - name: Full deterministic suite
+        run: python -m pytest -q
+
+      - name: Validate optional node-only MCP dependency
+        run: |
+          python -m pip install -r requirements-node-mcp.txt
+          python - <<'PY'
+          from mcp import Client
+          import httpx2
+          from mcp.client.streamable_http import streamable_http_client
+          print("optional MCP client dependency import: PASS")
+          print("Client:", Client.__name__)
+          print("httpx2:", getattr(httpx2, "__version__", "available"))
+          print("streamable_http_client:", streamable_http_client.__name__)
+          PY

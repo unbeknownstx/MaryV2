@@ -5,6 +5,7 @@ import pytest
 from mary.distributed import DeviceExecutionPermissions, MCPFabric
 from mary.distributed import mcp_fabric as mcp_module
 from mary.distributed.mcp_fabric import (
+    sanitize_mcp_error,
     sanitize_mcp_result,
     sanitize_mcp_task_args,
     server_config_from_environment,
@@ -144,7 +145,10 @@ def test_mcp_results_are_bounded_and_secret_sanitized():
                 "answer": "safe",
             },
             "url": "https://private.example/path",
-            "content": [{"text": "sk-abcdefghijklmnopq"}],
+            "content": [
+                {"text": "sk-abcdefghijklmnopq"},
+                {"text": "https://example.invalid/data?token=URL-SECRET-123456"},
+            ],
         },
     )
     rendered = repr(result)
@@ -153,6 +157,7 @@ def test_mcp_results_are_bounded_and_secret_sanitized():
     assert result["structured_content"]["answer"] == "safe"
     assert "private.example" not in rendered
     assert "abcdefghijklmnopq" not in rendered
+    assert "URL-SECRET-123456" not in rendered
 
 
 def test_non_loopback_plain_http_is_fail_closed(monkeypatch):
@@ -165,3 +170,17 @@ def test_non_loopback_plain_http_is_fail_closed(monkeypatch):
     config = server_config_from_environment("scrapling")
     assert config is not None
     assert config.endpoint_scope == "remote"
+
+
+def test_mcp_error_sanitizer_removes_secrets_and_full_endpoint(monkeypatch):
+    endpoint = "https://user:pass@example.invalid/private/mcp?token=TOPSECRET"
+    monkeypatch.setenv("MARY_MCP_OPENDESIGN_URL", endpoint)
+    error = sanitize_mcp_error(
+        f"request failed at {endpoint} with Bearer abcdefghijklmnopqrstuvwxyz"
+    )
+    assert "user:pass" not in error
+    assert "/private/mcp" not in error
+    assert "TOPSECRET" not in error
+    assert "abcdefghijklmnopqrstuvwxyz" not in error
+    assert "https://example.invalid" in error
+    assert "[REDACTED]" in error
