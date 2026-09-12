@@ -6,14 +6,15 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
-MaryV2 13.8 is focused on **Relational Presence & Shared Life**: relationship continuity that can support close, romantic, or partner interaction without creating a second persona or second relationship database. Shared activities, proactive-presence proposals, social retrieval projections, and relationship-aware delivery build on the existing canonical Core.
+MaryV2 13.9 turns the native iPhone client into a polished **everyday companion product** on top of the 13.8 Relational Presence & Shared Life architecture. Home, Talk, Together, Work and More are native SwiftUI surfaces of the same canonical Mary Core; relationship context, voice, memory and shared-life affordances remain projections of canonical owners rather than mobile-specific identity/state.
 
 See:
 
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
-- `docs/architecture/RELATIONAL_PRESENCE_13_8.md` — 13.8 relational-presence architecture
+- `docs/architecture/RELATIONAL_PRESENCE_13_8.md` — relational-presence architecture
+- `docs/design/NATIVE_IPHONE_PRODUCT_13_9.md` — native iPhone product/navigation/asset contract
 - `docs/research/COMPANION_SYSTEMS_13_8.md` — companion/VTuber/agent research synthesis
 - `docs/design/MARY_VISUAL_SYSTEM.md` — cross-surface visual system
 
@@ -36,6 +37,7 @@ MaryV2 currently includes:
 
 - canonical remote Core plus explicit standalone development mode;
 - Desktop, mobile/PWA, native iPhone and terminal clients;
+- a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - Groq/Gemini/OpenRouter/Ollama routing plus explicit expert/provider paths;
 - Ollama and llama.cpp local inference support;
 - durable memory, relationship continuity, developed-self state and authored character evidence;
@@ -43,7 +45,7 @@ MaryV2 currently includes:
 - avatar/VRM presentation, performer/stream contracts and browser/perception primitives;
 - bounded distributed capability nodes and MCP integrations;
 - experiential continuity, resumable workflow checkpoints, action verification and recovery;
-- 13.8 relational presence: relationship mode, shared activities, proposal-only proactive presence, derived social graph and relationship-aware delivery.
+- relational presence: friend/close/romantic/partner mode, shared activities, proposal-only proactive presence, derived social graph and relationship-aware delivery.
 
 ## Local development
 
