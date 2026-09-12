@@ -128,7 +128,22 @@ async def main_async() -> int:
                 queue.put_nowait(wav_bytes)
         loop.call_soon_threadsafe(_enqueue)
 
-    microphone = StreamCreatorMicrophone(_heard)
+    def _voice_activity(active: bool, confirmed: bool, confidence: float) -> None:
+        async def _publish() -> None:
+            with suppress(Exception):
+                await asyncio.to_thread(
+                    client.runtime_action,
+                    "realtime.voice_activity",
+                    {
+                        "active": active,
+                        "confirmed": confirmed,
+                        "confidence": confidence,
+                        "source": "stream_creator_vad",
+                    },
+                )
+        loop.call_soon_threadsafe(lambda: asyncio.create_task(_publish()))
+
+    microphone = StreamCreatorMicrophone(_heard, _voice_activity)
     microphone.start()
     print("Mary stream creator hearing armed", flush=True)
     print(f"OBS creator-voice Browser Source: {relay.url}", flush=True)
@@ -138,7 +153,11 @@ async def main_async() -> int:
         while True:
             wav_bytes = await queue.get()
             try:
+                with suppress(Exception):
+                    await asyncio.to_thread(client.runtime_action, "realtime.transcribing", {"active": True, "source": "stream_creator_voice"})
                 transcript = await _transcribe(client, wav_bytes)
+                with suppress(Exception):
+                    await asyncio.to_thread(client.runtime_action, "realtime.transcribing", {"active": False, "source": "stream_creator_voice"})
                 if not transcript:
                     continue
                 print(f"You: {transcript}", flush=True)
@@ -154,12 +173,19 @@ async def main_async() -> int:
                     continue
                 try:
                     audio, mime = await asyncio.to_thread(_synthesize_voice, core_url, core_token, text)
+                    with suppress(Exception):
+                        await asyncio.to_thread(client.runtime_action, "realtime.speech_started", {"turn_id": turn.turn_id or "", "source": "stream_creator_voice"})
                     relay.state.publish_audio(audio, mime_type=mime, caption=text)
                 except Exception as exc:  # noqa: BLE001
                     relay.state.publish_caption(text)
                     print(f"voice unavailable: {type(exc).__name__}", flush=True)
+                finally:
+                    with suppress(Exception):
+                        await asyncio.to_thread(client.runtime_action, "realtime.speech_ended", {"turn_id": turn.turn_id or "", "source": "stream_creator_voice"})
                 print(f"Mary: {text}", flush=True)
             except Exception as exc:  # noqa: BLE001 - one utterance must not terminate stream hearing
+                with suppress(Exception):
+                    await asyncio.to_thread(client.runtime_action, "realtime.transcribing", {"active": False, "source": "stream_creator_voice"})
                 print(f"creator voice error: {type(exc).__name__}: {exc}", flush=True)
             finally:
                 queue.task_done()
