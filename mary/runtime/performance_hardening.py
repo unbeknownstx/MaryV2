@@ -35,6 +35,11 @@ class PerformanceHardeningBundle:
             "version": self.VERSION,
             "standing_affect": self.standing_affect.snapshot(),
             "stream_capabilities": self.stream_capabilities.snapshot(),
+            "runtime_profile": (
+                self.mary.performance_profiles.status()
+                if callable(getattr(getattr(self.mary, "performance_profiles", None), "status", None))
+                else {"enabled": False}
+            ),
             "authority": "wiring only; canonical owners remain Mary Core subsystems",
         }
 

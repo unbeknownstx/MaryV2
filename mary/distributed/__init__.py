@@ -45,3 +45,13 @@ __all__ = [
 ]
 
 from .action_windows import ActionSpec, ActionWindow, ActionSelection, ActionWindowRegistry
+
+from .invocations import CapabilityInvocation, CapabilityInvocationLedger
+from .simulator import CapabilitySimulator, SimulatedCapabilityResult
+
+__all__ += [
+    "CapabilityInvocation",
+    "CapabilityInvocationLedger",
+    "CapabilitySimulator",
+    "SimulatedCapabilityResult",
+]

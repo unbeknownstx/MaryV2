@@ -20,6 +20,7 @@ from .speaker_scheduler import SpeakerScheduler
 from .data_plane import RealtimeDataPlane, RealtimeDatum
 from .speech_arbiter import SpeechOutputArbiter, SpeechRequest
 from .presentation_session import PresentationSessionManager
+from .brain_activity import BrainActivityProjection
 
 
 class InteractionPhase(str, Enum):
@@ -66,6 +67,7 @@ class RealtimeInteractionCoordinator:
         self.speech_arbiter = SpeechOutputArbiter()
         self.presentation_sessions = PresentationSessionManager()
         self.speaker_scheduler = SpeakerScheduler(trace=self.decision_trace)
+        self.brain_activity = BrainActivityProjection(self)
         self.anti_echo = bool(anti_echo)
         self._lock = RLock()
         self._phase = InteractionPhase.IDLE
@@ -422,6 +424,7 @@ class RealtimeInteractionCoordinator:
                 "presentation_session": self.presentation_sessions.status(),
                 "speaker_scheduler": self.speaker_scheduler.status(),
                 "decision_trace": self.decision_trace.snapshot(),
+                "brain_activity": self.brain_activity.snapshot(),
                 "voice_activity": dict(self._voice_activity),
                 "semantics": "coordination state only; no identity or memory authority",
             }
