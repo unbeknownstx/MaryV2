@@ -39,6 +39,7 @@ from .benchmarking import (
     node_id_from_environment,
     save_profile,
 )
+from .specialist_catalog import CATALOG as SPECIALIST_CATALOG, SpecialistBackend, backend as specialist_backend, specialist_status
 
 __all__ = [
     "CapabilityDescriptor",
@@ -76,6 +77,10 @@ __all__ = [
     "load_profile",
     "node_id_from_environment",
     "save_profile",
+    "SPECIALIST_CATALOG",
+    "SpecialistBackend",
+    "specialist_backend",
+    "specialist_status",
 ]
 
 from .action_windows import ActionSpec, ActionWindow, ActionSelection, ActionWindowRegistry
