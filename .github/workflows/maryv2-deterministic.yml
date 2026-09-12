@@ -3,7 +3,7 @@ name: MaryV2 deterministic gate
 on:
   push:
     branches:
-      - maryv2-13.4-mcp-capability-fabric
+      - main
   pull_request:
     branches:
       - main
