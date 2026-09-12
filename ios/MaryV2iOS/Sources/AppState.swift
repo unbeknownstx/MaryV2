@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 final class AppState: ObservableObject {
@@ -63,6 +64,10 @@ final class AppState: ObservableObject {
             workspace: workspaceData,
             voiceReady: voiceServerAvailable
         )
+    }
+
+    var relationship: RelationalSnapshot {
+        CoreProjection.relationalSnapshot(dashboardData)
     }
 
     func start() async {
@@ -177,6 +182,18 @@ final class AppState: ObservableObject {
         await connect()
     }
 
+    func prepareSharedActivity(_ activity: SharedLifeActivity) {
+        draft = activity.prompt
+        selectedTab = .chat
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+    }
+
+    func openChat(with prompt: String = "") {
+        if !prompt.isEmpty { draft = prompt }
+        selectedTab = .chat
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
     func send(
         text explicitText: String? = nil,
         voiceInput: Bool = false
@@ -195,9 +212,9 @@ final class AppState: ObservableObject {
         messages.append(MaryMessage(role: .user, text: text))
         isSending = true
         playback.stop()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         do {
-            // A meaningful turn also refreshes this exact creator surface.
             try? await client.renewSurface(foreground: true)
 
             let result = try await client.turn(
@@ -213,6 +230,7 @@ final class AppState: ObservableObject {
             statusText = "Online"
             lastError = nil
             isSending = false
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
 
             if AppConfiguration.speakResponses, voiceServerAvailable {
                 await speakMaryResponse(
@@ -233,6 +251,7 @@ final class AppState: ObservableObject {
             statusText = "Offline"
             lastError = error.localizedDescription
             isSending = false
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 
@@ -249,6 +268,7 @@ final class AppState: ObservableObject {
             voice.transcript = ""
         } else {
             playback.stop()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             await voice.start()
             if let error = voice.errorText {
                 lastVoiceError = error
@@ -281,8 +301,6 @@ final class AppState: ObservableObject {
             try playback.play(audio)
             lastVoiceError = nil
         } catch {
-            // TTS is presentation only. A voice outage must never make the
-            // canonical chat/Core appear offline.
             lastVoiceError = error.localizedDescription
         }
     }
@@ -308,6 +326,7 @@ final class AppState: ObservableObject {
         do {
             performanceMode = try await client.setPerformanceContext(mode)
             lastError = nil
+            UISelectionFeedbackGenerator().selectionChanged()
         } catch {
             lastError = error.localizedDescription
         }
