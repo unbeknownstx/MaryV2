@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TogetherView: View {
     @EnvironmentObject var app: AppState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -31,7 +30,7 @@ struct TogetherView: View {
 
     private var relationshipHero: some View {
         ZStack(alignment: .bottomLeading) {
-            MaryArtwork(asset: .neonNightManga, contentMode: .fill)
+            MaryArtwork(asset: .manga, contentMode: .fill)
                 .frame(maxWidth: .infinity)
                 .frame(height: 270)
                 .clipped()
