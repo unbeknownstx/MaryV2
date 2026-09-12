@@ -1,8 +1,11 @@
-"""Install the MaryV2 performance/experience hardening bundle.
+"""Install MaryV2's bounded experience/presence composition helpers.
 
-This remains thin wiring. It attaches derived/ephemeral systems to existing
-owners instead of introducing another Core, memory store, attention bus,
-speaker floor, relationship database, or model router.
+This remains thin composition wiring. It attaches projections and small bounded
+runtime helpers to existing owners instead of introducing another Core, memory
+store, attention bus, speaker floor, relationship database, or model router.
+RelationalPresenceRuntime may ask the existing RelationshipManager to record
+explicit relationship mode or completed shared-experience events; that manager
+remains the only durable relationship authority.
 """
 from __future__ import annotations
 
@@ -60,7 +63,10 @@ class PerformanceHardeningBundle:
             "experience_quality": self.experience_quality.snapshot(),
             "relational_presence": self.relational_presence.snapshot(),
             "social_delivery": self.delivery_envelope(),
-            "authority": "wiring/telemetry only; canonical owners remain Mary Core subsystems",
+            "authority": (
+                "composition/projection layer only; durable relationship writes "
+                "delegate to the canonical RelationshipManager"
+            ),
         }
 
 
