@@ -19,6 +19,7 @@ struct RootView: View {
                         case .chat: ChatView()
                         case .together: TogetherView()
                         case .work: WorkView(navigate: navigate)
+                        case .focus: FocusView()
                         case .more: MoreView(navigate: navigate)
                         }
                     }
@@ -121,7 +122,7 @@ struct MaryTabBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(MainTab.allCases) { tab in
+            ForEach(MainTab.primaryTabs) { tab in
                 Button {
                     withAnimation(.easeOut(duration: 0.18)) {
                         app.selectedTab = tab
