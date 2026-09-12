@@ -73,10 +73,33 @@ python -m scripts.check_specialist_backends
 
 The diagnostic reports module/executable/configured-endpoint presence only. It never prints secrets and none of these tools become a Mary Core startup dependency.
 
+## Specialist STT bridge
+
+The existing `DesktopSpeechToText` adapter now accepts three additional **device-configured** modes while preserving Groq, faster-whisper and whisper.cpp:
+
+- `MARY_STT_PROVIDER=qwen3_asr` with `MARY_QWEN_ASR_ENDPOINT`;
+- `MARY_STT_PROVIDER=fluid_audio` with `MARY_FLUID_AUDIO_ENDPOINT`;
+- `MARY_STT_PROVIDER=specialist_http` with `MARY_STT_ENDPOINT`.
+
+Only HTTPS or loopback HTTP endpoints are accepted. Capability tasks cannot choose the URL, model path or executable. The same `sensor.audio_transcribe` capability therefore supports these candidates without changing Mary Core or the public creator-voice bridge.
+
+## Semantic screen perception
+
+13.14 adds `sensor.screen_describe`, a third permission-gated home sensor capability. It closes the gap between *capturing* a screenshot and giving Mary a compact semantic observation.
+
+A node may be configured with:
+
+- `MARY_VISION_PROVIDER=llama_cpp_mtmd` + `MARY_LLAMA_CPP_VLM_URL`; or
+- `MARY_VISION_PROVIDER=omniparser` + `MARY_OMNIPARSER_ENDPOINT`.
+
+The executor captures one bounded screenshot locally, calls only the preconfigured endpoint, and returns a sanitized description plus optional UI-region labels. Remote tasks may choose only `scene`, `ui`, or `stream` description mode and bounded capture quality/width. They cannot supply a URL, model, filesystem path, mouse/keyboard command, click target or follow-on action.
+
+Visual descriptions remain ephemeral perception evidence. They are not memory truth and do not grant computer-control authority.
+
 ## Adoption rule
 
 Research projects are treated as component libraries and experiments, not architectural authorities. A specialist may own temporary computation, but one canonical Mary Core continues to own identity/state; existing MemoryManager/RelationshipManager/TurnMind owners remain intact; proposal-only autonomy remains; device permissions remain; no arbitrary shell/computer control is introduced.
 
 ## Next live work
 
-13.14 deliberately establishes contracts before hardware-specific selection. At home, benchmark the actual Mac/Windows nodes and then enable only the specialists that beat existing paths on latency, quality, privacy or cost. The highest-value candidates are Apple audio offload, local multimodal screen description and expressive local TTS.
+13.14 deliberately establishes contracts before hardware-specific selection. At home, benchmark the actual Mac/Windows nodes and then enable only the specialists that beat existing paths on latency, quality, privacy or cost. The highest-value candidates are Apple audio offload, local multimodal screen description and expressive local TTS. Chatterbox remains catalogued but is intentionally not promoted into the live voice route until it is benchmarked against the existing ElevenLabs/Piper/SAPI stack.
