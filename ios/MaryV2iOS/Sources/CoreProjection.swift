@@ -57,6 +57,22 @@ enum CoreProjection {
         return snapshot
     }
 
+    static func relationalSnapshot(_ dashboard: [String: Any]) -> RelationalSnapshot {
+        var result = RelationalSnapshot()
+        let hardening = dict(dashboard["performance_hardening"])
+        let presence = dict(hardening["relational_presence"])
+        let mode = string(presence["relationship_mode"]).lowercased()
+        if ["friend", "close", "romantic", "partner"].contains(mode) {
+            result.mode = mode
+        }
+
+        let activity = dict(presence["active_activity"])
+        result.activeActivityTitle = string(activity["title"])
+        result.activeActivityType = string(activity["activity_type"])
+        result.pendingPresenceCount = array(presence["pending_presence_proposals"]).count
+        return result
+    }
+
     static func readableMemorySummary(_ raw: [String: Any]) -> (total: Int, sharedEvents: Int, lines: [String]) {
         let counts = dict(raw["counts"])
         let total = int(counts["episodic"]) + int(counts["semantic"]) + int(counts["working"])
