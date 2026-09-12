@@ -26,8 +26,8 @@ def test_stream_cohost_runner_uses_canonical_core_and_public_projection() -> Non
 
 def test_stream_cohost_keeps_credentials_out_of_obs_browser_relay() -> None:
     relay = _text("mary/streaming/relay.py")
-    assert 'host not in {"127.0.0.1", "localhost", "::1"}' not in relay
     assert 'normalized_host not in {"127.0.0.1", "localhost", "::1"}' in relay
+    assert "Mary stream relay is loopback-only" in relay
     assert "MARY_CORE_TOKEN" not in relay
     assert "MARY_TWITCH_OAUTH_TOKEN" not in relay
     assert "Authorization" not in relay
