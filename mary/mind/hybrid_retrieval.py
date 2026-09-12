@@ -20,13 +20,13 @@ _FALSE = {"0", "false", "no", "off", "disabled"}
 class HybridReservoirRetriever:
     """Blend FTS/lexical candidates with optional semantic vector candidates.
 
-    Vector retrieval is lazy. In ``auto`` mode no Ollama call happens until a
-    vector index actually exists. This preserves Mary's fast 13.0 path on
-    current hardware while making semantic recall available after an explicit
-    index build.
+    Vector retrieval is lazy and fail-closed across embedding-space changes.
+    Stored vectors are compared only when their embedding identity fingerprint
+    matches the current embedding client. Rebuilds invalidate incompatible
+    derived vectors automatically; canonical reservoir records are untouched.
     """
 
-    VERSION = "13.1"
+    VERSION = "13.14-embedding-identity-1"
 
     def __init__(
         self,
@@ -51,6 +51,7 @@ class HybridReservoirRetriever:
         self._last_query_used_vectors = False
         self._last_build: dict[str, Any] = {}
         self._availability_cache: tuple[float, bool] = (0.0, False)
+        self._last_identity_mismatch = False
         self.contextual_reranker = ContextualReservoirReranker()
 
     @staticmethod
@@ -60,6 +61,29 @@ class HybridReservoirRetriever:
         except (TypeError, ValueError):
             value = float(default)
         return max(minimum, min(maximum, value))
+
+    def _embedding_identity(self, *, refresh: bool = False) -> tuple[str, dict[str, Any]]:
+        resolver = getattr(self.embedding_client, "embedding_identity", None)
+        if callable(resolver):
+            try:
+                identity = resolver(refresh=refresh)
+            except TypeError:
+                identity = resolver()
+            if isinstance(identity, dict):
+                fingerprint = str(identity.get("fingerprint") or "").strip()
+                details = dict(identity)
+            else:
+                fingerprint_value = getattr(identity, "fingerprint", "")
+                if callable(fingerprint_value):
+                    fingerprint_value = fingerprint_value()
+                fingerprint = str(fingerprint_value or "").strip()
+                to_dict = getattr(identity, "to_dict", None)
+                details = dict(to_dict()) if callable(to_dict) else {"value": str(identity)}
+            if fingerprint:
+                return fingerprint, details
+        model = str(getattr(self.embedding_client, "model", "unknown"))
+        fallback = f"legacy:{model}"
+        return fallback, {"fingerprint": fallback, "provider": "legacy", "model": model}
 
     def configure_vector_index(self, path: str | Path | None) -> None:
         old = self.vector_index
@@ -83,7 +107,6 @@ class HybridReservoirRetriever:
             return False
         if self.mode in _TRUE:
             return True
-        # auto: use semantic search only after an index has been explicitly built
         return self.vector_index.count(model=self.embedding_client.model) > 0
 
     def embedding_available(self, *, refresh: bool = False) -> bool:
@@ -112,29 +135,40 @@ class HybridReservoirRetriever:
         lexical_scores = {hit.record_id: max(0.0, min(1.0, float(hit.score))) for hit in lexical}
         vector_scores: dict[str, float] = {}
         self._last_query_used_vectors = False
+        self._last_identity_mismatch = False
 
         if self.vectors_requested() and self.embedding_available():
             try:
-                query_vector = self.embedding_client.embed(query)
-                if query_vector:
-                    for vector_hit in self.vector_index.search(
-                        query_vector,
-                        model=self.embedding_client.model,
-                        limit=max(limit * 3, 12),
-                    ):
-                        record = self.reservoir.get(vector_hit.record_id)
-                        if record is None:
-                            continue
-                        if content_hash(record.content) != vector_hit.content_hash:
-                            continue
-                        if record.confidence < minimum_confidence:
-                            continue
-                        by_id.setdefault(record.record_id, record)
-                        # Cosine [-1,1] -> relevance [0,1]. Negative matches are
-                        # not useful for candidate recall.
-                        vector_scores[record.record_id] = max(0.0, min(1.0, (vector_hit.score + 1.0) / 2.0))
-                    self._last_query_used_vectors = bool(vector_scores)
-                self._last_vector_error = None
+                identity, _identity_details = self._embedding_identity()
+                registered = self.vector_index.registered_identity(self.embedding_client.model)
+                if registered != identity:
+                    self._last_identity_mismatch = True
+                    self._last_vector_error = (
+                        "EmbeddingIdentityMismatch: semantic index rebuild required "
+                        f"for model {self.embedding_client.model}"
+                    )
+                else:
+                    query_vector = self.embedding_client.embed(query)
+                    if query_vector:
+                        for vector_hit in self.vector_index.search(
+                            query_vector,
+                            model=self.embedding_client.model,
+                            embedding_identity=identity,
+                            limit=max(limit * 3, 12),
+                        ):
+                            record = self.reservoir.get(vector_hit.record_id)
+                            if record is None:
+                                continue
+                            if content_hash(record.content) != vector_hit.content_hash:
+                                continue
+                            if record.confidence < minimum_confidence:
+                                continue
+                            by_id.setdefault(record.record_id, record)
+                            vector_scores[record.record_id] = max(
+                                0.0, min(1.0, (vector_hit.score + 1.0) / 2.0)
+                            )
+                        self._last_query_used_vectors = bool(vector_scores)
+                    self._last_vector_error = None
             except Exception as exc:
                 self._last_vector_error = f"{type(exc).__name__}: {exc}"
 
@@ -145,8 +179,6 @@ class HybridReservoirRetriever:
             if vector_score and lexical_score:
                 score = self.lexical_weight * lexical_score + self.vector_weight * vector_score
             elif vector_score:
-                # Vector-only matches need a slightly stronger bar than lexical
-                # hits because semantic similarity is recall, not authority.
                 score = 0.86 * vector_score
             else:
                 score = lexical_score
@@ -181,6 +213,12 @@ class HybridReservoirRetriever:
             self._last_build = result
             return result
 
+        identity, identity_details = self._embedding_identity(refresh=True)
+        identity_change = self.vector_index.register_identity(
+            model=self.embedding_client.model,
+            embedding_identity=identity,
+        )
+
         indexed = 0
         errors = 0
         for record in selected:
@@ -189,6 +227,7 @@ class HybridReservoirRetriever:
                 if vector and self.vector_index.upsert(
                     record_id=record.record_id,
                     model=self.embedding_client.model,
+                    embedding_identity=identity,
                     vector=vector,
                     content=record.content,
                 ):
@@ -201,25 +240,51 @@ class HybridReservoirRetriever:
         removed = self.vector_index.remove_missing(
             [record.record_id for record in materialized],
             model=self.embedding_client.model,
+            embedding_identity=identity,
         )
+        self._last_identity_mismatch = False
         result = {
             "ok": indexed > 0 or not selected,
             "indexed": indexed,
             "requested": len(selected),
             "errors": errors,
             "removed_stale": removed,
+            "invalidated_incompatible": int(identity_change.get("invalidated", 0)),
+            "identity_changed": bool(identity_change.get("changed")),
+            "embedding_identity": identity,
+            "embedding_identity_details": identity_details,
             "model": self.embedding_client.model,
-            "vectors": self.vector_index.count(model=self.embedding_client.model),
+            "vectors": self.vector_index.count(
+                model=self.embedding_client.model,
+                embedding_identity=identity,
+            ),
         }
         self._last_build = result
         return result
 
     def status(self) -> dict[str, Any]:
+        identity = ""
+        identity_details: dict[str, Any] = {}
+        try:
+            identity, identity_details = self._embedding_identity()
+        except Exception:
+            pass
+        registered = self.vector_index.registered_identity(self.embedding_client.model)
+        rebuild_required = bool(
+            self.vector_index.count(model=self.embedding_client.model) > 0
+            and identity
+            and registered != identity
+        )
         return {
             "version": self.VERSION,
             "mode": self.mode,
             "vector_requested": self.vectors_requested(),
             "embedding_model": self.embedding_client.model,
+            "embedding_identity": identity,
+            "embedding_identity_details": identity_details,
+            "registered_embedding_identity": registered,
+            "embedding_identity_mismatch": bool(self._last_identity_mismatch or rebuild_required),
+            "rebuild_required": rebuild_required,
             "embedding_available": self.embedding_available() if self.vectors_requested() else False,
             "last_query_used_vectors": self._last_query_used_vectors,
             "last_vector_error": self._last_vector_error,
@@ -227,7 +292,10 @@ class HybridReservoirRetriever:
                 "lexical": round(self.lexical_weight, 3),
                 "vector": round(self.vector_weight, 3),
             },
-            "vector_index": self.vector_index.status(model=self.embedding_client.model),
+            "vector_index": self.vector_index.status(
+                model=self.embedding_client.model,
+                embedding_identity=identity or None,
+            ),
             "last_build": dict(self._last_build),
             "semantics": "vectors retrieve candidates; canonical authority/provenance still decides truth",
         }
