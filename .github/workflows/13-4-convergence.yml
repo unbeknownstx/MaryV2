@@ -1,6 +1,9 @@
-name: MaryV2 13.4 convergence
+name: MaryV2 convergence
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -43,9 +46,15 @@ jobs:
         run: python -m compileall -q mary scripts tests
       - name: Repository structure
         run: python -m scripts.verify_repository_structure
-      - name: Focused 13.4 integration tests
+      - name: Focused integration tests
         run: |
-          python -m pytest -q             tests/protocol             tests/runtime/test_current_work_projection_13_4.py             tests/desktop/test_mcp_node_executor_13_4.py             tests/distributed/test_mcp_fabric_13_4.py             tests/distributed/test_mcp_permissions_13_4.py             tests/distributed/test_mcp_task_broker_13_4.py
+          python -m pytest -q \
+            tests/protocol \
+            tests/runtime/test_current_work_projection_13_4.py \
+            tests/desktop/test_mcp_node_executor_13_4.py \
+            tests/distributed/test_mcp_fabric_13_4.py \
+            tests/distributed/test_mcp_permissions_13_4.py \
+            tests/distributed/test_mcp_task_broker_13_4.py
       - name: Full deterministic suite
         run: python -m pytest -q
 
@@ -61,7 +70,6 @@ jobs:
         run: |
           node --check mobile_web/app.js
           node --check mobile_native/MaryMobile/www/app.js
-
 
   ios-native-build:
     runs-on: macos-latest
