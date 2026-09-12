@@ -1,14 +1,8 @@
 """Optional semantic vector index for Mary's rebuildable cognitive reservoir.
 
 The index is derived cache state. It never owns memory or decides what is true.
-Vectors only help locate candidate records; the canonical reservoir record still
-carries authority/provenance and remains the returned content.
-
-The implementation intentionally uses SQLite + Python cosine similarity so
-MaryV2 can gain real embedding-based recall without a vector-database server or
-new mandatory Python dependency. It is appropriate for Mary's current personal
-scale; a future large multi-character service can swap the backend behind the
-same interface.
+Embedding identity is stored beside every vector so vectors from incompatible
+model/runtime spaces are never compared silently.
 """
 from __future__ import annotations
 
@@ -29,6 +23,7 @@ class VectorHit:
     score: float
     model: str
     content_hash: str
+    embedding_identity: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -36,6 +31,7 @@ class VectorHit:
             "score": round(float(self.score), 5),
             "model": self.model,
             "content_hash": self.content_hash,
+            "embedding_identity": self.embedding_identity,
         }
 
 
@@ -59,7 +55,7 @@ def cosine_similarity(a: list[float], b: list[float], *, b_norm: float | None = 
 
 
 class SemanticVectorIndex:
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, path: str | Path | None = None, *, max_scan: int = 5000) -> None:
         self.path = Path(path).expanduser().resolve() if path else None
@@ -98,17 +94,78 @@ class SemanticVectorIndex:
                 vector_norm REAL NOT NULL,
                 content_hash TEXT NOT NULL,
                 updated_at REAL NOT NULL,
+                embedding_identity TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY(record_id, model)
             );
-            CREATE INDEX IF NOT EXISTS idx_reservoir_vectors_model
-                ON reservoir_vectors(model);
             """
+        )
+        columns = {str(row[1]) for row in self._connection.execute("PRAGMA table_info(reservoir_vectors)").fetchall()}
+        if "embedding_identity" not in columns:
+            self._connection.execute(
+                "ALTER TABLE reservoir_vectors ADD COLUMN embedding_identity TEXT NOT NULL DEFAULT ''"
+            )
+        self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reservoir_vectors_model ON reservoir_vectors(model)"
+        )
+        self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reservoir_vectors_space ON reservoir_vectors(model, embedding_identity)"
         )
         self._connection.execute(
             "INSERT OR REPLACE INTO vector_meta(key,value) VALUES('schema_version',?)",
             (str(self.SCHEMA_VERSION),),
         )
         self._connection.commit()
+
+    @staticmethod
+    def _identity_meta_key(model: str) -> str:
+        return f"embedding_identity:{str(model)}"
+
+    def _meta_get(self, key: str) -> str | None:
+        row = self._connection.execute("SELECT value FROM vector_meta WHERE key=?", (str(key),)).fetchone()
+        return str(row[0]) if row is not None else None
+
+    def _meta_set(self, key: str, value: str) -> None:
+        self._connection.execute(
+            "INSERT OR REPLACE INTO vector_meta(key,value) VALUES(?,?)",
+            (str(key), str(value)),
+        )
+
+    def registered_identity(self, model: str) -> str | None:
+        with self._lock:
+            value = self._meta_get(self._identity_meta_key(model))
+            return value or None
+
+    def register_identity(self, *, model: str, embedding_identity: str) -> dict[str, Any]:
+        """Register the current embedding space and invalidate incompatible rows.
+
+        This only deletes rebuildable vector-cache rows. Canonical reservoir or
+        memory records are never touched.
+        """
+        model_value = str(model)
+        identity = str(embedding_identity or "").strip()
+        if not identity:
+            raise ValueError("embedding_identity cannot be empty")
+        with self._lock, self._connection:
+            previous = self._meta_get(self._identity_meta_key(model_value))
+            changed = previous != identity
+            invalidated = 0
+            if changed:
+                row = self._connection.execute(
+                    "SELECT COUNT(*) FROM reservoir_vectors WHERE model=? AND embedding_identity<>?",
+                    (model_value, identity),
+                ).fetchone()
+                invalidated = int(row[0])
+                self._connection.execute(
+                    "DELETE FROM reservoir_vectors WHERE model=? AND embedding_identity<>?",
+                    (model_value, identity),
+                )
+                self._meta_set(self._identity_meta_key(model_value), identity)
+            return {
+                "changed": changed,
+                "previous": previous,
+                "current": identity,
+                "invalidated": invalidated,
+            }
 
     def close(self) -> None:
         with self._lock:
@@ -118,72 +175,123 @@ class SemanticVectorIndex:
             except Exception:
                 pass
 
-    def clear(self, *, model: str | None = None) -> None:
+    def clear(self, *, model: str | None = None, embedding_identity: str | None = None) -> None:
         with self._lock, self._connection:
-            if model:
+            if model and embedding_identity:
+                self._connection.execute(
+                    "DELETE FROM reservoir_vectors WHERE model=? AND embedding_identity=?",
+                    (str(model), str(embedding_identity)),
+                )
+            elif model:
                 self._connection.execute("DELETE FROM reservoir_vectors WHERE model=?", (str(model),))
             else:
                 self._connection.execute("DELETE FROM reservoir_vectors")
 
-    def upsert(self, *, record_id: str, model: str, vector: list[float], content: str) -> bool:
+    def upsert(
+        self,
+        *,
+        record_id: str,
+        model: str,
+        vector: list[float],
+        content: str,
+        embedding_identity: str = "",
+    ) -> bool:
         values = [float(value) for value in vector]
         if not values:
             return False
         norm = _norm(values)
         if norm <= 0.0:
             return False
+        identity = str(embedding_identity or "")
         with self._lock, self._connection:
             self._connection.execute(
                 """
-                INSERT INTO reservoir_vectors(record_id,model,dimensions,vector_json,vector_norm,content_hash,updated_at)
-                VALUES(?,?,?,?,?,?,?)
+                INSERT INTO reservoir_vectors(
+                    record_id,model,dimensions,vector_json,vector_norm,content_hash,updated_at,embedding_identity
+                ) VALUES(?,?,?,?,?,?,?,?)
                 ON CONFLICT(record_id,model) DO UPDATE SET
                     dimensions=excluded.dimensions,
                     vector_json=excluded.vector_json,
                     vector_norm=excluded.vector_norm,
                     content_hash=excluded.content_hash,
-                    updated_at=excluded.updated_at
+                    updated_at=excluded.updated_at,
+                    embedding_identity=excluded.embedding_identity
                 """,
                 (
                     str(record_id), str(model), len(values),
                     json.dumps(values, separators=(",", ":")), norm,
-                    content_hash(content), time(),
+                    content_hash(content), time(), identity,
                 ),
             )
         return True
 
-    def remove_missing(self, record_ids: Iterable[str], *, model: str) -> int:
+    def remove_missing(
+        self,
+        record_ids: Iterable[str],
+        *,
+        model: str,
+        embedding_identity: str | None = None,
+    ) -> int:
         allowed = {str(item) for item in record_ids}
         with self._lock:
-            rows = self._connection.execute(
-                "SELECT record_id FROM reservoir_vectors WHERE model=?", (str(model),)
-            ).fetchall()
+            if embedding_identity is None:
+                rows = self._connection.execute(
+                    "SELECT record_id FROM reservoir_vectors WHERE model=?", (str(model),)
+                ).fetchall()
+            else:
+                rows = self._connection.execute(
+                    "SELECT record_id FROM reservoir_vectors WHERE model=? AND embedding_identity=?",
+                    (str(model), str(embedding_identity)),
+                ).fetchall()
             stale = [str(row[0]) for row in rows if str(row[0]) not in allowed]
             if not stale:
                 return 0
             with self._connection:
-                self._connection.executemany(
-                    "DELETE FROM reservoir_vectors WHERE record_id=? AND model=?",
-                    [(rid, str(model)) for rid in stale],
-                )
+                if embedding_identity is None:
+                    self._connection.executemany(
+                        "DELETE FROM reservoir_vectors WHERE record_id=? AND model=?",
+                        [(rid, str(model)) for rid in stale],
+                    )
+                else:
+                    self._connection.executemany(
+                        "DELETE FROM reservoir_vectors WHERE record_id=? AND model=? AND embedding_identity=?",
+                        [(rid, str(model), str(embedding_identity)) for rid in stale],
+                    )
             return len(stale)
 
-    def search(self, query_vector: list[float], *, model: str, limit: int = 8) -> list[VectorHit]:
+    def search(
+        self,
+        query_vector: list[float],
+        *,
+        model: str,
+        limit: int = 8,
+        embedding_identity: str | None = None,
+    ) -> list[VectorHit]:
         query = [float(value) for value in query_vector]
         if not query:
             return []
         limit = max(1, min(50, int(limit)))
         with self._lock:
-            rows = self._connection.execute(
-                """
-                SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash
-                FROM reservoir_vectors
-                WHERE model=? AND dimensions=?
-                ORDER BY updated_at DESC
-                LIMIT ?
-                """,
-                (str(model), len(query), self.max_scan),
-            ).fetchall()
+            if embedding_identity is None:
+                rows = self._connection.execute(
+                    """
+                    SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash,embedding_identity
+                    FROM reservoir_vectors
+                    WHERE model=? AND dimensions=?
+                    ORDER BY updated_at DESC LIMIT ?
+                    """,
+                    (str(model), len(query), self.max_scan),
+                ).fetchall()
+            else:
+                rows = self._connection.execute(
+                    """
+                    SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash,embedding_identity
+                    FROM reservoir_vectors
+                    WHERE model=? AND dimensions=? AND embedding_identity=?
+                    ORDER BY updated_at DESC LIMIT ?
+                    """,
+                    (str(model), len(query), str(embedding_identity), self.max_scan),
+                ).fetchall()
         hits: list[VectorHit] = []
         for row in rows:
             try:
@@ -197,14 +305,20 @@ class SemanticVectorIndex:
                     score=score,
                     model=str(row["model"]),
                     content_hash=str(row["content_hash"]),
+                    embedding_identity=str(row["embedding_identity"] or ""),
                 )
             )
         hits.sort(key=lambda item: item.score, reverse=True)
         return hits[:limit]
 
-    def count(self, *, model: str | None = None) -> int:
+    def count(self, *, model: str | None = None, embedding_identity: str | None = None) -> int:
         with self._lock:
-            if model:
+            if model and embedding_identity:
+                row = self._connection.execute(
+                    "SELECT COUNT(*) FROM reservoir_vectors WHERE model=? AND embedding_identity=?",
+                    (str(model), str(embedding_identity)),
+                ).fetchone()
+            elif model:
                 row = self._connection.execute(
                     "SELECT COUNT(*) FROM reservoir_vectors WHERE model=?", (str(model),)
                 ).fetchone()
@@ -212,15 +326,17 @@ class SemanticVectorIndex:
                 row = self._connection.execute("SELECT COUNT(*) FROM reservoir_vectors").fetchone()
             return int(row[0])
 
-    def status(self, *, model: str | None = None) -> dict[str, Any]:
+    def status(self, *, model: str | None = None, embedding_identity: str | None = None) -> dict[str, Any]:
         with self._lock:
             size = int(self.path.stat().st_size) if self.path is not None and self.path.exists() else 0
             return {
                 "enabled": True,
                 "persistent": self.path is not None,
                 "path": str(self.path) if self.path is not None else ":memory:",
-                "vectors": self.count(model=model),
+                "vectors": self.count(model=model, embedding_identity=embedding_identity),
                 "model": str(model or "all"),
+                "embedding_identity": str(embedding_identity or ""),
+                "registered_identity": self.registered_identity(model) if model else None,
                 "max_scan": self.max_scan,
                 "size_bytes": size,
                 "schema_version": self.SCHEMA_VERSION,
