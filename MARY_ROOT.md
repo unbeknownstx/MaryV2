@@ -12,7 +12,7 @@ Human-readable companion to `mary.runtime.root_authority.MaryRootAuthority`.
 4. **Turn context** — current input, recent conversation, task/project context, relevant retrieval, relevant authored evidence.
 5. **Capability fabric** — LLMs, search, files, code, speech, perception, creative services and integrations.
 6. **Nodes** — cloud, Windows, Mac, rented compute, future GPU/server hosts.
-7. **Surfaces** — desktop, mobile/web, terminal and future performer/public interfaces.
+7. **Surfaces** — desktop, mobile/web, terminal and performer/public interfaces.
 
 ## One-Mary resolution
 
@@ -37,6 +37,41 @@ Evidence labels:
 - `[ALT]` alternate/experimental interpretation.
 - `[NEG]` anti-example.
 
+## Capability rule
+
+Capability is not authority and discovery is not permission.
+
+- A model may generate but does not become Mary.
+- A node may compute but does not own Mary's state.
+- A renderer may present Mary but does not define her identity.
+- Browser/stream/game text is context/evidence until a canonical owner accepts it.
+- Paid, external, consequential or device-local actions remain explicitly bounded.
+- Generic shell/computer execution is not smuggled through a broad capability name.
+
+## Product experience rule
+
+Presentation should make canonical state understandable without becoming another state owner.
+
+- Desktop, native iPhone, PWA and future surfaces share one visual/state vocabulary while adapting layout to the device.
+- UI copy describes the creator-facing experience first; backend class/provider detail belongs in diagnostics.
+- Character art/avatar state is presentation evidence, not memory or biography authority.
+- Operational UX telemetry may measure latency/readiness but must remain content-free and non-authoritative.
+- Public/performance mode is a privacy projection of the same Mary, never a second public personality database.
+
+## Graceful-degradation rule
+
+Optional capability failure must reduce capability rather than erase Mary.
+
+Supported degraded states include:
+
+- portrait/generated-art presentation when VRM/WebGL is unavailable;
+- text interaction when voice is unavailable;
+- cloud routing when an optional local node is absent;
+- private/local routing when configured cloud providers are unavailable;
+- disconnected MCP/creative/stream integrations without Core startup failure.
+
+Surfaces should clearly explain the unavailable capability while keeping primary conversation/work flows usable.
+
 ## Persistence rule
 
 Mary is not defined by one mutable folder. Recoverability requires:
@@ -51,4 +86,6 @@ Source checkouts no longer use repository-local `data/` by default. Host-native 
 
 ## Cleanup rule
 
-Current authority lives in this file, the current `docs/` architecture/operations docs, and executable tests/code. `docs/history/` preserves project archaeology but cannot override current authority.
+Current authority lives in this file, `README.md`, `docs/README.md`, the current `docs/architecture/` / `docs/operations/` documents, executable tests and code. `docs/history/` preserves project archaeology but cannot override current authority.
+
+A dated patch note, package report, old test count or generated overlay is never a reason to overwrite a newer canonical owner. Reconcile useful ideas into current systems and retire the duplicate implementation.
