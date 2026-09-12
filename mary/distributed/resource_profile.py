@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import ctypes
 import ctypes.util
 import os
 import platform
@@ -33,7 +34,6 @@ class RuntimeResourceProfile:
         memory: int | None = None
         try:
             if system == "windows":
-                import ctypes
                 class MEMORYSTATUSEX(ctypes.Structure):
                     _fields_ = [
                         ("dwLength", ctypes.c_ulong),
