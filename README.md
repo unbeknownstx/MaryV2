@@ -6,6 +6,8 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
+MaryV2 13.12 adds **bounded home sensor workers** to the 13.11 compute fabric: an explicitly authorized node can transcribe bounded microphone audio through the existing STT adapters or capture a bounded screenshot for perception, while both outputs remain ephemeral evidence rather than memory/action authority. This lets the Mac become a real STT worker candidate and the Windows stream machine become a real screen-evidence worker candidate without creating a second Mary.
+
 MaryV2 13.11 turns the existing Mac/Windows capability-node architecture into a **benchmark-aware home compute fabric**: the same canonical Core can use both machines as replaceable workers, compare sanitized local performance evidence, and prefer the better equivalent node without moving identity/state authority or weakening device permissions. Metal/Vulkan/local-model usefulness is measured on the actual hardware rather than assumed, so current machines can be used to their fullest while realtime conversation stays independent from slower background/generation work.
 
 MaryV2 13.10 remains the live Twitch/OBS cohost foundation: Twitch EventSub chat enters the bounded stream-attention/floor pipeline, selected messages become public-safe canonical Mary turns, Mary can answer through Core TTS into a loopback OBS Browser Source, and optional typed Twitch replies remain separately permission/configuration bounded. Existing OBS/browser/perception context can inform what Mary says without becoming memory truth or viewer authority.
@@ -17,6 +19,7 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
 - `docs/architecture/STREAM_COHOST_13_10.md` — live Twitch/OBS cohost architecture
 - `docs/STREAMING_ADAPTERS.md` — stream-host setup and operations
@@ -48,6 +51,7 @@ MaryV2 currently includes:
 - a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - a bounded Twitch/OBS live-cohost host with Core-owned chat attention, creator-floor protection, Mary voice/captions and optional typed replies;
 - benchmark-aware Mac/Windows home compute nodes with disposable operational profiles and cross-platform launch tooling;
+- explicit opt-in home-node STT and bounded screen-capture workers for realtime/perception pipelines;
 - Groq/Gemini/OpenRouter/Ollama routing plus explicit expert/provider paths;
 - Ollama and llama.cpp local inference support;
 - durable memory, relationship continuity, developed-self state and authored character evidence;
@@ -95,6 +99,19 @@ Home compute node (Mac/Windows/Linux):
 ```bash
 python -m scripts.benchmark_home_node --local-llm --repeats 3
 python -m scripts.run_home_node
+```
+
+Optional bounded screenshot support:
+
+```bash
+python -m pip install -r requirements-home-node.txt
+python -m scripts.node_permissions allow sensor.screen_capture
+```
+
+Optional STT worker permission (after configuring Groq/faster-whisper/whisper.cpp):
+
+```bash
+python -m scripts.node_permissions allow sensor.audio_transcribe
 ```
 
 Capability nodes are enrolled/run separately and remain replaceable resources.

@@ -7,8 +7,9 @@ from threading import RLock
 from typing import Any
 
 from .mcp_fabric import MCP_CAPABILITIES, MCP_SERVER_CAPABILITIES, normalize_mcp_tool_name
+from .sensors import SENSOR_CAPABILITIES
 
-_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES}
+_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
 
 
 def default_permission_path() -> Path:
@@ -142,6 +143,8 @@ class DeviceExecutionPermissions:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
+                # Sensor capability names extend the existing allowlist without
+                # changing the permission-file wire/schema contract.
                 "version": "13.4",
                 "allowed_capabilities": sorted(values),
                 "allowed_mcp_tools": {
@@ -149,6 +152,6 @@ class DeviceExecutionPermissions:
                     for server, tools in sorted(mcp_tools.items())
                     if tools
                 },
-                "policy": "local device opt-in; MCP requires per-tool allowlist; no shell or arbitrary command execution",
+                "policy": "local device opt-in; sensor capture/transcription are explicit capabilities; MCP requires per-tool allowlist; no shell or arbitrary command execution",
             }
             self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
