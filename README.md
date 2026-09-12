@@ -6,7 +6,9 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
-MaryV2 13.10 makes the existing performer architecture usable as a **live stream cohost**: Twitch EventSub chat enters the bounded stream-attention/floor pipeline, selected messages become public-safe canonical Mary turns, Mary can answer through Core TTS into a loopback OBS Browser Source, and optional typed Twitch replies remain separately permission/configuration bounded. Existing OBS/browser/perception context can inform what Mary says without becoming memory truth or viewer authority.
+MaryV2 13.11 turns the existing Mac/Windows capability-node architecture into a **benchmark-aware home compute fabric**: the same canonical Core can use both machines as replaceable workers, compare sanitized local performance evidence, and prefer the better equivalent node without moving identity/state authority or weakening device permissions. Metal/Vulkan/local-model usefulness is measured on the actual hardware rather than assumed, so current machines can be used to their fullest while realtime conversation stays independent from slower background/generation work.
+
+MaryV2 13.10 remains the live Twitch/OBS cohost foundation: Twitch EventSub chat enters the bounded stream-attention/floor pipeline, selected messages become public-safe canonical Mary turns, Mary can answer through Core TTS into a loopback OBS Browser Source, and optional typed Twitch replies remain separately permission/configuration bounded. Existing OBS/browser/perception context can inform what Mary says without becoming memory truth or viewer authority.
 
 The 13.9 native iPhone companion product remains the everyday mobile surface, and the 13.8 relational-presence architecture remains canonical relationship continuity beneath both private and public experiences.
 
@@ -15,6 +17,7 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
 - `docs/architecture/STREAM_COHOST_13_10.md` — live Twitch/OBS cohost architecture
 - `docs/STREAMING_ADAPTERS.md` — stream-host setup and operations
 - `docs/architecture/RELATIONAL_PRESENCE_13_8.md` — relational-presence architecture
@@ -44,6 +47,7 @@ MaryV2 currently includes:
 - Desktop, mobile/PWA, native iPhone and terminal clients;
 - a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - a bounded Twitch/OBS live-cohost host with Core-owned chat attention, creator-floor protection, Mary voice/captions and optional typed replies;
+- benchmark-aware Mac/Windows home compute nodes with disposable operational profiles and cross-platform launch tooling;
 - Groq/Gemini/OpenRouter/Ollama routing plus explicit expert/provider paths;
 - Ollama and llama.cpp local inference support;
 - durable memory, relationship continuity, developed-self state and authored character evidence;
@@ -84,6 +88,13 @@ Optional stream host:
 ```bash
 python -m pip install -r requirements-streaming.txt
 python -m scripts.run_stream_cohost
+```
+
+Home compute node (Mac/Windows/Linux):
+
+```bash
+python -m scripts.benchmark_home_node --local-llm --repeats 3
+python -m scripts.run_home_node
 ```
 
 Capability nodes are enrolled/run separately and remain replaceable resources.
