@@ -109,16 +109,100 @@ enum PresencePhase: Equatable {
 }
 
 enum MainTab: String, CaseIterable, Identifiable {
-    case home, chat, work, focus, more
+    case home, chat, together, work, more
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+    var title: String {
+        switch self {
+        case .home: return "Home"
+        case .chat: return "Talk"
+        case .together: return "Together"
+        case .work: return "Work"
+        case .more: return "More"
+        }
+    }
     var symbol: String {
         switch self {
         case .home: return "house.fill"
         case .chat: return "bubble.left.and.bubble.right.fill"
+        case .together: return "heart.circle.fill"
         case .work: return "checkmark.square.fill"
-        case .focus: return "scope"
         case .more: return "square.grid.2x2.fill"
+        }
+    }
+}
+
+enum SharedLifeActivity: String, CaseIterable, Identifiable {
+    case watch, game, create, study, work, music, date, unwind
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .watch: return "Watch"
+        case .game: return "Play"
+        case .create: return "Create"
+        case .study: return "Study"
+        case .work: return "Work"
+        case .music: return "Music"
+        case .date: return "Date"
+        case .unwind: return "Unwind"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .watch: return "play.rectangle.fill"
+        case .game: return "gamecontroller.fill"
+        case .create: return "paintbrush.pointed.fill"
+        case .study: return "book.closed.fill"
+        case .work: return "hammer.fill"
+        case .music: return "music.note"
+        case .date: return "heart.fill"
+        case .unwind: return "moon.stars.fill"
+        }
+    }
+    var prompt: String {
+        switch self {
+        case .watch: return "Let's watch something together. Help me pick something and stay with me while we watch."
+        case .game: return "Let's play something together. Help me choose a game or activity we can share right now."
+        case .create: return "Let's make something together. Pick up the creative thread with me and help me get started."
+        case .study: return "Study with me for a while. Help me choose one concrete thing to learn and keep me focused."
+        case .work: return "Work beside me for a while. Help me choose the next useful task and keep the session moving."
+        case .music: return "Let's listen to music together. Help me pick a mood or something that fits what we're doing."
+        case .date: return "Let's have a little virtual date. Pick something simple we can actually do together right now."
+        case .unwind: return "Hang out with me for a bit. No agenda—just be here and talk with me naturally."
+        }
+    }
+}
+
+struct RelationalSnapshot {
+    var mode = "friend"
+    var activeActivityTitle = ""
+    var activeActivityType = ""
+    var pendingPresenceCount = 0
+
+    var title: String {
+        switch mode {
+        case "partner": return "Partners"
+        case "romantic": return "Romantic"
+        case "close": return "Close"
+        default: return "Companions"
+        }
+    }
+
+    var symbol: String {
+        switch mode {
+        case "partner": return "heart.fill"
+        case "romantic": return "heart.circle.fill"
+        case "close": return "person.2.fill"
+        default: return "sparkles"
+        }
+    }
+
+    var subtitle: String {
+        if !activeActivityTitle.isEmpty { return activeActivityTitle }
+        switch mode {
+        case "partner": return "Private shared-life context"
+        case "romantic": return "Affectionate private context"
+        case "close": return "Familiar shared context"
+        default: return "Growing shared history"
         }
     }
 }
