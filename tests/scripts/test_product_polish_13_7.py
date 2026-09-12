@@ -40,7 +40,7 @@ def test_mobile_web_and_compatibility_wrapper_are_byte_aligned_for_shared_shell(
     assert "PERSISTENT COMPANION SYSTEM · 13.7" in index
     assert "polish-13-7.css" in index
     service_worker = (web / "sw.js").read_text(encoding="utf-8")
-    assert "maryv2-mobile-shell-v13-7-product-polish" in service_worker
+    assert "maryv2-mobile-shell-v13-2-unified-v13-7-product-polish" in service_worker
     assert "'/polish-13-7.css'" in service_worker
 
 
