@@ -1,5 +1,16 @@
 # Changelog
 
+## 13.9 — 2026-09-11 — Native iPhone Companion Product
+
+- Rebuilt the SwiftUI iPhone Home around Mary's live presence, relationship context, current work and one-tap Talk/Call actions.
+- Rebuilt Talk as a conversation-first surface with compact presence, native message bubbles, starter actions, haptics and improved local voice entry.
+- Added **Together** as a first-class destination for close/romantic/partner context and shared-life starters such as Watch, Play, Create, Study, Work, Music, Date and Unwind.
+- Projected the canonical 13.8 relational-presence snapshot into native iPhone UI without introducing a second relationship owner or direct relationship-file writes.
+- Upgraded the native voice-call presentation with relationship context, private/public projection, transcription state and graceful text fallback.
+- Preserved Work and Focus while simplifying the persistent product navigation to five primary destinations: Home, Talk, Together, Work and More.
+- Added native haptics/accessibility polish, kept 44-point touch targets/reduced-motion behavior, and reused approved bundled Mary artwork plus system SF Symbols rather than copying third-party app assets.
+- Advanced the native app to version 0.5 (build 5) and added deterministic 13.9 product contracts.
+
 ## 13.8 — 2026-09-11 — Relational Presence & Shared Life
 
 - Added relationship modes (`friend`, `close`, `romantic`, `partner`) without creating a second persona or relationship database.
