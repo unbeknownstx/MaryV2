@@ -109,7 +109,10 @@ enum PresencePhase: Equatable {
 }
 
 enum MainTab: String, CaseIterable, Identifiable {
-    case home, chat, together, work, more
+    case home, chat, together, work, focus, more
+
+    static let primaryTabs: [MainTab] = [.home, .chat, .together, .work, .more]
+
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -117,6 +120,7 @@ enum MainTab: String, CaseIterable, Identifiable {
         case .chat: return "Talk"
         case .together: return "Together"
         case .work: return "Work"
+        case .focus: return "Focus"
         case .more: return "More"
         }
     }
@@ -126,6 +130,7 @@ enum MainTab: String, CaseIterable, Identifiable {
         case .chat: return "bubble.left.and.bubble.right.fill"
         case .together: return "heart.circle.fill"
         case .work: return "checkmark.square.fill"
+        case .focus: return "scope"
         case .more: return "square.grid.2x2.fill"
         }
     }
