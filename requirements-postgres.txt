@@ -1,0 +1,5 @@
+# Optional MaryV2 PostgreSQL projection dependencies
+#
+# These packages are deliberately not part of requirements.txt. Mary Core,
+# Desktop, Mobile, Ollama, llama.cpp, and tests must still start without them.
+psycopg[binary]>=3.2,<4
