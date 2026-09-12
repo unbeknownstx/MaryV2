@@ -57,12 +57,29 @@ function marySafeRendererPlugin() {
       );
       return { code: next, map: null };
     },
-    transformIndexHtml() {
-      return [{
-        tag: 'script',
-        injectTo: 'body-prepend',
-        children: `(() => {\n  const updateBoot = (message) => { const node = document.getElementById('boot-status'); if (node) node.textContent = message; };\n  const report = (kind, detail) => {\n    const message = String(detail || 'unknown frontend failure');\n    console.error(\`[MaryUI][\${kind}] \${message}\`);\n    if (!window.__MARY_UI_BOOTED__) updateBoot(\`Desktop startup error · \${message.slice(0, 110)}\`);\n  };\n  window.addEventListener('error', (event) => {\n    if (event?.target?.tagName === 'SCRIPT') return report('script', \`could not load \${event.target.src || 'frontend script'}\`);\n    if (event?.message) report('error', event.message);\n  }, true);\n  window.addEventListener('unhandledrejection', (event) => report('promise', event?.reason?.message || event?.reason || 'unhandled promise rejection'));\n  window.setTimeout(() => {\n    if (!window.__MARY_UI_BOOTED__) {\n      const node = document.getElementById('boot-status');\n      if (node && node.textContent.trim() === 'Initializing Mary…') updateBoot('Desktop frontend did not start · check the VS Code terminal');\n    }\n  }, 7000);\n})();`,
-      }];
+    transformIndexHtml(html) {
+      let next = html;
+      // Historical HTML labels should never make a current build look like an
+      // unrelated 12.x client. Runtime authority still comes from Core.
+      next = next
+        .replaceAll('12.12', '13.7')
+        .replace('PERSONAL COMPANION SYSTEM · 13.7', 'PERSISTENT COMPANION SYSTEM · 13.7')
+        .replace('Your AI Companion', 'Your Persistent AI Companion');
+      return {
+        html: next,
+        tags: [
+          {
+            tag: 'link',
+            injectTo: 'head',
+            attrs: { rel: 'stylesheet', href: './polish-13-7.css' },
+          },
+          {
+            tag: 'script',
+            injectTo: 'body-prepend',
+            children: `(() => {\n  const updateBoot = (message) => { const node = document.getElementById('boot-status'); if (node) node.textContent = message; };\n  const report = (kind, detail) => {\n    const message = String(detail || 'unknown frontend failure');\n    console.error(\`[MaryUI][\${kind}] \${message}\`);\n    if (!window.__MARY_UI_BOOTED__) updateBoot(\`Desktop startup error · \${message.slice(0, 110)}\`);\n  };\n  window.addEventListener('error', (event) => {\n    if (event?.target?.tagName === 'SCRIPT') return report('script', \`could not load \${event.target.src || 'frontend script'}\`);\n    if (event?.message) report('error', event.message);\n  }, true);\n  window.addEventListener('unhandledrejection', (event) => report('promise', event?.reason?.message || event?.reason || 'unhandled promise rejection'));\n  window.setTimeout(() => {\n    if (!window.__MARY_UI_BOOTED__) {\n      const node = document.getElementById('boot-status');\n      if (node && node.textContent.trim() === 'Initializing Mary…') updateBoot('Desktop frontend did not start · check the VS Code terminal');\n    }\n  }, 7000);\n})();`,
+          },
+        ],
+      };
     },
   };
 }

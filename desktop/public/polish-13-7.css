@@ -1,0 +1,162 @@
+/* MaryV2 13.7 product polish.
+   Loaded last by the Vite HTML transform so it can normalize historical UI
+   layers without making presentation a Core dependency. */
+
+:root {
+  --mary-space-1: 6px;
+  --mary-space-2: 10px;
+  --mary-space-3: 14px;
+  --mary-space-4: 20px;
+  --mary-surface: rgba(9, 11, 28, .86);
+  --mary-surface-strong: rgba(6, 8, 20, .95);
+  --mary-hairline: rgba(255,255,255,.075);
+  --mary-glow: 0 18px 60px rgba(0,0,0,.38), 0 0 28px rgba(116,60,255,.08);
+}
+
+/* The old shell assumed a single large monitor. 13.7 keeps the three-zone
+   composition when space exists, but lets Mary remain usable on normal laptop
+   widths without horizontal clipping. */
+.app-shell {
+  grid-template-columns: clamp(220px, 18vw, 300px) minmax(520px, 1fr) clamp(280px, 23vw, 350px);
+  min-width: 960px;
+  min-height: 600px;
+  background:
+    radial-gradient(circle at 55% 18%, rgba(143,92,255,.09), transparent 34%),
+    radial-gradient(circle at 18% 86%, rgba(255,79,166,.07), transparent 30%),
+    rgba(3,4,12,.76);
+}
+
+.sidebar,
+.inspector-column {
+  backdrop-filter: blur(22px) saturate(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(1.08);
+}
+
+.neon-card,
+.chat-card,
+.workspace-overlay,
+.composer {
+  box-shadow: var(--mary-glow);
+}
+
+.neon-card,
+.inspector-card {
+  border-color: var(--mary-hairline);
+}
+
+/* Reduce the “every panel is glowing pink” look. State/color should carry
+   meaning; depth comes from contrast and restrained edge light. */
+.neon-card::before { opacity: .52; }
+.inspector-card:nth-child(even)::before { opacity: .22; }
+
+.nav-item,
+.round-button,
+.title-icon,
+.window-control,
+.ghost-button,
+.text-link,
+.quick-actions button {
+  min-height: 40px;
+}
+
+.nav-item:focus-visible,
+.round-button:focus-visible,
+.title-icon:focus-visible,
+.window-control:focus-visible,
+.ghost-button:focus-visible,
+.text-link:focus-visible,
+.quick-actions button:focus-visible {
+  outline: 2px solid rgba(72,223,255,.9);
+  outline-offset: 2px;
+}
+
+.avatar-stage {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.avatar-stage::after {
+  content: "";
+  position: absolute;
+  inset: auto 8% 2% 8%;
+  height: 26%;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(83,146,255,.12), transparent 70%);
+  filter: blur(22px);
+  z-index: 0;
+}
+
+.fallback-art {
+  transition: opacity .8s ease, transform 6s ease;
+  will-change: opacity, transform;
+}
+
+.fallback-art-stack:hover .fallback-art { transform: scale(1.015); }
+
+.message .bubble,
+.message p {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+textarea,
+input {
+  caret-color: var(--cyan);
+}
+
+/* Medium laptop: keep Mary/chat primary and remove the always-on inspector.
+   Diagnostics and workspace content remain reachable from navigation. */
+@media (max-width: 1380px) {
+  .app-shell {
+    grid-template-columns: 230px minmax(0, 1fr);
+    min-width: 820px;
+  }
+  .inspector-column { display: none; }
+  .sidebar { padding-inline: 10px; }
+  .brand-logo { font-size: 44px; }
+  .nav-stack { gap: 3px; }
+  .nav-item { min-height: 39px; }
+}
+
+/* Compact desktop/tablet-shaped host. Do not make a renderer or the decorative
+   rail more important than conversation. */
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 76px minmax(0, 1fr);
+    min-width: 680px;
+  }
+  .brand-subtitle,
+  .brand-version,
+  .nav-item > span:not(.nav-icon):not(.nav-badge),
+  .nav-badge,
+  .status-card,
+  .music-card { display: none !important; }
+  .brand-logo { font-size: 28px; letter-spacing: -1px; }
+  .sidebar { align-items: stretch; padding: 12px 8px; }
+  .nav-item { display: grid; grid-template-columns: 1fr; padding: 0; place-items: center; }
+  .nav-icon { width: 38px; height: 38px; }
+}
+
+/* Presentation-only effects must never make Mary inaccessible. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .fallback-art { transform: none !important; }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text: #fff;
+    --muted: #d2cadc;
+    --line: rgba(255,255,255,.32);
+    --line-soft: rgba(255,255,255,.22);
+  }
+  .neon-card,
+  .chat-card,
+  .composer,
+  .workspace-overlay { border-color: rgba(255,255,255,.28) !important; }
+}

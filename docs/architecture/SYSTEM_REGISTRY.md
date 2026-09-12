@@ -3,10 +3,11 @@
 This registry is the current architectural index for MaryV2. Historical stage/release documents live under `docs/history/` and do not override this map.
 
 Companion architecture maps: [data and authority flows](data_flow.md),
-[13.2 reconciliation inventory](RECONCILIATION_13_2.md), the
+[13.2 reconciliation inventory](RECONCILIATION_13_2.md),
 [13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md),
-[13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md), and
-[13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md).
+[13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md),
+[13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md), and
+[13.7 product experience convergence](PRODUCT_EXPERIENCE_13_7.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -40,13 +41,15 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Semantic game control | `mary.game_control` | ACTIVE ROUTING CONTRACT 13.6 | High-level intent routes through NodeRegistry; raw key/mouse execution excluded and device permission still required. |
 | OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Sandboxed software-engineering worker boundary; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
 | Platform readiness | `scripts.platform_readiness`, `requirements-host-extras.txt` | ACTIVE OPTIONAL 13.5 | Read-only Mac/Windows/Linux capability/config presence; optional packages never gate Core startup; no shell execution. |
+| Experience quality telemetry | `mary.runtime.experience_quality`, `mary.runtime.performance_hardening` | ACTIVE READ-ONLY 13.7 | Content-free rolling latency/outcome classification; explicitly no identity, memory, routing, lifecycle or permission authority. |
+| Visual/product design contract | `docs/design/MARY_VISUAL_SYSTEM.md` | ACTIVE CONTRACT 13.7 | Shared semantic color/motion/degraded-state language for surfaces; presentation only. |
 | Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
-| Desktop | `mary.desktop`, `desktop/` | ACTIVE | Presentation/capability surface. |
-| Mobile/PWA | `mary.mobile`, mobile web assets | ACTIVE | Remote surface over Core. |
-| Native iPhone | `ios/MaryV2iOS/` | ACTIVE BUILD-VERIFIED | SwiftUI client using the same Core authority; XcodeGen + unsigned simulator build are CI verified. |
-| Legacy native mobile | `mobile_native/` | PARTIAL / LEGACY SURFACE | Retained work; does not override the native iPhone client or Core authority. |
+| Desktop | `mary.desktop`, `desktop/` | ACTIVE POLISHED 13.7 | Presentation/capability surface; responsive shell and portrait-safe degradation keep chat/work independent of 3D. |
+| Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE POLISHED 13.7 | Remote Core surface; compatibility web UI shares assets/design language with native app. |
+| Native iPhone | `ios/MaryV2iOS/` | ACTIVE BUILD-VERIFIED 13.7 | SwiftUI client using the same Core authority; Keychain token, local speech capture, Core voice playback and shared visual roles. |
+| Legacy native mobile | `mobile_native/` | PARTIAL / COMPATIBILITY | Retained wrapper kept byte-aligned with the compatibility PWA where tests require it; does not override SwiftUI or Core authority. |
 | Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. |
-| Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling. |
+| Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling; portrait fallback is a supported state. |
 | Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. |
 | Browser context sensor | `mary.perception.browser` | ACTIVE BOUNDED 13.6 | Page/media summaries enter PerceptionDirector after URL/metadata sanitization; no browser-owned memory/personality. |
 | Runtime performance profiles | `mary.runtime.performance_profiles` | ACTIVE POLICY 13.6 | Light/balanced/performance resource targets only; explicitly cannot switch identity. |
@@ -67,5 +70,6 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 - Expand Mary-specific character evaluation substantially from authored examples.
 - Add real authorized adapters for selected image/video/audio generation services.
 - Mature avatar/3D expression beyond the current baseline model.
-- Continue live cross-device/Core/node testing under real provider/network failures.
+- Benchmark local voice/VLM options on representative creator hardware rather than making a framework a mandatory dependency.
+- Continue live cross-device/Core/node testing under real provider/network failures and collect operational latency/readiness evidence.
 - Establish an intentional production continuity dataset after development/test state is discarded.
