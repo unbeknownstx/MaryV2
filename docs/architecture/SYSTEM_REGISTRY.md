@@ -9,8 +9,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md),
 [13.7 product experience convergence](PRODUCT_EXPERIENCE_13_7.md),
 [13.8 relational presence/shared life](RELATIONAL_PRESENCE_13_8.md),
-[13.9 native iPhone product](../design/NATIVE_IPHONE_PRODUCT_13_9.md), and
-[13.10 live stream cohost](STREAM_COHOST_13_10.md).
+[13.9 native iPhone product](../design/NATIVE_IPHONE_PRODUCT_13_9.md),
+[13.10 live stream cohost](STREAM_COHOST_13_10.md), and
+[13.11 home compute fabric](HOME_COMPUTE_FABRIC_13_11.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -39,6 +40,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Retrieval/reservoir | `mary.mind` | ACTIVE SUPPORT | FTS/vector/cache layers are derived, not truth authority. |
 | Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
+| Home compute fabric | `mary.distributed.compute_fabric`, `mary.distributed.benchmarking`, `scripts.run_home_node` | ACTIVE OPTIONAL 13.11 | Benchmark-aware Mac/Windows/Linux worker selection and cross-platform node hosting; benchmark/resource data is disposable operational evidence only and never grants execution authority. |
+| Runtime resource profiling | `mary.distributed.resource_profile` | ACTIVE HINT 13.11 | CPU/memory/Metal/Vulkan/local-runtime visibility and optional GPU labels guide empirical testing only; hardware presence is not permission or proof of useful acceleration. |
 | MCP capability fabric | `mary.distributed.mcp_fabric`, `mary.desktop.device_node` | ACTIVE OPTIONAL 13.4 | OpenDesign/Scrapling/Langflow over preconfigured Streamable HTTP(S); node-local credentials, lazy discovery, exact tool allowlists, sanitized results; no shell/stdio launcher. |
 | Incremental response / sentence TTS | `mary.realtime.streaming`, `mary.voice.streaming_tts` | ACTIVE PRIMITIVES 13.6 | Provider-neutral deltas, sentence assembly, cooperative cancellation, bounded ordered synthesis-ahead; one-shot providers remain valid. |
 | Performer integrations | `mary.streaming.bridge`, `mary.streaming.config` | ACTIVE CONTRACT 13.6 | Twitch input is untrusted audience context; outbound chat/OBS writes require explicit bounded permissions. |
@@ -58,6 +61,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Relational UI contract | `docs/architecture/RELATIONAL_PRESENCE_UI_13_8.md`, `desktop/public/relational-13-8.css` | ACTIVE CONTRACT 13.8 | Shared-life cards/actions, privacy projection and anti-attention-trap styling; normal product surfaces remain creator-facing rather than backend dashboards. |
 | Native iPhone product contract | `docs/design/NATIVE_IPHONE_PRODUCT_13_9.md` | ACTIVE CONTRACT 13.9 | Home/Talk/Together/Work/More prioritize companion presence and shared context; approved bundled Mary art + SF Symbols; no copied competitor assets or mobile-owned relationship authority. |
 | Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
+| Cross-platform home node | `scripts.run_home_node` | ACTIVE 13.11 | Preferred headless Mac/Windows/Linux worker host; reuses durable enrollment, local device permissions, bounded task executors and optional benchmark metadata. |
 | Desktop | `mary.desktop`, `desktop/` | ACTIVE POLISHED 13.8 | Presentation/capability surface; 13.7 responsive/portrait-safe base plus 13.8 relational visual layer. |
 | Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE POLISHED 13.8 | Remote Core surface; existing presence rail receives relationship mode through the shared experience projector without owning state. |
 | Native iPhone | `ios/MaryV2iOS/` | ACTIVE PRODUCT 13.9 | SwiftUI surface over canonical Core with Keychain auth, local push-to-talk transcription, Core voice playback, relational projection, conversation-first Talk, Together shared-life UX, native haptics/accessibility and preserved Work/Focus. |
@@ -84,7 +88,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 - Expand Mary-specific character evaluation substantially from authored examples.
 - Add real authorized adapters for selected image/video/audio generation services.
 - Mature avatar/3D expression beyond the current baseline model; Live2D/2.5D/3D stream bodies should attach to the 13.10 cohost state rather than creating another runtime.
-- Benchmark local voice/VLM and semantic turn-taking options on representative creator hardware rather than making a framework a mandatory dependency.
+- Benchmark local voice/VLM and semantic turn-taking options on representative creator hardware; 13.11 now provides the benchmark/profile/routing foundation without making any candidate framework mandatory.
 - Add authenticated creator-facing mutation controls for relationship mode/shared activities through the existing bounded Core action path; do not bypass the single-writer Core for UI convenience.
 - Feed the social-delivery envelope into real ElevenLabs/local-TTS/avatar adapters only after provider-specific behavior is tested.
 - Replace the 13.10 bounded speech-duration estimate with explicit renderer/browser playback completion acknowledgement if stream-floor timing proves materially inaccurate in live testing.

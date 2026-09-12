@@ -8,6 +8,8 @@ The repository contains years of iterative design notes. This file defines where
 - [`../MARY_ROOT.md`](../MARY_ROOT.md) — one-Mary authority and persistence contract.
 - [`architecture/SYSTEM_REGISTRY.md`](architecture/SYSTEM_REGISTRY.md) — canonical subsystem ownership/status map.
 - [`../AGENTS.md`](../AGENTS.md) — contributor/coding-agent constraints.
+- [`architecture/HOME_COMPUTE_FABRIC_13_11.md`](architecture/HOME_COMPUTE_FABRIC_13_11.md) — benchmark-aware Mac/Windows home compute fabric and bring-up.
+- [`architecture/STREAM_COHOST_13_10.md`](architecture/STREAM_COHOST_13_10.md) — live Twitch/OBS cohost architecture.
 - [`architecture/PRODUCT_EXPERIENCE_13_7.md`](architecture/PRODUCT_EXPERIENCE_13_7.md) — current product experience/research convergence.
 - [`design/MARY_VISUAL_SYSTEM.md`](design/MARY_VISUAL_SYSTEM.md) — cross-platform visual/presentation language.
 
@@ -23,6 +25,8 @@ Important maps include:
 - `MCP_CAPABILITY_FABRIC_13_4.md` — optional MCP capability-node boundary.
 - `OPENHANDS_WORKER_BOUNDARY_13_4.md` — separate software-engineering worker boundary.
 - `NEURO_PATTERN_ADOPTION_13_6.md` — realtime/performer architecture convergence.
+- `STREAM_COHOST_13_10.md` — bounded Twitch/OBS cohost host and public-performance boundary.
+- `HOME_COMPUTE_FABRIC_13_11.md` — heterogeneous node benchmarking, routing hints and cross-platform node operation.
 
 ## Operations
 
