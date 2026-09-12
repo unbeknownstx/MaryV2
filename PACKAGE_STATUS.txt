@@ -1,9 +1,0 @@
-MaryV2 source package — 13.5 Platform Readiness convergence (2026-09-11)
-Persistent/private state deliberately excluded: .env, data/, virtualenvs, caches, node_modules, model weights.
-Verified 13.4 baseline before this readiness pass: 1677 passed, 1 skipped, 1 existing deprecation warning.
-Convergence: PASS. Repository structure: PASS. Bounded MCP fabric: PASS. Native iPhone simulator build: PASS. Mobile/web syntax: PASS.
-13.5 adds a unified optional Mac/PC host profile, read-only cross-platform readiness diagnostics, three-OS CI contracts, and repository hygiene without making optional host packages Core startup dependencies.
-Optional host capabilities: OpenDesign/Scrapling/Langflow MCP, local Whisper STT, ONNX/sherpa realtime speech, streaming/WebSocket transport, Ollama/llama.cpp/Piper detection.
-OpenHands remains a separate sandboxed engineering worker boundary; no generic shell/exec capability is added to Mary Core or capability nodes.
-Physical-host activation gates remain: microphone/speaker permissions, local model files/GPU or Metal performance, external MCP endpoints/credentials/tool allowlists, signed iPhone deployment, Twitch/OBS/Unity/VRM applications.
-Final 13.5 verification is authoritative in GitHub Actions for the integration PR/merge commit.
