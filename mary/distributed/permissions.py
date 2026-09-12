@@ -143,7 +143,9 @@ class DeviceExecutionPermissions:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
-                "version": "13.12",
+                # Sensor capability names extend the existing allowlist without
+                # changing the permission-file wire/schema contract.
+                "version": "13.4",
                 "allowed_capabilities": sorted(values),
                 "allowed_mcp_tools": {
                     server: sorted(set(tools))
