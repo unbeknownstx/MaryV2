@@ -8,9 +8,11 @@ from mary.desktop.device_node import DesktopCapabilityNodeAgent
 from .sensors import (
     AUDIO_TRANSCRIBE_CAPABILITY,
     SCREEN_CAPTURE_CAPABILITY,
+    SCREEN_DESCRIBE_CAPABILITY,
     SENSOR_CAPABILITIES,
     execute_audio_transcribe,
     execute_screen_capture,
+    execute_screen_describe,
 )
 
 
@@ -39,7 +41,9 @@ class SensorCapabilityNodeAgent(DesktopCapabilityNodeAgent):
                 result_payload = execute_audio_transcribe(args)
             elif capability == SCREEN_CAPTURE_CAPABILITY:
                 result_payload = execute_screen_capture(args)
-            else:  # defensive; SENSOR_CAPABILITIES is closed above
+            elif capability == SCREEN_DESCRIBE_CAPABILITY:
+                result_payload = execute_screen_describe(args)
+            else:
                 raise ValueError(f"No bounded sensor executor exists for {capability}.")
             result = self.gateway.complete_capability_task(
                 task_id,
