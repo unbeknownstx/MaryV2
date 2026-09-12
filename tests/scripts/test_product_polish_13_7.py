@@ -21,14 +21,19 @@ def test_13_7_documentation_and_visual_contracts_exist():
     assert "Product experience rule" in root_contract
 
 
-def test_desktop_build_loads_final_polish_layer_and_normalizes_historical_labels():
+def test_desktop_build_keeps_13_7_base_polish_and_advances_current_product_layer():
     vite = (ROOT / "desktop" / "vite.config.js").read_text(encoding="utf-8")
-    css = (ROOT / "desktop" / "public" / "polish-13-7.css").read_text(encoding="utf-8")
+    base_css = (ROOT / "desktop" / "public" / "polish-13-7.css").read_text(encoding="utf-8")
+    relational_css = (ROOT / "desktop" / "public" / "relational-13-8.css").read_text(encoding="utf-8")
     assert "polish-13-7.css" in vite
-    assert "replaceAll('12.12', '13.7')" in vite
-    assert "prefers-reduced-motion" in css
-    assert "max-width: 1380px" in css
-    assert "min-width: 960px" in css
+    assert "relational-13-8.css" in vite
+    assert "replaceAll('12.12', '13.8')" in vite
+    assert "replaceAll('13.7', '13.8')" in vite
+    assert "prefers-reduced-motion" in base_css
+    assert "max-width: 1380px" in base_css
+    assert "min-width: 960px" in base_css
+    assert "shared-life-action" in relational_css
+    assert "prefers-reduced-motion" in relational_css
 
 
 def test_mobile_web_and_compatibility_wrapper_are_byte_aligned_for_shared_shell():

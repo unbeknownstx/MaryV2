@@ -46,6 +46,37 @@ def test_relationship_strength_normalizes_percent_values():
     assert snapshot["relationship_strength"] == 0.73
 
 
+def test_explicit_relational_mode_projects_to_surface_without_becoming_authority():
+    snapshot = build_experience_snapshot(
+        {
+            "relationship": {"label": "Established", "strength": 73},
+            "performance_hardening": {
+                "relational_presence": {"relationship_mode": "partner"}
+            },
+        },
+        {},
+    )
+    assert snapshot["relationship_label"] == "Partner"
+    assert snapshot["metadata"]["relationship_mode"] == "partner"
+    assert snapshot["authority"] == "presentation_projection_only"
+    relationship_cue = next(cue for cue in snapshot["cues"] if cue["channel"] == "relationship")
+    assert relationship_cue["detail"] == "partner"
+
+
+def test_friend_mode_preserves_existing_familiarity_label():
+    snapshot = build_experience_snapshot(
+        {
+            "relationship": {"label": "Established", "strength": .6},
+            "performance_hardening": {
+                "relational_presence": {"relationship_mode": "friend"}
+            },
+        },
+        {},
+    )
+    assert snapshot["relationship_label"] == "Established"
+    assert snapshot["metadata"]["relationship_mode"] == "friend"
+
+
 def test_memory_count_sums_existing_counts_without_writing_memory():
     dashboard = {"memory": {"counts": {"episodic": 11, "semantic": 7, "working": 2}}}
     snapshot = build_experience_snapshot(dashboard, {})

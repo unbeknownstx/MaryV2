@@ -1,0 +1,148 @@
+/* MaryV2 13.8 — Relational Presence & Shared Life
+   Presentation only. Canonical relationship state remains in Mary Core. */
+
+:root {
+  --mary-presence-radius: 18px;
+  --mary-presence-gap: 12px;
+}
+
+/* Reusable relational/shared-life surfaces. These classes are deliberately
+   semantic and small so Desktop, PWA and future renderer components can reuse
+   the same visual vocabulary without exposing backend implementation detail. */
+.mary-presence-card,
+.shared-activity-card,
+.relationship-context-card {
+  position: relative;
+  border-radius: var(--mary-presence-radius);
+  border: 1px solid color-mix(in srgb, var(--accent, #ff4fa6) 24%, transparent);
+  background:
+    linear-gradient(145deg, rgba(26, 21, 43, .84), rgba(13, 16, 29, .82));
+  box-shadow: 0 16px 44px rgba(4, 7, 18, .22);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.mary-presence-card::before,
+.shared-activity-card::before,
+.relationship-context-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, rgba(255, 79, 166, .9), rgba(122, 165, 255, .55), transparent);
+  pointer-events: none;
+}
+
+.shared-life-actions {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 1px 6px;
+  overscroll-behavior-inline: contain;
+}
+
+.shared-life-actions::-webkit-scrollbar { display: none; }
+
+.shared-life-action {
+  min-height: 44px;
+  min-width: max-content;
+  padding: 9px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  background: rgba(255, 255, 255, .045);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.shared-life-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 79, 166, .35);
+  background: rgba(255, 79, 166, .08);
+}
+
+.shared-life-action:focus-visible,
+.relationship-mode-control:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.relationship-mode-label,
+.shared-activity-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  background: rgba(8, 11, 22, .44);
+  font-size: .78rem;
+  letter-spacing: .01em;
+}
+
+.relationship-mode-label[data-mode='romantic'],
+.relationship-mode-label[data-mode='partner'] {
+  border-color: rgba(255, 79, 166, .25);
+}
+
+/* Public mode is intentionally quieter. This reflects privacy/presentation
+   policy rather than changing Mary's canonical relationship. */
+[data-performance-mode='stream'] .private-relational-detail,
+[data-performance-mode='performance'] .private-relational-detail,
+.public-relational-projection .private-relational-detail {
+  display: none !important;
+}
+
+.relational-empty-state {
+  padding: 14px;
+  color: var(--muted, rgba(235, 238, 255, .62));
+  font-size: .9rem;
+  line-height: 1.45;
+}
+
+.relational-empty-state strong { color: inherit; }
+
+/* Avoid turning affection/presence into an attention trap. No heartbeat,
+   streak pulse, urgency bounce, or infinite notification animation. */
+.relationship-mode-label,
+.shared-activity-state,
+.mary-presence-card {
+  animation: none;
+}
+
+@media (max-width: 980px) {
+  .mary-presence-card,
+  .shared-activity-card,
+  .relationship-context-card {
+    border-radius: 16px;
+  }
+
+  .shared-life-actions {
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+}
+
+@media (max-height: 720px) {
+  .relational-secondary-detail { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shared-life-action { transition: none; }
+  .shared-life-action:hover { transform: none; }
+}
+
+@media (prefers-contrast: more) {
+  .mary-presence-card,
+  .shared-activity-card,
+  .relationship-context-card,
+  .shared-life-action,
+  .relationship-mode-label,
+  .shared-activity-state {
+    border-color: currentColor;
+  }
+}

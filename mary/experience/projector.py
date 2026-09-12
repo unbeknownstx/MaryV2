@@ -56,8 +56,6 @@ def _clamp(value: float) -> float:
 
 
 def _memory_count(dashboard: Mapping[str, Any]) -> int:
-    # Dashboard state nests the live memory projection under ``live``; accept
-    # older/direct shapes too so this presentation endpoint stays compatible.
     live = _map(dashboard.get("live"))
     character = _map(live.get("character"))
     if character.get("memory_count") is not None:
@@ -66,8 +64,6 @@ def _memory_count(dashboard: Mapping[str, Any]) -> int:
     memory = _map(live.get("memory") or dashboard.get("memory"))
     counts = _map(memory.get("counts"))
     if counts:
-        # Only canonical memory kinds are summed; this avoids double counting a
-        # future aggregate ``total`` entry.
         keys = ("episodic", "semantic", "working")
         return sum(max(0, _int(counts.get(key))) for key in keys if counts.get(key) is not None)
     if any(key in memory for key in ("episodic", "semantic", "working")):
@@ -79,8 +75,6 @@ def _memory_count(dashboard: Mapping[str, Any]) -> int:
 
 
 def _character_record_count(dashboard: Mapping[str, Any]) -> int:
-    """Read only the bounded Sourcebook inventory count from known projections."""
-
     for parts in (
         ("character_sourcebook", "records"),
         ("character", "sourcebook", "records"),
@@ -92,21 +86,35 @@ def _character_record_count(dashboard: Mapping[str, Any]) -> int:
     return 0
 
 
-def _relationship(dashboard: Mapping[str, Any]) -> tuple[str, float]:
+def _relationship_mode(dashboard: Mapping[str, Any]) -> str:
+    """Read the 13.8 canonical-derived relationship mode when available."""
+    mode = _text(
+        _path(dashboard, "performance_hardening", "relational_presence", "relationship_mode"),
+        _path(dashboard, "live", "relationship", "history_summary", "relationship_mode"),
+        default="friend",
+    ).lower()
+    return mode if mode in {"friend", "close", "romantic", "partner"} else "friend"
+
+
+def _relationship(dashboard: Mapping[str, Any]) -> tuple[str, float, str]:
     relationship = _map(dashboard.get("relationship"))
-    label = _text(
+    mode = _relationship_mode(dashboard)
+    legacy_label = _text(
         relationship.get("label"),
         relationship.get("stage"),
         relationship.get("status"),
         _path(dashboard, "live", "relationship", "label"),
         default="Developing",
     )
+    # Friend mode preserves the existing trust/familiarity label. Explicitly
+    # closer modes are creator-facing state and should be visible as such.
+    label = mode.title() if mode in {"close", "romantic", "partner"} else legacy_label
     strength = _float(
         relationship.get("strength", relationship.get("closeness", relationship.get("trust", relationship.get("score", 0.0))))
     )
     if strength > 1.0:
         strength = strength / 100.0
-    return label, _clamp(strength)
+    return label, _clamp(strength), mode
 
 
 def _latency(trace: Mapping[str, Any]) -> float | None:
@@ -155,7 +163,7 @@ def build_experience_snapshot(
     )
     conversation_label = _text(trace.get("conversation"), mobile.get("conversation_label"), default="Main")
 
-    relationship_label, relationship_strength = _relationship(dashboard)
+    relationship_label, relationship_strength, relationship_mode = _relationship(dashboard)
     memory_count = _memory_count(dashboard)
 
     provider = _text(trace.get("provider"), _path(trace, "provenance", "provider"), default="—")
@@ -178,14 +186,14 @@ def build_experience_snapshot(
         ExperienceCue("emotion", mood, _clamp(_float(emotion.get("intensity"), 0.45)), "emotion"),
     ]
     if relationship_label:
-        cues.append(ExperienceCue("relationship", relationship_label, relationship_strength, "relationship"))
+        cues.append(ExperienceCue("relationship", relationship_label, relationship_strength, "relationship", relationship_mode))
     if memory_count:
         cues.append(ExperienceCue("continuity", f"{memory_count} indexed memories", min(1.0, memory_count / 50.0), "memory"))
     if provider and provider != "—":
         cues.append(ExperienceCue("runtime", provider, 0.2, "trace", model))
 
     snapshot = ExperienceSnapshot(
-        version="1.0",
+        version="1.1",
         authority="presentation_projection_only",
         identity_owner="mary_core",
         interaction_state=interaction_state,
@@ -207,10 +215,11 @@ def build_experience_snapshot(
         theme=theme,
         cues=tuple(cues),
         metadata={
-            "architecture": _text(core.get("architecture"), default="13.3"),
+            "architecture": _text(core.get("architecture"), default="13.8"),
             "core_online": core.get("ok", True) is not False,
             "mobile_authority": _text(mobile.get("authority"), default="mary_core"),
             "character_records": _character_record_count(dashboard),
+            "relationship_mode": relationship_mode,
         },
     )
     return snapshot.to_dict()

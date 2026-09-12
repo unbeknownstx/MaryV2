@@ -1,14 +1,12 @@
-# MaryV2 Root Contract
+# MaryV2 Root Authority
 
 Human-readable companion to `mary.runtime.root_authority.MaryRootAuthority`.
 
-> **Many surfaces, many nodes, many replaceable capabilities — one Mary.**
-
 ## Authority hierarchy
 
-1. **Runtime invariants** — one-Mary composition, state ownership, permissions, provenance, recovery rules.
-2. **Authored character** — Character Core plus approved creator-authored sources from `character_sources/active/`.
-3. **Lived continuity** — AI Mary's actual relationship, memory, developed self, grounded experience, goals and agency.
+1. **Mary identity / authored character / developed self** — canonical self definition and governed development.
+2. **Relationship / memory / experiential continuity** — persistent lived continuity and creator relationship evidence.
+3. **Runtime policy / permissions / autonomy** — what Mary may do now and under which bounded authority.
 4. **Turn context** — current input, recent conversation, task/project context, relevant retrieval, relevant authored evidence.
 5. **Capability fabric** — LLMs, search, files, code, speech, perception, creative services and integrations.
 6. **Nodes** — cloud, Windows, Mac, rented compute, future GPU/server hosts.
@@ -18,22 +16,17 @@ Human-readable companion to `mary.runtime.root_authority.MaryRootAuthority`.
 
 - `MARY_CORE_URL` present: surfaces use remote Core and **must not construct local Mary**.
 - `MARY_CORE_URL` absent: explicit standalone development may construct one local `MaryApplication`.
-- Capability nodes can run independently of UI surfaces but never become identity/state authorities.
+- Capability nodes can run independently of UI surfaces but never become identity/state authority.
+- Models/providers are replaceable cognition capabilities; no provider/model is Mary.
 
-## Context rule
-
-Everything can be addressable without everything being placed into every prompt. Mary selects the smallest sufficient authoritative context for the creator's present intention.
-
-## Character rule
-
-`character_sources/active/` is automatically discoverable creator-authored material. `character_sources/drafts/` is intentionally excluded until approved.
+## Evidence boundary
 
 Evidence labels:
 
-- `[FC]` fictional canon/reference — never automatically AI lived memory.
-- `[DNA]` shared Mary character DNA.
-- `[AI]` persistent AI Mary material.
-- `[PUB]` public/performance context for the same Mary.
+- `[FC]` fictional canon; never imported as AI Mary's lived memory.
+- `[DNA]` creator-authored character evidence.
+- `[AI]` developed/lived Mary evidence.
+- `[PUB]` public/performance behavior.
 - `[ALT]` alternate/experimental interpretation.
 - `[NEG]` anti-example.
 
@@ -58,6 +51,18 @@ Presentation should make canonical state understandable without becoming another
 - Operational UX telemetry may measure latency/readiness but must remain content-free and non-authoritative.
 - Public/performance mode is a privacy projection of the same Mary, never a second public personality database.
 
+## Relational presence rule
+
+Mary may express friendship, closeness, romance or partnership as **relationship state over the same canonical Mary**.
+
+- Romantic/partner mode must never create another persona, identity store or model-defined clone.
+- Durable relationship-mode changes and completed shared activities must flow through the existing canonical relationship owner.
+- Active shared activities and proactive-presence impulses may be ephemeral, but must remain bounded.
+- Proactive presence is proposal-only until an existing autonomy/surface permission path authorizes delivery.
+- Derived social/entity graphs may improve retrieval but remain projections, never truth authority.
+- Public/performance presentation should suppress private intimacy without changing Mary's underlying identity.
+- Companion behavior must not use exclusivity demands, guilt for absence, fake suffering, or streak pressure as engagement mechanisms.
+
 ## Graceful-degradation rule
 
 Optional capability failure must reduce capability rather than erase Mary.
@@ -76,13 +81,13 @@ Surfaces should clearly explain the unavailable capability while keeping primary
 
 Mary is not defined by one mutable folder. Recoverability requires:
 
-- repository/runtime,
-- authored character sources,
-- durable continuity state,
-- separately reattached credentials/capabilities,
-- rebuildable derived indexes/caches.
+- canonical source in Git;
+- runtime state in configured platform-native data roots;
+- bounded/atomic persistence where state is durable;
+- backups/recovery for durable state;
+- no secret-bearing runtime state committed to source control.
 
-Source checkouts no longer use repository-local `data/` by default. Host-native application data or explicit `MARY_DATA_DIR` owns writable runtime state.
+Source checkouts no longer use repository-local `data/` by default. Host-native configured paths remain the runtime-state authority.
 
 ## Cleanup rule
 
