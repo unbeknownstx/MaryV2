@@ -1,5 +1,15 @@
 # Changelog
 
+## 13.8 — 2026-09-11 — Relational Presence & Shared Life
+
+- Added relationship modes (`friend`, `close`, `romantic`, `partner`) without creating a second persona or relationship database.
+- Added bounded shared activities whose completion records canonical shared-experience history.
+- Added proposal-only proactive presence so Mary can form bounded check-in impulses without bypassing autonomy or surface permissions.
+- Added a derived social graph over canonical relationship/profile/history state.
+- Added provider-neutral social delivery envelopes for warmth, playfulness, intimacy, pace, energy and related performance hints.
+- Added explicit anti-manipulation companion guardrails and public/private intimacy projection.
+- Added companion/VTuber/agent research synthesis and 13.8 architecture documentation.
+
 ## 13.7 — 2026-09-11 — Product polish and experience hardening
 
 - Reconciled product branding/documentation with the current one-Mary architecture instead of historical package/version labels.
