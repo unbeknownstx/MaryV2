@@ -1,40 +1,52 @@
 # Changelog
 
-## 13.4 — integration candidate — not yet released
+## 13.7 — 2026-09-11 — Product polish and experience hardening
 
-- Added natural durable shared-work recall for current-project questions.
-- Added trusted ephemeral current-surface grounding for native/desktop/mobile turns.
-- Scoped presentation/privacy context per creator device while preserving one canonical Mary.
-- Added authenticated Core voice status/synthesis transport backed by the existing voice engine.
-- Upgraded the native SwiftUI iPhone client to local-only push-to-talk transcription plus Core-synthesized Mary voice playback.
-- Added regression tests for shared-work recall, per-device presentation isolation, current-surface truth, and binary authenticated voice transport.
-- Added a bounded current-work projection that joins canonical workspace state with durable shared-work continuity without creating a second project database.
-- Unified Mary stage fallback artwork across native iOS, PWA/mobile wrapper, and desktop VRM fallback using the existing generated Mary references.
-- Added direct Core `/v1/voice/synthesize` fallback for the PWA/mobile shell when the legacy `/api/tts` route is unavailable.
-- Production identity remains 13.3 until live iPhone and full-suite acceptance completes.
+- Reconciled product branding/documentation with the current one-Mary architecture instead of historical package/version labels.
+- Added bounded `ExperienceQualityMonitor` operational telemetry for latency/outcome classification without giving telemetry identity, memory, routing, lifecycle, or permission authority.
+- Unified desktop/mobile/iPhone visual direction around Mary's existing creator-generated artwork and dark-neon presentation language.
+- Added responsive/reduced-motion/accessibility polish and clearer degraded/presentation states rather than making 3D or external services startup requirements.
+- Documented current open-source/realtime companion research and the patterns Mary adopts vs intentionally defers.
+- Cleaned active documentation so root files describe the current product while historical patch/install notes remain provenance only.
+
+## 13.6 — 2026-09-11 — Neuro-pattern + package convergence
+
+- Added provider-neutral incremental response segmentation and cooperative turn cancellation.
+- Added sentence-level bounded parallel TTS scheduling with ordered playback and barge-in cancellation.
+- Added retrieval/reranking evaluation metrics without changing memory truth authority.
+- Added bounded Twitch/OBS performer contracts and secret-free turn timing diagnostics.
+- Recovered still-useful components from the unmerged 13.3.1 realtime/performance package: browser context sensing, semantic game intent routing, runtime performance profiles, capability invocation coordination/simulation and read-only realtime activity projection.
+- Added authenticated wake-on-turn for an already-known sleeping creator surface while preserving explicit OFFLINE as a hard gate.
+- Fixed the Mary Protocol voice-activity allowlist mismatch.
+- Kept obsolete duplicate `SpeechSessionGuard`/`RealtimeSurfaceGate` code retired in favor of current presentation sessions, replay/session isolation and durable node enrollment.
+- Final pre-merge verification: repository structure PASS; 1,714 tests passed, 1 skipped; desktop, Windows, Ubuntu, macOS and native iPhone CI PASS.
+
+## 13.5 — 2026-09-11 — Cross-platform readiness
+
+- Added deterministic host-readiness inspection for macOS, Windows and Linux.
+- Preserved optional dependencies as optional: Core startup does not require local models, desktop rendering, MCP clients or platform-specific packages.
+- Added native iPhone project generation/build verification to CI.
+
+## 13.4 — 2026-09-11 — Experiential continuity and capability fabric
+
+- Added natural durable shared-work recall and a bounded Current Work projection.
+- Added trusted ephemeral surface grounding and per-device presentation/privacy context.
+- Added authenticated Core voice synthesis transport and native iPhone local-only push-to-talk transcription.
+- Added experiential continuity, resumable workflows, resource/affordance scoring, node recovery and memory evaluation contracts.
+- Added performance hardening: presentation sessions, standing affect, stream input governance, avatar transport guards and typed stream/game capability descriptors.
+- Added bounded MCP capability fabric for OpenDesign, Scrapling and Langflow with node-local optional dependencies, per-tool allowlists, permission gating and sanitization.
+- Defined OpenHands as a separate sandboxed software-engineering worker rather than part of Mary's identity/Core.
 
 ## 13.3 — 2026-09-03 — Connected Presence
 
-- Preserved one canonical Mary Core while advancing active runtime identity to 13.3.
-- Added explicit Core/session continuity handshakes for surfaces and capability nodes.
+- Preserved one canonical Mary Core while adding explicit surface/node continuity handshakes.
 - Added Twitch EventSub lifecycle and bounded outbound-chat contracts.
-- Added deterministic Twitch/stream response modes: drop, react, chat, speak, both, wait.
-- Added typed-chat self-echo suppression and reply-thread preservation.
+- Added deterministic stream response modes and typed-chat self-echo suppression.
 - Split canonical/display text from deterministic TTS-friendly spoken text.
-- Advanced mobile web + native bundled client together and updated iOS app metadata.
-- Added offline Mac 13.3 readiness reporting.
-- Full deterministic pytest: 1,616 passed, 1 skipped.
-- Release hygiene, repository structure, convergence, and mobile/native parity: PASS.
+- Advanced mobile web + native bundled client together and added offline Mac readiness reporting.
 
 ## 0.1.0-alpha — 2026-08-30
 
-- Established weighted creator-authority hierarchy.
-- Separated [FC], [DNA], [AI], [PUB], [ALT], [NEG].
-- Added identity/model/provider/creator boundaries.
-- Synthesized core temperament, humor, care, intelligence, work, relationship, emotion, lived-in and voice-bridge rules.
-- Added relationship trust ladder.
-- Added 40 behavioral exemplars.
-- Added 36 benchmark/evaluation scenarios.
-- Added 20 anti-patterns.
-- Added bounded runtime selector for existing `personality_context` flow.
-- Added provisional voice-intent vectors while deferring final TTS tuning.
+- Established weighted creator-authority hierarchy and evidence labels `[FC]`, `[DNA]`, `[AI]`, `[PUB]`, `[ALT]`, `[NEG]`.
+- Added identity/model/provider/creator boundaries, relationship trust ladder, behavioral exemplars, evaluation scenarios and anti-patterns.
+- Added bounded runtime selector for existing personality-context flow while deferring final voice tuning.
