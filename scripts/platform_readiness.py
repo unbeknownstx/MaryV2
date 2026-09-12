@@ -1,9 +1,9 @@
-"""Read-only cross-platform MaryV2 13.5 readiness report.
+"""Read-only cross-platform MaryV2 host readiness report.
 
 This module never starts services, executes shell commands, or prints secret
 values. It reports repository contracts, optional host packages/executables,
-and configuration presence so a Mac or PC can be prepared without making any
-optional dependency a Mary Core startup requirement.
+configuration presence and 13.14 specialist readiness so a Mac or PC can be
+prepared without making any optional dependency a Mary Core startup requirement.
 """
 from __future__ import annotations
 
@@ -34,18 +34,29 @@ REQUIRED_REPO_PATHS = (
     "ios/MaryV2iOS/project.yml",
 )
 
+OPTIONAL_REPO_PATHS = (
+    "requirements-home-node.txt",
+    "requirements-streaming-audio.txt",
+    "docs/architecture/HOME_COMPUTE_FABRIC_13_11.md",
+    "docs/architecture/HOME_SENSOR_WORKERS_13_12.md",
+    "docs/architecture/STREAM_SENSES_13_13.md",
+    "docs/architecture/CHARACTER_INTELLIGENCE_LEARNING_13_14.md",
+)
+
 OPTIONAL_MODULES = {
     "mcp": "bounded MCP client",
     "faster_whisper": "local Whisper STT",
     "onnxruntime": "local ONNX runtime",
     "sherpa_onnx": "local realtime speech runtime",
     "websockets": "stream/presence transport",
+    "sounddevice": "optional public creator microphone capture",
 }
 
 OPTIONAL_EXECUTABLES = {
     "git": ("git",),
     "ollama": ("ollama",),
     "llama.cpp server": ("llama-server", "llama-server.exe"),
+    "Whisper.cpp": ("whisper-cli", "whisper-cli.exe"),
     "Piper TTS": ("piper", "piper.exe"),
     "Node.js": ("node",),
     "npm": ("npm", "npm.cmd"),
@@ -57,6 +68,11 @@ CONFIG_PRESENCE = (
     "MARY_MCP_OPENDESIGN_URL",
     "MARY_MCP_SCRAPLING_URL",
     "MARY_MCP_LANGFLOW_URL",
+    "MARY_FLUID_AUDIO_ENDPOINT",
+    "MARY_QWEN_ASR_ENDPOINT",
+    "MARY_LLAMA_CPP_VLM_URL",
+    "MARY_OMNIPARSER_ENDPOINT",
+    "MARY_CHATTERBOX_ENDPOINT",
     "ELEVENLABS_API_KEY",
     "GROQ_API_KEY",
     "GEMINI_API_KEY",
@@ -85,6 +101,9 @@ def collect_readiness() -> dict[str, Any]:
     repo_paths = {
         relative: (ROOT / relative).exists() for relative in REQUIRED_REPO_PATHS
     }
+    optional_repo_paths = {
+        relative: (ROOT / relative).exists() for relative in OPTIONAL_REPO_PATHS
+    }
     modules = {
         name: {"purpose": purpose, "available": _module_available(name)}
         for name, purpose in OPTIONAL_MODULES.items()
@@ -96,6 +115,23 @@ def collect_readiness() -> dict[str, Any]:
     configured = {
         name: bool(os.getenv(name, "").strip()) for name in CONFIG_PRESENCE
     }
+
+    try:
+        from mary.distributed.specialist_catalog import specialist_status
+        specialists = specialist_status()
+    except Exception:
+        specialists = {
+            "version": "13.14",
+            "backends": [],
+            "ready": [],
+            "semantics": {
+                "discovery_only": True,
+                "core_startup_dependency": False,
+                "external_identity_authority": False,
+                "external_memory_authority": False,
+                "arbitrary_shell": False,
+            },
+        }
 
     platform_name = platform.system().lower()
     surface = {
@@ -117,9 +153,11 @@ def collect_readiness() -> dict[str, Any]:
         "platform": platform.platform(),
         "surface": surface,
         "repo_contracts": repo_paths,
+        "optional_repo_contracts": optional_repo_paths,
         "optional_modules": modules,
         "optional_executables": executables,
         "configuration": configured,
+        "specialist_backends": specialists,
         "core_startup_requires_optional_host_extras": False,
         "shell_execution_surface_added": False,
     }
@@ -137,7 +175,7 @@ def _strict_failures(report: dict[str, Any]) -> list[str]:
 
 def _print_human(report: dict[str, Any]) -> None:
     print("=" * 72)
-    print("MARYV2 13.5 PLATFORM READINESS")
+    print("MARYV2 PLATFORM READINESS")
     print("=" * 72)
     print(f"Platform: {report['platform']}")
     print(f"Python:   {report['python']['version']} ({'PASS' if report['python']['supported'] else 'FAIL'})")
@@ -145,6 +183,10 @@ def _print_human(report: dict[str, Any]) -> None:
     print("\nRepository contracts")
     for path, present in report["repo_contracts"].items():
         print(f"  {'PASS' if present else 'FAIL'}  {path}")
+
+    print("\nOptional architecture/runtime contracts")
+    for path, present in report["optional_repo_contracts"].items():
+        print(f"  {'READY' if present else 'OPTIONAL'}  {path}")
 
     print("\nOptional host packages")
     for name, status in report["optional_modules"].items():
@@ -159,7 +201,11 @@ def _print_human(report: dict[str, Any]) -> None:
     for name, configured in report["configuration"].items():
         print(f"  {'SET' if configured else 'UNSET'}  {name}")
 
-    print("\nOptional host extras are never a Mary Core startup dependency.")
+    print("\nResearch-derived specialist backends")
+    for item in report.get("specialist_backends", {}).get("backends", []):
+        print(f"  {'READY' if item['ready'] else 'OPTIONAL'}  {item['backend_id']}: {item['role']} ({item['state']})")
+
+    print("\nOptional host extras/specialists are never a Mary Core startup dependency.")
     print("No shell/exec capability is introduced by this readiness layer.")
 
 
