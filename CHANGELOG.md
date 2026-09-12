@@ -1,5 +1,16 @@
 # Changelog
 
+## 13.10 — 2026-09-11 — Live Stream Cohost
+
+- Added a bounded Twitch-to-canonical-Core cohost loop on top of the existing stream chat governor, audience ranking and creator-floor scheduler.
+- Added public-safe cohost turn planning so viewer text remains untrusted social context rather than creator/system/tool authority.
+- Added optional Mary voice output through Core `/v1/voice/synthesize` and a dependency-free loopback OBS Browser Source audio/caption relay.
+- Added optional bounded Twitch typed replies using the existing `TwitchChatOutbox` rate/dedupe contract and current Send Chat Message request shape.
+- Added bounded current-perception/live-scene context so Mary can comment on OBS/browser/screen activity without creating a stream-only vision memory.
+- Added an explicit `scripts.run_stream_cohost` host process with one authenticated creator-surface lease and device-scoped `stream` performance context.
+- Kept Twitch, OBS, TTS and stream dependencies optional and outside Mary Core startup.
+- Added deterministic tests and an active 13.10 architecture/operations guide for later Live2D/2.5D/3D renderer attachment.
+
 ## 13.9 — 2026-09-11 — Native iPhone Companion Product
 
 - Rebuilt the SwiftUI iPhone Home around Mary's live presence, relationship context, current work and one-tap Talk/Call actions.
