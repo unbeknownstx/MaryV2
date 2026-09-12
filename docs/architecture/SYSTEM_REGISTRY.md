@@ -6,8 +6,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.2 reconciliation inventory](RECONCILIATION_13_2.md),
 [13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md),
 [13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md),
-[13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md), and
-[13.7 product experience convergence](PRODUCT_EXPERIENCE_13_7.md).
+[13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md),
+[13.7 product experience convergence](PRODUCT_EXPERIENCE_13_7.md), and
+[13.8 relational presence/shared life](RELATIONAL_PRESENCE_13_8.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -18,13 +19,16 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Character bootstrap | `mary.character` / Character Core | CANONICAL | Compact fallback when no external authored source is active. |
 | Authored character sources | `mary.character.sourcebook` | ACTIVE | Loads approved sources from `character_sources/active/` or explicit env paths. |
 | Character evaluation | `mary.character.evaluation` | ACTIVE | Evaluation/training evidence only; not lived memory. |
-| Relationship | `mary.relationship` | CANONICAL OWNER | Shared-history/creator relationship state. |
+| Relationship | `mary.relationship` | CANONICAL OWNER | Shared-history/creator relationship state. 13.8 relationship mode is represented through this same owner/history, not a second companion database. |
+| Relational presence | `mary.relationship.relational_presence` | ACTIVE COMPOSITION 13.8 | `friend/close/romantic/partner`, bounded active shared activity, proposal-only presence impulses; durable changes delegate to canonical `RelationshipManager`. |
+| Derived social graph | `RelationalPresenceRuntime.social_graph` | ACTIVE READ-ONLY 13.8 | Projection over canonical creator profile/history/shared experiences; no graph database or truth authority. |
+| Social delivery projection | `mary.expression.social_delivery` | ACTIVE PRESENTATION 13.8 | Relationship/emotion-aware warmth/playfulness/intimacy/pace/energy hints; public scope suppresses private intimacy; providers cannot define relationship truth. |
 | Memory | `mary.memory` | CANONICAL OWNER | Episodic/semantic/working memory. |
 | Developed self / personality | `mary.personality`, growth paths | CANONICAL OWNER | Grounded development, not raw provider output. |
 | Agency | `mary.agency` | CANONICAL OWNER | Goals, intentions, curiosities, priorities, decisions. |
 | Autonomy | `mary.autonomy` | ACTIVE | Bounded execution/initiative; capability != permission. |
 | Emotion/expression | `mary.expression` | ACTIVE | Baseline + state + momentum/decay; does not own personality. |
-| Turn context | `mary.cognition.mind_state`, continuity/context modules | CANONICAL TURN LAYER | Bounded current/recent/retrieved/authored context. |
+| Turn context | `mary.cognition.mind_state`, continuity/context modules | CANONICAL TURN LAYER | Bounded current/recent/retrieved/authored context; canonical relationship-history summary now includes explicit 13.8 relationship mode. |
 | Reasoning/cognition | `mary.cognition` | ACTIVE | Provider-independent Mary reasoning orchestration. |
 | Provider routing | `mary.llm.router` | ACTIVE | Free/cheap/private/expert routes; models never own identity. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
@@ -42,13 +46,15 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Sandboxed software-engineering worker boundary; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
 | Platform readiness | `scripts.platform_readiness`, `requirements-host-extras.txt` | ACTIVE OPTIONAL 13.5 | Read-only Mac/Windows/Linux capability/config presence; optional packages never gate Core startup; no shell execution. |
 | Experience quality telemetry | `mary.runtime.experience_quality`, `mary.runtime.performance_hardening` | ACTIVE READ-ONLY 13.7 | Content-free rolling latency/outcome classification; explicitly no identity, memory, routing, lifecycle or permission authority. |
+| Experience projector | `mary.experience.projector` | ACTIVE PRESENTATION 13.8 | Whitelisted `/api/experience` projection now surfaces explicit close/romantic/partner mode from Core while keeping provider/secrets/non-authoritative fields out. |
 | Visual/product design contract | `docs/design/MARY_VISUAL_SYSTEM.md` | ACTIVE CONTRACT 13.7 | Shared semantic color/motion/degraded-state language for surfaces; presentation only. |
+| Relational UI contract | `docs/architecture/RELATIONAL_PRESENCE_UI_13_8.md`, `desktop/public/relational-13-8.css` | ACTIVE CONTRACT 13.8 | Shared-life cards/actions, privacy projection and anti-attention-trap styling; normal product surfaces remain creator-facing rather than backend dashboards. |
 | Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
-| Desktop | `mary.desktop`, `desktop/` | ACTIVE POLISHED 13.7 | Presentation/capability surface; responsive shell and portrait-safe degradation keep chat/work independent of 3D. |
-| Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE POLISHED 13.7 | Remote Core surface; compatibility web UI shares assets/design language with native app. |
-| Native iPhone | `ios/MaryV2iOS/` | ACTIVE BUILD-VERIFIED 13.7 | SwiftUI client using the same Core authority; Keychain token, local speech capture, Core voice playback and shared visual roles. |
+| Desktop | `mary.desktop`, `desktop/` | ACTIVE POLISHED 13.8 | Presentation/capability surface; 13.7 responsive/portrait-safe base plus 13.8 relational visual layer. |
+| Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE POLISHED 13.8 | Remote Core surface; existing presence rail receives relationship mode through the shared experience projector without owning state. |
+| Native iPhone | `ios/MaryV2iOS/` | ACTIVE BUILD-VERIFIED 13.7 | SwiftUI client using the same Core authority; Keychain token, local speech capture, Core voice playback and shared visual roles. 13.8 native relationship controls remain a follow-up surface task. |
 | Legacy native mobile | `mobile_native/` | PARTIAL / COMPATIBILITY | Retained wrapper kept byte-aligned with the compatibility PWA where tests require it; does not override SwiftUI or Core authority. |
-| Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. |
+| Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. 13.8 social-delivery envelope is available for adapter integration. |
 | Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling; portrait fallback is a supported state. |
 | Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. |
 | Browser context sensor | `mary.perception.browser` | ACTIVE BOUNDED 13.6 | Page/media summaries enter PerceptionDirector after URL/metadata sanitization; no browser-owned memory/personality. |
@@ -70,6 +76,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 - Expand Mary-specific character evaluation substantially from authored examples.
 - Add real authorized adapters for selected image/video/audio generation services.
 - Mature avatar/3D expression beyond the current baseline model.
-- Benchmark local voice/VLM options on representative creator hardware rather than making a framework a mandatory dependency.
+- Benchmark local voice/VLM and semantic turn-taking options on representative creator hardware rather than making a framework a mandatory dependency.
+- Add authenticated creator-facing mutation controls for 13.8 relationship mode/shared activities through the existing bounded Core action path; do not bypass the single-writer Core for UI convenience.
+- Feed the 13.8 social-delivery envelope into real ElevenLabs/local-TTS/avatar adapters only after provider-specific behavior is tested.
 - Continue live cross-device/Core/node testing under real provider/network failures and collect operational latency/readiness evidence.
 - Establish an intentional production continuity dataset after development/test state is discarded.
