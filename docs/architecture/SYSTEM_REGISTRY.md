@@ -8,8 +8,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md),
 [13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md),
 [13.7 product experience convergence](PRODUCT_EXPERIENCE_13_7.md),
-[13.8 relational presence/shared life](RELATIONAL_PRESENCE_13_8.md), and
-[13.9 native iPhone product](../design/NATIVE_IPHONE_PRODUCT_13_9.md).
+[13.8 relational presence/shared life](RELATIONAL_PRESENCE_13_8.md),
+[13.9 native iPhone product](../design/NATIVE_IPHONE_PRODUCT_13_9.md), and
+[13.10 live stream cohost](STREAM_COHOST_13_10.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -41,6 +42,11 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | MCP capability fabric | `mary.distributed.mcp_fabric`, `mary.desktop.device_node` | ACTIVE OPTIONAL 13.4 | OpenDesign/Scrapling/Langflow over preconfigured Streamable HTTP(S); node-local credentials, lazy discovery, exact tool allowlists, sanitized results; no shell/stdio launcher. |
 | Incremental response / sentence TTS | `mary.realtime.streaming`, `mary.voice.streaming_tts` | ACTIVE PRIMITIVES 13.6 | Provider-neutral deltas, sentence assembly, cooperative cancellation, bounded ordered synthesis-ahead; one-shot providers remain valid. |
 | Performer integrations | `mary.streaming.bridge`, `mary.streaming.config` | ACTIVE CONTRACT 13.6 | Twitch input is untrusted audience context; outbound chat/OBS writes require explicit bounded permissions. |
+| Stream chat coordination | `mary.streaming.presence`, `mary.streaming.chat`, `mary.streaming.input_governor`, `mary.streaming.output` | ACTIVE 13.6/13.10 | Core-owned dedupe, hostile/injection filtering, audience scoring, creator-floor arbitration and drop/react/wait/chat/speak/both planning. Chat never gains creator/tool authority. |
+| Live stream cohost | `mary.streaming.cohost`, `scripts.run_stream_cohost` | ACTIVE OPTIONAL 13.10 | Selected Twitch messages become bounded public-safe canonical Core turns; runner registers one creator surface and scopes only that device to `stream` performance context. No second Mary/chatbot loop. |
+| OBS audio/caption relay | `mary.streaming.relay` | ACTIVE PRESENTATION 13.10 | Loopback-only Browser Source transport for latest bounded Core TTS audio + caption; contains no Core/Twitch credentials or canonical state. |
+| Twitch EventSub transport | `mary.integrations.twitch_eventsub`, `mary.integrations.twitch_runtime` | ACTIVE OPTIONAL | Current chat EventSub normalization/session continuity, self-echo and outbound rate/dedupe contracts; transport-only. |
+| Twitch typed chat send | `mary.integrations.twitch_chat`, `TwitchChatOutbox` | ACTIVE OPTIONAL 13.10 | Current bounded Send Chat Message request shape + existing rate/dedupe planner; write path requires explicit configuration/token scope and never authorizes tools. |
 | Capability invocation coordination | `mary.distributed.invocations` | ACTIVE SUPPORT 13.6 | Process-local idempotency/retry primitive only; no authorization and no canonical-result authority. |
 | Capability simulator | `mary.distributed.simulator` | TEST/DEVELOPMENT 13.6 | Deterministic fake adapter only; never registers as Mary. |
 | Semantic game control | `mary.game_control` | ACTIVE ROUTING CONTRACT 13.6 | High-level intent routes through NodeRegistry; raw key/mouse execution excluded and device permission still required. |
@@ -56,9 +62,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE POLISHED 13.8 | Remote Core surface; existing presence rail receives relationship mode through the shared experience projector without owning state. |
 | Native iPhone | `ios/MaryV2iOS/` | ACTIVE PRODUCT 13.9 | SwiftUI surface over canonical Core with Keychain auth, local push-to-talk transcription, Core voice playback, relational projection, conversation-first Talk, Together shared-life UX, native haptics/accessibility and preserved Work/Focus. |
 | Legacy native mobile | `mobile_native/` | PARTIAL / COMPATIBILITY | Retained wrapper kept byte-aligned with the compatibility PWA where tests require it; does not override SwiftUI or Core authority. |
-| Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. 13.8 social-delivery envelope is available for adapter integration. |
-| Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling; portrait fallback is a supported state. |
-| Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. |
+| Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. Stream cohost reuses authenticated Core voice synthesis rather than owning a TTS provider. |
+| Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling; 13.10 stream cohost is renderer-neutral so future Live2D/2.5D/3D bodies can consume the same speech/attention/performance state. |
+| Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. 13.10 may read a small secret-filtered current summary for public stream response context. |
 | Browser context sensor | `mary.perception.browser` | ACTIVE BOUNDED 13.6 | Page/media summaries enter PerceptionDirector after URL/metadata sanitization; no browser-owned memory/personality. |
 | Runtime performance profiles | `mary.runtime.performance_profiles` | ACTIVE POLICY 13.6 | Light/balanced/performance resource targets only; explicitly cannot switch identity. |
 | Realtime activity projection | `mary.realtime.brain_activity` | ACTIVE READ-ONLY 13.6 | Bounded floor/attention/decision labels for UI/debugging; no chain-of-thought or write authority. |
@@ -77,9 +83,10 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 - Finish and approve the Character Bible/corpus; move approved material into `character_sources/active/`.
 - Expand Mary-specific character evaluation substantially from authored examples.
 - Add real authorized adapters for selected image/video/audio generation services.
-- Mature avatar/3D expression beyond the current baseline model.
+- Mature avatar/3D expression beyond the current baseline model; Live2D/2.5D/3D stream bodies should attach to the 13.10 cohost state rather than creating another runtime.
 - Benchmark local voice/VLM and semantic turn-taking options on representative creator hardware rather than making a framework a mandatory dependency.
 - Add authenticated creator-facing mutation controls for relationship mode/shared activities through the existing bounded Core action path; do not bypass the single-writer Core for UI convenience.
 - Feed the social-delivery envelope into real ElevenLabs/local-TTS/avatar adapters only after provider-specific behavior is tested.
-- Continue live cross-device/Core/node testing under real provider/network failures and collect operational latency/readiness evidence.
+- Replace the 13.10 bounded speech-duration estimate with explicit renderer/browser playback completion acknowledgement if stream-floor timing proves materially inaccurate in live testing.
+- Continue live cross-device/Core/node/Twitch/OBS testing under real provider/network failures and collect operational latency/readiness evidence.
 - Establish an intentional production continuity dataset after development/test state is discarded.
