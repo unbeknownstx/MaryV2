@@ -14,6 +14,7 @@ See:
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
 - `docs/architecture/RELATIONAL_PRESENCE_13_8.md` — 13.8 relational-presence architecture
+- `docs/research/COMPANION_SYSTEMS_13_8.md` — companion/VTuber/agent research synthesis
 - `docs/design/MARY_VISUAL_SYSTEM.md` — cross-surface visual system
 
 ## Architecture
