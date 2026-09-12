@@ -1,18 +1,20 @@
 """Install the MaryV2 performance/experience hardening bundle.
 
-This is intentionally thin wiring. It attaches derived/ephemeral systems to the
-existing owners instead of introducing another Core, memory store, attention bus,
+This remains thin wiring. It attaches derived/ephemeral systems to existing
+owners instead of introducing another Core, memory store, attention bus,
 speaker floor, relationship database, or model router.
 """
 from __future__ import annotations
 
+from mary.expression.social_delivery import SocialDeliveryPlanner
 from mary.expression.standing_affect import StandingAffectStore
 from mary.distributed.stream_capabilities import StreamCapabilityCatalog
+from mary.relationship.relational_presence import RelationalPresenceRuntime
 from mary.runtime.experience_quality import ExperienceQualityMonitor
 
 
 class PerformanceHardeningBundle:
-    VERSION = "13.7"
+    VERSION = "13.8"
 
     def __init__(self, mary) -> None:
         self.mary = mary
@@ -21,6 +23,12 @@ class PerformanceHardeningBundle:
         self.standing_affect.load()
         self.stream_capabilities = StreamCapabilityCatalog()
         self.experience_quality = ExperienceQualityMonitor()
+
+        # 13.8 relational presence is deliberately composed over the existing
+        # canonical RelationshipManager. Durable mode/activity completions are
+        # recorded by that owner; active activities and proposals stay ephemeral.
+        self.relational_presence = RelationalPresenceRuntime(mary.relationship)
+        self.social_delivery = SocialDeliveryPlanner()
 
     def observe_emotional_state(self, state, *, source: str = "conversation_emotion", cause: str = ""):
         self.standing_affect.observe(
@@ -31,6 +39,13 @@ class PerformanceHardeningBundle:
             cause=cause,
         )
         return self.standing_affect.blend_into_emotional_state(state)
+
+    def delivery_envelope(self, state=None, *, privacy_scope: str = "private") -> dict:
+        return self.social_delivery.build(
+            relationship_mode=self.relational_presence.relationship_mode(),
+            emotional_state=state,
+            privacy_scope=privacy_scope,
+        ).to_dict()
 
     def snapshot(self) -> dict:
         return {
@@ -43,6 +58,8 @@ class PerformanceHardeningBundle:
                 else {"enabled": False}
             ),
             "experience_quality": self.experience_quality.snapshot(),
+            "relational_presence": self.relational_presence.snapshot(),
+            "social_delivery": self.delivery_envelope(),
             "authority": "wiring/telemetry only; canonical owners remain Mary Core subsystems",
         }
 
@@ -53,4 +70,6 @@ def install_performance_hardening(mary) -> PerformanceHardeningBundle:
     mary.standing_affect = bundle.standing_affect
     mary.stream_capability_catalog = bundle.stream_capabilities
     mary.experience_quality = bundle.experience_quality
+    mary.relational_presence = bundle.relational_presence
+    mary.social_delivery = bundle.social_delivery
     return bundle
