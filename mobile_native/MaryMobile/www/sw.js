@@ -1,4 +1,4 @@
-const CACHE='maryv2-mobile-shell-v13-7-product-polish';
+const CACHE='maryv2-mobile-shell-v13-2-unified-v13-7-product-polish';
 const SHELL=[
   '/',
   '/index.html',
