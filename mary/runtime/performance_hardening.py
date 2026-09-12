@@ -1,17 +1,18 @@
-"""Install the 13.4.1 performance hardening bundle on one canonical Mary.
+"""Install the MaryV2 performance/experience hardening bundle.
 
 This is intentionally thin wiring. It attaches derived/ephemeral systems to the
 existing owners instead of introducing another Core, memory store, attention bus,
-speaker floor, or relationship database.
+speaker floor, relationship database, or model router.
 """
 from __future__ import annotations
 
 from mary.expression.standing_affect import StandingAffectStore
 from mary.distributed.stream_capabilities import StreamCapabilityCatalog
+from mary.runtime.experience_quality import ExperienceQualityMonitor
 
 
 class PerformanceHardeningBundle:
-    VERSION = "13.4.1"
+    VERSION = "13.7"
 
     def __init__(self, mary) -> None:
         self.mary = mary
@@ -19,6 +20,7 @@ class PerformanceHardeningBundle:
         self.standing_affect = StandingAffectStore(path)
         self.standing_affect.load()
         self.stream_capabilities = StreamCapabilityCatalog()
+        self.experience_quality = ExperienceQualityMonitor()
 
     def observe_emotional_state(self, state, *, source: str = "conversation_emotion", cause: str = ""):
         self.standing_affect.observe(
@@ -40,7 +42,8 @@ class PerformanceHardeningBundle:
                 if callable(getattr(getattr(self.mary, "performance_profiles", None), "status", None))
                 else {"enabled": False}
             ),
-            "authority": "wiring only; canonical owners remain Mary Core subsystems",
+            "experience_quality": self.experience_quality.snapshot(),
+            "authority": "wiring/telemetry only; canonical owners remain Mary Core subsystems",
         }
 
 
@@ -49,4 +52,5 @@ def install_performance_hardening(mary) -> PerformanceHardeningBundle:
     mary.performance_hardening = bundle
     mary.standing_affect = bundle.standing_affect
     mary.stream_capability_catalog = bundle.stream_capabilities
+    mary.experience_quality = bundle.experience_quality
     return bundle
