@@ -25,8 +25,13 @@ from mary.desktop.resident_hearing import (
 class StreamCreatorMicrophone:
     """VAD-gated raw microphone capture using optional sounddevice."""
 
-    def __init__(self, on_utterance: Callable[[bytes], None]) -> None:
+    def __init__(
+        self,
+        on_utterance: Callable[[bytes], None],
+        on_activity: Callable[[bool, bool, float], None] | None = None,
+    ) -> None:
         self.on_utterance = on_utterance
+        self.on_activity = on_activity
         self._stream = None
         self._lock = RLock()
         self._byte_buffer = bytearray()
@@ -82,6 +87,14 @@ class StreamCreatorMicrophone:
                 stream.stop()
             finally:
                 stream.close()
+        self._emit_activity(False, False, 0.0)
+
+    def _emit_activity(self, active: bool, confirmed: bool, confidence: float) -> None:
+        if self.on_activity is not None:
+            try:
+                self.on_activity(bool(active), bool(confirmed), max(0.0, min(1.0, float(confidence))))
+            except Exception:
+                pass
 
     def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         del frames, time_info, status
@@ -108,13 +121,18 @@ class StreamCreatorMicrophone:
         for event in events:
             if event.kind == "candidate":
                 self._utterance = list(self._preroll)
+                self._emit_activity(True, False, event.confidence)
+            elif event.kind == "confirmed":
+                self._emit_activity(True, True, event.confidence)
             elif event.kind == "false_start":
                 self._utterance.clear()
                 self._preroll.clear()
+                self._emit_activity(False, False, 0.0)
             elif event.kind == "end":
                 pcm = b"".join(self._utterance)
                 self._utterance.clear()
                 self._preroll.clear()
+                self._emit_activity(False, False, 0.0)
                 if pcm:
                     self.on_utterance(self._wav_bytes(pcm))
 
