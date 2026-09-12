@@ -7,11 +7,14 @@ def test_relationship_mode_uses_existing_history(tmp_path):
     manager.load()
     presence = RelationalPresenceRuntime(manager)
     assert presence.relationship_mode() == "friend"
+    assert manager.history.summary()["relationship_mode"] == "friend"
     changed = presence.set_relationship_mode("partner")
     assert changed["changed"] is True
+    assert manager.history.summary()["relationship_mode"] == "partner"
     restarted = RelationshipManager(path=tmp_path / "relationship.json")
     restarted.load()
     assert RelationalPresenceRuntime(restarted).relationship_mode() == "partner"
+    assert restarted.history.summary()["relationship_mode"] == "partner"
 
 
 def test_shared_activity_completion_becomes_existing_shared_experience(tmp_path):
@@ -24,6 +27,7 @@ def test_shared_activity_completion_becomes_existing_shared_experience(tmp_path)
     event = presence.complete_activity(summary="Mary and creator watched a movie together.")
     assert event["type"] == "shared_experience"
     assert event["metadata"]["activity_type"] == "movie"
+    assert manager.history.summary()["shared_experiences"] == 1
     assert presence.snapshot()["active_activity"] is None
 
 
