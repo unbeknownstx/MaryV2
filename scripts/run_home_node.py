@@ -15,7 +15,7 @@ from threading import Event
 
 from dotenv import load_dotenv
 
-from mary.desktop.device_node import headless_node_capabilities
+from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_node_capabilities
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
 from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
 from mary.distributed.resource_profile import RuntimeResourceProfile
@@ -54,12 +54,19 @@ def _profile_path(cli_path: Path | None) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+def _verify_bounded_agent_contract() -> None:
+    """Keep 13.12 sensors as a narrow extension of the established node agent."""
+    if not issubclass(SensorCapabilityNodeAgent, DesktopCapabilityNodeAgent):
+        raise RuntimeError("Home sensor node must remain a bounded DesktopCapabilityNodeAgent extension.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Mary's bounded cross-platform home capability node.")
     parser.add_argument("--benchmark-profile", type=Path, default=None, help="13.11+ benchmark JSON produced by scripts.benchmark_home_node.")
     parser.add_argument("--enroll-only", action="store_true", help="Establish durable node trust and exit.")
     args = parser.parse_args(argv)
     load_dotenv()
+    _verify_bounded_agent_contract()
 
     core_url = os.getenv("MARY_CORE_URL", "").strip()
     if not core_url:
@@ -119,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.pop("MARY_NODE_ENROLLMENT_GRANT", None)
 
     stop = Event()
+
     def _request_stop(*_args) -> None:
         stop.set()
 
