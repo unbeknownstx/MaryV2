@@ -1,8 +1,8 @@
 """Run a bounded Mary capability node on macOS, Windows, or Linux.
 
-This is the preferred home-fabric launcher for MaryV2 13.11. It reuses the
+This is the preferred home-fabric launcher for MaryV2 13.12. It reuses the
 existing durable enrollment, permission file, task broker, Ollama/llama.cpp,
-and MCP executors. No arbitrary shell task exists here.
+MCP executors and explicit sensor workers. No arbitrary shell task exists here.
 """
 from __future__ import annotations
 
@@ -15,10 +15,12 @@ from threading import Event
 
 from dotenv import load_dotenv
 
-from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_node_capabilities
+from mary.desktop.device_node import headless_node_capabilities
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
 from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
 from mary.distributed.resource_profile import RuntimeResourceProfile
+from mary.distributed.sensor_node import SensorCapabilityNodeAgent
+from mary.distributed.sensors import sensor_capabilities
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
 
 
@@ -36,6 +38,8 @@ def _resource_capability() -> CapabilityDescriptor:
             "cpu_count": profile.get("cpu_count", 1),
             "memory_gib": profile.get("memory_gib", "unknown"),
             "apple_silicon": profile.get("apple_silicon", False),
+            "metal": profile.get("metal_available", False),
+            "vulkan": profile.get("vulkan_available", False),
             "ollama": profile.get("ollama_available", False),
             "llama_cpp": profile.get("llama_cpp_available", False),
             "whisper_cpp": profile.get("whisper_cpp_available", False),
@@ -52,7 +56,7 @@ def _profile_path(cli_path: Path | None) -> Path | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Mary's bounded cross-platform home capability node.")
-    parser.add_argument("--benchmark-profile", type=Path, default=None, help="13.11 benchmark JSON produced by scripts.benchmark_home_node.")
+    parser.add_argument("--benchmark-profile", type=Path, default=None, help="13.11+ benchmark JSON produced by scripts.benchmark_home_node.")
     parser.add_argument("--enroll-only", action="store_true", help="Establish durable node trust and exit.")
     args = parser.parse_args(argv)
     load_dotenv()
@@ -63,8 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     permissions = DeviceExecutionPermissions()
-    capabilities = headless_node_capabilities(permissions)
-    capabilities.append(_resource_capability())
+    capabilities = [*headless_node_capabilities(permissions), *sensor_capabilities(), _resource_capability()]
 
     benchmark_path = _profile_path(args.benchmark_profile)
     benchmark_loaded = False
@@ -82,12 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         or "home-node"
     )
     try:
-        gateway = gateway_from_environment(
-            application=None,
-            device_id=device_id,
-            surface="home_node",
-            node_only=True,
-        )
+        gateway = gateway_from_environment(application=None, device_id=device_id, surface="home_node", node_only=True)
     except RuntimeError as exc:
         print(str(exc))
         return 2
@@ -95,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Home node did not resolve remote Mary Core authority.")
         return 2
 
-    agent = DesktopCapabilityNodeAgent(
+    agent = SensorCapabilityNodeAgent(
         gateway,
         application=None,
         bridge=None,
@@ -121,7 +119,6 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.pop("MARY_NODE_ENROLLMENT_GRANT", None)
 
     stop = Event()
-
     def _request_stop(*_args) -> None:
         stop.set()
 
@@ -133,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
                 pass
 
     agent.start()
-    print("MARYV2 13.11 HOME COMPUTE NODE")
+    print("MARYV2 13.12 HOME COMPUTE NODE")
     print("=" * 64)
     print(f"node:              {agent.display_name}")
     print(f"platform:          {agent.platform}")
@@ -144,7 +141,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  - {capability.name:<28} {status}")
     allowed = sorted(permissions.allowed())
     print(f"execution allowed: {', '.join(allowed) if allowed else 'none (default deny)'}")
-    print("authority:          compute only; Mary Core owns identity/state")
+    print("sensor policy:      transcription/screen capture are explicit local opt-ins")
+    print("authority:          compute/evidence only; Mary Core owns identity/state")
     print("Press Ctrl+C to stop the node.")
 
     try:
