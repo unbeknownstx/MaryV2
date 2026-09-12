@@ -15,9 +15,10 @@ from uuid import uuid4
 
 from .nodes import NodeRegistry
 from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
+from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_sensor_task_args
 
 
-_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES}
+_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
 ExecutionPolicy = Callable[[str], None]
 
@@ -37,10 +38,7 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
         if not query:
             raise ValueError("personal_search requires a non-empty query.")
         limit = int(values.get("limit", 8) or 8)
-        return {
-            "query": query,
-            "limit": max(1, min(12, limit)),
-        }
+        return {"query": query, "limit": max(1, min(12, limit))}
     if capability in {"llm.ollama", "llm.llama_cpp"}:
         provider_label = capability
         raw_messages = values.get("messages")
@@ -48,7 +46,6 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             raise ValueError(f"{provider_label} requires a non-empty messages array.")
         if len(raw_messages) > 12:
             raise ValueError(f"{provider_label} supports at most 12 messages per task.")
-
         messages: list[dict[str, str]] = []
         total_characters = 0
         for raw_message in raw_messages:
@@ -66,32 +63,23 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             if total_characters > 48_000:
                 raise ValueError(f"{provider_label} message content exceeds the 48000 character task limit.")
             messages.append({"role": role, "content": content})
-
         role = str(values.get("role") or "general").strip().lower()
         if role not in {"general", "conversation", "fast", "utility"}:
-            raise ValueError(
-                f"{provider_label} role must be general, conversation, fast, or utility."
-            )
-
+            raise ValueError(f"{provider_label} role must be general, conversation, fast, or utility.")
         try:
             temperature = float(values.get("temperature", 0.7))
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{provider_label} temperature must be numeric.") from exc
         temperature = max(0.0, min(1.5, temperature))
-
         try:
             max_tokens = int(values.get("max_tokens", 1024) or 1024)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{provider_label} max_tokens must be an integer.") from exc
-
-        return {
-            "messages": messages,
-            "role": role,
-            "temperature": temperature,
-            "max_tokens": max(1, min(2048, max_tokens)),
-        }
+        return {"messages": messages, "role": role, "temperature": temperature, "max_tokens": max(1, min(2048, max_tokens))}
     if capability in MCP_CAPABILITIES:
         return sanitize_mcp_task_args(capability, values)
+    if capability in SENSOR_CAPABILITIES:
+        return sanitize_sensor_task_args(capability, values)
     raise ValueError(f"Capability execution is not supported: {capability}")
 
 
@@ -99,15 +87,15 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
     values = dict(result or {})
     if capability in MCP_CAPABILITIES:
         return sanitize_mcp_result(capability, values)
+    if capability in SENSOR_CAPABILITIES:
+        return sanitize_sensor_result(capability, values)
     if capability not in {"llm.ollama", "llm.llama_cpp"}:
         return values
-
     content = str(values.get("content") or "").strip()
     if not content:
         return {}
     if len(content) > 32_000:
         content = content[:31_999].rstrip() + "…"
-
     usage = values.get("usage")
     usage_values = dict(usage or {}) if isinstance(usage, dict) else {}
     safe_usage = {}
@@ -116,7 +104,6 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
             safe_usage[key] = max(0, int(usage_values.get(key, 0) or 0))
         except (TypeError, ValueError):
             safe_usage[key] = 0
-
     return {
         "content": content,
         "provider": "llama_cpp" if capability == "llm.llama_cpp" else "ollama",
@@ -182,21 +169,11 @@ class DeviceTaskBroker:
     canonical character state, and a Core restart may discard them.
     """
 
-    VERSION = "13.4"
+    VERSION = "13.12"
 
-    def __init__(
-        self,
-        *,
-        max_tasks: int = 200,
-        ttl_seconds: float = 300.0,
-        lifecycle_lock: RLock | None = None,
-        live_node: Callable[[str], bool] | None = None,
-        execution_policy: ExecutionPolicy | None = None,
-    ) -> None:
+    def __init__(self, *, max_tasks: int = 200, ttl_seconds: float = 300.0, lifecycle_lock: RLock | None = None, live_node: Callable[[str], bool] | None = None, execution_policy: ExecutionPolicy | None = None) -> None:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
-        # Core supplies NodeRegistry.lifecycle_lock so node lifecycle and task
-        # claims/completions share one linearization boundary.
         self._lock = lifecycle_lock or RLock()
         self._condition = Condition(self._lock)
         self._live_node = live_node
@@ -205,36 +182,18 @@ class DeviceTaskBroker:
         self._order: list[str] = []
 
     def set_execution_policy(self, policy: ExecutionPolicy | None) -> None:
-        """Set the process-local gate for task enqueueing and claiming.
-
-        The policy is evaluated while the broker's lifecycle lock is held, so
-        a denial cannot race a task claim. It receives ``"device_task.enqueue"``
-        or ``"device_task.claim"`` and may raise ``RuntimeError``.
-        """
-
         with self._condition:
             self._execution_policy = policy
-            # A waiting node must re-evaluate the new policy before it can
-            # claim work.
             self._condition.notify_all()
 
     def _enforce_execution_policy(self, kind: str) -> None:
         if self._execution_policy is not None:
             self._execution_policy(kind)
 
-    def enqueue(
-        self,
-        registry: NodeRegistry,
-        *,
-        capability: str,
-        intent: str,
-        args: dict[str, Any] | None,
-        requester_device_id: str,
-    ) -> DeviceCapabilityTask:
+    def enqueue(self, registry: NodeRegistry, *, capability: str, intent: str, args: dict[str, Any] | None, requester_device_id: str) -> DeviceCapabilityTask:
         normalized = str(capability or "").strip().lower()
         if normalized not in _ALLOWED_EXECUTION_CAPABILITIES:
             raise ValueError(f"Capability execution is not supported: {normalized}")
-
         with self._condition:
             self._enforce_execution_policy("device_task.enqueue")
             self._expire_locked()
@@ -252,81 +211,39 @@ class DeviceTaskBroker:
             self._tasks[task.task_id] = task
             self._order.append(task.task_id)
             self._trim_locked()
-            # Wake a node that is holding a long-poll request. The broker remains
-            # transport-agnostic; HTTP long-poll is only one consumer of this
-            # condition.
             self._condition.notify_all()
         return task
 
-    def poll(
-        self,
-        node_id: str,
-        *,
-        wait_seconds: float = 0.0,
-        live_node: Callable[[str], bool] | None = None,
-    ) -> DeviceCapabilityTask | None:
-        """Claim the next task for ``node_id``, optionally waiting for one.
-
-        Waiting happens on the broker's own condition variable rather than on
-        Mary's canonical turn lock. This lets a remote capability node keep one
-        authenticated request parked at Core and be woken immediately when work
-        is queued, eliminating the old fixed polling delay without creating a
-        second execution authority.
-        """
-
+    def poll(self, node_id: str, *, wait_seconds: float = 0.0, live_node: Callable[[str], bool] | None = None) -> DeviceCapabilityTask | None:
         node_id = str(node_id or "").strip()
         try:
             timeout = max(0.0, min(25.0, float(wait_seconds)))
         except (TypeError, ValueError):
             timeout = 0.0
         deadline = monotonic() + timeout
-
         with self._condition:
             while True:
-                # This is intentionally inside the loop: a long-poll is gated
-                # again after every condition wake, immediately before it can
-                # inspect and claim queued work.
                 self._enforce_execution_policy("device_task.claim")
                 self._expire_locked()
                 validator = live_node or self._live_node
                 if validator is not None and not validator(node_id):
-                    # A per-call validator may also bind a credential. Do not
-                    # let an obsolete credential expire work for a live,
-                    # re-enrolled node.
                     if self._live_node is None or not self._live_node(node_id):
-                        self._expire_pending_for_node_locked(
-                            node_id,
-                            reason="Capability node became unavailable before task delivery.",
-                        )
+                        self._expire_pending_for_node_locked(node_id, reason="Capability node became unavailable before task delivery.")
                     raise PermissionError(f"Capability node is not live: {node_id}")
                 for task_id in self._order:
                     task = self._tasks.get(task_id)
-                    if task is None:
-                        continue
-                    if task.selected_node_id != node_id:
-                        continue
-                    if task.status != "queued" or task.claimed:
+                    if task is None or task.selected_node_id != node_id or task.status != "queued" or task.claimed:
                         continue
                     task.claimed = True
                     task.status = "claimed"
                     task.updated_at = _utc_now()
                     return task
-
                 remaining = deadline - monotonic()
                 if remaining <= 0.0:
                     return None
                 self._condition.wait(timeout=remaining)
 
-    def complete(
-        self,
-        *,
-        node_id: str,
-        task_id: str,
-        status: str,
-        result: dict[str, Any] | None = None,
-        error: str = "",
-        live_node: Callable[[str], bool] | None = None,
-    ) -> DeviceCapabilityTask:
+    def complete(self, *, node_id: str, task_id: str, status: str, result: dict[str, Any] | None = None, error: str = "", live_node: Callable[[str], bool] | None = None) -> DeviceCapabilityTask:
         normalized_status = str(status or "").strip().lower()
         if normalized_status not in {"completed", "rejected", "failed"}:
             raise ValueError("Task completion status must be completed, rejected, or failed.")
@@ -340,33 +257,24 @@ class DeviceTaskBroker:
             validator = live_node or self._live_node
             if validator is not None and not validator(str(node_id)):
                 if self._live_node is None or not self._live_node(str(node_id)):
-                    self._expire_pending_for_node_locked(
-                        str(node_id),
-                        reason="Capability node became unavailable before task completion.",
-                    )
+                    self._expire_pending_for_node_locked(str(node_id), reason="Capability node became unavailable before task completion.")
                 raise PermissionError(f"Capability node is not live: {node_id}")
             if task.status in _TERMINAL_STATUSES:
                 return task
             task.status = normalized_status
             task.claimed = True
-            task.result = (
-                _sanitize_task_result(task.capability, result)
-                if normalized_status == "completed"
-                else {}
-            )
+            task.result = _sanitize_task_result(task.capability, result) if normalized_status == "completed" else {}
             task.error = _clean_text(error, 500)
             task.updated_at = _utc_now()
             self._condition.notify_all()
             return task
 
     def expire_pending_for_node(self, node_id: str, *, reason: str = "Capability node is unavailable.") -> int:
-        """Atomically expire non-terminal work assigned to an unavailable node."""
         clean_node_id = str(node_id or "").strip()
         with self._condition:
             return self._expire_pending_for_node_locked(clean_node_id, reason=reason)
 
     def _expire_pending_for_node_locked(self, node_id: str, *, reason: str) -> int:
-        """Expire one node's bounded task set while the broker lock is held."""
         expired = 0
         for task in self._tasks.values():
             if task.selected_node_id != node_id or task.status in _TERMINAL_STATUSES:
@@ -380,26 +288,13 @@ class DeviceTaskBroker:
             self._condition.notify_all()
         return expired
 
-    def wait_for_terminal(
-        self,
-        task_id: str,
-        *,
-        timeout_seconds: float,
-    ) -> DeviceCapabilityTask | None:
-        """Wait for a queued capability task to reach a terminal state.
-
-        The waiter releases the broker lock while sleeping, so a device node may
-        poll, execute, and complete the task concurrently with a serialized Mary
-        turn that is waiting for its result.
-        """
-
+    def wait_for_terminal(self, task_id: str, *, timeout_seconds: float) -> DeviceCapabilityTask | None:
         try:
             timeout = max(0.0, min(240.0, float(timeout_seconds)))
         except (TypeError, ValueError):
             timeout = 0.0
         deadline = monotonic() + timeout
         task_key = str(task_id)
-
         with self._condition:
             while True:
                 self._expire_locked()
@@ -437,11 +332,7 @@ class DeviceTaskBroker:
             if unavailable or now - task.created_monotonic > self.ttl_seconds:
                 task.status = "expired"
                 task.claimed = True
-                task.error = (
-                    "Capability node became unavailable before task completion."
-                    if unavailable
-                    else "Capability task expired before completion."
-                )
+                task.error = "Capability node became unavailable before task completion." if unavailable else "Capability task expired before completion."
                 task.updated_at = _utc_now()
         self._condition.notify_all()
 
@@ -451,15 +342,8 @@ class DeviceTaskBroker:
             self._tasks.pop(task_id, None)
 
 
-def preview_capability_task(
-    registry: NodeRegistry,
-    *,
-    capability: str,
-    intent: str,
-    requester_device_id: str,
-) -> CapabilityTaskPlan:
+def preview_capability_task(registry: NodeRegistry, *, capability: str, intent: str, requester_device_id: str) -> CapabilityTaskPlan:
     """Create a route plan only. This function can never execute a task."""
-
     route = registry.route_preview(capability)
     selected = route.get("selected_node_id")
     clean_intent = _clean_text(intent, 500)
