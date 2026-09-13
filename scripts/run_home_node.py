@@ -1,7 +1,7 @@
 """Run a bounded Mary capability node on macOS, Windows, or Linux.
 
 This is the preferred home-fabric launcher for MaryV2 13.12+. It reuses the
-existing durable enrollment, permission file, task broker, Ollama/llama.cpp,
+existing durable enrollment, permission file, task broker, local inference,
 MCP executors and explicit sensor workers. No arbitrary shell task exists here.
 """
 from __future__ import annotations
@@ -18,11 +18,23 @@ from dotenv import load_dotenv
 from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_node_capabilities
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
 from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
+from mary.distributed.creative_runtime import creative_runtime_catalog
 from mary.distributed.inference_acceleration import local_acceleration_status
+from mary.distributed.local_runtime_catalog import local_runtime_catalog
 from mary.distributed.resource_profile import RuntimeResourceProfile
 from mary.distributed.sensor_node import SensorCapabilityNodeAgent
 from mary.distributed.sensors import sensor_capabilities
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
+
+
+def _optional_int(name: str) -> int | None:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _resource_capability() -> CapabilityDescriptor:
@@ -33,8 +45,20 @@ def _resource_capability() -> CapabilityDescriptor:
         or os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b").strip()
         or "qwen3:4b"
     )
-    acceleration = local_acceleration_status(model=model, runtime=runtime)
+    acceleration = local_acceleration_status(
+        model=model,
+        runtime=runtime,
+        gguf_nextn_predict_layers=_optional_int("MARY_GGUF_NEXTN_PREDICT_LAYERS"),
+    )
     candidate = dict(acceleration.get("candidate") or {})
+    inference_runtimes = local_runtime_catalog()
+    creative_runtimes = creative_runtime_catalog()
+    configured_inference = [
+        str(item.get("name")) for item in inference_runtimes if item.get("configured")
+    ]
+    configured_creative = [
+        str(item.get("name")) for item in creative_runtimes if item.get("configured")
+    ]
     return CapabilityDescriptor(
         name="runtime.resource_profile",
         private=True,
@@ -54,8 +78,11 @@ def _resource_capability() -> CapabilityDescriptor:
             "whisper_cpp": profile.get("whisper_cpp_available", False),
             "local_inference_runtime": runtime[:32],
             "local_inference_model": model[:128],
+            "configured_inference_runtimes": configured_inference[:16],
+            "configured_creative_runtimes": configured_creative[:16],
             "acceleration_method": candidate.get("method"),
             "acceleration_state": candidate.get("state"),
+            "acceleration_checkpoint_evidence": candidate.get("checkpoint_evidence"),
             "acceleration_speculative_tokens": acceleration.get("speculative_tokens"),
             "acceleration_policy_version": acceleration.get("version"),
         },
@@ -165,6 +192,8 @@ def main(argv: list[str] | None = None) -> int:
     resource_cap = next((item for item in capabilities if item.name == "runtime.resource_profile"), None)
     if resource_cap is not None:
         print(f"local runtime:      {resource_cap.metadata.get('local_inference_runtime', 'unknown')}")
+        print(f"runtime fabric:     {', '.join(resource_cap.metadata.get('configured_inference_runtimes') or []) or 'none explicitly configured'}")
+        print(f"creative fabric:    {', '.join(resource_cap.metadata.get('configured_creative_runtimes') or []) or 'none explicitly configured'}")
         print(f"acceleration:       {resource_cap.metadata.get('acceleration_method')} / {resource_cap.metadata.get('acceleration_state')}")
     allowed = sorted(permissions.allowed())
     print(f"execution allowed: {', '.join(allowed) if allowed else 'none (default deny)'}")
