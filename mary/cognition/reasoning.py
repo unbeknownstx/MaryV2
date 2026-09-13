@@ -26,8 +26,14 @@ from typing import Any
 
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent, IntentType
+from mary.cognition.deliberation import (
+    DeliberationCandidate,
+    DeliberationPlan,
+    VerificationResult,
+)
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
+from mary.llm.output_quality import inspect_output_quality
 from mary.runtime.turn_policy import TurnPolicyEngine, TurnPolicyDecision
 from mary.conversation import ConversationLane, LaneDecision, classify_conversation_lane
 from mary.llm.interface import (
@@ -84,6 +90,7 @@ class ReasoningEngine:
         llm: LLMRouter,
         evidence_validator: EvidenceValidator | None = None,
         turn_policy: TurnPolicyEngine | None = None,
+        deliberation_executor: Any | None = None,
     ) -> None:
         self.llm = llm
         self.evidence_validator = (
@@ -92,6 +99,7 @@ class ReasoningEngine:
             else EvidenceValidator()
         )
         self.turn_policy = turn_policy if turn_policy is not None else TurnPolicyEngine()
+        self.deliberation_executor = deliberation_executor
 
     def reason(
         self,
@@ -236,32 +244,198 @@ class ReasoningEngine:
         ):
             generation_kwargs["purpose"] = routing_purpose
 
-        try:
-            response = dispatch_generation(
-                self.llm,
-                GenerationRequest(
-                    messages=(
-                    LLMMessage(
-                        role="system",
-                        content=self._system_prompt(context),
-                    ),
-                    LLMMessage(
-                        role="user",
-                        content=prompt,
-                    ),
-                    ),
-                    operation=(
-                        GenerationOperation.CONVERSATION.value
-                        if generation_purpose == "conversation"
-                        else GenerationOperation.TASK_GENERATION.value
-                    ),
-                    privacy=GenerationPrivacy.CLOUD_OK.value,
-                    cost_class=GenerationCost.CONFIGURED.value,
-                    correlation_id=generation_correlation_id("cognitive-turn"),
-                    purpose=generation_kwargs.get("purpose"),
-                    max_tokens=generation_kwargs.get("max_tokens"),
-                ),
+        messages = (
+            LLMMessage(
+                role="system",
+                content=self._system_prompt(context),
+            ),
+            LLMMessage(
+                role="user",
+                content=prompt,
+            ),
+        )
+        operation = (
+            GenerationOperation.CONVERSATION.value
+            if generation_purpose == "conversation"
+            else GenerationOperation.TASK_GENERATION.value
+        )
+        requested_deliberation = {}
+        runtime_coordination = (
+            mind.get("runtime_coordination", {})
+            if isinstance(mind, dict)
+            else {}
+        )
+        if isinstance(runtime_coordination, dict):
+            requested_deliberation = dict(
+                runtime_coordination.get("deliberation", {}) or {}
             )
+        deliberation_outcome = None
+        deliberation_requested_strategy = str(
+            requested_deliberation.get("strategy") or ""
+        ).strip()
+        deliberation_enabled = bool(
+            self.deliberation_executor is not None
+            and deliberation_requested_strategy in {"verify_once", "branch_verify"}
+            and not local_tool_grounded
+            and not self_grounded
+            and not self._has_research_evidence(context)
+        )
+
+        try:
+            if deliberation_enabled:
+                # Production cohesion cap: 13.33 executes a real bounded
+                # verifier/revision loop, but branch fan-out remains disabled
+                # until live evidence shows it is worth the extra free-provider
+                # quota/latency. The full branch executor remains available for
+                # explicit/offline evaluation.
+                production_plan = DeliberationPlan(
+                    strategy="verify_once",
+                    max_passes=min(
+                        2,
+                        max(1, int(requested_deliberation.get("max_passes") or 2)),
+                    ),
+                    max_branches=1,
+                    verifier_required=True,
+                    confidence_floor=float(
+                        requested_deliberation.get("confidence_floor") or 0.84
+                    ),
+                    latency_budget_ms=min(
+                        12_000,
+                        max(
+                            1_800,
+                            int(
+                                requested_deliberation.get("latency_budget_ms")
+                                or 12_000
+                            ),
+                        ),
+                    ),
+                    external_verifier_allowed=False,
+                )
+                generated: list[tuple[DeliberationCandidate, Any]] = []
+
+                def _generate_candidate(
+                    pass_index: int,
+                    branch_index: int,
+                    previous: DeliberationCandidate | None,
+                    verification: VerificationResult | None,
+                ) -> DeliberationCandidate:
+                    revision_suffix = ""
+                    if pass_index > 0:
+                        codes = (
+                            list(verification.issue_codes)
+                            if verification is not None
+                            else ["structural_quality_retry"]
+                        )
+                        revision_suffix = (
+                            "\n\nRevision constraints (structural only): "
+                            f"issue_codes={codes}. Return only the revised final "
+                            "answer. Do not expose private reasoning."
+                        )
+                    candidate_messages = (
+                        messages[0],
+                        LLMMessage(
+                            role="user",
+                            content=prompt + revision_suffix,
+                        ),
+                    )
+                    candidate_response = dispatch_generation(
+                        self.llm,
+                        GenerationRequest(
+                            messages=candidate_messages,
+                            operation=operation,
+                            privacy=GenerationPrivacy.CLOUD_OK.value,
+                            # Extra deliberation work is hard-capped to Mary's
+                            # zero-cost/free operating boundary.
+                            cost_class=GenerationCost.FREE_CLOUD.value,
+                            correlation_id=generation_correlation_id("cognitive-deliberation"),
+                            purpose=generation_kwargs.get("purpose"),
+                            max_tokens=generation_kwargs.get("max_tokens"),
+                        ),
+                    )
+                    issue = inspect_output_quality(
+                        candidate_response.content,
+                        candidate_messages,
+                    )
+                    confidence = (
+                        0.92
+                        if issue is None
+                        and str(candidate_response.finish_reason or "").lower()
+                        in {"stop", "completed", "complete", ""}
+                        else 0.55 if issue is not None else 0.72
+                    )
+                    usage = dict(candidate_response.usage or {})
+                    candidate = DeliberationCandidate(
+                        content=str(candidate_response.content or ""),
+                        confidence=confidence,
+                        structural_metrics={
+                            "provider_attempts": len(
+                                list(
+                                    getattr(
+                                        self.llm,
+                                        "last_generation_attempts",
+                                        [],
+                                    )
+                                    or []
+                                )
+                            ),
+                            "total_tokens": int(
+                                usage.get("total_tokens", 0) or 0
+                            ),
+                            "tool_calls": 0,
+                        },
+                    )
+                    generated.append((candidate, candidate_response))
+                    return candidate
+
+                def _verify_candidate(
+                    candidate: DeliberationCandidate,
+                    branch_index: int,
+                ) -> VerificationResult:
+                    issue = inspect_output_quality(candidate.content, messages)
+                    if issue is not None:
+                        return VerificationResult(
+                            score=0.55,
+                            accepted=False,
+                            issue_codes=(issue.code,),
+                        )
+                    return VerificationResult(
+                        score=0.92,
+                        accepted=True,
+                        issue_codes=(),
+                    )
+
+                deliberation_outcome = self.deliberation_executor.execute(
+                    production_plan,
+                    generate=_generate_candidate,
+                    verify=_verify_candidate,
+                    task_class=(
+                        "conversation"
+                        if generation_purpose == "conversation"
+                        else "general"
+                    ),
+                )
+                final_response = deliberation_outcome.content
+                response = next(
+                    (
+                        generated_response
+                        for candidate, generated_response in reversed(generated)
+                        if candidate.content == deliberation_outcome.content
+                    ),
+                    generated[-1][1],
+                )
+            else:
+                response = dispatch_generation(
+                    self.llm,
+                    GenerationRequest(
+                        messages=messages,
+                        operation=operation,
+                        privacy=GenerationPrivacy.CLOUD_OK.value,
+                        cost_class=GenerationCost.CONFIGURED.value,
+                        correlation_id=generation_correlation_id("cognitive-turn"),
+                        purpose=generation_kwargs.get("purpose"),
+                        max_tokens=generation_kwargs.get("max_tokens"),
+                    ),
+                )
         except LLMProviderError as exc:
             rate_limited = isinstance(exc, LLMRateLimitError)
             self_fallback = self._self_fallback(context)
@@ -311,7 +485,8 @@ class ReasoningEngine:
                 "response_risk_route_applied": risk_route_applied,
             }
         else:
-            final_response = response.content
+            if deliberation_outcome is None:
+                final_response = response.content
             self_grounding_rejected = False
             self_grounding_issue = None
 
@@ -362,6 +537,24 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "deliberation_execution": (
+                    {
+                        **deliberation_outcome.to_dict(),
+                        "requested_strategy": deliberation_requested_strategy,
+                        "executed_strategy": deliberation_outcome.strategy,
+                        "production_policy": "bounded_verify_once_free_cost_cap",
+                    }
+                    if deliberation_outcome is not None
+                    else {
+                        "requested_strategy": deliberation_requested_strategy,
+                        "executed_strategy": "single_pass",
+                        "passes": 1,
+                        "verifier_calls": 0,
+                        "authority": "bounded_cognitive_execution",
+                        "private_reasoning_retained": False,
+                        "production_policy": "single_pass_not_eligible",
+                    }
+                ),
             }
 
         return ReasoningResult(

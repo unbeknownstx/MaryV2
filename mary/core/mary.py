@@ -600,6 +600,7 @@ class Mary:
             llm=self.llm,
             evidence_validator=self.evidence_validator,
             turn_policy=self.turn_policy,
+            deliberation_executor=self.deliberation_executor,
         )
 
         self.reflection = ReflectionEngine(

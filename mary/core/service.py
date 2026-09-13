@@ -2369,6 +2369,27 @@ class MaryCoreService:
                 ),
             },
             "self_grounded": bool(metadata.get("self_grounded", False)),
+            "deliberation": {
+                key: value
+                for key, value in dict(
+                    metadata.get("deliberation_execution", {}) or {}
+                ).items()
+                if key in {
+                    "requested_strategy",
+                    "executed_strategy",
+                    "strategy",
+                    "passes",
+                    "branches",
+                    "verifier_calls",
+                    "verifier_score",
+                    "degraded",
+                    "failure_kind",
+                    "latency_ms",
+                    "authority",
+                    "private_reasoning_retained",
+                    "production_policy",
+                }
+            },
             "usage": usage,
         })
 
