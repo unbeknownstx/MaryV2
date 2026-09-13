@@ -39,7 +39,41 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
     if command == "/resources":
         return _pretty(dict(state().get("mary", {}) or {}).get("resources", {}))
     if command == "/memory-status":
-        return _pretty(dict(state().get("mary", {}) or {}).get("memory", {}))
+        payload = dict(state() or {})
+        mary = dict(payload.get("mary", {}) or {})
+        memory = dict(mary.get("memory", {}) or {})
+        mind = dict(payload.get("mind", {}) or {})
+        reservoir = dict(mind.get("reservoir", {}) or {})
+        dashboard_payload = dict(dashboard() or {})
+        current_work = dict(dashboard_payload.get("current_work", {}) or {})
+        recent_work = [
+            item for item in list(current_work.get("recent") or [])
+            if isinstance(item, dict)
+        ]
+        return _pretty({
+            "canonical_memory_store": memory,
+            "continuity": {
+                "shared_work_projection": {
+                    "active": bool(current_work.get("active", False)),
+                    "project": str(current_work.get("project") or ""),
+                    "recent_count": len(recent_work),
+                    "sources": list(current_work.get("sources") or []),
+                    "authority": str(current_work.get("authority") or ""),
+                    "persistence": str(current_work.get("persistence") or ""),
+                },
+                "reservoir": {
+                    "persistent": bool(reservoir.get("persistent", False)),
+                    "records": max(0, int(reservoir.get("records", 0) or 0)),
+                    "fts5": bool(reservoir.get("fts5", False)),
+                    "authority": "rebuildable retrieval support; not canonical memory truth",
+                },
+            },
+            "semantics": (
+                "Canonical MemoryManager counts are only one continuity owner. "
+                "Relationship/shared-work continuity and rebuildable reservoir "
+                "records are reported separately and do not become memory truth."
+            ),
+        })
     if command == "/route":
         return _pretty(dict(state().get("mary", {}) or {}).get("cognition", {}))
     if command == "/conversation":
@@ -55,11 +89,36 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
     if command == "/environment":
         return _pretty(dict(state() or {}).get("environment", {}))
     if command == "/contract":
-        payload = state()
+        payload = dict(state() or {})
+        core = dict(payload.get("core", {}) or {})
+        lifecycle = dict(
+            payload.get("creator_lifecycle")
+            or payload.get("mary_lifecycle")
+            or {}
+        )
+        runtime = dict(payload.get("runtime", {}) or {})
+        hardening = dict(payload.get("performance_hardening", {}) or {})
         return _pretty({
             "authority": "remote_mary_core",
-            "core": payload.get("core", {}),
-            "runtime": payload.get("runtime", {}),
+            "core": core,
+            "serving": {
+                "core_available": bool(core.get("ok", False)),
+                "creator_lifecycle": lifecycle.get("state"),
+                "surface_count": lifecycle.get("surface_count", 0),
+                "deliberation_execution_version": dict(
+                    hardening.get("deliberation_execution", {}) or {}
+                ).get("version"),
+                "strategy_advisor_version": dict(
+                    hardening.get("strategy_advisor", {}) or {}
+                ).get("version"),
+            },
+            "application_runtime": runtime,
+            "semantics": (
+                "core.architecture is the unified Core/service boundary version, "
+                "not the whole MaryV2 feature version. application_runtime is "
+                "passive lifecycle bookkeeping and may remain 'created' while "
+                "the remote Core is actively serving canonical turns."
+            ),
         })
     if command == "/pending":
         return _pretty(dict(workspace() or {}).get("command", {}))
