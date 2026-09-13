@@ -857,11 +857,16 @@ class ReasoningEngine:
         deliberation = runtime_coordination.get("deliberation", {}) if isinstance(runtime_coordination, dict) else {}
         cognitive_runtime_rule = ""
         if isinstance(deliberation, dict) and deliberation:
+            cognition_plan = (
+                runtime_coordination.get("cognition", {})
+                if isinstance(runtime_coordination, dict)
+                else {}
+            )
             cognitive_runtime_rule = (
-                "Cognitive runtime policy: use the requested reasoning depth and verification discipline "
-                f"(strategy={deliberation.get('strategy', 'single_pass')}, "
-                f"confidence_floor={deliberation.get('confidence_floor', 'n/a')}) without exposing private "
-                "chain-of-thought. Return conclusions, evidence and concise uncertainty rather than hidden scratch reasoning. "
+                "Cognitive policy: "
+                f"{cognition_plan.get('reasoning_depth', 'moderate')}/"
+                f"{deliberation.get('strategy', 'single_pass')}. "
+                "Keep hidden reasoning private; return conclusions and evidence. "
             )
         public_guard = context.mind_state.get("public_performance_guard", {}) if isinstance(context.mind_state, dict) else {}
         public_rule = (
@@ -1093,7 +1098,6 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         continuity = mind.get("continuity", {}) or {}
         disposition = mind.get("disposition", {}) or {}
         performance = mind.get("performance", {}) or {}
-        runtime_coordination = mind.get("runtime_coordination", {}) or {}
         agency = mind.get("agency", {}) or {}
         dialogue_plan = mind.get("dialogue_plan", {}) or {}
         character_expression = mind.get("character_expression", {}) or {}
@@ -1322,50 +1326,6 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "pending_curiosity_question": relationship.get("pending_curiosity_question") if isinstance(relationship, dict) else None,
             },
             "emotion": mind.get("emotion", {}),
-            "cognitive_runtime": {
-                "cognition": {
-                    key: (runtime_coordination.get("cognition", {}) or {}).get(key)
-                    for key in (
-                        "cognitive_mode",
-                        "reasoning_depth",
-                        "latency_priority",
-                        "knowledge_breadth",
-                    )
-                    if isinstance(runtime_coordination, dict)
-                    and isinstance(runtime_coordination.get("cognition", {}), dict)
-                    and (runtime_coordination.get("cognition", {}) or {}).get(key)
-                    not in (None, "", [], {})
-                },
-                "deliberation": {
-                    key: (runtime_coordination.get("deliberation", {}) or {}).get(key)
-                    for key in (
-                        "strategy",
-                        "max_passes",
-                        "max_branches",
-                        "verifier_required",
-                        "confidence_floor",
-                        "latency_budget_ms",
-                        "external_verifier_allowed",
-                    )
-                    if isinstance(runtime_coordination, dict)
-                    and isinstance(runtime_coordination.get("deliberation", {}), dict)
-                    and (runtime_coordination.get("deliberation", {}) or {}).get(key)
-                    not in (None, "", [], {})
-                },
-                "knowledge": {
-                    key: (runtime_coordination.get("knowledge", {}) or {}).get(key)
-                    for key in ("recommended", "categories", "freshness_required")
-                    if isinstance(runtime_coordination, dict)
-                    and isinstance(runtime_coordination.get("knowledge", {}), dict)
-                    and (runtime_coordination.get("knowledge", {}) or {}).get(key)
-                    not in (None, "", [], {})
-                },
-                "authority": (
-                    runtime_coordination.get("authority")
-                    if isinstance(runtime_coordination, dict)
-                    else None
-                ),
-            } if isinstance(runtime_coordination, dict) and runtime_coordination else {},
             "runtime_context": dict(mind.get("runtime_context", {}) or {})
             if isinstance(mind.get("runtime_context", {}), dict) else {},
             "agency": {
