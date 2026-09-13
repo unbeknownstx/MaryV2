@@ -78,7 +78,10 @@ def _measure(index: SemanticVectorIndex, queries: list[list[float]], *, limit: i
 
 
 def _run_backend(*, backend: str, size: int, dimensions: int, query_count: int, limit: int, seed: int) -> dict[str, Any]:
-    index = SemanticVectorIndex.in_memory(backend=backend)
+    # Expand the Python reference scan to the whole synthetic corpus so ranking
+    # parity compares the same candidate set as native exact KNN. Production may
+    # keep a smaller MARY_VECTOR_MAX_SCAN when the accelerator is unavailable.
+    index = SemanticVectorIndex(None, backend=backend, max_scan=max(5000, size))
     build_started = perf_counter()
     vectors = _seed(index, size=size, dimensions=dimensions, seed=seed)
     build_ms = (perf_counter() - build_started) * 1000.0
