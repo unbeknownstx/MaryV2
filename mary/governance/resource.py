@@ -24,6 +24,7 @@ class ResourceGovernor:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reasoning_tokens: int = 0
+    cached_prompt_tokens: int = 0
     _paid_by_task: dict[str, int] = field(default_factory=dict)
     _last_generation: dict[str, Any] = field(default_factory=dict)
 
@@ -69,13 +70,16 @@ class ResourceGovernor:
         prompt = self._safe_int(payload.get("prompt_tokens", 0))
         completion = self._safe_int(payload.get("completion_tokens", 0))
         reasoning = self._safe_int(payload.get("reasoning_tokens", 0))
+        cached = self._safe_int(payload.get("cached_prompt_tokens", 0))
         self.prompt_tokens += prompt
         self.completion_tokens += completion
         self.reasoning_tokens += reasoning
+        self.cached_prompt_tokens += cached
         self._last_generation["usage"] = {
             "prompt_tokens": prompt,
             "completion_tokens": completion,
             "reasoning_tokens": reasoning,
+            "cached_prompt_tokens": cached,
             "total_tokens": self._safe_int(payload.get("total_tokens", prompt + completion)),
         }
 
@@ -93,6 +97,8 @@ class ResourceGovernor:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "reasoning_tokens": self.reasoning_tokens,
+            "cached_prompt_tokens": self.cached_prompt_tokens,
+            "total_tokens": self.prompt_tokens + self.completion_tokens,
             "paid_calls_per_task": int(self.limits.paid_calls_per_task),
             "provider_attempts_per_generation": int(self.limits.provider_attempts_per_generation),
             "last_generation": dict(self._last_generation),
