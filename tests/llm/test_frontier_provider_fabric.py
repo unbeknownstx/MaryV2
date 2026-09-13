@@ -12,6 +12,8 @@ from mary.llm.interface import (
 from mary.llm.provider_catalog import FRONTIER_PROVIDER_NAMES, public_provider_catalog
 from mary.llm.providers.openai_compatible import OpenAICompatibleProvider
 from mary.llm.router import LLMRouter
+from mary.runtime.environment import RuntimeEnvironment
+from mary.runtime.introspection import RuntimeIntrospection
 
 
 class FakeProvider(LLMInterface):
@@ -156,3 +158,55 @@ def test_expert_provider_can_be_a_frontier_provider():
 
     assert response.provider == "deepseek"
     assert deepseek.calls == 1
+
+
+
+def test_frontier_order_can_be_configured_from_environment(monkeypatch):
+    monkeypatch.setenv(
+        "MARY_LLM_FRONTIER_ORDER",
+        "kimi,deepseek,zai,openai",
+    )
+
+    config = Config.from_environment()
+
+    assert config.llm.frontier_provider_order == [
+        "kimi",
+        "deepseek",
+        "zai",
+        "openai",
+    ]
+
+
+def test_runtime_environment_exposes_frontier_capability_names(monkeypatch):
+    for key in (
+        "DEEPSEEK_API_KEY",
+        "ZAI_API_KEY",
+        "QWEN_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "KIMI_API_KEY",
+        "MINIMAX_API_KEY",
+        "CEREBRAS_API_KEY",
+        "TOGETHER_API_KEY",
+        "FIREWORKS_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("MARY_OLLAMA_ENABLED", "false")
+    config = Config()
+    router = LLMRouter(config)
+
+    snapshot = RuntimeEnvironment(config=config, router=router).provider_snapshot()
+
+    for name in FRONTIER_PROVIDER_NAMES:
+        assert name in snapshot
+        assert snapshot[name]["configured"] is False
+        assert snapshot[name]["available"] is False
+
+
+def test_runtime_introspection_recognizes_frontier_aliases():
+    introspection = RuntimeIntrospection()
+
+    assert introspection.classify("Can you use DeepSeek?").provider == "deepseek"
+    assert introspection.classify("Can you use Qwen?").provider == "qwen_cloud"
+    assert introspection.classify("Can you use GLM?").provider == "zai"
+    assert introspection.classify("Can you use Kimi?").provider == "kimi"
