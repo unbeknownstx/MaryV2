@@ -108,6 +108,20 @@ context selection, and capability permission.
 A model may be better at reasoning, coding, long context, multilingual work, or
 vision without becoming a new personality or state owner.
 
+## Task-orchestration bridge
+
+The deterministic task planner keeps its existing semantic EXPERT route, but an
+explicitly paid-authorized task may select either provider_route=expert or
+provider_route=frontier. The normal expert route uses one configured specialist;
+frontier uses the ordered provider fabric and may fall through to another
+configured frontier provider within Mary's normal provider-attempt ceiling.
+
+Task metadata can request the fabric with frontier=true (or
+expert_provider_route=frontier). This never grants spending permission by
+itself: needs_expert and allow_paid still have to pass the existing planner and
+ResourceGovernor gates. Consultant output remains task-local advisory evidence
+and cannot mutate Mary's identity, relationship state, memory, or permissions.
+
 ## Model-license rule
 
 Provider connectivity and model licensing are separate concerns. The registry
