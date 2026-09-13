@@ -1,6 +1,6 @@
 """Run a bounded Mary capability node on macOS, Windows, or Linux.
 
-This is the preferred home-fabric launcher for MaryV2 13.12. It reuses the
+This is the preferred home-fabric launcher for MaryV2 13.12+. It reuses the
 existing durable enrollment, permission file, task broker, Ollama/llama.cpp,
 MCP executors and explicit sensor workers. No arbitrary shell task exists here.
 """
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_node_capabilities
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
 from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
+from mary.distributed.inference_acceleration import local_acceleration_status
 from mary.distributed.resource_profile import RuntimeResourceProfile
 from mary.distributed.sensor_node import SensorCapabilityNodeAgent
 from mary.distributed.sensors import sensor_capabilities
@@ -26,6 +27,14 @@ from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
 
 def _resource_capability() -> CapabilityDescriptor:
     profile = RuntimeResourceProfile.detect().to_dict()
+    runtime = os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "ollama").strip().lower() or "ollama"
+    model = (
+        os.getenv("MARY_LOCAL_INFERENCE_MODEL", "").strip()
+        or os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b").strip()
+        or "qwen3:4b"
+    )
+    acceleration = local_acceleration_status(model=model, runtime=runtime)
+    candidate = dict(acceleration.get("candidate") or {})
     return CapabilityDescriptor(
         name="runtime.resource_profile",
         private=True,
@@ -43,6 +52,12 @@ def _resource_capability() -> CapabilityDescriptor:
             "ollama": profile.get("ollama_available", False),
             "llama_cpp": profile.get("llama_cpp_available", False),
             "whisper_cpp": profile.get("whisper_cpp_available", False),
+            "local_inference_runtime": runtime[:32],
+            "local_inference_model": model[:128],
+            "acceleration_method": candidate.get("method"),
+            "acceleration_state": candidate.get("state"),
+            "acceleration_speculative_tokens": acceleration.get("speculative_tokens"),
+            "acceleration_policy_version": acceleration.get("version"),
         },
     )
 
@@ -55,14 +70,14 @@ def _profile_path(cli_path: Path | None) -> Path | None:
 
 
 def _verify_bounded_agent_contract() -> None:
-    """Keep 13.12 sensors as a narrow extension of the established node agent."""
+    """Keep sensors as a narrow extension of the established node agent."""
     if not issubclass(SensorCapabilityNodeAgent, DesktopCapabilityNodeAgent):
         raise RuntimeError("Home sensor node must remain a bounded DesktopCapabilityNodeAgent extension.")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Mary's bounded cross-platform home capability node.")
-    parser.add_argument("--benchmark-profile", type=Path, default=None, help="13.11+ benchmark JSON produced by scripts.benchmark_home_node.")
+    parser.add_argument("--benchmark-profile", type=Path, default=None, help="Benchmark JSON produced by scripts.benchmark_home_node.")
     parser.add_argument("--enroll-only", action="store_true", help="Establish durable node trust and exit.")
     args = parser.parse_args(argv)
     load_dotenv()
@@ -138,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
                 pass
 
     agent.start()
-    print("MARYV2 13.12 HOME COMPUTE NODE")
+    print("MARYV2 HOME COMPUTE NODE")
     print("=" * 64)
     print(f"node:              {agent.display_name}")
     print(f"platform:          {agent.platform}")
@@ -147,6 +162,10 @@ def main(argv: list[str] | None = None) -> int:
     for capability in capabilities:
         status = "ready" if capability.routable else capability.readiness
         print(f"  - {capability.name:<28} {status}")
+    resource_cap = next((item for item in capabilities if item.name == "runtime.resource_profile"), None)
+    if resource_cap is not None:
+        print(f"local runtime:      {resource_cap.metadata.get('local_inference_runtime', 'unknown')}")
+        print(f"acceleration:       {resource_cap.metadata.get('acceleration_method')} / {resource_cap.metadata.get('acceleration_state')}")
     allowed = sorted(permissions.allowed())
     print(f"execution allowed: {', '.join(allowed) if allowed else 'none (default deny)'}")
     print("sensor policy:      transcription/screen capture are explicit local opt-ins")
