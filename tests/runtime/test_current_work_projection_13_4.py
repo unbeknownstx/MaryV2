@@ -90,3 +90,34 @@ def test_workspace_context_preserves_only_bounded_current_work_projection():
     assert current["project"] == "MaryV2"
     assert current["authority"] == "derived_current_work_projection"
     assert "secret" not in str(current)
+
+
+class _MixedMilestones:
+    def get_recent(self, limit=8):
+        return [
+            {
+                "title": "Mary developed a preference",
+                "description": "Repeated grounded experience produced a response-length preference.",
+                "category": "mary_development",
+                "importance": 0.8,
+                "metadata": {"source": "growth_engine_13"},
+            },
+            {
+                "title": "A shared breakthrough",
+                "description": "We completed the Windows capability-node bridge.",
+                "category": "shared_achievement",
+                "importance": 0.85,
+                "metadata": {"source": "growth_engine_13"},
+            },
+        ]
+
+
+def test_current_work_projection_excludes_non_work_relationship_milestones():
+    mary = _Mary()
+    mary.relationship_milestones = _MixedMilestones()
+
+    projection = build_current_work_projection(mary, {})
+
+    rendered = str(projection)
+    assert "response-length preference" not in rendered
+    assert "Windows capability-node bridge" in rendered

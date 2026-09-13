@@ -131,7 +131,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.turn_envelope import attach_turn_envelope
-from mary.runtime.current_work import build_current_work_projection
+from mary.runtime.current_work import build_current_work_projection, milestone_is_shared_work
 from mary.runtime.turn_observability import (
     causal_operation_id,
     current_turn_trace,
@@ -2722,6 +2722,28 @@ class Mary:
             response = self._creator_shared_work_overview(
                 recent_conversation=recent_conversation or [],
             )
+            query = str(intent.parameters.get("query") or "").strip()
+            normalized_query = normalize_for_matching(query)
+            compound_runtime = any(
+                marker in normalized_query
+                for marker in (
+                    "architecture",
+                    "where are you running",
+                    "where are u running",
+                    "how are you running",
+                    "how are u running",
+                    "what models",
+                    "what providers",
+                    "capability node",
+                    "nodes",
+                    "current core",
+                )
+            )
+            if compound_runtime:
+                response += (
+                    " Current runtime architecture: "
+                    + self._runtime_architecture_response(query=query)
+                )
         elif query_type == "relationship_overview":
             creator_view = self._natural_creator_profile_overview()
             relationship_evidence = self.self_introspection.build("relationship")
@@ -2861,45 +2883,59 @@ class Mary:
             seen.add(key)
             items.append((score, value, source))
 
-        # Explicit durable relationship milestones are strongest shared-history
-        # evidence because they were intentionally represented as relationship
-        # continuity rather than generic creator preferences.
-        for milestone in self.relationship_milestones.get_recent(limit=12):
-            add(
-                milestone.get("description") or milestone.get("title"),
-                source="relationship_milestone",
-                score=100 + int(float(milestone.get("importance", 0.0) or 0.0) * 10),
-            )
-
-        for event in self.relationship_history.get_recent(limit=32):
-            event_type = str(event.get("type", "")).strip().lower()
-            metadata = event.get("metadata", {})
-            metadata = metadata if isinstance(metadata, dict) else {}
-            if event_type == "milestone":
-                add(event.get("description"), source="relationship_history", score=96)
-            elif event_type == "shared_experience" and metadata.get("kind") == "shared_work":
-                add(
-                    event.get("description"),
-                    source="shared_work_history",
-                    score=94,
-                    creator_owned=metadata.get("owner") == "creator",
-                    allow_test_probe=metadata.get("source") == "production_benchmark_fixture",
-                )
-
-        # Current-session evidence keeps a brand-new milestone available before
-        # the user restarts Mary.  Only declarative shared-work statements pass.
+        # Current-session evidence is strongest for a question about current or
+        # recent work. Only declarative shared-work statements pass the existing
+        # conservative evidence gate.
         for message in recent_conversation:
             if not isinstance(message, dict) or str(message.get("role", "")) != "user":
                 continue
             evidence = self._shared_work_evidence(str(message.get("content", "")))
             if evidence:
-                add(evidence, source="current_session", score=90, creator_owned=True)
+                add(evidence, source="current_session", score=120, creator_owned=True)
+
+        # Durable shared-work history is the primary cross-restart source.
+        for index, event in enumerate(self.relationship_history.get_recent(limit=32)):
+            event_type = str(event.get("type", "")).strip().lower()
+            metadata = event.get("metadata", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
+            if event_type == "shared_experience" and metadata.get("kind") == "shared_work":
+                add(
+                    event.get("description"),
+                    source="shared_work_history",
+                    score=max(100, 114 - min(index, 14)),
+                    creator_owned=metadata.get("owner") == "creator",
+                    allow_test_probe=metadata.get("source") == "production_benchmark_fixture",
+                )
+            elif event_type == "milestone" and (
+                metadata.get("shared_work") is True
+                or str(metadata.get("kind") or "").strip().lower()
+                in {"shared_work", "project", "project_milestone", "shared_achievement"}
+            ):
+                add(
+                    event.get("description"),
+                    source="relationship_history",
+                    score=max(96, 106 - min(index, 10)),
+                )
+
+        # MilestoneManager also contains Mary-development/preference milestones.
+        # Only explicitly project/shared-work categories may enter a work recap.
+        for index, milestone in enumerate(self.relationship_milestones.get_recent(limit=12)):
+            if not milestone_is_shared_work(milestone):
+                continue
+            add(
+                milestone.get("description") or milestone.get("title"),
+                source="relationship_milestone",
+                score=max(
+                    92,
+                    102
+                    - min(index, 10)
+                    + int(float(milestone.get("importance", 0.0) or 0.0) * 4),
+                ),
+            )
 
         # Episodic/semantic layers contribute only when explicitly tagged as
-        # shared work/project continuity.  This prevents unrelated preferences
-        # (for example a preference mentioning "working on projects") from
-        # masquerading as shared project history.
-        for memory in self._all_available_memories():
+        # shared work/project continuity.
+        for memory in reversed(self._all_available_memories()):
             if isinstance(memory, dict):
                 metadata = memory.get("metadata", {})
                 event_type = str(memory.get("event_type", "")).strip().lower()

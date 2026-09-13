@@ -226,3 +226,48 @@ def test_memory_status_command_is_display_safe_and_reports_shared_work(tmp_path,
     assert "Durable shared-work events: 1" in output
     assert "automatic during normal conversation: NO" in output
     assert "we're testing MaryV2" not in output
+
+def test_shared_work_recall_excludes_mary_development_milestones(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _application()
+    mary = app.mary
+
+    mary.relationship_milestones.add_milestone(
+        title="Mary developed a preference",
+        description="Repeated grounded experience produced a response-length preference.",
+        category="mary_development",
+        importance=0.8,
+    )
+    mary.relationship_milestones.add_milestone(
+        title="A shared breakthrough",
+        description="We completed a MaryV2 Windows-node integration milestone.",
+        category="shared_achievement",
+        importance=0.85,
+    )
+
+    result = _run(app, "What have we been working on together lately?")
+
+    lowered = result.final_response.lower()
+    assert "response-length preference" not in lowered
+    assert "windows-node integration milestone" in lowered
+
+
+def test_compound_shared_work_and_architecture_query_includes_live_runtime_truth(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _application()
+    mary = app.mary
+    mary._learn_shared_work_statement(
+        "We've been testing MaryV2 together on Windows.",
+        intent=_conversation_intent(),
+    )
+
+    result = _run(
+        app,
+        "What have we been working on today, and what do you understand about your current architecture?",
+    )
+
+    lowered = result.final_response.lower()
+    assert "testing maryv2 together on windows" in lowered
+    assert "current runtime architecture:" in lowered
+    assert "language models are routed generation engines" in lowered
+    assert result.reasoning.metadata["llm_skipped"] is True
