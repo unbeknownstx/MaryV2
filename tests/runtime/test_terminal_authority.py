@@ -28,6 +28,20 @@ class _FakeRemoteGateway(RemoteMaryGateway):
                     "semantic": 0,
                     "working": 0,
                 },
+                "current_work": {
+                    "active": True,
+                    "project": "MaryV2",
+                    "recent": [
+                        {"source": "relationship.shared_work"},
+                        {"source": "relationship.milestone"},
+                    ],
+                    "sources": [
+                        "relationship.shared_work",
+                        "relationship.milestone",
+                    ],
+                    "authority": "derived_current_work_projection",
+                    "persistence": "projection_only",
+                },
             },
             "runtime": {
                 "status": "created",
@@ -49,28 +63,29 @@ class _FakeRemoteGateway(RemoteMaryGateway):
                 "deliberation_execution": {"version": "13.33"},
                 "strategy_advisor": {"version": "13.33"},
             },
+            "compute_fabric": {
+                "routing": {
+                    "strategy": "free_first",
+                    "session_override": {"provider": None, "route": "private"},
+                    "routes": {"private": ["ollama"]},
+                },
+                "capability_routes": {
+                    "llm.ollama": {
+                        "available": True,
+                        "selected_node_id": "terminal-test",
+                    },
+                },
+                "private_route_ready": True,
+                "authority": "mary_core",
+                "policy": "nodes compute; Core owns Mary state",
+            },
         }
 
     def conversation(self):
         return {"realtime": {"phase": "idle"}}
 
     def dashboard(self):
-        return {
-            "current_work": {
-                "active": True,
-                "project": "MaryV2",
-                "recent": [
-                    {"source": "relationship.shared_work"},
-                    {"source": "relationship.milestone"},
-                ],
-                "sources": [
-                    "relationship.shared_work",
-                    "relationship.milestone",
-                ],
-                "authority": "derived_current_work_projection",
-                "persistence": "projection_only",
-            },
-        }
+        return {}
 
     def workspace(self):
         return {}
@@ -158,3 +173,15 @@ def test_remote_memory_status_reports_continuity_beyond_memorymanager_counts():
     assert '"records": 33' in rendered
     assert '"persistent": true' in rendered
     assert "only one continuity owner" in rendered
+
+
+def test_remote_route_reports_core_routing_and_local_capability():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/route", None)
+
+    assert rendered is not None
+    assert '"strategy": "free_first"' in rendered
+    assert '"route": "private"' in rendered
+    assert '"selected_node_id": "terminal-test"' in rendered
+    assert '"private_route_ready": true' in rendered
