@@ -34,6 +34,7 @@ from mary.llm.interface import (
     generation_correlation_id,
 )
 from mary.llm.output_quality import inspect_output_quality
+from mary.llm.model_fabric import build_model_execution_fabric
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
 from mary.llm.providers.device_llama_cpp import DeviceLlamaCppProvider
 from mary.protocol.models import (

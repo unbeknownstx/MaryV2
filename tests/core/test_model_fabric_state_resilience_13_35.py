@@ -51,3 +51,15 @@ def test_compute_fabric_advisory_failure_never_breaks_core_state_projection(monk
     assert payload["model_execution"]["error_type"] == "RuntimeError"
     assert payload["model_execution"]["authority"] == "planning_and_observability_only"
     assert payload["private_route_ready"] is False
+
+
+def test_compute_fabric_normal_path_exposes_model_execution_fabric():
+    service = object.__new__(MaryCoreService)
+    service.mary = _Mary()
+    service.device_tasks = _Tasks()
+
+    payload = service.compute_fabric_status()
+
+    assert payload["model_execution"]["version"] == "13.35"
+    assert payload["model_execution"]["authority"] == "planning_and_observability_only"
+    assert payload["routing"]["strategy"] == "free_first"
