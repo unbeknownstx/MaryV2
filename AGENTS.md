@@ -20,6 +20,8 @@ Historical files under `docs/history/` are provenance, not current instructions.
 - `[FC]` fictional canon is not AI Mary's lived memory.
 - Capability discovery is not authorization. Paid/external/consequential actions remain gated.
 - Presentation, diagnostics and operational telemetry never become identity/state authorities.
+- Private chain-of-thought, raw latent activations and hidden-state tensors are not durable Mary memory or routine telemetry. Persist only bounded structural strategy/verifier/outcome evidence when needed.
+- Experimental training/optimization is offline and proposal-only until deterministic evaluation and creator promotion; no lab may self-modify production Mary automatically.
 
 ## State safety
 
