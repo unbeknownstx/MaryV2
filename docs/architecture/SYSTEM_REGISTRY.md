@@ -21,7 +21,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.18–13.23 character runtime convergence](CHARACTER_RUNTIME_CONVERGENCE_13_18_13_23.md),
 [13.24 inference acceleration](INFERENCE_ACCELERATION_13_24.md),
 [13.25–13.28 ecosystem mining](ECOSYSTEM_MINING_13_25_13_28.md), and
-[13.29–13.32 cognitive research convergence](RESEARCH_CONVERGENCE_13_29_13_32.md).
+[13.29–13.32 cognitive research convergence](RESEARCH_CONVERGENCE_13_29_13_32.md),
+[13.33 bounded cognitive execution](COGNITIVE_EXECUTION_13_33.md), and
+[13.34 computational state fabric](COMPUTATIONAL_STATE_FABRIC_13_34.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -38,7 +40,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Relational presence | `mary.relationship.relational_presence` | ACTIVE COMPOSITION 13.8 | `friend/close/romantic/partner`, bounded active shared activity, proposal-only presence impulses; durable changes delegate to canonical `RelationshipManager`. |
 | Derived social graph | `RelationalPresenceRuntime.social_graph` | ACTIVE READ-ONLY 13.8 | Projection over canonical creator profile/history/shared experiences; no graph database or truth authority. |
 | Social delivery projection | `mary.expression.social_delivery` | ACTIVE PRESENTATION 13.8 | Relationship/emotion-aware warmth/playfulness/intimacy/pace/energy hints; public scope suppresses private intimacy; providers cannot define relationship truth. |
-| Memory | `mary.memory` | CANONICAL OWNER | Episodic/semantic/working memory. |
+| Memory | `mary.memory` | CANONICAL OWNER | Episodic and semantic memory are durable through the canonical memory store; working memory is bounded process/session state unless explicitly promoted into a durable owner. |
 | Memory action policy | `mary.memory.action_policy`, `MemoryManager.propose_action` | ACTIVE POLICY 13.30 | Proposes ignore/working/episodic/semantic/temporal/delegate operations only; cannot write or promote memory itself. |
 | Temporal memory projection | `mary.memory.temporal_projection` | ACTIVE DERIVED 13.19 | Rebuildable validity/supersession/contradiction/provenance view over canonical records; never truth authority. |
 | Developed self / personality | `mary.personality`, growth paths | CANONICAL OWNER | Grounded development, not raw provider output. |
@@ -49,6 +51,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Reasoning/cognition | `mary.cognition` | ACTIVE | Provider-independent Mary reasoning orchestration. |
 | Cognitive character runtime | `mary.cognition.cognitive_character`, `mary.cognition.runtime_coordination` | ACTIVE 13.17/13.23/13.32 | Selects provider-independent cognitive need, compute/knowledge/presentation hints and now bounded deliberation/realtime policy; projection only. |
 | Adaptive deliberation | `mary.cognition.deliberation` | ACTIVE POLICY 13.29 | Bounded single/verify/branch strategies, confidence/latency budgets and ephemeral structural workspace; private chain-of-thought is not exposed or persisted. |
+| Bounded cognitive execution | `mary.cognition.deliberation.DeliberationExecutor` | ACTIVE 13.33 | Executes caller-supplied single/verify/branch candidate workflows under pass/branch/latency bounds; intermediate candidates remain ephemeral and only structural outcome evidence may be recorded. |
+| Experience-informed strategy advisor | `mary.learning.strategy_advisor` | ACTIVE PROPOSAL 13.33 | Compares content-free trajectory outcomes and proposes an existing reasoning strategy; cannot mutate runtime policy, prompts, identity, memory, providers or weights. |
 | Provider routing | `mary.llm.router` | ACTIVE ENRICHED 13.15 | Free/cheap/private/expert plus explicit frontier/specialist routes; models never own identity. |
 | Frontier/open model fabric | `mary.llm.provider_catalog`, `mary.llm.providers.openai_compatible` | ACTIVE OPTIONAL 13.15 | Lazy direct DeepSeek/Z.AI-Qwen/Kimi/MiniMax/Cerebras/Together/Fireworks presets plus a generic OpenAI-compatible escape hatch. Paid-capable cloud routes are never injected into free-first merely because a key exists; loopback custom endpoints may advertise zero-local/local-only capability. Exact model license remains a model-level decision. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
@@ -103,6 +107,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Creative services | `mary.creative.services` | ACTIVE CONTRACT | Capability/cost discovery; real vendor execution adapters remain service-specific. |
 | Unbeknownst workspace | `projects/unbeknownst/` | CANONICAL PROJECT HOME | Book/manga/animation/audio/assets/production organization. |
 | Recovery | `mary.runtime.recovery`, recovery scripts | ACTIVE BASELINE | Secret-free manifests/snapshots; derived state rebuildable. |
+| Computational state durability model | `MARY_ROOT.md`, `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` | DESIGNED NEXT 13.34 | Defines canonical durable, rebuildable derived, warm computational and ephemeral state tiers. Future KV/prefix-cache or NVMe cache services remain acceleration only and never become memory/identity authority. |
 | State reconciliation | `mary.runtime.state_reconciliation` | ACTIVE READ-ONLY | Single root = inventory only; two+ roots required for comparison. |
 | Repository structure | `scripts.verify_repository_structure` | CANONICAL HYGIENE GATE | Prevents payload/data/node_modules/history drift into active root. |
 | Historical development | `docs/history/` + Git history | ARCHIVE | Provenance only; never current runtime authority. |
@@ -119,3 +124,4 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 - Replace the bounded stream speech-duration estimate with explicit renderer/browser playback completion acknowledgement if stream-floor timing proves materially inaccurate in live testing.
 - Continue live cross-device/Core/node/Twitch/OBS testing under real provider/network failures and collect operational latency/readiness evidence.
 - Establish an intentional production continuity dataset after development/test state is discarded.
+- Implement the 13.34 computational-state inventory/diagnostics and measured KV/prefix-cache observability before promoting any persistent RAM/NVMe/remote cache service.
