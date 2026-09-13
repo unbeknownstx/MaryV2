@@ -176,7 +176,7 @@ class DeviceTaskBroker:
 
     VERSION = "13.12"
 
-    def __init__(self, *, max_tasks: int = 200, ttl_seconds: float = 300.0, lifecycle_lock: RLock | None = None, live_node: Callable[[str], bool] | None = None, execution_policy: ExecutionPolicy | None = None) -> None:
+    def __init__(self, *, max_tasks: int = 200, ttl_seconds: float = 900.0, lifecycle_lock: RLock | None = None, live_node: Callable[[str], bool] | None = None, execution_policy: ExecutionPolicy | None = None) -> None:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
         self._lock = lifecycle_lock or RLock()
