@@ -93,6 +93,16 @@ class _FakeRemoteGateway(RemoteMaryGateway):
     def nodes(self):
         return {"nodes": []}
 
+    def runtime_action(self, action, args=None):
+        assert action == "llm.probe"
+        return {
+            "ok": True,
+            "status": "ok",
+            "provider": "ollama",
+            "model": "qwen3:4b-instruct",
+            "canonical_state_changed": False,
+        }
+
     def turn(self, text, *, conversation_id, requested_mode=None, voice_input=False):
         return SimpleNamespace(
             text="remote reply",
@@ -185,3 +195,14 @@ def test_remote_route_reports_core_routing_and_local_capability():
     assert '"route": "private"' in rendered
     assert '"selected_node_id": "terminal-test"' in rendered
     assert '"private_route_ready": true' in rendered
+
+
+def test_remote_probe_ollama_uses_non_mutating_core_diagnostic():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/probe-ollama", None)
+
+    assert rendered is not None
+    assert '"provider": "ollama"' in rendered
+    assert '"status": "ok"' in rendered
+    assert '"canonical_state_changed": false' in rendered
