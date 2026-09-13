@@ -100,6 +100,17 @@ Mary is not defined by one mutable folder. Recoverability requires:
 
 Source checkouts no longer use repository-local `data/` by default. Host-native configured paths remain the runtime-state authority.
 
+## Computational state durability rule
+
+Mary's continuity must survive the loss of every running model process, node session, cache and frontend.
+
+1. **Canonical durable state** — identity/authored evidence, relationship continuity, durable episodic/semantic memory, developed self, governed agency/directives and durable shared-work state. This tier is backed up, recoverable and authoritative.
+2. **Rebuildable derived state** — retrieval indexes, embeddings, temporal/social projections, document indexes, benchmark summaries and other projections. It may be persisted for convenience, but deletion must not erase canonical truth.
+3. **Warm computational state** — loaded models, prefix/prompt caches, KV caches, compiled kernels/graphs and similar acceleration artifacts. These may live in VRAM, RAM, NVMe or a remote cache service, must be model/runtime/version fingerprinted, and never become memory or identity authority.
+4. **Ephemeral runtime state** — in-flight generations, live attention claims, speech buffers, raw hidden states, temporary node sessions, provider cooldowns and transient execution state. This tier is expected to disappear.
+
+A cold restart from source plus canonical durable state must be sufficient to reconstruct Mary. Rebuildable, warm and ephemeral tiers may improve recovery speed or latency, but their loss must only reduce performance/capability, not continuity.
+
 ## Cleanup rule
 
 Current authority lives in this file, `README.md`, `docs/README.md`, the current `docs/architecture/` / `docs/operations/` documents, executable tests and code. `docs/history/` preserves project archaeology but cannot override current authority.
