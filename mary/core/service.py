@@ -762,11 +762,17 @@ class MaryCoreService:
             preview = getattr(registry, "route_preview", None)
             if callable(preview):
                 ollama_route = preview("llm.ollama")
+        capability_routes = {"llm.ollama": ollama_route}
+        model_execution = build_model_execution_fabric(
+            router,
+            capability_routes=capability_routes,
+        )
         return _json_safe({
             "routing": routing,
             "nodes": nodes,
             "tasks": tasks,
-            "capability_routes": {"llm.ollama": ollama_route},
+            "capability_routes": capability_routes,
+            "model_execution": model_execution,
             "private_route_ready": bool(ollama_route.get("available")),
             "authority": "mary_core",
             "policy": (

@@ -32,7 +32,7 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
         return (
             "MARYV2 REMOTE TERMINAL COMMANDS\n"
             "/state /resources /memory-status /route /conversation /growth "
-            "/realtime /nodes /retrieval /environment /contract /probe-ollama /pending /last /dashboard /help"
+            "/realtime /nodes /retrieval /environment /contract /model-fabric /probe-ollama /pending /last /dashboard /help"
         )
     if command == "/state":
         return _pretty(state().get("mary", {}))
@@ -134,6 +134,10 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
                 "the remote Core is actively serving canonical turns."
             ),
         })
+    if command == "/model-fabric":
+        payload = dict(state() or {})
+        fabric = dict(payload.get("compute_fabric", {}) or {})
+        return _pretty(dict(fabric.get("model_execution", {}) or {}))
     if command == "/probe-ollama":
         return _pretty(gateway.runtime_action(
             "llm.probe",
