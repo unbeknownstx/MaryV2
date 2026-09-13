@@ -84,4 +84,6 @@ python -m scripts.verify_repository_structure
 python -m pytest -q
 ```
 
-Mac and Windows should test the same main commit before any optional runtime is promoted.
+Windows deterministic validation is recorded in `docs/certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md`. Mac and Windows should still test the same main commit before any optional runtime is promoted.
+
+The next architecture target is `COMPUTATIONAL_STATE_FABRIC_13_34.md`, which separates Mary's recoverable canonical continuity from rebuildable indexes, warm model/cache state and ephemeral execution state. 13.34 is a design target until code/tests are added.
