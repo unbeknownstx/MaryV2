@@ -242,6 +242,10 @@ class OrchestrationExecutor:
                     structured_output=bool(
                         plan.metadata.get("structured_output", False)
                     ),
+                    structured_schema_json=plan.metadata.get(
+                        "structured_schema_json"
+                    ),
+                    provider_route=plan.provider_route or "expert",
                     _redaction_receipt=redaction_receipt,
                 )
             except Exception as exc:
@@ -260,7 +264,10 @@ class OrchestrationExecutor:
                 source=consultation.provider,
                 model=consultation.model,
                 usage=dict(consultation.usage),
-                metadata={"advisory_only": True},
+                metadata={
+                    "advisory_only": True,
+                    "provider_route": plan.provider_route or "expert",
+                },
             ))
 
         if route in {
