@@ -68,7 +68,7 @@ MARY_LLM_FRONTIER_ORDER=deepseek,kimi,zai,qwen_cloud,minimax,cerebras,together,f
 Each direct provider has a model override, for example:
 
 ~~~
-MARY_DEEPSEEK_MODEL=deepseek-v4-flash
+MARY_DEEPSEEK_MODEL=deepseek-flash
 MARY_ZAI_MODEL=glm-5.3-flash
 MARY_QWEN_CLOUD_MODEL=qwen3.8-flash
 MARY_KIMI_MODEL=kimi-k2.6
