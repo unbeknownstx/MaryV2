@@ -68,7 +68,7 @@ MARY_LLM_FRONTIER_ORDER=deepseek,kimi,zai,qwen_cloud,minimax,cerebras,together,f
 Each direct provider has a model override, for example:
 
 ~~~
-MARY_DEEPSEEK_MODEL=deepseek-flash
+MARY_DEEPSEEK_MODEL=deepseek-v4-flash
 MARY_ZAI_MODEL=glm-5.3-flash
 MARY_QWEN_CLOUD_MODEL=qwen3.8-flash
 MARY_KIMI_MODEL=kimi-k3
@@ -145,3 +145,10 @@ Useful follow-on work is evidence-driven:
 
 The result is a model-agnostic Mary that can adopt frontier inference without
 rewriting her core architecture.
+
+
+## 13.35 promotion layer
+
+13.35 adds `mary.llm.model_fabric` above this transport catalog. A configured provider is no longer presented as equivalent to a preferred provider. The execution fabric reports task lanes, local suitability evidence, and frontier providers as benchmark-required candidates. Existing spend and permission gates remain authoritative.
+
+See [MODEL_EXECUTION_FABRIC_13_35.md](MODEL_EXECUTION_FABRIC_13_35.md).

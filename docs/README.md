@@ -9,7 +9,8 @@ The repository contains years of iterative design notes. This file defines where
 - [`architecture/SYSTEM_REGISTRY.md`](architecture/SYSTEM_REGISTRY.md) — canonical subsystem ownership/status map.
 - [`architecture/RESEARCH_CONVERGENCE_13_29_13_32.md`](architecture/RESEARCH_CONVERGENCE_13_29_13_32.md) — adaptive deliberation, memory-action policy, trajectory telemetry, duplex policy and experimental-runtime boundary.
 - [`architecture/COGNITIVE_EXECUTION_13_33.md`](architecture/COGNITIVE_EXECUTION_13_33.md) — bounded pass/verify/branch execution and proposal-only experience-informed strategy selection.
-- [`architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md`](architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md) — planned canonical/rebuildable/warm/ephemeral state contract for recovery and future KV/cache infrastructure.
+- [`architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md`](architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md) — canonical/rebuildable/warm/ephemeral state contract for recovery and future KV/cache infrastructure.
+- [`architecture/MODEL_EXECUTION_FABRIC_13_35.md`](architecture/MODEL_EXECUTION_FABRIC_13_35.md) — task-aware distinction between reachable, feasible and preferred local/cloud engines.
 - [`certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md`](certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md) — current Windows deterministic validation evidence.
 - [`../AGENTS.md`](../AGENTS.md) — contributor/coding-agent constraints.
 - [`architecture/HOME_COMPUTE_FABRIC_13_11.md`](architecture/HOME_COMPUTE_FABRIC_13_11.md) — benchmark-aware Mac/Windows home compute fabric and bring-up.

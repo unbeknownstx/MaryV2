@@ -8,7 +8,7 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 MaryV2 13.29–13.33 now forms a **bounded cognitive research and execution layer** on top of the already-active 13.16–13.28 runtime: adaptive deliberation budgets, pass/verify/branch execution, non-mutating memory-action selection, content-free trajectory telemetry, proposal-only experience-informed strategy selection, duplex-conversation policy, and an optional research-runtime catalog for latent reasoning, CUDA serving, mobile inference, distributed inference, realtime voice, A2A and offline RL. None of these systems owns identity or memory, exposes private chain-of-thought, or automatically self-modifies production Mary.
 
-13.34 is the next architecture target, not yet a production implementation: a **Computational State Fabric** classifying canonical durable, rebuildable derived, warm computational and ephemeral runtime state. Future RAM/NVMe/KV-cache infrastructure may keep Mary warm and fast, but losing caches must never erase who Mary is.
+13.34 defines the **Computational State Fabric** for canonical/rebuildable/warm/ephemeral state. 13.35 adds the **Model Execution Fabric**: reachable engines are classified separately from feasible and preferred engines, so heterogeneous local/cloud compute can be benchmarked and promoted by task rather than by mere availability. Future RAM/NVMe/KV-cache infrastructure may keep Mary warm and fast, but losing caches must never erase who Mary is.
 
 MaryV2 13.15 adds a **frontier/open-model fabric** above the existing provider layer: direct optional DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together and Fireworks presets share one generic OpenAI-compatible transport, while future compatible services and local loopback servers can be added without another Core rewrite. These paid-capable routes are opt-in and never enter free-first merely because credentials exist; Mary remains the canonical identity/state authority above every model.
 
@@ -27,7 +27,8 @@ See:
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
 - `docs/architecture/RESEARCH_CONVERGENCE_13_29_13_32.md` — cognitive research convergence and promotion boundary
 - `docs/architecture/COGNITIVE_EXECUTION_13_33.md` — bounded pass/verify/branch execution and proposal-only strategy evidence
-- `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` — planned durability/cache/recovery architecture
+- `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` — durability/cache/recovery architecture
+- `docs/architecture/MODEL_EXECUTION_FABRIC_13_35.md` — task-aware model/node feasibility and promotion policy
 - `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider fabric
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
