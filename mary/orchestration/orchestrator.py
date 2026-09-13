@@ -171,6 +171,7 @@ class TaskOrchestrator:
             "free_route": "free_first",
             "private_route": "private",
             "expert_route": "expert",
+            "frontier_route": "frontier",
             "last_plan": (
                 self._last_plan.to_dict()
                 if self._last_plan is not None
@@ -190,6 +191,7 @@ class TaskOrchestrator:
         needs_expert: bool | None = None,
         consequential: bool | None = None,
         local_capable: bool | None = None,
+        expert_provider_route: str | None = None,
     ) -> OrchestrationPlan:
         task = self.workspace.get(task_id)
         if task is None:
@@ -243,6 +245,17 @@ class TaskOrchestrator:
             metadata.get("local_capable"),
             default=False,
         )
+        requested_expert_route = str(
+            expert_provider_route
+            or metadata.get("expert_provider_route")
+            or ("frontier" if self._bool_option(
+                None,
+                metadata.get("frontier"),
+                default=False,
+            ) else "expert")
+        ).strip().lower()
+        if requested_expert_route not in {"expert", "frontier"}:
+            requested_expert_route = "expert"
 
         rationale: list[str] = []
 
@@ -312,11 +325,15 @@ class TaskOrchestrator:
             route = OrchestrationRoute.EXPERT
             capability = CapabilityRole.EXPERT_REASONING
             cost = CostClass.PAID_LOW
-            provider_route = "expert"
+            provider_route = requested_expert_route
             requires_approval = privacy_mode == PrivacyMode.REDACT_FIRST
             rationale.append(
                 "The task requests specialist reasoning and paid expert use was explicitly allowed."
             )
+            if provider_route == "frontier":
+                rationale.append(
+                    "Use the bounded multi-provider frontier route rather than one fixed expert provider."
+                )
             if privacy_mode == PrivacyMode.REDACT_FIRST:
                 rationale.append("Only redacted/minimum necessary context may be consulted externally.")
 
