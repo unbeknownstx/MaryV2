@@ -151,6 +151,14 @@ def main(argv: list[str] | None = None) -> int:
         "Gemini": _configured("GEMINI_API_KEY") or _configured("GOOGLE_API_KEY"),
         "OpenRouter": _configured("OPENROUTER_API_KEY"),
         "OpenAI expert": _configured("OPENAI_API_KEY"),
+        "DeepSeek frontier": _configured("DEEPSEEK_API_KEY"),
+        "Z.AI / GLM frontier": _configured("ZAI_API_KEY"),
+        "Qwen cloud frontier": _configured("QWEN_API_KEY") or _configured("DASHSCOPE_API_KEY"),
+        "Kimi frontier": _configured("MOONSHOT_API_KEY") or _configured("KIMI_API_KEY"),
+        "MiniMax frontier": _configured("MINIMAX_API_KEY"),
+        "Cerebras frontier": _configured("CEREBRAS_API_KEY"),
+        "Together frontier": _configured("TOGETHER_API_KEY"),
+        "Fireworks frontier": _configured("FIREWORKS_API_KEY"),
     }
     print("-" * 72)
     print("Provider configuration (values are never displayed)")
