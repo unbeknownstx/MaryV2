@@ -11,6 +11,7 @@ The repository contains years of iterative design notes. This file defines where
 - [`architecture/COGNITIVE_EXECUTION_13_33.md`](architecture/COGNITIVE_EXECUTION_13_33.md) — bounded pass/verify/branch execution and proposal-only experience-informed strategy selection.
 - [`architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md`](architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md) — canonical/rebuildable/warm/ephemeral state contract for recovery and future KV/cache infrastructure.
 - [`architecture/MODEL_EXECUTION_FABRIC_13_35.md`](architecture/MODEL_EXECUTION_FABRIC_13_35.md) — task-aware distinction between reachable, feasible and preferred local/cloud engines.
+- [`architecture/MARYOS_LINUX_SUBSTRATE_13_36.md`](architecture/MARYOS_LINUX_SUBSTRATE_13_36.md) — Linux/systemd host substrate, security boundary and MaryOS evolution path.
 - [`certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md`](certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md) — current Windows deterministic validation evidence.
 - [`../AGENTS.md`](../AGENTS.md) — contributor/coding-agent constraints.
 - [`architecture/HOME_COMPUTE_FABRIC_13_11.md`](architecture/HOME_COMPUTE_FABRIC_13_11.md) — benchmark-aware Mac/Windows home compute fabric and bring-up.
@@ -37,6 +38,7 @@ Important maps include:
 - `RESEARCH_CONVERGENCE_13_29_13_32.md` — bounded research-to-production cognition/learning substrate.
 - `COGNITIVE_EXECUTION_13_33.md` — bounded execution substrate and proposal-only strategy learning from structural trajectories.
 - `COMPUTATIONAL_STATE_FABRIC_13_34.md` — next-step durability, cache hierarchy and recovery contract; design status until implemented and tested.
+- `MARYOS_LINUX_SUBSTRATE_13_36.md` — first-class Linux host integration without moving Core authority into the OS.
 - `OPENHANDS_WORKER_BOUNDARY_13_4.md` — separate software-engineering worker boundary.
 - `NEURO_PATTERN_ADOPTION_13_6.md` — realtime/performer architecture convergence.
 - `STREAM_COHOST_13_10.md` — bounded Twitch/OBS cohost host and public-performance boundary.

@@ -22,6 +22,8 @@ REQUIRED = (
     "character_sources/active",
     "character_sources/drafts",
     "projects/unbeknownst",
+    "maryos",
+    "docs/architecture/MARYOS_LINUX_SUBSTRATE_13_36.md",
 )
 FORBIDDEN_ROOT_DIRS = {
     "data", "payload", "upgrade_backups", "Unbeknownst Chapters", "node_modules",

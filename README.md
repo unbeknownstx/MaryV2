@@ -6,6 +6,8 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
+MaryV2 13.36 adds the **MaryOS Linux substrate**: a read-only OS/environment projection, Linux/systemd host readiness, a hardened user-service boot path for the existing bounded home node, and an explicit contract for future Quickshell/Hyprland and ISO work. MaryOS is a host layer beneath the same canonical Core; it adds no arbitrary shell/root executor and makes neither Linux nor Omarchy a Core startup dependency.
+
 MaryV2 13.29–13.33 now forms a **bounded cognitive research and execution layer** on top of the already-active 13.16–13.28 runtime: adaptive deliberation budgets, pass/verify/branch execution, non-mutating memory-action selection, content-free trajectory telemetry, proposal-only experience-informed strategy selection, duplex-conversation policy, and an optional research-runtime catalog for latent reasoning, CUDA serving, mobile inference, distributed inference, realtime voice, A2A and offline RL. None of these systems owns identity or memory, exposes private chain-of-thought, or automatically self-modifies production Mary.
 
 13.34 defines the **Computational State Fabric** for canonical/rebuildable/warm/ephemeral state. 13.35 adds the **Model Execution Fabric**: reachable engines are classified separately from feasible and preferred engines, so heterogeneous local/cloud compute can be benchmarked and promoted by task rather than by mere availability. Future RAM/NVMe/KV-cache infrastructure may keep Mary warm and fast, but losing caches must never erase who Mary is.
@@ -29,6 +31,7 @@ See:
 - `docs/architecture/COGNITIVE_EXECUTION_13_33.md` — bounded pass/verify/branch execution and proposal-only strategy evidence
 - `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` — durability/cache/recovery architecture
 - `docs/architecture/MODEL_EXECUTION_FABRIC_13_35.md` — task-aware model/node feasibility and promotion policy
+- `docs/architecture/MARYOS_LINUX_SUBSTRATE_13_36.md` — Linux/systemd host substrate and future MaryOS boundary
 - `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider fabric
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
@@ -61,7 +64,8 @@ MaryV2 currently includes:
 - Desktop, mobile/PWA, native iPhone and terminal clients;
 - a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - a bounded Twitch/OBS live-cohost host with Core-owned chat attention, creator-floor protection, Mary voice/captions and optional typed replies;
-- benchmark-aware Mac/Windows home compute nodes with disposable operational profiles and cross-platform launch tooling;
+- benchmark-aware Mac/Windows/Linux home compute nodes with disposable operational profiles and cross-platform launch tooling;
+- a MaryOS 13.36 Linux substrate with read-only host discovery and an optional systemd user-service path;
 - explicit opt-in home-node STT and bounded screen-capture workers for realtime/perception pipelines;
 - Groq/Gemini/OpenRouter/Ollama routing plus explicit expert/provider paths;
 - an opt-in frontier/open-model fabric for DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together, Fireworks and future OpenAI-compatible services;
@@ -117,6 +121,12 @@ Home compute node (Mac/Windows/Linux):
 ```bash
 python -m scripts.benchmark_home_node --local-llm --repeats 3
 python -m scripts.run_home_node
+```
+
+MaryOS/Linux host readiness (read-only):
+
+```bash
+python -m scripts.maryos_status
 ```
 
 Optional bounded screenshot support:

@@ -111,6 +111,17 @@ Mary's continuity must survive the loss of every running model process, node ses
 
 A cold restart from source plus canonical durable state must be sufficient to reconstruct Mary. Rebuildable, warm and ephemeral tiers may improve recovery speed or latency, but their loss must only reduce performance/capability, not continuity.
 
+## Operating environment rule
+
+MaryOS is a Linux host/surface integration layer beneath the same canonical Mary.
+
+- A Linux/Omarchy machine never becomes a second Mary or a new identity/state authority.
+- Linux remains responsible for kernel, process, filesystem, device and privilege enforcement.
+- Mary may consume bounded sanitized host/resource projections as operational context; discovery is not authorization.
+- Consequential OS changes require typed, allowlisted operations and creator authorization. Generic model-generated shell/root execution is not an authority boundary.
+- systemd boot persistence for a node does not make that node canonical; loss of the node must only reduce capability.
+- Omarchy/Arch is an experimental MaryOS target, not a Core dependency. Windows/macOS/mobile surfaces and nodes remain supported.
+
 ## Cleanup rule
 
 Current authority lives in this file, `README.md`, `docs/README.md`, the current `docs/architecture/` / `docs/operations/` documents, executable tests and code. `docs/history/` preserves project archaeology but cannot override current authority.

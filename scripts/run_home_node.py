@@ -21,6 +21,7 @@ from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
 from mary.distributed.creative_runtime import creative_runtime_catalog
 from mary.distributed.inference_acceleration import local_acceleration_status
 from mary.distributed.local_runtime_catalog import local_runtime_catalog
+from mary.distributed.os_environment import MaryOSEnvironmentProfile
 from mary.distributed.resource_profile import RuntimeResourceProfile
 from mary.distributed.sensor_node import SensorCapabilityNodeAgent
 from mary.distributed.sensors import sensor_capabilities
@@ -39,6 +40,7 @@ def _optional_int(name: str) -> int | None:
 
 def _resource_capability() -> CapabilityDescriptor:
     profile = RuntimeResourceProfile.detect().to_dict()
+    os_environment = MaryOSEnvironmentProfile.detect().to_dict()
     runtime = os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "ollama").strip().lower() or "ollama"
     model = (
         os.getenv("MARY_LOCAL_INFERENCE_MODEL", "").strip()
@@ -76,6 +78,15 @@ def _resource_capability() -> CapabilityDescriptor:
             "ollama": profile.get("ollama_available", False),
             "llama_cpp": profile.get("llama_cpp_available", False),
             "whisper_cpp": profile.get("whisper_cpp_available", False),
+            "distro_id": os_environment.get("distro_id", "unknown"),
+            "init_system": os_environment.get("init_system", "unknown"),
+            "desktop_session": os_environment.get("desktop_session", "unknown"),
+            "display_protocol": os_environment.get("display_protocol", "headless"),
+            "systemd": os_environment.get("systemd_available", False),
+            "hyprland": os_environment.get("hyprland_session", False),
+            "quickshell": os_environment.get("quickshell_available", False),
+            "omarchy": os_environment.get("omarchy_detected", False),
+            "maryos_candidate": os_environment.get("maryos_candidate", False),
             "local_inference_runtime": runtime[:32],
             "local_inference_model": model[:128],
             "configured_inference_runtimes": configured_inference[:16],
@@ -195,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"runtime fabric:     {', '.join(resource_cap.metadata.get('configured_inference_runtimes') or []) or 'none explicitly configured'}")
         print(f"creative fabric:    {', '.join(resource_cap.metadata.get('configured_creative_runtimes') or []) or 'none explicitly configured'}")
         print(f"acceleration:       {resource_cap.metadata.get('acceleration_method')} / {resource_cap.metadata.get('acceleration_state')}")
+        print(f"host substrate:     {resource_cap.metadata.get('distro_id', 'unknown')} / {resource_cap.metadata.get('init_system', 'unknown')}")
     allowed = sorted(permissions.allowed())
     print(f"execution allowed: {', '.join(allowed) if allowed else 'none (default deny)'}")
     print("sensor policy:      transcription/screen capture are explicit local opt-ins")

@@ -23,7 +23,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.25–13.28 ecosystem mining](ECOSYSTEM_MINING_13_25_13_28.md), and
 [13.29–13.32 cognitive research convergence](RESEARCH_CONVERGENCE_13_29_13_32.md),
 [13.33 bounded cognitive execution](COGNITIVE_EXECUTION_13_33.md), and
-[13.34 computational state fabric](COMPUTATIONAL_STATE_FABRIC_13_34.md).
+[13.34 computational state fabric](COMPUTATIONAL_STATE_FABRIC_13_34.md),
+[13.35 model execution fabric](MODEL_EXECUTION_FABRIC_13_35.md), and
+[13.36 MaryOS Linux substrate](MARYOS_LINUX_SUBSTRATE_13_36.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -61,6 +63,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Retrieval/reservoir | `mary.mind` | ACTIVE SUPPORT | FTS/vector/cache layers are derived, not truth authority. |
 | Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. Sensor capabilities are default-deny local permissions. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
+| MaryOS Linux substrate | `mary.distributed.os_environment`, `scripts.maryos_status`, `maryos/` | ACTIVE FOUNDATION 13.36 | Read-only host/environment projection plus optional systemd user-service boot path for the existing bounded home node. No shell/root executor; Omarchy/Arch packaging remains optional/future. |
 | Home compute fabric | `mary.distributed.compute_fabric`, `mary.distributed.benchmarking`, `scripts.run_home_node` | ACTIVE OPTIONAL 13.11 | Benchmark-aware Mac/Windows/Linux worker selection and cross-platform node hosting; benchmark/resource data is disposable operational evidence only and never grants execution authority. |
 | Model execution fabric | `mary.llm.model_fabric`, Core compute-fabric projection | ACTIVE ADVISORY 13.35 | Separates discovered/available/authorized/feasible/suitable/preferred engines by task lane. Local and frontier candidates remain benchmark-before-promotion; no spend, identity, memory or permission authority. |
 | Runtime resource profiling | `mary.distributed.resource_profile` | ACTIVE HINT 13.11 | CPU/memory/Metal/Vulkan/local-runtime visibility and optional GPU labels/VRAM hints guide empirical testing only; hardware presence is not permission or proof of useful acceleration. |
