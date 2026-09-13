@@ -7,6 +7,7 @@ The repository contains years of iterative design notes. This file defines where
 - [`../README.md`](../README.md) — current product overview and run/verification entry points.
 - [`../MARY_ROOT.md`](../MARY_ROOT.md) — one-Mary authority and persistence contract.
 - [`architecture/SYSTEM_REGISTRY.md`](architecture/SYSTEM_REGISTRY.md) — canonical subsystem ownership/status map.
+- [`architecture/RESEARCH_CONVERGENCE_13_29_13_32.md`](architecture/RESEARCH_CONVERGENCE_13_29_13_32.md) — adaptive deliberation, memory-action policy, trajectory telemetry, duplex policy and experimental-runtime boundary.
 - [`../AGENTS.md`](../AGENTS.md) — contributor/coding-agent constraints.
 - [`architecture/HOME_COMPUTE_FABRIC_13_11.md`](architecture/HOME_COMPUTE_FABRIC_13_11.md) — benchmark-aware Mac/Windows home compute fabric and bring-up.
 - [`architecture/STREAM_COHOST_13_10.md`](architecture/STREAM_COHOST_13_10.md) — live Twitch/OBS cohost architecture.
@@ -24,6 +25,12 @@ Important maps include:
 - `RUNTIME_AUTHORITY.md` — Core/surface lifecycle and authority.
 - `MCP_CAPABILITY_FABRIC_13_4.md` — optional MCP capability-node boundary.
 - `OPEN_MODEL_FABRIC_13_15.md` — opt-in frontier/open-model provider fabric and spending boundary.
+- `MODEL_INTELLIGENCE_13_16.md` — policy-safe adaptive model ranking.
+- `COGNITIVE_CHARACTER_RUNTIME_13_17.md` — provider-independent cognitive need and delivery planning.
+- `CHARACTER_RUNTIME_CONVERGENCE_13_18_13_23.md` — realtime, temporal memory, knowledge, compute and embodiment convergence.
+- `INFERENCE_ACCELERATION_13_24.md` — measured local inference acceleration.
+- `ECOSYSTEM_MINING_13_25_13_28.md` — local runtimes, ephemeral context, creative workers and rebuildable document evidence.
+- `RESEARCH_CONVERGENCE_13_29_13_32.md` — bounded research-to-production cognition/learning substrate.
 - `OPENHANDS_WORKER_BOUNDARY_13_4.md` — separate software-engineering worker boundary.
 - `NEURO_PATTERN_ADOPTION_13_6.md` — realtime/performer architecture convergence.
 - `STREAM_COHOST_13_10.md` — bounded Twitch/OBS cohost host and public-performance boundary.
