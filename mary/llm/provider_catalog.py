@@ -57,7 +57,7 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
         base_url="https://api.deepseek.com",
         api_key_envs=("DEEPSEEK_API_KEY",),
         model_env="MARY_DEEPSEEK_MODEL",
-        default_model="deepseek-v4-flash",
+        default_model="deepseek-flash",
         base_url_env="MARY_DEEPSEEK_BASE_URL",
         notes="Direct DeepSeek route; model alias remains environment-overridable.",
     ),
