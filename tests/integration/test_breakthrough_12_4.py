@@ -271,3 +271,24 @@ def test_compound_shared_work_and_architecture_query_includes_live_runtime_truth
     assert "current runtime architecture:" in lowered
     assert "language models are routed generation engines" in lowered
     assert result.reasoning.metadata["llm_skipped"] is True
+
+
+def test_live_state_projects_durable_shared_work_continuity(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _application()
+    mary = app.mary
+
+    learned = mary._learn_shared_work_statement(
+        "We've been testing MaryV2 persistence together on Windows.",
+        intent=_conversation_intent(),
+    )
+    assert learned is not None
+    assert learned["recorded"] is True
+
+    state = mary.live_state(runtime_status="idle")
+
+    assert state["current_work"]["active"] is True
+    assert state["current_work"]["authority"] == "derived_current_work_projection"
+    assert state["continuity"]["durable_shared_work_events"] == 1
+    assert state["continuity"]["shared_work_authority"] == "relationship_history"
+    assert "persistence" in state["current_work"]["summary"].lower()

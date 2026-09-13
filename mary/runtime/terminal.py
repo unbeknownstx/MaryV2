@@ -45,6 +45,7 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
         mind = dict(payload.get("mind", {}) or {})
         reservoir = dict(mind.get("reservoir", {}) or {})
         current_work = dict(mary.get("current_work", {}) or {})
+        continuity = dict(mary.get("continuity", {}) or {})
         recent_work = [
             item for item in list(current_work.get("recent") or [])
             if isinstance(item, dict)
@@ -52,6 +53,17 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
         return _pretty({
             "canonical_memory_store": memory,
             "continuity": {
+                "relationship": {
+                    "events": max(0, int(continuity.get("relationship_events", 0) or 0)),
+                    "durable_shared_work_events": max(
+                        0,
+                        int(continuity.get("durable_shared_work_events", 0) or 0),
+                    ),
+                    "authority": str(
+                        continuity.get("shared_work_authority")
+                        or "relationship_history"
+                    ),
+                },
                 "shared_work_projection": {
                     "active": bool(current_work.get("active", False)),
                     "project": str(current_work.get("project") or ""),

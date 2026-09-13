@@ -28,6 +28,12 @@ class _FakeRemoteGateway(RemoteMaryGateway):
                     "semantic": 0,
                     "working": 0,
                 },
+                "continuity": {
+                    "relationship_events": 8,
+                    "durable_shared_work_events": 3,
+                    "shared_work_authority": "relationship_history",
+                    "current_work_authority": "derived_current_work_projection",
+                },
                 "current_work": {
                     "active": True,
                     "project": "MaryV2",
@@ -180,6 +186,8 @@ def test_remote_memory_status_reports_continuity_beyond_memorymanager_counts():
     assert rendered is not None
     assert '"canonical_memory_store"' in rendered
     assert '"recent_count": 2' in rendered
+    assert '"durable_shared_work_events": 3' in rendered
+    assert '"authority": "relationship_history"' in rendered
     assert '"records": 33' in rendered
     assert '"persistent": true' in rendered
     assert "only one continuity owner" in rendered
