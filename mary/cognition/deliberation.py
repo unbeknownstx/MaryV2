@@ -1,14 +1,15 @@
-"""Adaptive, content-free deliberation policy for MaryV2.
+"""Adaptive, content-free deliberation policy and bounded execution for MaryV2.
 
 The governor selects how much *process* a turn deserves without exposing or
-persisting private chain-of-thought. It is a policy layer only: model/provider
-authorization, paid use, tools, memory writes and identity remain owned by their
-existing Mary systems.
+persisting private chain-of-thought. The executor applies that policy to opaque
+candidate/verification callbacks. Candidate text is ephemeral working data;
+telemetry receives structural metrics only.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Any
+from dataclasses import asdict, dataclass, field
+from time import monotonic
+from typing import Any, Callable
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -45,10 +46,61 @@ class DeliberationPlan:
         return payload
 
 
+@dataclass(frozen=True)
+class DeliberationCandidate:
+    """Opaque candidate answer used only inside one deliberation execution."""
+
+    content: str
+    confidence: float = 0.5
+    structural_metrics: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    """Bounded verifier output. Feedback must be concise and non-CoT."""
+
+    score: float
+    accepted: bool | None = None
+    issue_codes: tuple[str, ...] = field(default_factory=tuple)
+
+    def bounded(self) -> "VerificationResult":
+        return VerificationResult(
+            score=_clamp(self.score, 0.0, 1.0),
+            accepted=self.accepted,
+            issue_codes=tuple(str(item)[:48] for item in self.issue_codes[:8]),
+        )
+
+
+@dataclass(frozen=True)
+class DeliberationOutcome:
+    content: str
+    confidence: float
+    strategy: str
+    passes: int
+    branches: int
+    verifier_calls: int
+    verifier_score: float | None
+    degraded: bool
+    failure_kind: str | None
+    latency_ms: float
+    authority: str = "bounded_cognitive_execution"
+    private_reasoning_retained: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+CandidateFactory = Callable[
+    [int, int, DeliberationCandidate | None, VerificationResult | None],
+    DeliberationCandidate,
+]
+Verifier = Callable[[DeliberationCandidate, int], VerificationResult]
+
+
 class DeliberationGovernor:
     """Choose bounded test-time compute from an existing cognitive plan."""
 
-    VERSION = "13.29"
+    VERSION = "13.33"
 
     def __init__(
         self,
@@ -158,5 +210,167 @@ class DeliberationGovernor:
             "private_reasoning_persistence": False,
             "private_reasoning_exposure": False,
             "automatic_training": False,
+            "bounded_execution_available": True,
             "authority": "cognition_policy_only",
         }
+
+
+class DeliberationExecutor:
+    """Execute a DeliberationPlan without retaining intermediate reasoning text.
+
+    The executor knows nothing about provider routing, identity, memory, or tool
+    authorization. Callers supply candidate/verifier callbacks that already obey
+    those owners. Only the winning candidate leaves this method.
+    """
+
+    VERSION = "13.33"
+
+    def __init__(self, *, recorder: Any | None = None) -> None:
+        self.recorder = recorder
+
+    @staticmethod
+    def _metric(candidate: DeliberationCandidate, key: str) -> int:
+        try:
+            return max(0, int(candidate.structural_metrics.get(key, 0)))
+        except (TypeError, ValueError, AttributeError):
+            return 0
+
+    def execute(
+        self,
+        plan: DeliberationPlan | dict[str, Any],
+        *,
+        generate: CandidateFactory,
+        verify: Verifier | None = None,
+        task_class: str = "general",
+    ) -> DeliberationOutcome:
+        if isinstance(plan, DeliberationPlan):
+            payload = plan.to_dict()
+        else:
+            payload = dict(plan or {})
+
+        strategy = str(payload.get("strategy") or "single_pass")
+        max_passes = max(1, min(8, int(payload.get("max_passes") or 1)))
+        max_branches = max(1, min(4, int(payload.get("max_branches") or 1)))
+        confidence_floor = _clamp(payload.get("confidence_floor", 0.78), 0.0, 1.0)
+        verifier_required = bool(payload.get("verifier_required", False))
+        latency_budget_ms = max(1, min(120_000, int(payload.get("latency_budget_ms") or 5000)))
+
+        started = monotonic()
+        candidates: list[tuple[DeliberationCandidate, VerificationResult | None]] = []
+        passes = 0
+        verifier_calls = 0
+        degraded = False
+        failure_kind: str | None = None
+
+        def elapsed_ms() -> float:
+            return (monotonic() - started) * 1000.0
+
+        def produce(
+            pass_index: int,
+            branch_index: int,
+            previous: DeliberationCandidate | None = None,
+            verification: VerificationResult | None = None,
+        ) -> DeliberationCandidate:
+            nonlocal passes
+            candidate = generate(pass_index, branch_index, previous, verification)
+            if not isinstance(candidate, DeliberationCandidate):
+                raise TypeError("generate must return DeliberationCandidate")
+            passes += 1
+            return DeliberationCandidate(
+                content=str(candidate.content),
+                confidence=_clamp(candidate.confidence, 0.0, 1.0),
+                structural_metrics=dict(candidate.structural_metrics or {}),
+            )
+
+        def check(candidate: DeliberationCandidate, branch_index: int) -> VerificationResult | None:
+            nonlocal verifier_calls, degraded, failure_kind
+            if verify is None:
+                if verifier_required:
+                    degraded = True
+                    failure_kind = failure_kind or "verifier_unavailable"
+                return None
+            try:
+                result = verify(candidate, branch_index)
+                if not isinstance(result, VerificationResult):
+                    raise TypeError("verify must return VerificationResult")
+                verifier_calls += 1
+                return result.bounded()
+            except Exception:
+                degraded = True
+                failure_kind = failure_kind or "verifier_failed"
+                return None
+
+        if strategy == "branch_verify" and verify is not None:
+            branch_count = min(max_branches, max_passes)
+            for branch_index in range(branch_count):
+                if elapsed_ms() >= latency_budget_ms and candidates:
+                    degraded = True
+                    failure_kind = failure_kind or "latency_budget"
+                    break
+                candidate = produce(passes, branch_index)
+                verification = check(candidate, branch_index)
+                candidates.append((candidate, verification))
+        else:
+            first = produce(0, 0)
+            first_verification = check(first, 0) if strategy == "verify_once" else None
+            candidates.append((first, first_verification))
+
+            first_score = (
+                first_verification.score
+                if first_verification is not None
+                else first.confidence
+            )
+            if (
+                strategy == "verify_once"
+                and first_score < confidence_floor
+                and passes < max_passes
+                and elapsed_ms() < latency_budget_ms
+            ):
+                revised = produce(1, 0, first, first_verification)
+                revised_verification = check(revised, 0)
+                candidates.append((revised, revised_verification))
+            elif strategy == "branch_verify" and verify is None:
+                degraded = True
+                failure_kind = failure_kind or "verifier_unavailable"
+
+        def rank(item: tuple[DeliberationCandidate, VerificationResult | None]) -> tuple[float, float]:
+            candidate, verification = item
+            score = verification.score if verification is not None else candidate.confidence
+            return (score, candidate.confidence)
+
+        winner, winner_verification = max(candidates, key=rank)
+        verifier_score = winner_verification.score if winner_verification is not None else None
+        latency_ms = round(elapsed_ms(), 2)
+
+        provider_attempts = sum(self._metric(item[0], "provider_attempts") for item in candidates)
+        tool_calls = sum(self._metric(item[0], "tool_calls") for item in candidates)
+        total_tokens = sum(self._metric(item[0], "total_tokens") for item in candidates)
+        recorder = self.recorder
+        if recorder is not None and callable(getattr(recorder, "record", None)):
+            recorder.record(
+                task_class=task_class,
+                strategy=strategy,
+                passes=passes,
+                branches=max(1, len(candidates) if strategy == "branch_verify" else 1),
+                verifier_score=verifier_score,
+                outcome="degraded" if degraded else "success",
+                provider_attempts=provider_attempts,
+                tool_calls=tool_calls,
+                latency_ms=latency_ms,
+                total_tokens=total_tokens,
+                failure_kind=failure_kind,
+                tags=("bounded_deliberation",),
+            )
+
+        return DeliberationOutcome(
+            content=winner.content,
+            confidence=winner.confidence,
+            strategy=strategy,
+            passes=passes,
+            branches=max(1, len(candidates) if strategy == "branch_verify" else 1),
+            verifier_calls=verifier_calls,
+            verifier_score=verifier_score,
+            degraded=degraded,
+            failure_kind=failure_kind,
+            latency_ms=latency_ms,
+        )

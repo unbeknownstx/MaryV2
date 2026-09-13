@@ -1,6 +1,7 @@
 from .adapter_lab import AdapterConfiguration, AdapterEvaluation, AdapterLab, AdapterSpec
 from .model_candidates import ModelCandidate, ModelCandidateCatalog
 from .trajectory import TrajectoryRecorder, TrajectorySample
+from .strategy_advisor import StrategyAdvisor, StrategyProposal
 from .interop import (
     MaryBenchRecord,
     OptimizationProposal,
@@ -22,6 +23,8 @@ __all__ = [
     "ModelCandidateCatalog",
     "TrajectoryRecorder",
     "TrajectorySample",
+    "StrategyAdvisor",
+    "StrategyProposal",
     "MaryBenchRecord",
     "OptimizationProposal",
     "attach_results",

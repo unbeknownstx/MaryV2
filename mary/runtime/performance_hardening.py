@@ -9,16 +9,18 @@ remains the only durable relationship authority.
 """
 from __future__ import annotations
 
+from mary.cognition.deliberation import DeliberationExecutor
 from mary.distributed.stream_capabilities import StreamCapabilityCatalog
 from mary.expression.social_delivery import SocialDeliveryPlanner
 from mary.expression.standing_affect import StandingAffectStore
+from mary.learning.strategy_advisor import StrategyAdvisor
 from mary.learning.trajectory import TrajectoryRecorder
 from mary.relationship.relational_presence import RelationalPresenceRuntime
 from mary.runtime.experience_quality import ExperienceQualityMonitor
 
 
 class PerformanceHardeningBundle:
-    VERSION = "13.8"
+    VERSION = "13.33"
 
     def __init__(self, mary) -> None:
         self.mary = mary
@@ -28,6 +30,10 @@ class PerformanceHardeningBundle:
         self.stream_capabilities = StreamCapabilityCatalog()
         self.experience_quality = ExperienceQualityMonitor()
         self.trajectory_telemetry = TrajectoryRecorder()
+        self.deliberation_executor = DeliberationExecutor(
+            recorder=self.trajectory_telemetry
+        )
+        self.strategy_advisor = StrategyAdvisor()
 
         # 13.8 relational presence is deliberately composed over the existing
         # canonical RelationshipManager. Durable mode/activity completions are
@@ -58,6 +64,13 @@ class PerformanceHardeningBundle:
             privacy_scope=privacy_scope,
         ).to_dict()
 
+    def strategy_proposal(self, *, task_class: str) -> dict:
+        """Return proposal-only strategy evidence; never mutate runtime policy."""
+        return self.strategy_advisor.propose(
+            self.trajectory_telemetry.samples(),
+            task_class=task_class,
+        ).to_dict()
+
     def snapshot(self) -> dict:
         return {
             "version": self.VERSION,
@@ -76,6 +89,12 @@ class PerformanceHardeningBundle:
             ),
             "experience_quality": self.experience_quality.snapshot(),
             "trajectory_telemetry": self.trajectory_telemetry.snapshot(),
+            "deliberation_execution": {
+                "version": self.deliberation_executor.VERSION,
+                "private_reasoning_retained": False,
+                "authority": "bounded_cognitive_execution",
+            },
+            "strategy_advisor": self.strategy_advisor.status(),
             "relational_presence": self.relational_presence.snapshot(),
             "social_delivery": self.delivery_envelope(),
             "authority": (
@@ -92,6 +111,8 @@ def install_performance_hardening(mary) -> PerformanceHardeningBundle:
     mary.stream_capability_catalog = bundle.stream_capabilities
     mary.experience_quality = bundle.experience_quality
     mary.trajectory_telemetry = bundle.trajectory_telemetry
+    mary.deliberation_executor = bundle.deliberation_executor
+    mary.strategy_advisor = bundle.strategy_advisor
     mary.relational_presence = bundle.relational_presence
     mary.social_delivery = bundle.social_delivery
     return bundle
