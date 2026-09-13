@@ -36,6 +36,21 @@ free-first or relationship conversation route.
 This keeps experimentation easy without turning "a credential exists" into
 permission to spend.
 
+## Token / reasoning budget
+
+Ordinary chat keeps Mary's normal output budget. An explicit frontier,
+reasoning, or specialist route receives a separate bounded output ceiling
+(default 8192 tokens, configurable with MARY_FRONTIER_MAX_OUTPUT_TOKENS).
+Requests above that ceiling are clamped by RuntimeLimits.
+
+ResourceGovernor remains the accounting authority and records prompt,
+completion, reasoning, cached-prompt, and total token telemetry when a provider
+reports those fields. This is process-local structural telemetry only; prompt
+or response text is not stored in the governor.
+
+The intent is to spend token budget where additional reasoning can matter
+without making every casual Mary turn long or expensive.
+
 ## Configuration
 
 The default opt-in frontier order is:
