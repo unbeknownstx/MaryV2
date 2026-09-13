@@ -71,8 +71,8 @@ Each direct provider has a model override, for example:
 MARY_DEEPSEEK_MODEL=deepseek-flash
 MARY_ZAI_MODEL=glm-5.3-flash
 MARY_QWEN_CLOUD_MODEL=qwen3.8-flash
-MARY_KIMI_MODEL=kimi-k2.6
-MARY_MINIMAX_MODEL=MiniMax-M2.7
+MARY_KIMI_MODEL=kimi-k3
+MARY_MINIMAX_MODEL=MiniMax-M3
 MARY_CEREBRAS_MODEL=gpt-oss-120b
 MARY_TOGETHER_MODEL=openai/gpt-oss-120b
 MARY_FIREWORKS_MODEL=accounts/fireworks/models/deepseek-v3p1
