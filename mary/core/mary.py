@@ -3872,7 +3872,7 @@ class Mary:
             status = self.llm.clear_session_override()
             return {
                 "system_response": (
-                    "Okay. I cleared the temporary model override. My normal zero-cost/free routing policy is active again. "
+                    "Okay. I cleared the temporary model override. My normal routing policy is active again, using the zero-cost/free boundary. "
                     "Personal conversation currently follows the configured free-cost order ("
                     + " -> ".join(
                         self.llm.conversation_provider_order()

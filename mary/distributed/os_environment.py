@@ -2,8 +2,8 @@
 
 MaryOS uses this module to understand the host it is running on without turning
 host discovery into execution authority. Detection uses Python/OS metadata only:
-no subprocesses, shell commands, package mutation, service mutation, or privilege
-escalation occur here.
+no child-process execution, shell commands, package mutation, service mutation, or
+privilege escalation occur here.
 """
 from __future__ import annotations
 
