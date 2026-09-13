@@ -82,8 +82,15 @@ class ExpertConsultant:
         deadline_seconds: float | None = None,
         structured_output: bool = False,
         structured_schema_json: str | None = None,
+        provider_route: str = "expert",
         _redaction_receipt: RedactionReceipt | None = None,
     ) -> ExpertConsultationResult:
+        normalized_provider_route = str(provider_route or "expert").strip().lower()
+        if normalized_provider_route not in {"expert", "frontier"}:
+            raise ValueError(
+                "Expert consultation provider_route must be 'expert' or 'frontier'."
+            )
+
         task = self.workspace.get(task_id)
         if task is None:
             raise KeyError(f"Unknown task: {task_id}")
@@ -149,6 +156,12 @@ class ExpertConsultant:
             if _redaction_receipt is not None
             else None
         )
+        output_limit = int(
+            self.router.config.governance.frontier_max_output_tokens
+            if normalized_provider_route == "frontier"
+            else self.router.config.governance.expert_max_output_tokens
+        )
+        requested_tokens = output_limit if max_tokens is None else int(max_tokens)
         response = self.router.generate_request(
             GenerationRequest(
                 messages=generation_messages,
@@ -161,12 +174,9 @@ class ExpertConsultant:
                 deadline_seconds=deadline_seconds,
                 correlation_id=task.task_id,
                 purpose="expert",
-                max_tokens=min(
-                    int(max_tokens or self.router.config.governance.expert_max_output_tokens),
-                    int(self.router.config.governance.expert_max_output_tokens),
-                ),
+                max_tokens=min(max(1, requested_tokens), output_limit),
             ),
-            route="expert",
+            route=normalized_provider_route,
         )
 
         attempts = tuple(
@@ -187,6 +197,7 @@ class ExpertConsultant:
                 "finish_reason": response.finish_reason,
                 "usage": dict(response.usage),
                 "provider_attempts": [dict(item) for item in attempts],
+                "provider_route": normalized_provider_route,
             },
         )
 
