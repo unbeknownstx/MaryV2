@@ -91,7 +91,40 @@ class _FakeRemoteGateway(RemoteMaryGateway):
         return {"realtime": {"phase": "idle"}}
 
     def dashboard(self):
-        return {}
+        return {
+            "performance_hardening": {
+                "cognition_evidence": {
+                    "trajectory": {
+                        "sample_count": 5,
+                        "content_retained": False,
+                    },
+                    "recent_samples": [
+                        {
+                            "trajectory_id": "traj_test",
+                            "task_class": "general",
+                            "strategy": "verify_once",
+                            "passes": 1,
+                            "verifier_score": 0.92,
+                            "outcome": "success",
+                            "latency_ms": 1200.0,
+                            "total_tokens": 100,
+                        },
+                    ],
+                    "strategy_proposals": {
+                        "general": {
+                            "task_class": "general",
+                            "strategy": "verify_once",
+                            "sample_count": 5,
+                            "authority": "proposal_only_no_runtime_mutation",
+                        },
+                    },
+                    "content_retained": False,
+                    "prompt_or_response_text_retained": False,
+                    "persistence": "process_local_evaluation_evidence",
+                    "authority": "evaluation_and_proposal_only",
+                },
+            },
+        }
 
     def workspace(self):
         return {}
@@ -214,3 +247,15 @@ def test_remote_probe_ollama_uses_non_mutating_core_diagnostic():
     assert '"provider": "ollama"' in rendered
     assert '"status": "ok"' in rendered
     assert '"canonical_state_changed": false' in rendered
+
+
+def test_remote_cognition_evidence_is_bounded_and_content_free():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/cognition-evidence", None)
+
+    assert rendered is not None
+    assert '"sample_count": 5' in rendered
+    assert '"strategy": "verify_once"' in rendered
+    assert '"prompt_or_response_text_retained": false' in rendered
+    assert "proposal_only_no_runtime_mutation" in rendered

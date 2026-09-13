@@ -74,6 +74,53 @@ class PerformanceHardeningBundle:
             task_class=task_class,
         ).to_dict()
 
+    def cognition_evidence_snapshot(self, *, limit: int = 8) -> dict:
+        """Return bounded, content-free trajectory evidence + advisor proposals."""
+
+        rows = list(self.trajectory_telemetry.samples())
+        safe_rows = []
+        allowed = {
+            "trajectory_id",
+            "task_class",
+            "strategy",
+            "passes",
+            "branches",
+            "verifier_score",
+            "outcome",
+            "reward",
+            "provider_attempts",
+            "tool_calls",
+            "latency_ms",
+            "total_tokens",
+            "failure_kind",
+            "tags",
+        }
+        for row in rows[-max(1, min(32, int(limit))):]:
+            if not isinstance(row, dict):
+                continue
+            safe_rows.append({
+                key: row.get(key)
+                for key in allowed
+                if key in row
+            })
+
+        proposals = {}
+        for task_class in ("general", "conversation", "coding", "research"):
+            proposals[task_class] = self.strategy_advisor.propose(
+                rows,
+                task_class=task_class,
+            ).to_dict()
+
+        return {
+            "trajectory": self.trajectory_telemetry.snapshot(),
+            "recent_samples": safe_rows,
+            "strategy_proposals": proposals,
+            "content_retained": False,
+            "prompt_or_response_text_retained": False,
+            "persistence": "process_local_evaluation_evidence",
+            "authority": "evaluation_and_proposal_only",
+        }
+
     def snapshot(self) -> dict:
         return {
             "version": self.VERSION,
@@ -92,6 +139,7 @@ class PerformanceHardeningBundle:
             ),
             "experience_quality": self.experience_quality.snapshot(),
             "trajectory_telemetry": self.trajectory_telemetry.snapshot(),
+            "cognition_evidence": self.cognition_evidence_snapshot(),
             "deliberation_execution": {
                 "version": self.deliberation_executor.VERSION,
                 "private_reasoning_retained": False,
