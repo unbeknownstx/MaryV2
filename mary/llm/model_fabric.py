@@ -146,19 +146,32 @@ def assess_local_capability_route(
     }
 
 
-def _frontier_status(router: Any) -> list[dict[str, Any]]:
+def _frontier_status(
+    routing: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Project frontier readiness without constructing optional providers.
+
+    State/diagnostic reads must be observational. They may inspect the router's
+    already-published status, but they must not instantiate providers, touch
+    credentials, perform health checks, or mutate lazy provider caches.
+    """
+
     catalog = {str(item["name"]): dict(item) for item in public_provider_catalog()}
+    published = {
+        str(item.get("provider") or "").strip().lower(): dict(item)
+        for item in list(dict(routing or {}).get("providers") or [])
+        if isinstance(item, dict)
+    }
     output: list[dict[str, Any]] = []
     for name in FRONTIER_PROVIDER_NAMES:
         item = dict(catalog.get(name) or {"name": name})
-        configured = False
-        active_model = str(item.get("default_model") or "")
-        try:
-            provider = router.get_provider(name)
-            configured = bool(provider.is_available())
-            active_model = str(provider.model_name() or active_model)
-        except Exception:
-            configured = False
+        status = dict(published.get(name) or {})
+        configured = bool(status.get("available", False))
+        active_model = str(
+            status.get("model")
+            or item.get("default_model")
+            or ""
+        )
         item.update({
             "configured": configured,
             "active_model": active_model,
@@ -210,7 +223,7 @@ def build_model_execution_fabric(
     return {
         "version": VERSION,
         "active_candidates": active,
-        "frontier_catalog": _frontier_status(router),
+        "frontier_catalog": _frontier_status(routing),
         "task_lanes": {
             name: {
                 **dict(values),

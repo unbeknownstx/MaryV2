@@ -40,13 +40,20 @@ class _Router:
                     "privacy_modes": ["local_only", "cloud_ok"],
                     "operations": ["conversation", "task_generation"],
                 },
+                {
+                    "provider": "deepseek",
+                    "available": True,
+                    "model": "deepseek-v4-flash",
+                    "source": "configured_host",
+                    "cost_class": "paid_low",
+                    "privacy_modes": ["cloud_ok"],
+                    "operations": ["conversation", "expert_reasoning"],
+                },
             ]
         }
 
     def get_provider(self, name):
-        if name == "deepseek":
-            return _Provider(True, "deepseek-v4-flash")
-        return _Provider(False, f"{name}-model")
+        raise AssertionError("model-fabric diagnostics must not construct providers")
 
 
 def _route(latency_ms=55_000.0, success=0.9):
@@ -116,3 +123,17 @@ def test_deepseek_preset_tracks_current_v4_flash_model_id():
     preset = get_provider_preset("deepseek")
     assert preset is not None
     assert preset.default_model == "deepseek-v4-flash"
+
+
+def test_model_fabric_status_is_passive_and_does_not_construct_optional_providers():
+    fabric = build_model_execution_fabric(
+        _Router(),
+        capability_routes={"llm.ollama": _route()},
+    )
+
+    deepseek = next(
+        item for item in fabric["frontier_catalog"]
+        if item["name"] == "deepseek"
+    )
+    assert deepseek["configured"] is True
+    assert deepseek["active_model"] == "deepseek-v4-flash"

@@ -763,10 +763,25 @@ class MaryCoreService:
             if callable(preview):
                 ollama_route = preview("llm.ollama")
         capability_routes = {"llm.ollama": ollama_route}
-        model_execution = build_model_execution_fabric(
-            router,
-            capability_routes=capability_routes,
-        )
+        try:
+            model_execution = build_model_execution_fabric(
+                router,
+                capability_routes=capability_routes,
+            )
+        except Exception as exc:
+            # Model-execution suitability is advisory observability only. It
+            # must never make canonical Core state unavailable.
+            model_execution = {
+                "version": "13.35",
+                "status": "degraded",
+                "error_type": type(exc).__name__,
+                "authority": "planning_and_observability_only",
+                "policy": (
+                    "Advisory model-fabric diagnostics failed; canonical Core "
+                    "state, routing, memory, relationship, and node authority "
+                    "remain available."
+                ),
+            }
         return _json_safe({
             "routing": routing,
             "nodes": nodes,
