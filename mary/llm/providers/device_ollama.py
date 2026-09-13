@@ -52,10 +52,10 @@ class DeviceOllamaProvider(LLMInterface):
         self.role = self._normalize_role(role)
         if timeout_seconds is None:
             try:
-                timeout_seconds = float(os.getenv("MARY_DEVICE_OLLAMA_TIMEOUT", "190"))
+                timeout_seconds = float(os.getenv("MARY_DEVICE_OLLAMA_TIMEOUT", "480"))
             except (TypeError, ValueError):
-                timeout_seconds = 190.0
-        self.timeout_seconds = max(5.0, min(240.0, float(timeout_seconds)))
+                timeout_seconds = 480.0
+        self.timeout_seconds = max(5.0, min(600.0, float(timeout_seconds)))
 
     @staticmethod
     def _normalize_role(role: str) -> str:
