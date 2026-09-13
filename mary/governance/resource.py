@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .limits import RuntimeLimits
+from .model_scheduler import ModelIntelligenceScheduler
 
 
 @dataclass
@@ -15,6 +16,11 @@ class ResourceGovernor:
     This object never persists secrets or prompt text. It stores only counters
     and compact metadata so the terminal/UI can expose how Mary is using
     resources without becoming another unbounded history.
+
+    Adaptive model intelligence is intentionally applied here only *after* the
+    router has produced an eligible provider list. The scheduler may reorder
+    that list, but it cannot add a provider that privacy, cost, operation, or
+    fallback policy excluded.
     """
 
     limits: RuntimeLimits = field(default_factory=RuntimeLimits)
@@ -25,14 +31,18 @@ class ResourceGovernor:
     completion_tokens: int = 0
     reasoning_tokens: int = 0
     cached_prompt_tokens: int = 0
+    model_scheduler: ModelIntelligenceScheduler = field(
+        default_factory=ModelIntelligenceScheduler.from_environment
+    )
     _paid_by_task: dict[str, int] = field(default_factory=dict)
     _last_generation: dict[str, Any] = field(default_factory=dict)
 
     def provider_order(self, order: list[str]) -> list[str]:
-        """Apply the hard maximum attempts for a single generation."""
+        """Adaptively rank an eligible route, then apply the hard attempt cap."""
 
+        ranked = self.model_scheduler.rank(order)
         limit = max(1, int(self.limits.provider_attempts_per_generation))
-        return list(order[:limit])
+        return list(ranked[:limit])
 
     def paid_remaining(self, task_id: str) -> int:
         used = int(self._paid_by_task.get(str(task_id), 0))
@@ -52,11 +62,19 @@ class ResourceGovernor:
         self._last_generation = {
             "route": str(route or "configured"),
             "provider_order": list(order),
+            "scheduler_mode": self.model_scheduler.mode,
             "attempts": [],
             "usage": {},
         }
 
-    def record_attempt(self, provider: str, status: str) -> None:
+    def record_attempt(
+        self,
+        provider: str,
+        status: str,
+        *,
+        latency_ms: float | None = None,
+        quality: float | None = None,
+    ) -> None:
         self.provider_attempts += 1
         if str(status) == "success":
             self.provider_successes += 1
@@ -64,6 +82,12 @@ class ResourceGovernor:
         attempts.append({"provider": str(provider), "status": str(status)})
         # The provider-order ceiling bounds this list, but retain a defensive cap.
         del attempts[:-max(1, int(self.limits.provider_attempts_per_generation))]
+        self.model_scheduler.record_outcome(
+            provider,
+            status,
+            latency_ms=latency_ms,
+            quality=quality,
+        )
 
     def record_usage(self, usage: dict[str, Any] | None) -> None:
         payload = dict(usage or {})
@@ -82,6 +106,24 @@ class ResourceGovernor:
             "cached_prompt_tokens": cached,
             "total_tokens": self._safe_int(payload.get("total_tokens", prompt + completion)),
         }
+        self.model_scheduler.record_usage(payload)
+
+    def record_model_measurement(
+        self,
+        provider: str,
+        *,
+        latency_ms: float | None = None,
+        quality: float | None = None,
+        usage: dict[str, Any] | None = None,
+    ) -> None:
+        """Feed content-free benchmark/runtime evidence into adaptive routing."""
+
+        self.model_scheduler.record_measurement(
+            provider,
+            latency_ms=latency_ms,
+            quality=quality,
+            usage=usage,
+        )
 
     def forget_task(self, task_id: str) -> None:
         """Release process-local per-task counters after an ephemeral task is evicted."""
@@ -101,6 +143,7 @@ class ResourceGovernor:
             "total_tokens": self.prompt_tokens + self.completion_tokens,
             "paid_calls_per_task": int(self.limits.paid_calls_per_task),
             "provider_attempts_per_generation": int(self.limits.provider_attempts_per_generation),
+            "model_scheduler": self.model_scheduler.status(),
             "last_generation": dict(self._last_generation),
         }
 
