@@ -657,6 +657,41 @@ class LLMRouter:
     # RATE-LIMIT COOLDOWN
     # ============================================================
 
+    def _generation_max_tokens(
+        self,
+        requested: int | None,
+        *,
+        route: str | None,
+    ) -> int:
+        """Resolve a bounded output budget without changing ordinary chat defaults."""
+
+        route_name = str(route or "").lower().strip()
+        default_tokens = max(1, int(self.config.llm.max_tokens))
+        if route_name not in _FRONTIER_ROUTES:
+            if requested is None:
+                return default_tokens
+            try:
+                return max(1, int(requested))
+            except (TypeError, ValueError):
+                return default_tokens
+
+        frontier_limit = max(
+            256,
+            int(
+                getattr(
+                    self.resource_governor.limits,
+                    "frontier_max_output_tokens",
+                    8192,
+                )
+            ),
+        )
+        if requested is None:
+            return frontier_limit
+        try:
+            return min(frontier_limit, max(1, int(requested)))
+        except (TypeError, ValueError):
+            return frontier_limit
+
     def _default_rate_limit_cooldown(self) -> float:
         try:
             return max(
@@ -976,6 +1011,10 @@ class LLMRouter:
                 effective_route = self._session_route_override
                 effective_purpose = None
 
+        resolved_max_tokens = self._generation_max_tokens(
+            max_tokens,
+            route=effective_route,
+        )
         order = self.resource_governor.provider_order(self.route_order(
             request,
             provider=effective_provider,
@@ -995,6 +1034,7 @@ class LLMRouter:
             "redaction_applied": request.redaction_receipt is not None,
             "deadline_seconds": request.deadline_seconds,
             "correlation_id_present": request.correlation_id is not None,
+            "max_output_tokens": resolved_max_tokens,
             "strategy": self.routing_strategy(),
             "order": list(order),
             "selected_provider": None,
@@ -1162,11 +1202,7 @@ class LLMRouter:
                             if temperature is not None
                             else self.config.llm.temperature
                         ),
-                        max_tokens=(
-                            max_tokens
-                            if max_tokens is not None
-                            else self.config.llm.max_tokens
-                        ),
+                        max_tokens=resolved_max_tokens,
                     )
                     remaining_deadline = None
                     if request.deadline_seconds is not None:
