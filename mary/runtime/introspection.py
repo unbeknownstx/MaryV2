@@ -75,14 +75,36 @@ class RuntimeIntrospection:
 
     VERSION = "v2-breakthrough-12.3"
 
-    _PROVIDERS = ("ollama", "groq", "gemini", "openrouter", "openai")
+    _PROVIDERS = (
+        "ollama", "llama_cpp", "groq", "gemini", "openrouter", "openai",
+        "deepseek", "zai", "qwen_cloud", "kimi", "minimax", "cerebras",
+        "together", "fireworks", "openai_compatible",
+    )
+    _PROVIDER_ALIASES = {
+        "ollama": ("ollama",),
+        "llama_cpp": ("llama cpp", "llama.cpp", "llama_cpp"),
+        "groq": ("groq",),
+        "gemini": ("gemini",),
+        "openrouter": ("openrouter", "open router"),
+        "openai": ("openai", "open ai"),
+        "deepseek": ("deepseek", "deep seek"),
+        "zai": ("zai", "z ai", "z.ai", "glm"),
+        "qwen_cloud": ("qwen", "qwen cloud", "qwen_cloud"),
+        "kimi": ("kimi", "moonshot"),
+        "minimax": ("minimax", "mini max"),
+        "cerebras": ("cerebras",),
+        "together": ("together ai", "together"),
+        "fireworks": ("fireworks ai", "fireworks"),
+        "openai_compatible": ("openai compatible", "open ai compatible", "openai_compatible"),
+    }
 
     def classify(self, query: str) -> RuntimeQuery:
         text = normalize_for_matching(str(query or ""))
         tokens = set(text.split())
 
         for provider in self._PROVIDERS:
-            if provider in text.replace("open router", "openrouter").replace("open ai", "openai"):
+            aliases = self._PROVIDER_ALIASES.get(provider, (provider,))
+            if any(alias in text for alias in aliases):
                 if any(word in tokens for word in {"available", "using", "use", "access", "reachable", "ready"}) or "can" in tokens:
                     return RuntimeQuery("provider_specific", provider)
 
