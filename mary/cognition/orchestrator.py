@@ -1361,6 +1361,8 @@ class CognitiveOrchestrator:
             runtime_tokens.intersection({
                 "model", "models", "provider", "providers", "api", "apis",
                 "ollama", "groq", "gemini", "openrouter", "openai",
+                "llama", "deepseek", "glm", "zai", "qwen", "kimi", "minimax",
+                "cerebras", "together", "fireworks",
             })
         )
         provider_availability_context = (
