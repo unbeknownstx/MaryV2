@@ -77,8 +77,10 @@ def test_usage_learning_is_content_free_and_bounded_to_structural_metrics():
     assert provider["reasoning_tokens"] == 10
     assert provider["cached_prompt_tokens"] == 25
     assert provider["total_tokens"] == 150
-    assert "prompt" not in str(provider).lower()
-    assert "response" not in str(provider).lower()
+    assert "prompt" not in provider
+    assert "response" not in provider
+    assert "messages" not in provider
+    assert "raw" not in provider
     assert snapshot["content_retention"] == "none"
 
 
