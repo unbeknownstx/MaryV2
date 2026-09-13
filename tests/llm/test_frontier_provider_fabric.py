@@ -22,6 +22,7 @@ class FakeProvider(LLMInterface):
         self.available = available
         self.calls = 0
         self.paid = paid
+        self.last_max_tokens = None
 
     def route_capabilities(self):
         return ProviderRoute(
@@ -34,6 +35,7 @@ class FakeProvider(LLMInterface):
 
     def generate(self, messages, temperature=0.7, max_tokens=2048):
         self.calls += 1
+        self.last_max_tokens = max_tokens
         return LLMResponse(
             content=f"{self.name} response",
             provider=self.name,
@@ -210,3 +212,29 @@ def test_runtime_introspection_recognizes_frontier_aliases():
     assert introspection.classify("Can you use Qwen?").provider == "qwen_cloud"
     assert introspection.classify("Can you use GLM?").provider == "zai"
     assert introspection.classify("Can you use Kimi?").provider == "kimi"
+
+
+
+def test_frontier_route_gets_larger_bounded_token_budget():
+    config = Config()
+    config.llm.frontier_provider_order = ["deepseek"]
+    router = LLMRouter(config)
+    deepseek = FakeProvider("deepseek", paid=True)
+    router.register_provider("deepseek", deepseek)
+
+    router.generate(_message(), route="frontier")
+
+    assert deepseek.last_max_tokens == 8192
+    assert router.last_generation_route["max_output_tokens"] == 8192
+
+
+def test_frontier_requested_output_is_capped_by_governance():
+    config = Config()
+    config.llm.frontier_provider_order = ["deepseek"]
+    router = LLMRouter(config)
+    deepseek = FakeProvider("deepseek", paid=True)
+    router.register_provider("deepseek", deepseek)
+
+    router.generate(_message(), route="frontier", max_tokens=50000)
+
+    assert deepseek.last_max_tokens == 8192
