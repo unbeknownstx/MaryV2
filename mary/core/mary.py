@@ -115,6 +115,7 @@ from mary.cognition.orchestrator import (
     CognitiveCycleResult,
     CognitiveOrchestrator,
 )
+from mary.cognition.runtime_coordination import CharacterRuntimeCoordinator
 from mary.cognition.reasoning import ReasoningEngine, ReasoningResult
 from mary.cognition.reflection import (
     ReflectionDecision,
@@ -684,6 +685,10 @@ class Mary:
             emotion=self.emotion,
             dialogue=self.dialogue,
         )
+
+        # Provider-independent cognition/compute/knowledge/presentation policy is
+        # derived from TurnMind and remains a projection, never a second state owner.
+        self.character_runtime = CharacterRuntimeCoordinator()
 
         # Active dialogue history remains owned by DialogueManager. The context
         # lifecycle chooses only the bounded slice that cognition should send to
@@ -1904,6 +1909,16 @@ class Mary:
             incoming_emotion_appraisal=incoming_emotion_appraisal,
             workspace_context=workspace_context,
         )
+        try:
+            runtime_coordination = self.character_runtime.plan_from_turn_state(
+                mind_state
+            ).to_dict()
+        except Exception as exc:
+            runtime_coordination = {
+                "authority": "coordination_projection_only",
+                "available": False,
+                "error_type": type(exc).__name__,
+            }
         developed_preference_ids = [
             str(item.get("developed_preference_id") or "")
             for item in self.growth.status().get("developed_preferences", [])[:8]
@@ -1936,6 +1951,7 @@ class Mary:
             },
         )
         prompt_mind_state = mind_state.prompt_view()
+        prompt_mind_state["runtime_coordination"] = runtime_coordination
         relationship_view = prompt_mind_state.get("relationship")
         if not isinstance(relationship_view, dict):
             relationship_view = {}
