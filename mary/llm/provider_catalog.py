@@ -7,7 +7,9 @@ identity, memory, relationship state, or permission boundaries.
 Model names are intentionally environment-overridable because frontier model
 aliases move quickly. Provider-specific model licenses must be checked at the
 model level before redistribution or self-hosting; an API preset does not imply
-that every model served by that vendor has the same license.
+that every model served by that vendor has the same license. Compatibility
+features are advertised conservatively: common chat-completions transport does
+not imply support for every OpenAI extension such as strict JSON Schema.
 """
 from __future__ import annotations
 
@@ -57,7 +59,6 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
         model_env="MARY_DEEPSEEK_MODEL",
         default_model="deepseek-v4-flash",
         base_url_env="MARY_DEEPSEEK_BASE_URL",
-        structured_output=True,
         notes="Direct DeepSeek route; model alias remains environment-overridable.",
     ),
     "zai": ProviderPreset(
@@ -78,7 +79,6 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
         model_env="MARY_QWEN_CLOUD_MODEL",
         default_model="qwen3.8-flash",
         base_url_env="MARY_QWEN_CLOUD_BASE_URL",
-        structured_output=True,
         notes="US Model Studio endpoint by default; override for another region/workspace.",
     ),
     "kimi": ProviderPreset(
@@ -119,7 +119,6 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
         model_env="MARY_TOGETHER_MODEL",
         default_model="openai/gpt-oss-120b",
         base_url_env="MARY_TOGETHER_BASE_URL",
-        structured_output=True,
         notes="Hosted open-model catalog through Together's compatible endpoint.",
     ),
     "fireworks": ProviderPreset(
