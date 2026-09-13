@@ -29,7 +29,7 @@ The reconciled architecture is **one canonical Mary composition with replaceable
 | Active bounded coordinator | Autonomy | `AutonomyRuntime` | Proposals/initiative and bounded execution path; no authority bypass. |
 | Active turn layer | Context/cognition | `TurnMind`, continuity, reasoning, reflection | Selects smallest sufficient context and shares owners. |
 | Active policy owner | LLM routing | `LLMRouter` | Single shared router; normal free routes and explicit expert route. |
-| Optional capability | Providers | Groq, Gemini, OpenRouter, Ollama; OpenAI expert | Availability/configuration-dependent; never identity authority. |
+| Optional capability | Providers | Groq, Gemini, OpenRouter, Ollama/llama.cpp; 13.15 frontier/open-model presets; OpenAI expert | Availability/configuration-dependent; direct paid-capable frontier routes are opt-in and never identity authority. |
 | Active ephemeral layer | Emotion/expression/realtime | `EmotionManager`, expression, realtime/attention | Shared emotion where connected; attention is ephemeral. |
 | Active bounded evidence | Research, perception | learning/web tools, `PerceptionDirector` | Provenance-bearing candidate context; no automatic memory truth. |
 | Derived support | Retrieval/reservoir | `mary.mind`, hybrid/vector index/cache | Rebuildable candidate retrieval, not truth authority. |
