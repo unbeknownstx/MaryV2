@@ -51,7 +51,13 @@ class CognitiveCharacterPlan:
 
 
 class CognitiveCharacterRuntime:
-    """Produce provider-independent cognition and expression policy."""
+    """Produce provider-independent cognition and expression policy.
+
+    The runtime can consume either explicit turn fields or Mary's existing
+    ``TurnMindState``/prompt-view mapping. Provider choice remains downstream
+    in the router and resource governor; this module only expresses cognitive
+    need and presentation intent.
+    """
 
     _DEEP = re.compile(
         r"\b(?:analy[sz]e|architecture|debug|design|plan|compare|strategy|research|"
@@ -69,6 +75,37 @@ class CognitiveCharacterRuntime:
         re.IGNORECASE,
     )
 
+    def plan_from_turn_state(self, turn_state: Any) -> CognitiveCharacterPlan:
+        """Build from Mary's canonical per-turn state without taking ownership.
+
+        ``TurnMindState`` is preferred, but a plain mapping remains supported
+        for diagnostics/tests and future remote surfaces.
+        """
+
+        if isinstance(turn_state, dict):
+            state = dict(turn_state)
+        else:
+            prompt_view = getattr(turn_state, "prompt_view", None)
+            if callable(prompt_view):
+                state = _safe_dict(prompt_view())
+            else:
+                to_dict = getattr(turn_state, "to_dict", None)
+                state = _safe_dict(to_dict()) if callable(to_dict) else {}
+
+        input_text = str(
+            getattr(turn_state, "input_text", None)
+            or state.get("input_text")
+            or ""
+        )
+        return self.plan(
+            input_text=input_text,
+            relationship=_safe_dict(state.get("relationship")),
+            disposition=_safe_dict(state.get("disposition")),
+            performance=_safe_dict(state.get("performance")),
+            emotion=_safe_dict(state.get("emotion")),
+            continuity=_safe_dict(state.get("continuity")),
+        )
+
     def plan(
         self,
         *,
@@ -82,7 +119,11 @@ class CognitiveCharacterRuntime:
         text = " ".join(str(input_text or "").split())
         words = max(1, len(text.split()))
 
-        user_profile = _safe_dict(relationship.get("user_profile"))
+        # TurnMind exposes provenance-filtered creator state as current_profile.
+        # user_profile is retained as an adapter alias for remote/older callers.
+        user_profile = _safe_dict(relationship.get("current_profile"))
+        if not user_profile:
+            user_profile = _safe_dict(relationship.get("user_profile"))
         communication = _safe_dict(user_profile.get("communication_style"))
         preferred_length = str(communication.get("preferred_length") or disposition.get("preferred_length") or "natural")
         explanation_style = str(communication.get("explanation_style") or "adaptive")
