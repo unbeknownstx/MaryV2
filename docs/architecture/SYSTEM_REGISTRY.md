@@ -14,7 +14,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.11 home compute fabric](HOME_COMPUTE_FABRIC_13_11.md),
 [13.12 bounded home sensor workers](HOME_SENSOR_WORKERS_13_12.md),
 [13.13 public creator voice stream bridge](STREAM_SENSES_13_13.md), and
-[13.14 character intelligence / learning interop](CHARACTER_INTELLIGENCE_LEARNING_13_14.md).
+[13.14 character intelligence / learning interop](CHARACTER_INTELLIGENCE_LEARNING_13_14.md), and
+[13.15 frontier / open model fabric](OPEN_MODEL_FABRIC_13_15.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -38,7 +39,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Emotion/expression | `mary.expression` | ACTIVE | Baseline + state + momentum/decay; does not own personality. |
 | Turn context | `mary.cognition.mind_state`, continuity/context modules | CANONICAL TURN LAYER | Bounded current/recent/retrieved/authored context; canonical relationship-history summary includes explicit 13.8 relationship mode. 13.14 structured sourcebook evidence enters through the same existing authored-character context field. |
 | Reasoning/cognition | `mary.cognition` | ACTIVE | Provider-independent Mary reasoning orchestration. |
-| Provider routing | `mary.llm.router` | ACTIVE | Free/cheap/private/expert routes; models never own identity. |
+| Provider routing | `mary.llm.router` | ACTIVE ENRICHED 13.15 | Free/cheap/private/expert plus explicit frontier/specialist routes; models never own identity. |
+| Frontier/open model fabric | `mary.llm.provider_catalog`, `mary.llm.providers.openai_compatible` | ACTIVE OPTIONAL 13.15 | Lazy direct DeepSeek/Z.AI-Qwen/Kimi/MiniMax/Cerebras/Together/Fireworks presets plus a generic OpenAI-compatible escape hatch. Paid-capable cloud routes are never injected into free-first merely because a key exists; loopback custom endpoints may advertise zero-local/local-only capability. Exact model license remains a model-level decision. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
 | Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional local capability; headless Windows node supported. |
 | Research/evidence | `mary.learning`, `mary.tools.web` | ACTIVE | External evidence remains provenance-bearing and temporary until accepted. |
