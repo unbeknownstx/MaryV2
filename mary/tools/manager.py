@@ -25,6 +25,7 @@ from typing import Any
 
 from .code import CodeClient, register_code_tools
 from .filesystem import FilesystemClient, register_filesystem_tools
+from .knowledge import KnowledgeToolClient, register_knowledge_tools
 from .registry import (
     ApprovalToken,
     ToolRegistry,
@@ -74,6 +75,12 @@ class ToolManager:
             register_web_tools(
                 self.registry,
                 config=web_config,
+            )
+        )
+
+        self.knowledge: KnowledgeToolClient = (
+            register_knowledge_tools(
+                self.registry,
             )
         )
 
@@ -227,6 +234,7 @@ class ToolManager:
                     False,
                 )
             ),
+            "knowledge_gateway": self.knowledge.status(),
             "workspace_root": str(
                 self.workspace_root
             ),
