@@ -35,6 +35,7 @@ from mary.runtime.turn_observability import (
 )
 
 from .output_quality import inspect_output_quality
+from .provider_catalog import FRONTIER_PROVIDER_NAMES, get_provider_preset
 
 from .interface import (
     GenerationCost,
@@ -64,11 +65,21 @@ _PRIVATE_ROUTES = {
     "offline",
 }
 
+_FRONTIER_ROUTES = {
+    "frontier",
+    "reasoning",
+    "specialist",
+}
+
 _EXPERT_ROUTES = {
     "expert",
     "paid",
     "openai",
 }
+
+_BUILTIN_PROVIDER_NAMES = frozenset(
+    (*_FREE_PROVIDER_NAMES, *FRONTIER_PROVIDER_NAMES, "openai", "openai_compatible")
+)
 
 _CONVERSATION_PURPOSES = {
     "conversation",
@@ -176,6 +187,20 @@ class LLMRouter:
             from .providers.llama_cpp import LlamaCppProvider
 
             return LlamaCppProvider()
+
+        preset = get_provider_preset(name)
+        if preset is not None:
+            from .providers.openai_compatible import OpenAICompatibleProvider
+
+            return OpenAICompatibleProvider(
+                provider_name=name,
+                preset=preset,
+            )
+
+        if name == "openai_compatible":
+            from .providers.openai_compatible import OpenAICompatibleProvider
+
+            return OpenAICompatibleProvider()
 
         if name == "openai":
             from .providers.openai import OpenAIProvider
@@ -361,7 +386,7 @@ class LLMRouter:
                     "Paid OpenAI cannot be enabled as a sticky session override; "
                     "use explicit expert authorization for an individual task."
                 )
-            if normalized_provider not in {"groq", "gemini", "openrouter", "ollama", "llama_cpp"}:
+            if normalized_provider not in _FREE_PROVIDER_NAMES:
                 raise ValueError(f"Unsupported session provider override: {normalized_provider}")
 
         self._session_provider_override = normalized_provider
@@ -463,6 +488,29 @@ class LLMRouter:
         return order
 
 
+    def _frontier_provider_order(self) -> list[str]:
+        """Return Mary's explicitly configured frontier/specialist provider order."""
+
+        configured = list(
+            getattr(
+                self.config.llm,
+                "frontier_provider_order",
+                [*FRONTIER_PROVIDER_NAMES, "openai"],
+            )
+        )
+        allowed = frozenset((*FRONTIER_PROVIDER_NAMES, "openai", "openrouter", "openai_compatible"))
+        order: list[str] = []
+        for item in configured:
+            name = str(item).lower().strip()
+            if name in allowed and name not in order:
+                order.append(name)
+        return order
+
+    def frontier_provider_order(self) -> list[str]:
+        """Return the configured opt-in frontier provider order."""
+
+        return self._frontier_provider_order()
+
     def _conversation_provider_order(self) -> list[str]:
         """Return Mary's configured free-provider order for character conversation.
 
@@ -508,6 +556,9 @@ class LLMRouter:
         if route_name in _PRIVATE_ROUTES:
             return ["ollama"]
 
+        if route_name in _FRONTIER_ROUTES:
+            return self._frontier_provider_order()
+
         if route_name in _EXPERT_ROUTES:
             expert_provider = str(
                 getattr(
@@ -534,19 +585,12 @@ class LLMRouter:
         purpose_name = str(purpose or "").lower().strip()
         if (
             purpose_name in _CONVERSATION_PURPOSES
-            and primary in {"groq", "gemini", "openrouter", "ollama", "llama_cpp", "openai"}
+            and primary in _BUILTIN_PROVIDER_NAMES
         ):
             return self._conversation_provider_order()
         if (
             strategy == "free_first"
-            and primary in {
-                "groq",
-                "gemini",
-                "openrouter",
-                "ollama",
-                "llama_cpp",
-                "openai",
-            }
+            and primary in _BUILTIN_PROVIDER_NAMES
         ):
             return self._free_provider_order()
 
