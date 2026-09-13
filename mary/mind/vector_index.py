@@ -3,6 +3,11 @@
 The index is derived cache state. It never owns memory or decides what is true.
 Embedding identity is stored beside every vector so vectors from incompatible
 model/runtime spaces are never compared silently.
+
+When the optional ``sqlite-vec`` package is installed, the index can maintain a
+native vec0 sidecar for fast exact KNN search. The canonical SQLite rows and the
+pure-Python cosine path remain the reference/fallback implementation. Native
+acceleration is therefore a performance choice, never a memory dependency.
 """
 from __future__ import annotations
 
@@ -10,6 +15,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import sqlite3
 from threading import RLock
@@ -56,17 +62,30 @@ def cosine_similarity(a: list[float], b: list[float], *, b_norm: float | None = 
 
 class SemanticVectorIndex:
     SCHEMA_VERSION = 2
+    BACKENDS = {"auto", "python", "sqlite_vec"}
 
-    def __init__(self, path: str | Path | None = None, *, max_scan: int = 5000) -> None:
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        max_scan: int = 5000,
+        backend: str | None = None,
+    ) -> None:
         self.path = Path(path).expanduser().resolve() if path else None
         self.max_scan = max(100, min(100_000, int(max_scan)))
+        requested = str(backend or os.getenv("MARY_VECTOR_BACKEND", "auto") or "auto").strip().lower()
+        self.backend_requested = requested if requested in self.BACKENDS else "auto"
+        self._backend_active = "python"
+        self._backend_error: str | None = None
+        self._sqlite_vec: Any | None = None
         self._lock = RLock()
         self._connection = self._connect()
         self._initialize()
+        self._configure_optional_backend()
 
     @classmethod
-    def in_memory(cls) -> "SemanticVectorIndex":
-        return cls(None)
+    def in_memory(cls, *, backend: str | None = None) -> "SemanticVectorIndex":
+        return cls(None, backend=backend)
 
     def _connect(self) -> sqlite3.Connection:
         if self.path is None:
@@ -116,6 +135,21 @@ class SemanticVectorIndex:
         )
         self._connection.commit()
 
+    def _configure_optional_backend(self) -> None:
+        if self.backend_requested == "python":
+            return
+        try:
+            import sqlite_vec  # type: ignore[import-not-found]
+
+            sqlite_vec.load(self._connection)
+            self._sqlite_vec = sqlite_vec
+            self._backend_active = "sqlite_vec"
+            self._backend_error = None
+        except Exception as exc:  # noqa: BLE001 - optional accelerator
+            self._sqlite_vec = None
+            self._backend_active = "python"
+            self._backend_error = f"{type(exc).__name__}: {exc}"
+
     @staticmethod
     def _identity_meta_key(model: str) -> str:
         return f"embedding_identity:{str(model)}"
@@ -135,6 +169,51 @@ class SemanticVectorIndex:
             value = self._meta_get(self._identity_meta_key(model))
             return value or None
 
+    @staticmethod
+    def _native_table_name(model: str, embedding_identity: str, dimensions: int) -> str:
+        key = f"{model}\0{embedding_identity}\0{int(dimensions)}".encode("utf-8")
+        digest = hashlib.sha256(key).hexdigest()[:20]
+        return f"reservoir_vec_{digest}"
+
+    def _native_table_exists(self, table: str) -> bool:
+        row = self._connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (table,)
+        ).fetchone()
+        return row is not None
+
+    def _ensure_native_table(self, *, model: str, embedding_identity: str, dimensions: int) -> str | None:
+        if self._backend_active != "sqlite_vec" or self._sqlite_vec is None:
+            return None
+        table = self._native_table_name(model, embedding_identity, dimensions)
+        if self._native_table_exists(table):
+            return table
+        try:
+            self._connection.execute(
+                f"CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(embedding float[{int(dimensions)}] distance_metric=cosine)"
+            )
+            return table
+        except Exception as exc:  # noqa: BLE001 - accelerator fallback
+            self._backend_error = f"native_table:{type(exc).__name__}: {exc}"
+            return None
+
+    def _native_delete_rowids(self, rows: list[sqlite3.Row]) -> None:
+        if self._backend_active != "sqlite_vec":
+            return
+        grouped: dict[tuple[str, str, int], list[int]] = {}
+        for row in rows:
+            key = (str(row["model"]), str(row["embedding_identity"] or ""), int(row["dimensions"]))
+            grouped.setdefault(key, []).append(int(row["rowid"]))
+        for (model, identity, dimensions), rowids in grouped.items():
+            table = self._native_table_name(model, identity, dimensions)
+            if not self._native_table_exists(table):
+                continue
+            try:
+                self._connection.executemany(
+                    f"DELETE FROM {table} WHERE rowid=?", [(rowid,) for rowid in rowids]
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._backend_error = f"native_delete:{type(exc).__name__}: {exc}"
+
     def register_identity(self, *, model: str, embedding_identity: str) -> dict[str, Any]:
         """Register the current embedding space and invalidate incompatible rows.
 
@@ -150,11 +229,15 @@ class SemanticVectorIndex:
             changed = previous != identity
             invalidated = 0
             if changed:
-                row = self._connection.execute(
-                    "SELECT COUNT(*) FROM reservoir_vectors WHERE model=? AND embedding_identity<>?",
+                stale_rows = self._connection.execute(
+                    """
+                    SELECT rowid,model,embedding_identity,dimensions
+                    FROM reservoir_vectors WHERE model=? AND embedding_identity<>?
+                    """,
                     (model_value, identity),
-                ).fetchone()
-                invalidated = int(row[0])
+                ).fetchall()
+                invalidated = len(stale_rows)
+                self._native_delete_rowids(list(stale_rows))
                 self._connection.execute(
                     "DELETE FROM reservoir_vectors WHERE model=? AND embedding_identity<>?",
                     (model_value, identity),
@@ -177,6 +260,16 @@ class SemanticVectorIndex:
 
     def clear(self, *, model: str | None = None, embedding_identity: str | None = None) -> None:
         with self._lock, self._connection:
+            sql = "SELECT rowid,model,embedding_identity,dimensions FROM reservoir_vectors"
+            params: tuple[Any, ...] = ()
+            if model and embedding_identity:
+                sql += " WHERE model=? AND embedding_identity=?"
+                params = (str(model), str(embedding_identity))
+            elif model:
+                sql += " WHERE model=?"
+                params = (str(model),)
+            rows = list(self._connection.execute(sql, params).fetchall())
+            self._native_delete_rowids(rows)
             if model and embedding_identity:
                 self._connection.execute(
                     "DELETE FROM reservoir_vectors WHERE model=? AND embedding_identity=?",
@@ -202,6 +295,7 @@ class SemanticVectorIndex:
         norm = _norm(values)
         if norm <= 0.0:
             return False
+        model_value = str(model)
         identity = str(embedding_identity or "")
         with self._lock, self._connection:
             self._connection.execute(
@@ -218,11 +312,28 @@ class SemanticVectorIndex:
                     embedding_identity=excluded.embedding_identity
                 """,
                 (
-                    str(record_id), str(model), len(values),
+                    str(record_id), model_value, len(values),
                     json.dumps(values, separators=(",", ":")), norm,
                     content_hash(content), time(), identity,
                 ),
             )
+            row = self._connection.execute(
+                "SELECT rowid FROM reservoir_vectors WHERE record_id=? AND model=?",
+                (str(record_id), model_value),
+            ).fetchone()
+            if row is not None and self._backend_active == "sqlite_vec" and self._sqlite_vec is not None:
+                table = self._ensure_native_table(
+                    model=model_value, embedding_identity=identity, dimensions=len(values)
+                )
+                if table is not None:
+                    try:
+                        packed = self._sqlite_vec.serialize_float32(values)
+                        self._connection.execute(
+                            f"INSERT OR REPLACE INTO {table}(rowid,embedding) VALUES(?,?)",
+                            (int(row[0]), packed),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        self._backend_error = f"native_upsert:{type(exc).__name__}: {exc}"
         return True
 
     def remove_missing(
@@ -236,62 +347,109 @@ class SemanticVectorIndex:
         with self._lock:
             if embedding_identity is None:
                 rows = self._connection.execute(
-                    "SELECT record_id FROM reservoir_vectors WHERE model=?", (str(model),)
+                    "SELECT rowid,record_id,model,embedding_identity,dimensions FROM reservoir_vectors WHERE model=?",
+                    (str(model),),
                 ).fetchall()
             else:
                 rows = self._connection.execute(
-                    "SELECT record_id FROM reservoir_vectors WHERE model=? AND embedding_identity=?",
+                    """
+                    SELECT rowid,record_id,model,embedding_identity,dimensions
+                    FROM reservoir_vectors WHERE model=? AND embedding_identity=?
+                    """,
                     (str(model), str(embedding_identity)),
                 ).fetchall()
-            stale = [str(row[0]) for row in rows if str(row[0]) not in allowed]
-            if not stale:
+            stale_rows = [row for row in rows if str(row["record_id"]) not in allowed]
+            if not stale_rows:
                 return 0
             with self._connection:
-                if embedding_identity is None:
-                    self._connection.executemany(
-                        "DELETE FROM reservoir_vectors WHERE record_id=? AND model=?",
-                        [(rid, str(model)) for rid in stale],
-                    )
-                else:
-                    self._connection.executemany(
-                        "DELETE FROM reservoir_vectors WHERE record_id=? AND model=? AND embedding_identity=?",
-                        [(rid, str(model), str(embedding_identity)) for rid in stale],
-                    )
-            return len(stale)
+                self._native_delete_rowids(stale_rows)
+                self._connection.executemany(
+                    "DELETE FROM reservoir_vectors WHERE rowid=?",
+                    [(int(row["rowid"]),) for row in stale_rows],
+                )
+            return len(stale_rows)
 
-    def search(
+    def _native_search(
         self,
-        query_vector: list[float],
+        query: list[float],
         *,
         model: str,
-        limit: int = 8,
-        embedding_identity: str | None = None,
+        embedding_identity: str,
+        limit: int,
+    ) -> list[VectorHit] | None:
+        if self._backend_active != "sqlite_vec" or self._sqlite_vec is None:
+            return None
+        table = self._native_table_name(model, embedding_identity, len(query))
+        if not self._native_table_exists(table):
+            return None
+        try:
+            packed = self._sqlite_vec.serialize_float32(query)
+            native_rows = self._connection.execute(
+                f"SELECT rowid,distance FROM {table} WHERE embedding MATCH ? AND k=? ORDER BY distance",
+                (packed, int(limit)),
+            ).fetchall()
+            if not native_rows:
+                return None
+            hits: list[VectorHit] = []
+            for native in native_rows:
+                row = self._connection.execute(
+                    """
+                    SELECT record_id,model,content_hash,embedding_identity,dimensions
+                    FROM reservoir_vectors WHERE rowid=?
+                    """,
+                    (int(native["rowid"]),),
+                ).fetchone()
+                if row is None:
+                    continue
+                if (
+                    str(row["model"]) != str(model)
+                    or str(row["embedding_identity"] or "") != str(embedding_identity)
+                    or int(row["dimensions"]) != len(query)
+                ):
+                    continue
+                score = max(-1.0, min(1.0, 1.0 - float(native["distance"])))
+                hits.append(
+                    VectorHit(
+                        record_id=str(row["record_id"]),
+                        score=score,
+                        model=str(row["model"]),
+                        content_hash=str(row["content_hash"]),
+                        embedding_identity=str(row["embedding_identity"] or ""),
+                    )
+                )
+            return hits[:limit] if hits else None
+        except Exception as exc:  # noqa: BLE001 - fail open to reference search
+            self._backend_error = f"native_search:{type(exc).__name__}: {exc}"
+            return None
+
+    def _python_search(
+        self,
+        query: list[float],
+        *,
+        model: str,
+        limit: int,
+        embedding_identity: str | None,
     ) -> list[VectorHit]:
-        query = [float(value) for value in query_vector]
-        if not query:
-            return []
-        limit = max(1, min(50, int(limit)))
-        with self._lock:
-            if embedding_identity is None:
-                rows = self._connection.execute(
-                    """
-                    SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash,embedding_identity
-                    FROM reservoir_vectors
-                    WHERE model=? AND dimensions=?
-                    ORDER BY updated_at DESC LIMIT ?
-                    """,
-                    (str(model), len(query), self.max_scan),
-                ).fetchall()
-            else:
-                rows = self._connection.execute(
-                    """
-                    SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash,embedding_identity
-                    FROM reservoir_vectors
-                    WHERE model=? AND dimensions=? AND embedding_identity=?
-                    ORDER BY updated_at DESC LIMIT ?
-                    """,
-                    (str(model), len(query), str(embedding_identity), self.max_scan),
-                ).fetchall()
+        if embedding_identity is None:
+            rows = self._connection.execute(
+                """
+                SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash,embedding_identity
+                FROM reservoir_vectors
+                WHERE model=? AND dimensions=?
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (str(model), len(query), self.max_scan),
+            ).fetchall()
+        else:
+            rows = self._connection.execute(
+                """
+                SELECT record_id,model,dimensions,vector_json,vector_norm,content_hash,embedding_identity
+                FROM reservoir_vectors
+                WHERE model=? AND dimensions=? AND embedding_identity=?
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (str(model), len(query), str(embedding_identity), self.max_scan),
+            ).fetchall()
         hits: list[VectorHit] = []
         for row in rows:
             try:
@@ -311,6 +469,42 @@ class SemanticVectorIndex:
         hits.sort(key=lambda item: item.score, reverse=True)
         return hits[:limit]
 
+    def search(
+        self,
+        query_vector: list[float],
+        *,
+        model: str,
+        limit: int = 8,
+        embedding_identity: str | None = None,
+    ) -> list[VectorHit]:
+        query = [float(value) for value in query_vector]
+        if not query:
+            return []
+        limit = max(1, min(50, int(limit)))
+        with self._lock:
+            if embedding_identity is not None:
+                registered = self._meta_get(self._identity_meta_key(str(model)))
+                # A registered model space is authoritative for compatibility.
+                # Direct identity-scoped index use without prior registration
+                # remains supported; SQL still restricts candidates to the
+                # supplied identity, so vectors never cross spaces.
+                if registered is not None and registered != str(embedding_identity):
+                    return []
+                native = self._native_search(
+                    query,
+                    model=str(model),
+                    embedding_identity=str(embedding_identity),
+                    limit=limit,
+                )
+                if native is not None:
+                    return native
+            return self._python_search(
+                query,
+                model=str(model),
+                limit=limit,
+                embedding_identity=embedding_identity,
+            )
+
     def count(self, *, model: str | None = None, embedding_identity: str | None = None) -> int:
         with self._lock:
             if model and embedding_identity:
@@ -329,6 +523,13 @@ class SemanticVectorIndex:
     def status(self, *, model: str | None = None, embedding_identity: str | None = None) -> dict[str, Any]:
         with self._lock:
             size = int(self.path.stat().st_size) if self.path is not None and self.path.exists() else 0
+            sqlite_vec_version = None
+            if self._backend_active == "sqlite_vec":
+                try:
+                    row = self._connection.execute("SELECT vec_version()").fetchone()
+                    sqlite_vec_version = str(row[0]) if row else None
+                except Exception:
+                    pass
             return {
                 "enabled": True,
                 "persistent": self.path is not None,
@@ -340,5 +541,12 @@ class SemanticVectorIndex:
                 "max_scan": self.max_scan,
                 "size_bytes": size,
                 "schema_version": self.SCHEMA_VERSION,
+                "backend": {
+                    "requested": self.backend_requested,
+                    "active": self._backend_active,
+                    "sqlite_vec_version": sqlite_vec_version,
+                    "last_error": self._backend_error,
+                    "fallback": "python_cosine",
+                },
                 "authority": "derived retrieval cache only",
             }

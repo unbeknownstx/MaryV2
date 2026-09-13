@@ -1,0 +1,5 @@
+# Optional native acceleration for Mary's derived semantic vector cache.
+# Not required for Mary Core, startup, memory authority, or lexical retrieval.
+# Install explicitly on nodes where faster large-index semantic search is useful.
+# sqlite-vec is pre-v1; keep the supported range bounded and retain Python fallback.
+sqlite-vec>=0.1.6,<0.2
