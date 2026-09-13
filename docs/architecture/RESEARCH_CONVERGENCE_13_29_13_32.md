@@ -6,6 +6,8 @@ research into bounded MaryV2 architecture. It deliberately does **not** install
 another Mary, another memory authority, a self-modifying production loop, or a
 framework-owned agent runtime.
 
+The follow-on execution layer is now implemented in [13.33 bounded cognitive execution](COGNITIVE_EXECUTION_13_33.md). This document remains authoritative for the 13.29–13.32 policy/research boundaries; 13.33 operationalizes those policies without changing their authority limits.
+
 The governing invariant remains:
 
 > **Mary is one canonical computational character. Models, reasoning strategies,
