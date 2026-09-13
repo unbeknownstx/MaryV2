@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from mary.cognition.cognitive_character import CognitiveCharacterRuntime
+from mary.core.mary import Mary
 
 
 def _plan(text: str, *, communication: dict | None = None, emotion: str = "neutral"):
@@ -84,3 +85,22 @@ def test_runtime_does_not_choose_or_name_a_provider():
         "escalation_allowed",
         "embodiment_intents",
     }
+
+
+def test_runtime_consumes_real_turn_mind_state_without_new_state_owner():
+    mary = Mary()
+    text = "Mary, analyze the architecture and tell me what we should build next."
+    mind = mary.turn_mind.build(
+        input_text=text,
+        intent=mary.cognition.detect_intent(text),
+        relevant_memories=[],
+        recent_conversation=[],
+    )
+
+    plan = CognitiveCharacterRuntime().plan_from_turn_state(mind)
+
+    assert plan.cognitive_mode == "deliberate"
+    assert plan.reasoning_depth == "deep"
+    assert plan.embodiment_intents
+    assert mind.relationship
+    assert mind.character_expression
