@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from mary.core.config import Config
 from mary.llm.interface import LLMMessage
 from mary.llm.output_quality import inspect_output_quality
+from mary.llm.provider_catalog import FRONTIER_PROVIDER_NAMES
 from mary.llm.router import LLMRouter
 
 
@@ -26,6 +27,17 @@ _SECRET_ENV_NAMES = (
     "GOOGLE_API_KEY",
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ZAI_API_KEY",
+    "QWEN_API_KEY",
+    "DASHSCOPE_API_KEY",
+    "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
+    "MINIMAX_API_KEY",
+    "CEREBRAS_API_KEY",
+    "TOGETHER_API_KEY",
+    "FIREWORKS_API_KEY",
+    "MARY_OPENAI_COMPAT_API_KEY",
 )
 
 _SECRET_SHAPES = (
@@ -77,7 +89,7 @@ def _live_probe(router: LLMRouter, name: str) -> None:
         provider = _provider_for_live_probe(router, name)
     except Exception as exc:
         print(
-            f"{name:10} LIVE FAIL       create "
+            f"{name:16} LIVE FAIL       create "
             f"{type(exc).__name__} status={_exception_status(exc)} "
             f"{_sanitize(exc)}"
         )
@@ -87,14 +99,14 @@ def _live_probe(router: LLMRouter, name: str) -> None:
         available = bool(provider.is_available())
     except Exception as exc:
         print(
-            f"{name:10} LIVE FAIL       availability "
+            f"{name:16} LIVE FAIL       availability "
             f"{type(exc).__name__} status={_exception_status(exc)} "
             f"{_sanitize(exc)}"
         )
         return
 
     if not available:
-        print(f"{name:10} LIVE SKIP       not configured")
+        print(f"{name:16} LIVE SKIP       not configured")
         return
 
     messages = [
@@ -116,7 +128,7 @@ def _live_probe(router: LLMRouter, name: str) -> None:
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         print(
-            f"{name:10} LIVE FAIL       {elapsed_ms:8.0f} ms  "
+            f"{name:16} LIVE FAIL       {elapsed_ms:8.0f} ms  "
             f"{provider.model_name()}  {type(exc).__name__} "
             f"status={_exception_status(exc)}  {_sanitize(exc)}"
         )
@@ -126,13 +138,13 @@ def _live_probe(router: LLMRouter, name: str) -> None:
     issue = inspect_output_quality(response.content, messages)
     if issue is not None:
         print(
-            f"{name:10} LIVE INVALID    {elapsed_ms:8.0f} ms  "
+            f"{name:16} LIVE INVALID    {elapsed_ms:8.0f} ms  "
             f"{response.model}  {issue.code}: {issue.description}"
         )
         return
 
     print(
-        f"{name:10} LIVE OK         {elapsed_ms:8.0f} ms  "
+        f"{name:16} LIVE OK         {elapsed_ms:8.0f} ms  "
         f"{response.model}"
     )
 
@@ -149,6 +161,18 @@ def main() -> None:
             "this can consume provider quota"
         ),
     )
+    parser.add_argument(
+        "--live-provider",
+        action="append",
+        choices=[
+            "groq", "gemini", "openrouter", "ollama", "llama_cpp",
+            *FRONTIER_PROVIDER_NAMES, "openai", "openai_compatible",
+        ],
+        help=(
+            "explicitly probe one provider; repeat to probe more. Frontier or "
+            "paid providers may consume paid API quota."
+        ),
+    )
     args = parser.parse_args()
 
     load_dotenv()
@@ -158,16 +182,18 @@ def main() -> None:
 
     task_order = router._provider_order(None)
     conversation_order = router.conversation_provider_order()
+    frontier_order = router.frontier_provider_order()
 
     print("MARY V2 LLM ROUTES")
     print("=" * 72)
     print(f"Strategy: {router.routing_strategy()}")
     print("Task:     " + " -> ".join(task_order))
     print("Chat:     " + " -> ".join(conversation_order))
+    print("Frontier: " + " -> ".join(frontier_order))
     print()
 
     names: list[str] = []
-    for name in task_order + conversation_order:
+    for name in task_order + conversation_order + frontier_order:
         if name not in names:
             names.append(name)
 
@@ -181,7 +207,7 @@ def main() -> None:
             model = f"unavailable ({type(exc).__name__})"
 
         status = "READY" if available else "NOT CONFIGURED"
-        print(f"{name:10} {status:15} {model}")
+        print(f"{name:16} {status:15} {model}")
 
         if name == "groq":
             try:
@@ -193,7 +219,7 @@ def main() -> None:
             except Exception as exc:
                 chat_model = f"unavailable ({type(exc).__name__})"
             if chat_model != model:
-                print(f"{'':10} {'CHAT MODEL':15} {chat_model}")
+                print(f"{'':16} {'CHAT MODEL':15} {chat_model}")
 
     print()
     print("Private/offline route: ollama only")
@@ -213,18 +239,27 @@ def main() -> None:
     )
     print("Paid OpenAI route: excluded from free_first")
 
-    if not args.live:
+    if not args.live and not args.live_provider:
         print()
         print("Configuration check only; no LLM requests were made.")
-        print("Use --live for sanitized provider-by-provider network diagnostics.")
+        print("Use --live for free-cloud diagnostics or --live-provider NAME for an explicit route probe.")
         return
 
-    print()
-    print("LIVE FREE-PROVIDER CHECK")
-    print("=" * 72)
-    print("One small generation request is made per configured free cloud provider.")
-    for name in ("groq", "gemini", "openrouter"):
-        _live_probe(router, name)
+    if args.live:
+        print()
+        print("LIVE FREE-PROVIDER CHECK")
+        print("=" * 72)
+        print("One small generation request is made per configured free cloud provider.")
+        for name in ("groq", "gemini", "openrouter"):
+            _live_probe(router, name)
+
+    if args.live_provider:
+        print()
+        print("LIVE EXPLICIT-PROVIDER CHECK")
+        print("=" * 72)
+        print("Explicit frontier/paid probes may consume paid provider quota.")
+        for name in dict.fromkeys(args.live_provider):
+            _live_probe(router, name)
 
 
 if __name__ == "__main__":
