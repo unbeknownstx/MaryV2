@@ -16,10 +16,11 @@ from mary.orchestration.workspace import TaskWorkspaceManager
 
 
 class Provider(LLMInterface):
-    def __init__(self, name): self.name=name; self.calls=0; self.last_messages=[]
+    def __init__(self, name): self.name=name; self.calls=0; self.last_messages=[]; self.last_max_tokens=None
     def generate(self, messages, temperature=0.7, max_tokens=2048):
         self.calls += 1
         self.last_messages = list(messages)
+        self.last_max_tokens = max_tokens
         return LLMResponse(content="useful result", provider=self.name, model="fake")
     def is_available(self): return True
     def provider_name(self): return self.name
@@ -35,11 +36,11 @@ class Provider(LLMInterface):
                 cost_class=GenerationCost.ZERO_LOCAL.value,
                 deadline_enforced=True,
             )
-        if self.name == "openai":
+        if self.name in {"openai", "deepseek", "zai"}:
             return ProviderRoute(
                 cost_class=GenerationCost.PAID_LOW.value,
                 deadline_enforced=True,
-                fallback_eligible=False,
+                fallback_eligible=(self.name != "openai"),
             )
         return ProviderRoute(deadline_enforced=True)
     def generate_constrained(self, request, *, timeout_seconds=None):
@@ -52,8 +53,9 @@ class Provider(LLMInterface):
 
 def _system():
     config = Config()
+    config.llm.frontier_provider_order = ["deepseek", "zai"]
     router = LLMRouter(config)
-    for name in ("groq", "gemini", "openrouter", "ollama", "openai"):
+    for name in ("groq", "gemini", "openrouter", "ollama", "openai", "deepseek", "zai"):
         router.register_provider(name, Provider(name))
     workspace = TaskWorkspaceManager(limits=config.governance)
     expert = ExpertConsultant(router, workspace)
@@ -137,6 +139,31 @@ def test_forced_expert_route_is_blocked_when_paid_allowed_is_false():
     assert result.status == ExecutionStatus.BLOCKED.value
     assert router.providers["openai"].calls == 0
     assert router.resource_governor.paid_calls == 0
+
+
+def test_authorized_frontier_expert_executes_through_frontier_fabric():
+    planner, executor, workspace, router = _system()
+    task = workspace.create_task(
+        "Use a frontier model team for difficult reasoning",
+        metadata={
+            "needs_expert": True,
+            "allow_paid": True,
+            "frontier": True,
+        },
+    )
+
+    plan = planner.plan(task.task_id)
+    result = executor.execute(plan)
+
+    assert result.success
+    assert plan.provider_route == "frontier"
+    assert result.source == "deepseek"
+    assert result.metadata["provider_route"] == "frontier"
+    assert router.providers["deepseek"].calls == 1
+    assert router.providers["deepseek"].last_max_tokens == 8192
+    assert router.providers["openai"].calls == 0
+    assert router.resource_governor.paid_calls == 1
+    assert router.last_generation_route["route"] == "frontier"
 
 
 def test_generation_plan_constraints_reach_router_request():
