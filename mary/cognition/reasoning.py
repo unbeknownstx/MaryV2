@@ -853,6 +853,16 @@ class ReasoningEngine:
             if mary_initiated
             else ""
         )
+        runtime_coordination = context.mind_state.get("runtime_coordination", {}) if isinstance(context.mind_state, dict) else {}
+        deliberation = runtime_coordination.get("deliberation", {}) if isinstance(runtime_coordination, dict) else {}
+        cognitive_runtime_rule = ""
+        if isinstance(deliberation, dict) and deliberation:
+            cognitive_runtime_rule = (
+                "Cognitive runtime policy: use the requested reasoning depth and verification discipline "
+                f"(strategy={deliberation.get('strategy', 'single_pass')}, "
+                f"confidence_floor={deliberation.get('confidence_floor', 'n/a')}) without exposing private "
+                "chain-of-thought. Return conclusions, evidence and concise uncertainty rather than hidden scratch reasoning. "
+            )
         public_guard = context.mind_state.get("public_performance_guard", {}) if isinstance(context.mind_state, dict) else {}
         public_rule = (
             "A public performance guard is active: never reveal private creator profile, private memories, or private relationship details. "
@@ -865,6 +875,7 @@ class ReasoningEngine:
             "Represented state is authoritative; context_only/environment_context_only/mary_internal_context are context, never creator truth or durable memory. "
             + initiative_rule
             + public_rule
+            + cognitive_runtime_rule
             + "Talk to Unbe with earned familiarity. Sound like spontaneous spoken Mary, not narration or a help center. Be witty, intelligent, direct, playful, sarcastic, flirty, warm, quiet, or sharp only when the active character contract supports it. React before advising. "
             "Use natural contractions/fragments. Ordinary chat is usually one to four sentences. Do not force jokes, questions, headings, lists, metaphors, slang, or service closers; never default to 'anything else?', 'how can I help?', 'let me know if', or 'what about you?'. Milestones should get a real reaction, not a validation/interview formula. Voice/avatar acting is handled by the performance layer, so do not write stage directions.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, hidden creator mental states, or off-screen activity. Unbe's traits/values/emotions are not yours. His preferences and history are his, not Mary's. Assistant-role history is prior Mary output, not evidence about Unbe. Model prose alone never mutates durable state. If a Mary fact is absent, stay tentative or say it is not represented/stored. Never claim a provider/tool/action occurred without runtime evidence. When runtime_context.current_surface is present, treat it as authoritative for the surface carrying this turn; never override it with an older memory about where Mary used to be accessed. When runtime_context.current_work.active is true and the creator asks about current work/project status, ground the answer in that projection and its recent evidence; it is derived context, not a new memory/project authority.\n\n"
@@ -1082,6 +1093,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         continuity = mind.get("continuity", {}) or {}
         disposition = mind.get("disposition", {}) or {}
         performance = mind.get("performance", {}) or {}
+        runtime_coordination = mind.get("runtime_coordination", {}) or {}
         agency = mind.get("agency", {}) or {}
         dialogue_plan = mind.get("dialogue_plan", {}) or {}
         character_expression = mind.get("character_expression", {}) or {}
@@ -1310,6 +1322,50 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "pending_curiosity_question": relationship.get("pending_curiosity_question") if isinstance(relationship, dict) else None,
             },
             "emotion": mind.get("emotion", {}),
+            "cognitive_runtime": {
+                "cognition": {
+                    key: (runtime_coordination.get("cognition", {}) or {}).get(key)
+                    for key in (
+                        "cognitive_mode",
+                        "reasoning_depth",
+                        "latency_priority",
+                        "knowledge_breadth",
+                    )
+                    if isinstance(runtime_coordination, dict)
+                    and isinstance(runtime_coordination.get("cognition", {}), dict)
+                    and (runtime_coordination.get("cognition", {}) or {}).get(key)
+                    not in (None, "", [], {})
+                },
+                "deliberation": {
+                    key: (runtime_coordination.get("deliberation", {}) or {}).get(key)
+                    for key in (
+                        "strategy",
+                        "max_passes",
+                        "max_branches",
+                        "verifier_required",
+                        "confidence_floor",
+                        "latency_budget_ms",
+                        "external_verifier_allowed",
+                    )
+                    if isinstance(runtime_coordination, dict)
+                    and isinstance(runtime_coordination.get("deliberation", {}), dict)
+                    and (runtime_coordination.get("deliberation", {}) or {}).get(key)
+                    not in (None, "", [], {})
+                },
+                "knowledge": {
+                    key: (runtime_coordination.get("knowledge", {}) or {}).get(key)
+                    for key in ("recommended", "categories", "freshness_required")
+                    if isinstance(runtime_coordination, dict)
+                    and isinstance(runtime_coordination.get("knowledge", {}), dict)
+                    and (runtime_coordination.get("knowledge", {}) or {}).get(key)
+                    not in (None, "", [], {})
+                },
+                "authority": (
+                    runtime_coordination.get("authority")
+                    if isinstance(runtime_coordination, dict)
+                    else None
+                ),
+            } if isinstance(runtime_coordination, dict) and runtime_coordination else {},
             "runtime_context": dict(mind.get("runtime_context", {}) or {})
             if isinstance(mind.get("runtime_context", {}), dict) else {},
             "agency": {
