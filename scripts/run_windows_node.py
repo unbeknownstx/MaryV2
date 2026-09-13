@@ -111,9 +111,29 @@ def main(argv: list[str] | None = None) -> int:
     print("Enrollment:       one-time grant or stored local credential")
     print("Press Ctrl+C to stop the node.")
 
+    last_task_signature = ""
     try:
         while not stop.wait(1.0):
-            pass
+            status = agent.status()
+            task = dict(status.get("last_task", {}) or {})
+            signature = repr(sorted(task.items()))
+            if task and signature != last_task_signature:
+                last_task_signature = signature
+                print(
+                    "task: "
+                    f"{task.get('capability', 'unknown')} "
+                    f"status={task.get('status', 'unknown')} "
+                    f"model={task.get('model', '')} "
+                    f"ctx={task.get('num_ctx', '')} "
+                    f"est_prompt_tokens={task.get('estimated_prompt_tokens', '')} "
+                    f"elapsed_ms={task.get('elapsed_ms', '')}"
+                )
+                if task.get("status") == "failed":
+                    print(
+                        "task_error: "
+                        f"{task.get('error_type', 'unknown')} "
+                        f"{status.get('last_error', '')}"
+                    )
     finally:
         agent.stop()
         print("Headless node disconnected.")
