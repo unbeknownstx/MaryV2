@@ -19,13 +19,58 @@ class _FakeRemoteGateway(RemoteMaryGateway):
         self.close_count = 0
 
     def state(self):
-        return {"core": {"service": "mary-core", "architecture": "13.2"}, "mary": {"name": "Mary"}}
+        return {
+            "core": {"ok": True, "service": "mary-core", "architecture": "13.3"},
+            "mary": {
+                "name": "Mary",
+                "memory": {
+                    "episodic": 0,
+                    "semantic": 0,
+                    "working": 0,
+                },
+            },
+            "runtime": {
+                "status": "created",
+                "initialized": False,
+                "running": False,
+            },
+            "creator_lifecycle": {
+                "state": "ACTIVE",
+                "surface_count": 1,
+            },
+            "mind": {
+                "reservoir": {
+                    "persistent": True,
+                    "records": 33,
+                    "fts5": True,
+                },
+            },
+            "performance_hardening": {
+                "deliberation_execution": {"version": "13.33"},
+                "strategy_advisor": {"version": "13.33"},
+            },
+        }
 
     def conversation(self):
         return {"realtime": {"phase": "idle"}}
 
     def dashboard(self):
-        return {}
+        return {
+            "current_work": {
+                "active": True,
+                "project": "MaryV2",
+                "recent": [
+                    {"source": "relationship.shared_work"},
+                    {"source": "relationship.milestone"},
+                ],
+                "sources": [
+                    "relationship.shared_work",
+                    "relationship.milestone",
+                ],
+                "authority": "derived_current_work_projection",
+                "persistence": "projection_only",
+            },
+        }
 
     def workspace(self):
         return {}
@@ -87,3 +132,29 @@ def test_terminal_remote_session_connects_and_disconnects_surface(monkeypatch):
 
     assert gateway.connect_count == 1
     assert gateway.close_count == 1
+
+
+def test_remote_contract_distinguishes_core_service_from_passive_application_runtime():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/contract", None)
+
+    assert rendered is not None
+    assert '"core_available": true' in rendered
+    assert '"deliberation_execution_version": "13.33"' in rendered
+    assert '"strategy_advisor_version": "13.33"' in rendered
+    assert '"status": "created"' in rendered
+    assert "unified Core/service boundary version" in rendered
+
+
+def test_remote_memory_status_reports_continuity_beyond_memorymanager_counts():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/memory-status", None)
+
+    assert rendered is not None
+    assert '"canonical_memory_store"' in rendered
+    assert '"recent_count": 2' in rendered
+    assert '"records": 33' in rendered
+    assert '"persistent": true' in rendered
+    assert "only one continuity owner" in rendered
