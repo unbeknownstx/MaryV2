@@ -220,9 +220,19 @@ class OpenAICompatibleProvider(LLMInterface):
         prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
         completion = int(getattr(usage, "completion_tokens", 0) or 0)
         total = int(getattr(usage, "total_tokens", prompt + completion) or 0)
+        completion_details = getattr(usage, "completion_tokens_details", None)
+        reasoning = int(
+            getattr(completion_details, "reasoning_tokens", 0) or 0
+        )
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        cached = int(
+            getattr(prompt_details, "cached_tokens", 0) or 0
+        )
         return {
             "prompt_tokens": prompt,
             "completion_tokens": completion,
+            "reasoning_tokens": reasoning,
+            "cached_prompt_tokens": cached,
             "total_tokens": total,
         }
 
