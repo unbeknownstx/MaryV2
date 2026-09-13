@@ -141,8 +141,6 @@ class SemanticVectorIndex:
         try:
             import sqlite_vec  # type: ignore[import-not-found]
 
-            # sqlite-vec is optional and pre-v1. Load it on Mary's existing
-            # connection only; failure must never make retrieval unavailable.
             sqlite_vec.load(self._connection)
             self._sqlite_vec = sqlite_vec
             self._backend_active = "sqlite_vec"
@@ -190,9 +188,6 @@ class SemanticVectorIndex:
         if self._native_table_exists(table):
             return table
         try:
-            # table is hash-derived and dimensions is an integer; neither comes
-            # from raw SQL input. One table per embedding space prevents
-            # accidental cross-space comparisons in the native path too.
             self._connection.execute(
                 f"CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(embedding float[{int(dimensions)}] distance_metric=cosine)"
             )
@@ -338,9 +333,6 @@ class SemanticVectorIndex:
                             (int(row[0]), packed),
                         )
                     except Exception as exc:  # noqa: BLE001
-                        # Base rows are still complete and authoritative for the
-                        # derived index. A native mirror failure simply forces
-                        # Python search until the next successful rebuild.
                         self._backend_error = f"native_upsert:{type(exc).__name__}: {exc}"
         return True
 
@@ -397,8 +389,6 @@ class SemanticVectorIndex:
                 (packed, int(limit)),
             ).fetchall()
             if not native_rows:
-                # An empty/incomplete optional sidecar must never hide valid
-                # base vectors. Let the reference path decide instead.
                 return None
             hits: list[VectorHit] = []
             for native in native_rows:
@@ -494,9 +484,11 @@ class SemanticVectorIndex:
         with self._lock:
             if embedding_identity is not None:
                 registered = self._meta_get(self._identity_meta_key(str(model)))
-                if registered != str(embedding_identity):
-                    # Fail closed before either backend can compare vectors from
-                    # an unknown space.
+                # A registered model space is authoritative for compatibility.
+                # Direct identity-scoped index use without prior registration
+                # remains supported; SQL still restricts candidates to the
+                # supplied identity, so vectors never cross spaces.
+                if registered is not None and registered != str(embedding_identity):
                     return []
                 native = self._native_search(
                     query,
