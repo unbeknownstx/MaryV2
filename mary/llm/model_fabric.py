@@ -219,6 +219,13 @@ def build_model_execution_fabric(
             for name, values in TASK_LANES.items()
         },
         "local_ollama_suitability": local_suitability,
+        "operating_policy": {
+            "ordinary_budget": "zero_cost_and_free_only",
+            "local_preference": "prefer_when_lane_suitable",
+            "free_cloud_fallback_order": ["groq", "gemini", "openrouter"],
+            "paid_frontier": "explicit_only",
+            "cohesion_priority": "successful_end_to_end_behavior_over_provider_novelty",
+        },
         "promotion_policy": {
             "reachable_is_not_preferred": True,
             "benchmark_before_promotion": True,

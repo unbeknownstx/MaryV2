@@ -153,3 +153,41 @@ detect
 ~~~
 
 No model, benchmark or cache becomes identity or memory authority.
+
+
+## Current operating-cost policy
+
+Mary's ordinary cognition is intentionally kept inside the **zero-cost/free**
+boundary while the system is being integrated:
+
+1. prefer a local engine only after lane-specific evidence says it is suitable;
+2. otherwise use the configured free-cloud path: Groq -> Gemini -> OpenRouter;
+3. keep local engines available as fallback/private/background candidates;
+4. keep DeepSeek, GLM, Qwen Cloud, Kimi, MiniMax, Cerebras, Together, Fireworks
+   and OpenAI out of ordinary routing unless explicitly authorized for a task.
+
+This is a cohesion policy, not a claim that free providers are always the best
+models. The immediate goal is one dependable Mary whose Core, memory,
+relationship context, routing, nodes, voice and surfaces agree about what is
+happening.
+
+Voice has its own budget boundary. ElevenLabs may be intentionally used and
+paid for during voice/stream validation without changing the zero-cost/free LLM
+policy.
+
+### Stabilization gate
+
+Before adding or promoting another general-purpose model/provider, validate the
+current stack end to end:
+
+- canonical Core continuity across restart;
+- free-route conversation fallback;
+- one stable authorized local-model path;
+- accurate provider/node provenance;
+- current-work/relationship/memory continuity;
+- 13.33 cognition evidence on real turns;
+- Windows and M1 node behavior on the same main commit;
+- TTS/STT/avatar delivery and interruption behavior;
+- graceful degradation when any optional node/provider disappears.
+
+Provider novelty is lower priority than cohesive behavior.

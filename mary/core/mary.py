@@ -590,8 +590,10 @@ class Mary:
         # ============================================================
 
         # One authoritative turn-routing policy sits above provider routing.
-        # It decides whether a model-backed turn is personal Mary conversation
-        # (local-first) or detached task/general work (free cloud first).
+        # Ordinary cognition stays inside the zero-cost/free operating boundary.
+        # Local engines are preferred only when the model-execution fabric has
+        # evidence that they fit the task lane; otherwise configured free-cloud
+        # routes remain valid. Paid/frontier work stays explicitly authorized.
         self.turn_policy = TurnPolicyEngine()
 
         self.reasoning = ReasoningEngine(
@@ -3833,16 +3835,16 @@ class Mary:
             status = self.llm.clear_session_override()
             return {
                 "system_response": (
-                    "Okay. I cleared the temporary model override. My normal routing policy is active again: "
-                    "ordinary personal conversation is local-first ("
+                    "Okay. I cleared the temporary model override. My normal zero-cost/free routing policy is active again. "
+                    "Personal conversation currently follows the configured free-cost order ("
                     + " -> ".join(
                         self.llm.conversation_provider_order()
                         if callable(getattr(self.llm, "conversation_provider_order", None))
                         else self.llm._provider_order(None)
                     )
-                    + "), while task/general generation uses free-first ("
+                    + "), while task/general generation follows free-first ("
                     + " -> ".join(self.llm._provider_order(None))
-                    + ")."
+                    + "). Local engines are preferred only when they are suitable for the task; paid/frontier routes remain explicit-only."
                 ),
                 "skip_cognition": True,
                 "llm_control": status,

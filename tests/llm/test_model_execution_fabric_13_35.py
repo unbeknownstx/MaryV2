@@ -103,6 +103,12 @@ def test_model_execution_fabric_keeps_frontier_models_opt_in_and_measured():
     assert deepseek["auto_promoted"] is False
     assert deepseek["promotion"] == "benchmark_required"
     assert fabric["promotion_policy"]["paid_requires_existing_authorization"] is True
+    assert fabric["operating_policy"]["ordinary_budget"] == "zero_cost_and_free_only"
+    assert fabric["operating_policy"]["local_preference"] == "prefer_when_lane_suitable"
+    assert fabric["operating_policy"]["free_cloud_fallback_order"] == [
+        "groq", "gemini", "openrouter"
+    ]
+    assert fabric["operating_policy"]["paid_frontier"] == "explicit_only"
     assert "coding_agent" in TASK_LANES
 
 
