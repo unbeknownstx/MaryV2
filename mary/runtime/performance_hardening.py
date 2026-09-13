@@ -20,7 +20,10 @@ from mary.runtime.experience_quality import ExperienceQualityMonitor
 
 
 class PerformanceHardeningBundle:
-    VERSION = "13.33"
+    # This composition owner was introduced in 13.8. Newer attached capabilities
+    # expose their own versions; do not repurpose the bundle's compatibility
+    # version as a release number.
+    VERSION = "13.8"
 
     def __init__(self, mary) -> None:
         self.mary = mary
