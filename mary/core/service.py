@@ -2240,7 +2240,7 @@ class MaryCoreService:
                     max_tokens=max_tokens,
                 )
         except Exception as exc:
-            return {
+            payload = {
                 "ok": False,
                 "status": "generation_error",
                 "provider": provider_name,
@@ -2251,6 +2251,9 @@ class MaryCoreService:
                 "availability_ms": round(availability_ms, 2),
                 "generation_ms": round((monotonic() - generation_started) * 1000.0, 2),
             }
+            if provider_name in {"ollama", "llama_cpp"}:
+                payload["error_detail"] = " ".join(str(exc or "").split())[:240]
+            return payload
 
         generation_ms = (monotonic() - generation_started) * 1000.0
         content = str(response.content or "").strip()
