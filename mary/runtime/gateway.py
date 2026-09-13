@@ -646,6 +646,14 @@ def gateway_from_environment(
                 "MARY_CORE_TOKEN or MARY_NODE_ENROLLMENT_GRANT is required when "
                 "MARY_CORE_URL is configured."
             )
+        try:
+            client_timeout = float(os.getenv(
+                "MARY_CORE_CLIENT_TIMEOUT",
+                "120" if node_only else "600",
+            ))
+        except (TypeError, ValueError):
+            client_timeout = 120.0 if node_only else 600.0
+        client_timeout = max(10.0, min(900.0, client_timeout))
         return RemoteMaryGateway(
             MaryClient(
                 core_url,
@@ -655,6 +663,7 @@ def gateway_from_environment(
                 credential_store=credential_store,
                 device_id=device_id,
                 surface=surface,
+                timeout=client_timeout,
             ),
             surface=surface,
             creator_surface=not node_only,
