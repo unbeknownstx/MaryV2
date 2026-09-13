@@ -6,6 +6,8 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
+MaryV2 13.15 adds a **frontier/open-model fabric** above the existing provider layer: direct optional DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together and Fireworks presets share one generic OpenAI-compatible transport, while future compatible services and local loopback servers can be added without another Core rewrite. These paid-capable routes are opt-in and never enter free-first merely because credentials exist; Mary remains the canonical identity/state authority above every model.
+
 MaryV2 13.12 adds **bounded home sensor workers** to the 13.11 compute fabric: an explicitly authorized node can transcribe bounded microphone audio through the existing STT adapters or capture a bounded screenshot for perception, while both outputs remain ephemeral evidence rather than memory/action authority. This lets the Mac become a real STT worker candidate and the Windows stream machine become a real screen-evidence worker candidate without creating a second Mary.
 
 MaryV2 13.11 turns the existing Mac/Windows capability-node architecture into a **benchmark-aware home compute fabric**: the same canonical Core can use both machines as replaceable workers, compare sanitized local performance evidence, and prefer the better equivalent node without moving identity/state authority or weakening device permissions. Metal/Vulkan/local-model usefulness is measured on the actual hardware rather than assumed, so current machines can be used to their fullest while realtime conversation stays independent from slower background/generation work.
@@ -19,6 +21,7 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider fabric
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
 - `docs/architecture/STREAM_COHOST_13_10.md` — live Twitch/OBS cohost architecture
@@ -53,7 +56,8 @@ MaryV2 currently includes:
 - benchmark-aware Mac/Windows home compute nodes with disposable operational profiles and cross-platform launch tooling;
 - explicit opt-in home-node STT and bounded screen-capture workers for realtime/perception pipelines;
 - Groq/Gemini/OpenRouter/Ollama routing plus explicit expert/provider paths;
-- Ollama and llama.cpp local inference support;
+- an opt-in frontier/open-model fabric for DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together, Fireworks and future OpenAI-compatible services;
+- Ollama, llama.cpp and compatible loopback local inference support;
 - durable memory, relationship continuity, developed-self state and authored character evidence;
 - voice/STT/TTS primitives, realtime interruption and sentence-level streaming primitives;
 - avatar/VRM presentation, performer/stream contracts and browser/perception primitives;
