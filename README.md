@@ -6,7 +6,9 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
-MaryV2 13.29–13.32 adds a **bounded cognitive research convergence layer** on top of the already-active 13.16–13.28 runtime: adaptive deliberation budgets and verifier policy, non-mutating memory-action selection, content-free reasoning/outcome trajectory telemetry, transport-neutral duplex-conversation policy, and an optional research-runtime catalog for latent reasoning, CUDA serving, mobile inference, distributed inference, realtime voice, A2A and offline RL. None of these systems owns identity or memory, exposes private chain-of-thought, or automatically self-modifies production Mary.
+MaryV2 13.29–13.33 now forms a **bounded cognitive research and execution layer** on top of the already-active 13.16–13.28 runtime: adaptive deliberation budgets, pass/verify/branch execution, non-mutating memory-action selection, content-free trajectory telemetry, proposal-only experience-informed strategy selection, duplex-conversation policy, and an optional research-runtime catalog for latent reasoning, CUDA serving, mobile inference, distributed inference, realtime voice, A2A and offline RL. None of these systems owns identity or memory, exposes private chain-of-thought, or automatically self-modifies production Mary.
+
+13.34 is the next architecture target, not yet a production implementation: a **Computational State Fabric** classifying canonical durable, rebuildable derived, warm computational and ephemeral runtime state. Future RAM/NVMe/KV-cache infrastructure may keep Mary warm and fast, but losing caches must never erase who Mary is.
 
 MaryV2 13.15 adds a **frontier/open-model fabric** above the existing provider layer: direct optional DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together and Fireworks presets share one generic OpenAI-compatible transport, while future compatible services and local loopback servers can be added without another Core rewrite. These paid-capable routes are opt-in and never enter free-first merely because credentials exist; Mary remains the canonical identity/state authority above every model.
 
@@ -23,7 +25,9 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
-- `docs/architecture/RESEARCH_CONVERGENCE_13_29_13_32.md` — current cognitive research convergence and promotion boundary
+- `docs/architecture/RESEARCH_CONVERGENCE_13_29_13_32.md` — cognitive research convergence and promotion boundary
+- `docs/architecture/COGNITIVE_EXECUTION_13_33.md` — bounded pass/verify/branch execution and proposal-only strategy evidence
+- `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` — planned durability/cache/recovery architecture
 - `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider fabric
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
@@ -67,6 +71,8 @@ MaryV2 currently includes:
 - bounded distributed capability nodes and MCP integrations;
 - experiential continuity, resumable workflow checkpoints, action verification and recovery;
 - adaptive per-turn deliberation planning with bounded pass/branch/verifier budgets and no chain-of-thought persistence;
+- bounded cognitive execution for single-pass, verify-once and branch/verify workflows;
+- proposal-only strategy advice from structural outcome evidence rather than raw private reasoning;
 - non-mutating memory-action policy plus temporal/provenance projections over canonical memory owners;
 - content-free trajectory telemetry for future MaryBench/offline optimization, never automatic production training;
 - optional research-runtime discovery for latent reasoning, vLLM/SGLang, mobile inference, distributed inference, realtime transports, A2A and offline RL;
