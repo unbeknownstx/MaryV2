@@ -187,6 +187,19 @@ class LLMConfig:
             "openrouter",
         ]
     )
+    frontier_provider_order: list[str] = field(
+        default_factory=lambda: [
+            "deepseek",
+            "zai",
+            "qwen_cloud",
+            "kimi",
+            "minimax",
+            "cerebras",
+            "together",
+            "fireworks",
+            "openai",
+        ]
+    )
     rate_limit_cooldown_seconds: float = 300.0
     expert_provider: str = "openai"
     openai_model: str = "gpt-5.6-luna"
@@ -339,6 +352,17 @@ class Config:
             config.llm.conversation_provider_order = [
                 item.strip().lower()
                 for item in conversation_order_value.split(",")
+                if item.strip()
+            ]
+
+        frontier_order_value = os.getenv(
+            "MARY_LLM_FRONTIER_ORDER",
+            "",
+        )
+        if frontier_order_value.strip():
+            config.llm.frontier_provider_order = [
+                item.strip().lower()
+                for item in frontier_order_value.split(",")
                 if item.strip()
             ]
 
