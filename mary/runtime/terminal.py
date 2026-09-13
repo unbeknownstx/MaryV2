@@ -44,8 +44,7 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
         memory = dict(mary.get("memory", {}) or {})
         mind = dict(payload.get("mind", {}) or {})
         reservoir = dict(mind.get("reservoir", {}) or {})
-        dashboard_payload = dict(dashboard() or {})
-        current_work = dict(dashboard_payload.get("current_work", {}) or {})
+        current_work = dict(mary.get("current_work", {}) or {})
         recent_work = [
             item for item in list(current_work.get("recent") or [])
             if isinstance(item, dict)
@@ -75,7 +74,22 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
             ),
         })
     if command == "/route":
-        return _pretty(dict(state().get("mary", {}) or {}).get("cognition", {}))
+        payload = dict(state() or {})
+        fabric = dict(payload.get("compute_fabric", {}) or {})
+        routing = dict(fabric.get("routing", {}) or {})
+        return _pretty({
+            "routing": routing,
+            "local_capability": dict(
+                dict(fabric.get("capability_routes", {}) or {}).get(
+                    "llm.ollama",
+                    {},
+                )
+                or {}
+            ),
+            "private_route_ready": bool(fabric.get("private_route_ready", False)),
+            "authority": str(fabric.get("authority") or "mary_core"),
+            "policy": str(fabric.get("policy") or ""),
+        })
     if command == "/conversation":
         return _pretty(conversation())
     if command == "/growth":
