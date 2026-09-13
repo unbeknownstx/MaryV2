@@ -24,7 +24,7 @@ under a durable owner root fails the backup rather than being silently omitted.
 
 | State | Storage owner | Physical/backend location | Durability mechanism | Backup mechanism | Reconstruction path |
 |---|---|---|---|---|---|
-| Episodic, semantic, and working-memory persistence | `MemoryManager` | `memory/memory.json` on the authoritative Railway volume | Atomic JSON and bounded recovery copies | Task #23 v2 archive plus Railway volume backup | `create_application()` configures and loads `MemoryManager` |
+| Episodic and semantic memory persistence | `MemoryManager` | `memory/memory.json` on the authoritative Railway volume | Atomic JSON and bounded recovery copies | Task #23 v2 archive plus Railway volume backup | `create_application()` configures and loads `MemoryManager`; working memory is process/session state unless explicitly promoted into a durable owner |
 | Developed preferences, personality, and values | `DevelopedSelfStateStore` | `personality/developed_self.json` | Atomic JSON | v2 archive + volume backup | Developed-self store loads before turn context compilation |
 | Governed preference candidates/evidence | `PreferencePromotionManager` | `personality/preference_promotion.json` | Atomic JSON | v2 archive + volume backup | Promotion ledger loads separately from represented preferences |
 | Relationship model/history/milestones | `RelationshipManager` | `relationship/relationship.json` | Atomic JSON | v2 archive + volume backup | `Mary` constructs and loads the relationship manager |
