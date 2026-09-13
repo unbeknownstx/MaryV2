@@ -3,6 +3,16 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import sys
+
+# Support both:
+#   python -m scripts.check_research_convergence
+#   python scripts/check_research_convergence.py
+# Direct file execution otherwise places only scripts/ on sys.path.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from mary.cognition.deliberation import DeliberationGovernor
 from mary.distributed.research_runtime_catalog import research_runtime_status
