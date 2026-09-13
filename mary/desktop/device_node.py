@@ -366,6 +366,7 @@ class DesktopCapabilityNodeAgent:
                 self._last_task["status"] = "rejected"
                 return result
 
+        started = monotonic()
         try:
             if capability == "personal_search":
                 result_payload = self._execute_personal_search(dict(task.get("args") or {}))
@@ -383,6 +384,7 @@ class DesktopCapabilityNodeAgent:
                 result=result_payload,
             )
             self._last_task["status"] = "completed"
+            self._last_task["elapsed_ms"] = round((monotonic() - started) * 1000.0, 2)
             self._last_error = ""
             return result
         except Exception as exc:
@@ -390,6 +392,8 @@ class DesktopCapabilityNodeAgent:
             error = sanitize_mcp_error(raw_error) if capability in MCP_CAPABILITIES else raw_error[:500]
             self._last_error = error
             self._last_task["status"] = "failed"
+            self._last_task["elapsed_ms"] = round((monotonic() - started) * 1000.0, 2)
+            self._last_task["error_type"] = type(exc).__name__
             try:
                 return self.gateway.complete_capability_task(
                     task_id,
@@ -424,6 +428,50 @@ class DesktopCapabilityNodeAgent:
         if role not in {"general", "conversation", "fast", "utility"}:
             raise ValueError("Unsupported llm.ollama model role.")
         provider = OllamaProvider(model=_ollama_model_for_role(role))
+
+        max_tokens = max(1, min(2048, int(args.get("max_tokens", 1024))))
+        prompt_characters = sum(
+            len(str(item.get("content") or ""))
+            for item in raw_messages
+            if isinstance(item, dict)
+        )
+        # Conservative token estimate plus explicit headroom. Local nodes may
+        # spend extra RAM/time instead of rejecting Mary's grounded context.
+        estimated_prompt_tokens = max(1, (prompt_characters + 2) // 3)
+        required_ctx = estimated_prompt_tokens + max_tokens + 2048
+        try:
+            max_ctx = int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", "32768"))
+        except (TypeError, ValueError):
+            max_ctx = 32768
+        max_ctx = max(8192, min(65536, max_ctx))
+        base_ctx = max(4096, int(getattr(provider, "num_ctx", 8192) or 8192))
+        target = max(base_ctx, required_ctx)
+        buckets = (8192, 16384, 32768, 65536)
+        selected_ctx = next((size for size in buckets if size >= target), max_ctx)
+        selected_ctx = min(selected_ctx, max_ctx)
+        if required_ctx > selected_ctx:
+            raise RuntimeError(
+                "Local Mary prompt exceeds this device's bounded Ollama context "
+                f"(estimated_required={required_ctx}, max_ctx={selected_ctx})."
+            )
+        provider.num_ctx = selected_ctx
+        try:
+            device_timeout = float(os.getenv("MARY_DEVICE_OLLAMA_GENERATION_TIMEOUT", "420"))
+        except (TypeError, ValueError):
+            device_timeout = 420.0
+        provider.timeout = max(
+            float(getattr(provider, "timeout", 180.0) or 180.0),
+            max(30.0, min(600.0, device_timeout)),
+        )
+        self._last_task.update({
+            "model": provider.model_name(),
+            "prompt_characters": prompt_characters,
+            "estimated_prompt_tokens": estimated_prompt_tokens,
+            "num_ctx": selected_ctx,
+            "max_tokens": max_tokens,
+            "timeout_seconds": round(provider.timeout, 1),
+        })
+
         if not provider.is_available():
             raise RuntimeError("Configured Ollama provider is unavailable on this device.")
 
@@ -450,7 +498,7 @@ class DesktopCapabilityNodeAgent:
             correlation_id=generation_correlation_id("device-ollama"),
             purpose=f"device_ollama_{role}",
             temperature=float(args.get("temperature", 0.7)),
-            max_tokens=int(args.get("max_tokens", 1024)),
+            max_tokens=max_tokens,
         )
         constrained = getattr(provider, "generate_constrained", None)
         if callable(constrained):
