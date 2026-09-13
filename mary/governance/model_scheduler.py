@@ -98,8 +98,8 @@ class ModelIntelligenceScheduler:
     ``adaptive`` is safe at cold start because providers with insufficient
     evidence keep their incoming deterministic order. Once enough structural
     observations exist, measured reliability, latency, quality and efficiency
-    can influence the order. The incoming order always remains a meaningful
-    prior, so local/free-first policy is not erased by noisy measurements.
+    can influence the order. The incoming order remains a meaningful prior,
+    while sufficiently strong evidence is allowed to overcome that prior.
     """
 
     mode: str = "adaptive"
@@ -153,8 +153,6 @@ class ModelIntelligenceScheduler:
 
         def score(name: str) -> tuple[float, int]:
             stats = self.evidence(name)
-            # Incoming policy order remains a strong prior. Evidence can move a
-            # provider, but only after enough observations have accumulated.
             policy_prior = 1.0 - (index[name] / max(1, len(order) - 1))
             if stats.attempts < self.minimum_samples:
                 adaptive = 0.0
@@ -175,7 +173,10 @@ class ModelIntelligenceScheduler:
                     + efficiency * 0.10
                     - failure_penalty
                 )
-            combined = policy_prior * 0.55 + adaptive * 0.45
+            # Policy remains a meaningful prior, but measurements dominate once
+            # the minimum evidence threshold is crossed. This lets a repeatedly
+            # failing first-choice route yield to a demonstrably healthier peer.
+            combined = policy_prior * 0.35 + adaptive * 0.65
             return (combined, -index[name])
 
         return sorted(order, key=score, reverse=True)
