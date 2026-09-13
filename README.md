@@ -6,6 +6,8 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current direction
 
+MaryV2 13.29–13.32 adds a **bounded cognitive research convergence layer** on top of the already-active 13.16–13.28 runtime: adaptive deliberation budgets and verifier policy, non-mutating memory-action selection, content-free reasoning/outcome trajectory telemetry, transport-neutral duplex-conversation policy, and an optional research-runtime catalog for latent reasoning, CUDA serving, mobile inference, distributed inference, realtime voice, A2A and offline RL. None of these systems owns identity or memory, exposes private chain-of-thought, or automatically self-modifies production Mary.
+
 MaryV2 13.15 adds a **frontier/open-model fabric** above the existing provider layer: direct optional DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together and Fireworks presets share one generic OpenAI-compatible transport, while future compatible services and local loopback servers can be added without another Core rewrite. These paid-capable routes are opt-in and never enter free-first merely because credentials exist; Mary remains the canonical identity/state authority above every model.
 
 MaryV2 13.12 adds **bounded home sensor workers** to the 13.11 compute fabric: an explicitly authorized node can transcribe bounded microphone audio through the existing STT adapters or capture a bounded screenshot for perception, while both outputs remain ephemeral evidence rather than memory/action authority. This lets the Mac become a real STT worker candidate and the Windows stream machine become a real screen-evidence worker candidate without creating a second Mary.
@@ -21,6 +23,7 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/architecture/RESEARCH_CONVERGENCE_13_29_13_32.md` — current cognitive research convergence and promotion boundary
 - `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider fabric
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
@@ -63,6 +66,10 @@ MaryV2 currently includes:
 - avatar/VRM presentation, performer/stream contracts and browser/perception primitives;
 - bounded distributed capability nodes and MCP integrations;
 - experiential continuity, resumable workflow checkpoints, action verification and recovery;
+- adaptive per-turn deliberation planning with bounded pass/branch/verifier budgets and no chain-of-thought persistence;
+- non-mutating memory-action policy plus temporal/provenance projections over canonical memory owners;
+- content-free trajectory telemetry for future MaryBench/offline optimization, never automatic production training;
+- optional research-runtime discovery for latent reasoning, vLLM/SGLang, mobile inference, distributed inference, realtime transports, A2A and offline RL;
 - relational presence: friend/close/romantic/partner mode, shared activities, proposal-only proactive presence, derived social graph and relationship-aware delivery.
 
 ## Local development
