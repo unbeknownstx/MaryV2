@@ -109,23 +109,56 @@ class TemporalKnowledgeProjection:
         self._facts.append(created)
         return created
 
+    @staticmethod
+    def _canonical_shape(record: dict[str, Any]) -> dict[str, Any]:
+        """Normalize semantic-memory or Relationship UserModel record shapes."""
+        subject = str(record.get("subject") or "").strip()
+        predicate = str(record.get("predicate") or "").strip()
+
+        # Relationship UserModel profile records use category/key/value rather
+        # than subject/predicate/value. Preserve that namespace so preference,
+        # communication and fact keys cannot collide with each other.
+        if not subject and record.get("category") is not None:
+            subject = "creator"
+        if not predicate and record.get("key") is not None:
+            category = str(record.get("category") or "general").strip().lower() or "general"
+            key = str(record.get("key") or "").strip().lower()
+            predicate = f"{category}.{key}" if key else category
+
+        valid_from = record.get("valid_from") or record.get("created_at") or record.get("updated_at")
+        evidence_id = record.get("evidence_id") or record.get("observation_id") or record.get("id")
+        return {
+            "subject": subject,
+            "predicate": predicate or str(record.get("key") or ""),
+            "value": record.get("value"),
+            "source": str(record.get("source") or "canonical"),
+            "confidence": record.get("confidence", 1.0),
+            "valid_from": (str(valid_from) if valid_from else None),
+            "evidence_id": (str(evidence_id) if evidence_id else None),
+        }
+
     def rebuild(self, records: Iterable[dict[str, Any]]) -> None:
         self._facts.clear()
         for record in records:
             if not isinstance(record, dict):
                 continue
+            normalized = self._canonical_shape(record)
             try:
                 self.add(
-                    subject=str(record.get("subject") or ""),
-                    predicate=str(record.get("predicate") or record.get("key") or ""),
-                    value=record.get("value"),
-                    source=str(record.get("source") or "canonical"),
-                    confidence=float(record.get("confidence", 1.0)),
-                    valid_from=(str(record.get("valid_from")) if record.get("valid_from") else None),
-                    evidence_id=(str(record.get("evidence_id")) if record.get("evidence_id") else None),
+                    subject=normalized["subject"],
+                    predicate=normalized["predicate"],
+                    value=normalized["value"],
+                    source=normalized["source"],
+                    confidence=float(normalized["confidence"]),
+                    valid_from=normalized["valid_from"],
+                    evidence_id=normalized["evidence_id"],
                 )
             except (TypeError, ValueError):
                 continue
+
+    def rebuild_user_model(self, user_model: Any) -> None:
+        """Rebuild directly from Mary's source-aware canonical creator profile."""
+        self.rebuild(list(getattr(user_model, "profile_records", []) or []))
 
     def current(self, *, subject: str | None = None, predicate: str | None = None) -> list[dict[str, Any]]:
         items = [fact for fact in self._facts if fact.status == "current"]
