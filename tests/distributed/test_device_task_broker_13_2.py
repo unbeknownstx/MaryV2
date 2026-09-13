@@ -160,12 +160,43 @@ def test_broker_rejects_unbounded_or_invalid_ollama_messages():
             requester_device_id="mary-core",
         )
 
-    with pytest.raises(ValueError):
+    # A grounded Mary system message may legitimately be larger than the old
+    # 12K per-message ceiling as long as the complete device task remains
+    # inside the existing 48K transport budget.
+    accepted = broker.enqueue(
+        registry,
+        capability="llm.ollama",
+        intent="grounded system context",
+        args={
+            "messages": [
+                {"role": "system", "content": "s" * 20_000},
+                {"role": "user", "content": "Explain the current architecture."},
+            ]
+        },
+        requester_device_id="mary-core",
+    )
+    assert len(accepted.args["messages"][0]["content"]) == 20_000
+
+    with pytest.raises(ValueError, match="48000 character"):
         broker.enqueue(
             registry,
             capability="llm.ollama",
-            intent="oversized content",
-            args={"messages": [{"role": "user", "content": "x" * 12_001}]},
+            intent="oversized single message",
+            args={"messages": [{"role": "user", "content": "x" * 48_001}]},
+            requester_device_id="mary-core",
+        )
+
+    with pytest.raises(ValueError, match="48000 character"):
+        broker.enqueue(
+            registry,
+            capability="llm.ollama",
+            intent="oversized total context",
+            args={
+                "messages": [
+                    {"role": "system", "content": "s" * 30_000},
+                    {"role": "user", "content": "u" * 18_001},
+                ]
+            },
             requester_device_id="mary-core",
         )
 
