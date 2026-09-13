@@ -15,7 +15,13 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.12 bounded home sensor workers](HOME_SENSOR_WORKERS_13_12.md),
 [13.13 public creator voice stream bridge](STREAM_SENSES_13_13.md), and
 [13.14 character intelligence / learning interop](CHARACTER_INTELLIGENCE_LEARNING_13_14.md), and
-[13.15 frontier / open model fabric](OPEN_MODEL_FABRIC_13_15.md).
+[13.15 frontier / open model fabric](OPEN_MODEL_FABRIC_13_15.md),
+[13.16 model intelligence](MODEL_INTELLIGENCE_13_16.md),
+[13.17 cognitive character runtime](COGNITIVE_CHARACTER_RUNTIME_13_17.md),
+[13.18–13.23 character runtime convergence](CHARACTER_RUNTIME_CONVERGENCE_13_18_13_23.md),
+[13.24 inference acceleration](INFERENCE_ACCELERATION_13_24.md),
+[13.25–13.28 ecosystem mining](ECOSYSTEM_MINING_13_25_13_28.md), and
+[13.29–13.32 cognitive research convergence](RESEARCH_CONVERGENCE_13_29_13_32.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -33,12 +39,16 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Derived social graph | `RelationalPresenceRuntime.social_graph` | ACTIVE READ-ONLY 13.8 | Projection over canonical creator profile/history/shared experiences; no graph database or truth authority. |
 | Social delivery projection | `mary.expression.social_delivery` | ACTIVE PRESENTATION 13.8 | Relationship/emotion-aware warmth/playfulness/intimacy/pace/energy hints; public scope suppresses private intimacy; providers cannot define relationship truth. |
 | Memory | `mary.memory` | CANONICAL OWNER | Episodic/semantic/working memory. |
+| Memory action policy | `mary.memory.action_policy`, `MemoryManager.propose_action` | ACTIVE POLICY 13.30 | Proposes ignore/working/episodic/semantic/temporal/delegate operations only; cannot write or promote memory itself. |
+| Temporal memory projection | `mary.memory.temporal_projection` | ACTIVE DERIVED 13.19 | Rebuildable validity/supersession/contradiction/provenance view over canonical records; never truth authority. |
 | Developed self / personality | `mary.personality`, growth paths | CANONICAL OWNER | Grounded development, not raw provider output. |
 | Agency | `mary.agency` | CANONICAL OWNER | Goals, intentions, curiosities, priorities, decisions. |
 | Autonomy | `mary.autonomy` | ACTIVE | Bounded execution/initiative; capability != permission. |
 | Emotion/expression | `mary.expression` | ACTIVE | Baseline + state + momentum/decay; does not own personality. |
 | Turn context | `mary.cognition.mind_state`, continuity/context modules | CANONICAL TURN LAYER | Bounded current/recent/retrieved/authored context; canonical relationship-history summary includes explicit 13.8 relationship mode. 13.14 structured sourcebook evidence enters through the same existing authored-character context field. |
 | Reasoning/cognition | `mary.cognition` | ACTIVE | Provider-independent Mary reasoning orchestration. |
+| Cognitive character runtime | `mary.cognition.cognitive_character`, `mary.cognition.runtime_coordination` | ACTIVE 13.17/13.23/13.32 | Selects provider-independent cognitive need, compute/knowledge/presentation hints and now bounded deliberation/realtime policy; projection only. |
+| Adaptive deliberation | `mary.cognition.deliberation` | ACTIVE POLICY 13.29 | Bounded single/verify/branch strategies, confidence/latency budgets and ephemeral structural workspace; private chain-of-thought is not exposed or persisted. |
 | Provider routing | `mary.llm.router` | ACTIVE ENRICHED 13.15 | Free/cheap/private/expert plus explicit frontier/specialist routes; models never own identity. |
 | Frontier/open model fabric | `mary.llm.provider_catalog`, `mary.llm.providers.openai_compatible` | ACTIVE OPTIONAL 13.15 | Lazy direct DeepSeek/Z.AI-Qwen/Kimi/MiniMax/Cerebras/Together/Fireworks presets plus a generic OpenAI-compatible escape hatch. Paid-capable cloud routes are never injected into free-first merely because a key exists; loopback custom endpoints may advertise zero-local/local-only capability. Exact model license remains a model-level decision. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
@@ -68,6 +78,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Sandboxed software-engineering worker boundary; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
 | Platform readiness | `scripts.platform_readiness`, `requirements-host-extras.txt` | ACTIVE OPTIONAL 13.5/13.14 | Read-only Mac/Windows/Linux capability/config presence plus specialist readiness; optional packages/services never gate Core startup; no shell execution. |
 | Experience quality telemetry | `mary.runtime.experience_quality`, `mary.runtime.performance_hardening` | ACTIVE READ-ONLY 13.7 | Content-free rolling latency/outcome classification; explicitly no identity, memory, routing, lifecycle or permission authority. |
+| Trajectory telemetry | `mary.learning.trajectory`, runtime `trajectory_telemetry` | ACTIVE EVALUATION 13.31 | Bounded strategy/pass/branch/verifier/outcome/token/latency evidence only; no prompt/response retention and no automatic training. |
+| Duplex interaction policy | `mary.realtime.duplex_policy` | ACTIVE POLICY 13.32 | Transport-neutral backchannel/barge-in/retrieval-overlap policy; existing realtime lifecycle remains authoritative. |
+| Research runtime catalog | `mary.distributed.research_runtime_catalog`, `scripts.check_research_convergence` | ACTIVE DISCOVERY 13.32 | Optional Coconut/recurrent/latent-verifier, vLLM/SGLang, ExecuTorch/MLC, exo, Pipecat/LiveKit, A2A, AReaL/verl and OpenTelemetry candidates; discovery is not permission or promotion. |
 | Experience projector | `mary.experience.projector` | ACTIVE PRESENTATION 13.8 | Whitelisted `/api/experience` projection surfaces explicit close/romantic/partner mode from Core while keeping provider/secrets/non-authoritative fields out. |
 | Visual/product design contract | `docs/design/MARY_VISUAL_SYSTEM.md` | ACTIVE CONTRACT 13.7 | Shared semantic color/motion/degraded-state language for surfaces; presentation only. |
 | Relational UI contract | `docs/architecture/RELATIONAL_PRESENCE_UI_13_8.md`, `desktop/public/relational-13-8.css` | ACTIVE CONTRACT 13.8 | Shared-life cards/actions, privacy projection and anti-attention-trap styling; normal product surfaces remain creator-facing rather than backend dashboards. |
