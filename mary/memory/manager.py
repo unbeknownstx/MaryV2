@@ -7,6 +7,7 @@ import hashlib
 from typing import Any, Dict, List, Optional
 
 from mary.governance.limits import RuntimeLimits
+from mary.memory.action_policy import MemoryActionPolicy
 from mary.memory.consolidation import MemoryConsolidator
 from mary.memory.episodic import EpisodicMemoryStore
 from mary.memory.retrieval import MemoryRetriever
@@ -57,6 +58,7 @@ class MemoryManager:
             working_memory=self.working,
             retrieval=self.retrieval,
         )
+        self.action_policy = MemoryActionPolicy()
         self.storage_path = Path(storage_path) if storage_path is not None else None
         self.auto_save = bool(auto_save)
         self.last_load_source: str | None = None
@@ -74,6 +76,10 @@ class MemoryManager:
         }
         if auto_load and self.storage_path is not None:
             self.load()
+
+    def propose_action(self, **signals: Any) -> Any:
+        """Return a non-mutating memory-operation proposal from bounded signals."""
+        return self.action_policy.decide(**signals)
 
     def remember(
         self,
@@ -420,6 +426,7 @@ class MemoryManager:
             "working": True,
             "retrieval": True,
             "consolidation": True,
+            "action_policy": self.action_policy.status(),
             "policy": "bounded_selective_persistence",
             "counts": {
                 "episodic": self.episodic.count(),
