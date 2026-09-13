@@ -23,6 +23,7 @@ Important maps include:
 - `data_flow.md` — high-level flow between Mary, capabilities and surfaces.
 - `RUNTIME_AUTHORITY.md` — Core/surface lifecycle and authority.
 - `MCP_CAPABILITY_FABRIC_13_4.md` — optional MCP capability-node boundary.
+- `OPEN_MODEL_FABRIC_13_15.md` — opt-in frontier/open-model provider fabric and spending boundary.
 - `OPENHANDS_WORKER_BOUNDARY_13_4.md` — separate software-engineering worker boundary.
 - `NEURO_PATTERN_ADOPTION_13_6.md` — realtime/performer architecture convergence.
 - `STREAM_COHOST_13_10.md` — bounded Twitch/OBS cohost host and public-performance boundary.
