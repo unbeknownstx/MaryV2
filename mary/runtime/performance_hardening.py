@@ -9,9 +9,10 @@ remains the only durable relationship authority.
 """
 from __future__ import annotations
 
+from mary.distributed.stream_capabilities import StreamCapabilityCatalog
 from mary.expression.social_delivery import SocialDeliveryPlanner
 from mary.expression.standing_affect import StandingAffectStore
-from mary.distributed.stream_capabilities import StreamCapabilityCatalog
+from mary.learning.trajectory import TrajectoryRecorder
 from mary.relationship.relational_presence import RelationalPresenceRuntime
 from mary.runtime.experience_quality import ExperienceQualityMonitor
 
@@ -26,6 +27,7 @@ class PerformanceHardeningBundle:
         self.standing_affect.load()
         self.stream_capabilities = StreamCapabilityCatalog()
         self.experience_quality = ExperienceQualityMonitor()
+        self.trajectory_telemetry = TrajectoryRecorder()
 
         # 13.8 relational presence is deliberately composed over the existing
         # canonical RelationshipManager. Durable mode/activity completions are
@@ -33,7 +35,13 @@ class PerformanceHardeningBundle:
         self.relational_presence = RelationalPresenceRuntime(mary.relationship)
         self.social_delivery = SocialDeliveryPlanner()
 
-    def observe_emotional_state(self, state, *, source: str = "conversation_emotion", cause: str = ""):
+    def observe_emotional_state(
+        self,
+        state,
+        *,
+        source: str = "conversation_emotion",
+        cause: str = "",
+    ):
         self.standing_affect.observe(
             valence=float(getattr(state, "valence", 0.0)),
             arousal=float(getattr(state, "arousal", 0.0)),
@@ -57,10 +65,17 @@ class PerformanceHardeningBundle:
             "stream_capabilities": self.stream_capabilities.snapshot(),
             "runtime_profile": (
                 self.mary.performance_profiles.status()
-                if callable(getattr(getattr(self.mary, "performance_profiles", None), "status", None))
+                if callable(
+                    getattr(
+                        getattr(self.mary, "performance_profiles", None),
+                        "status",
+                        None,
+                    )
+                )
                 else {"enabled": False}
             ),
             "experience_quality": self.experience_quality.snapshot(),
+            "trajectory_telemetry": self.trajectory_telemetry.snapshot(),
             "relational_presence": self.relational_presence.snapshot(),
             "social_delivery": self.delivery_envelope(),
             "authority": (
@@ -76,6 +91,7 @@ def install_performance_hardening(mary) -> PerformanceHardeningBundle:
     mary.standing_affect = bundle.standing_affect
     mary.stream_capability_catalog = bundle.stream_capabilities
     mary.experience_quality = bundle.experience_quality
+    mary.trajectory_telemetry = bundle.trajectory_telemetry
     mary.relational_presence = bundle.relational_presence
     mary.social_delivery = bundle.social_delivery
     return bundle
