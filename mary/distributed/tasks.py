@@ -57,8 +57,13 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             content = str(raw_message.get("content") or "").strip()
             if not content:
                 raise ValueError(f"{provider_label} messages cannot be empty.")
-            if len(content) > 12_000:
-                raise ValueError(f"A single {provider_label} message exceeds the 12000 character limit.")
+            # Mary normally sends one substantial grounded system message plus
+            # one user/task message.  The broker's real transport/security
+            # boundary is the 48K total task budget below; a smaller per-message
+            # ceiling incorrectly rejected legitimate canonical Core prompts
+            # before they could ever reach an enrolled local model node.
+            if len(content) > 48_000:
+                raise ValueError(f"A single {provider_label} message exceeds the 48000 character task limit.")
             total_characters += len(content)
             if total_characters > 48_000:
                 raise ValueError(f"{provider_label} message content exceeds the 48000 character task limit.")
