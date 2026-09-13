@@ -139,6 +139,26 @@ def test_paid_expert_requires_explicit_opt_in_and_uses_expert_route():
     assert plan.paid_allowed is True
 
 
+def test_paid_expert_can_explicitly_select_frontier_provider_fabric():
+    orchestrator, workspace, providers = _orchestrator()
+    task = workspace.create_task(
+        "Compare several frontier reasoning engines",
+        metadata={
+            "needs_expert": True,
+            "allow_paid": True,
+            "frontier": True,
+        },
+    )
+
+    plan = orchestrator.plan(task.task_id)
+
+    assert plan.route == OrchestrationRoute.EXPERT.value
+    assert plan.provider_route == "frontier"
+    assert plan.paid_allowed is True
+    assert "multi-provider frontier route" in " ".join(plan.rationale)
+    assert all(provider.calls == 0 for provider in providers.values())
+
+
 def test_private_context_beats_paid_expert_request():
     orchestrator, workspace, _ = _orchestrator()
     task = workspace.create_task(
