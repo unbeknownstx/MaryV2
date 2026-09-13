@@ -6,11 +6,12 @@ provider eligibility, privacy, model authorization, or durable state.
 
 The policy is deliberately evidence-first:
 
-    detect capability -> benchmark baseline/accelerated variants -> promote winner
+    detect capability -> verify runtime/checkpoint metadata -> benchmark -> promote
 
-A model name may make MTP a *candidate*, but never proves runtime compatibility.
-Actual use still requires a compatible runtime/checkpoint and a successful
-benchmark on the target node.
+A model name may make MTP a candidate, but never proves runtime compatibility.
+For GGUF/llama.cpp paths, explicit ``nextn_predict_layers`` metadata is stronger
+proof than a family-name hint. Actual use still requires a successful benchmark
+on the target node.
 """
 from __future__ import annotations
 
@@ -26,8 +27,12 @@ _MTP_MODEL_HINTS = (
     re.compile(r"\bqwen3\.5\b", re.IGNORECASE),
     re.compile(r"\bqwen3[-_. ]?5\b", re.IGNORECASE),
     re.compile(r"\bmimo[-_. ]?7b\b", re.IGNORECASE),
-    re.compile(r"\bgemma[-_. ]?4\b", re.IGNORECASE),
+    re.compile(r"\bglm[-_. ]?4[.-]?(?:5|6)\b", re.IGNORECASE),
 )
+
+_VLLM_RUNTIMES = frozenset({"vllm", "vllm_openai", "vllm-openai"})
+_LLAMA_CPP_RUNTIMES = frozenset({"llama.cpp", "llama_cpp", "llamacpp", "llama-cpp"})
+_JAN_RUNTIMES = frozenset({"jan", "jan_llama_cpp", "jan-llama-cpp"})
 
 
 def _module(name: str) -> bool:
@@ -52,6 +57,19 @@ def _bounded_int(value: Any, *, low: int, high: int, default: int) -> int:
     return max(low, min(high, number))
 
 
+def _runtime_ready(runtime_name: str) -> tuple[bool, str]:
+    if runtime_name in _VLLM_RUNTIMES:
+        ready = _module("vllm") or _flag("MARY_VLLM_REMOTE_READY", False)
+        return ready, "vllm_not_detected_or_declared_ready"
+    if runtime_name in _LLAMA_CPP_RUNTIMES:
+        ready = _module("llama_cpp") or _flag("MARY_LLAMA_CPP_READY", False)
+        return ready, "llama_cpp_not_detected_or_declared_ready"
+    if runtime_name in _JAN_RUNTIMES:
+        ready = bool(os.getenv("MARY_JAN_BASE_URL", "").strip()) or _flag("MARY_JAN_READY", False)
+        return ready, "jan_not_configured_or_declared_ready"
+    return False, "runtime_has_no_verified_native_mtp_contract"
+
+
 @dataclass(frozen=True)
 class AccelerationCandidate:
     method: str
@@ -60,6 +78,7 @@ class AccelerationCandidate:
     speculative_tokens: int = 0
     runtime: str | None = None
     model: str | None = None
+    checkpoint_evidence: str = "none"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -82,7 +101,7 @@ class AccelerationBenchmark:
 class LocalInferenceAccelerationPolicy:
     """Detect and rank local decoding optimizations from structural evidence."""
 
-    VERSION = "13.24"
+    VERSION = "13.25"
 
     def __init__(self, *, mode: str | None = None, speculative_tokens: int | None = None) -> None:
         requested = str(mode or os.getenv("MARY_LOCAL_ACCELERATION", "auto")).strip().lower()
@@ -105,37 +124,70 @@ class LocalInferenceAccelerationPolicy:
         model: str | None,
         runtime: str | None,
         checkpoint_declares_mtp: bool | None = None,
+        gguf_nextn_predict_layers: int | None = None,
     ) -> AccelerationCandidate:
         runtime_name = str(runtime or "").strip().lower()
         model_name = str(model or "").strip()
 
         if self.mode == "off":
-            return AccelerationCandidate("none", "disabled", "acceleration_disabled", runtime=runtime_name or None, model=model_name or None)
+            return AccelerationCandidate(
+                "none", "disabled", "acceleration_disabled",
+                runtime=runtime_name or None, model=model_name or None,
+            )
 
-        if runtime_name not in {"vllm", "vllm_openai", "vllm-openai"}:
+        supported_runtime = (
+            runtime_name in _VLLM_RUNTIMES
+            or runtime_name in _LLAMA_CPP_RUNTIMES
+            or runtime_name in _JAN_RUNTIMES
+        )
+        if not supported_runtime:
             return AccelerationCandidate(
                 "mtp",
                 "unsupported_runtime",
-                "native_mtp_requires_a_runtime_with_verified_mtp_support",
+                "runtime_has_no_verified_native_mtp_contract",
                 speculative_tokens=self.speculative_tokens,
                 runtime=runtime_name or None,
                 model=model_name or None,
             )
 
-        runtime_installed = _module("vllm") or _flag("MARY_VLLM_REMOTE_READY", False)
-        if not runtime_installed:
+        runtime_ready, unavailable_reason = _runtime_ready(runtime_name)
+        if not runtime_ready:
             return AccelerationCandidate(
                 "mtp",
                 "runtime_unavailable",
-                "vllm_not_detected_or_declared_ready",
+                unavailable_reason,
                 speculative_tokens=self.speculative_tokens,
                 runtime=runtime_name,
                 model=model_name or None,
             )
 
+        metadata_layers = _bounded_int(
+            gguf_nextn_predict_layers,
+            low=0,
+            high=64,
+            default=0,
+        ) if gguf_nextn_predict_layers is not None else 0
         explicit = checkpoint_declares_mtp is True or _flag("MARY_MTP_CHECKPOINT_CAPABLE", False)
         hinted = self.model_has_mtp_hint(model_name)
-        if not explicit and not hinted:
+
+        if metadata_layers > 0:
+            evidence = "gguf_nextn_predict_layers"
+        elif explicit:
+            evidence = "explicit_checkpoint_declaration"
+        elif hinted:
+            evidence = "model_family_hint"
+        else:
+            evidence = "none"
+
+        # llama.cpp and Jan GGUF paths deliberately require explicit checkpoint
+        # evidence. A family name alone cannot prove that a downloaded GGUF kept
+        # the auxiliary MTP tensors/metadata.
+        if runtime_name in (_LLAMA_CPP_RUNTIMES | _JAN_RUNTIMES):
+            verified = metadata_layers > 0 or explicit
+        else:
+            verified = metadata_layers > 0 or explicit or hinted
+
+        if not verified:
             return AccelerationCandidate(
                 "mtp",
                 "unverified_model",
@@ -143,10 +195,9 @@ class LocalInferenceAccelerationPolicy:
                 speculative_tokens=self.speculative_tokens,
                 runtime=runtime_name,
                 model=model_name or None,
+                checkpoint_evidence=evidence,
             )
 
-        # A known family/name is still only a candidate. Runtime initialization
-        # and a successful benchmark are required before scheduler promotion.
         return AccelerationCandidate(
             "mtp",
             "benchmark_required",
@@ -154,6 +205,7 @@ class LocalInferenceAccelerationPolicy:
             speculative_tokens=self.speculative_tokens,
             runtime=runtime_name,
             model=model_name or None,
+            checkpoint_evidence=evidence,
         )
 
     @staticmethod
@@ -164,13 +216,7 @@ class LocalInferenceAccelerationPolicy:
         minimum_speedup: float = 1.05,
         minimum_success_rate: float = 0.95,
     ) -> dict[str, Any]:
-        """Choose an acceleration method only when it measurably beats baseline.
-
-        Throughput is preferred when available; otherwise median latency is
-        compared. Acceptance rate is recorded for diagnostics but is not used as
-        a semantic-quality proxy because speculative decoding should remain
-        distribution-preserving at the serving layer.
-        """
+        """Choose an acceleration method only when it measurably beats baseline."""
 
         minimum_speedup = max(1.0, min(3.0, float(minimum_speedup)))
         minimum_success_rate = max(0.0, min(1.0, float(minimum_success_rate)))
@@ -212,13 +258,24 @@ class LocalInferenceAccelerationPolicy:
         }
 
 
-def local_acceleration_status(*, model: str | None = None, runtime: str | None = None) -> dict[str, Any]:
+def local_acceleration_status(
+    *,
+    model: str | None = None,
+    runtime: str | None = None,
+    gguf_nextn_predict_layers: int | None = None,
+) -> dict[str, Any]:
     policy = LocalInferenceAccelerationPolicy()
-    candidate = policy.candidate(model=model, runtime=runtime)
+    candidate = policy.candidate(
+        model=model,
+        runtime=runtime,
+        gguf_nextn_predict_layers=gguf_nextn_predict_layers,
+    )
     return {
         "version": policy.VERSION,
         "mode": policy.mode,
         "vllm_installed": _module("vllm"),
+        "llama_cpp_python_installed": _module("llama_cpp"),
+        "jan_configured": bool(os.getenv("MARY_JAN_BASE_URL", "").strip()) or _flag("MARY_JAN_READY", False),
         "speculators_installed": _module("speculators"),
         "speculative_tokens": policy.speculative_tokens,
         "candidate": candidate.to_dict(),
