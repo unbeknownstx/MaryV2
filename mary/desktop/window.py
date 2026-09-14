@@ -39,6 +39,20 @@ class MaryWebEnginePage(QWebEnginePage):
 
 
 
+def _desktop_capability_node_enabled() -> bool:
+    """Remote Desktop is a presentation surface unless explicitly opted in.
+
+    A dedicated scripts.run_home_node process is the canonical capability host.
+    Silent Desktop registration with the same physical-device ID can replace
+    that home-node lease, so compatibility hosting is disabled by default.
+    """
+
+    return os.getenv(
+        "MARY_DESKTOP_CAPABILITY_NODE_ENABLED",
+        "false",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
 class MaryDesktopWindow(QMainWindow):
     def __init__(
         self,
@@ -55,7 +69,10 @@ class MaryDesktopWindow(QMainWindow):
         ).start()
         self.bridge.audio_cache.set_public_url_builder(self._static_server.voice_url)
         self.node_agent: DesktopCapabilityNodeAgent | None = None
-        if isinstance(application, RemoteMaryApplicationView):
+        if (
+            isinstance(application, RemoteMaryApplicationView)
+            and _desktop_capability_node_enabled()
+        ):
             self.node_agent = DesktopCapabilityNodeAgent(
                 application.gateway,
                 application=application,

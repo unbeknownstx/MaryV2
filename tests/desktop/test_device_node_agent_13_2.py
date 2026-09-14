@@ -76,3 +76,13 @@ def test_desktop_agent_reregisters_after_core_restart(monkeypatch):
     assert len(gateway.register_calls) == 2
     assert agent.status()["execution_authorized"] is False
     assert agent.disconnect()["ok"] is True
+
+
+def test_remote_desktop_capability_hosting_is_opt_in(monkeypatch):
+    from mary.desktop.window import _desktop_capability_node_enabled
+
+    monkeypatch.delenv("MARY_DESKTOP_CAPABILITY_NODE_ENABLED", raising=False)
+    assert _desktop_capability_node_enabled() is False
+
+    monkeypatch.setenv("MARY_DESKTOP_CAPABILITY_NODE_ENABLED", "true")
+    assert _desktop_capability_node_enabled() is True
