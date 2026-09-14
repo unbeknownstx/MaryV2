@@ -22,7 +22,12 @@ def test_case_metrics_use_ranked_record_ids_only():
     assert result.reciprocal_rank == 0.5
     assert result.precision_at_k == 1 / 3
     assert result.recall_at_k == 1.0
-    assert "favorite" not in str(result.to_dict()).lower()
+    payload = result.to_dict()
+    assert payload["case_id"] == "favorite-color"
+    assert "query" not in payload
+    assert "content" not in payload
+    assert "prompt" not in payload
+    assert "response" not in payload
 
 
 def test_strong_candidate_is_eligible_against_baseline():
