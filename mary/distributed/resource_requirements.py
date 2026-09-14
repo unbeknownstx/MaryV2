@@ -12,9 +12,10 @@ import os
 from typing import Iterable
 
 from .capabilities import CapabilityDescriptor
+from .resource_hint_provenance import role_hint_is_current
 
 
-VERSION = "13.54"
+VERSION = "13.58"
 _ROLES = ("general", "conversation", "fast", "utility")
 _PREFIXES = {
     "llm.ollama": "MARY_OLLAMA_RESOURCE_ACCELERATOR_GIB",
@@ -36,7 +37,12 @@ def _gib(value: str | None) -> float | None:
 
 
 def explicit_resource_hints(capability: str) -> dict[str, float]:
-    """Return only fixed per-role accelerator-memory hints for one LLM runtime."""
+    """Return only current fixed per-role accelerator-memory hints.
+
+    Legacy explicit hints without provenance remain compatible. When 13.58
+    provenance is supplied, a model/context mismatch suppresses that role until
+    the operator remeasures and explicitly reapplies the recommendation.
+    """
     normalized = str(capability or "").strip().lower()
     prefix = _PREFIXES.get(normalized)
     if prefix is None:
@@ -46,7 +52,7 @@ def explicit_resource_hints(capability: str) -> dict[str, float]:
     for role in _ROLES:
         specific = _gib(os.getenv(f"{prefix}_{role.upper()}"))
         value = specific if specific is not None else common
-        if value is not None:
+        if value is not None and role_hint_is_current(normalized, role):
             output[f"resource_accelerator_gib_{role}"] = value
     return output
 
