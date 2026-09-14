@@ -61,6 +61,12 @@ from .model_capability_evidence import (
     build_capability_evidence,
     run_boolean_probe,
 )
+from .model_residency import (
+    ResidentModel,
+    ResidencyDecision,
+    ResidencyPlan,
+    plan_model_residency,
+)
 from .resource_broker import (
     ResourceHandoffPlan,
     ResourceSnapshot,
@@ -129,6 +135,10 @@ __all__ = [
     "ModelCapabilityEvidence",
     "build_capability_evidence",
     "run_boolean_probe",
+    "ResidentModel",
+    "ResidencyDecision",
+    "ResidencyPlan",
+    "plan_model_residency",
     "ResourceHandoffPlan",
     "ResourceSnapshot",
     "WorkloadFootprint",
