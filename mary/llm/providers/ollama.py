@@ -1,4 +1,9 @@
-"""Local Ollama provider using Ollama's native chat API."""
+"""Local Ollama provider using Ollama's native chat API.
+
+The concrete safe default is centralized in ``mary.distributed.hardware_profiles``.
+For the current constrained Windows profile that value is "qwen3:1.7b"; this
+provider consumes the shared constant rather than owning a second model policy.
+"""
 
 from __future__ import annotations
 
