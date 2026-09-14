@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 
 from mary import __release__, __version__
 from mary.core.config import Config
+from mary.distributed.hardware_profiles import SAFE_LOCAL_MODEL
 from scripts.verify_state_integrity import inspect_state
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -166,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'PASS' if configured else 'INFO':4}  {name}: {'configured' if configured else 'not configured'}")
 
     ollama_enabled = _truthy(os.getenv("MARY_OLLAMA_ENABLED"), default=True)
-    ollama_model = os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b-instruct").strip() or "qwen3:4b-instruct"
+    ollama_model = os.getenv("MARY_OLLAMA_MODEL", SAFE_LOCAL_MODEL).strip() or SAFE_LOCAL_MODEL
     ollama_base = os.getenv("MARY_OLLAMA_BASE_URL", "http://localhost:11434").strip() or "http://localhost:11434"
     ollama = _ollama_status(ollama_base, ollama_model) if ollama_enabled else {
         "reachable": False,

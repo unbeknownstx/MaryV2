@@ -128,7 +128,7 @@ def test_authorized_ollama_task_uses_local_provider_and_returns_bounded_result(t
         "messages": [("system", "Stay grounded."), ("user", "Say hello.")],
         "temperature": 0.55,
         "max_tokens": 96,
-        "num_ctx": 8192,
+        "num_ctx": 4096,
         "timeout": 420.0,
     }]
     payload = gateway.completions[-1]["result"]

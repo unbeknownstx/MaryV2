@@ -31,6 +31,7 @@ from mary.llm.interface import (
     generation_correlation_id,
 )
 from mary.llm.providers.ollama import OllamaProvider
+from mary.distributed.hardware_profiles import SAFE_LOCAL_MODEL, SAFE_LOCAL_NUM_CTX
 from mary.llm.providers.llama_cpp import LlamaCppProvider
 from mary.runtime.gateway import RemoteMaryGateway
 
@@ -42,7 +43,7 @@ def _ollama_model_for_role(role: str) -> str:
     role-to-model mapping so hardware upgrades do not require a Core rewrite.
     """
 
-    general = os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b").strip() or "qwen3:4b"
+    general = os.getenv("MARY_OLLAMA_MODEL", SAFE_LOCAL_MODEL).strip() or SAFE_LOCAL_MODEL
     # Device-owned conversation override applies to all conversational lanes.
     # The Core may distinguish fast vs engaged/deep conversation semantically,
     # but a constrained node can intentionally keep both on the same smaller
@@ -69,9 +70,9 @@ def _select_ollama_context(
     estimated_prompt_tokens = max(1, (max(0, int(prompt_characters)) + 2) // 3)
     required_ctx = estimated_prompt_tokens + max(1, int(max_tokens)) + 2048
     try:
-        max_ctx = int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", "32768"))
+        max_ctx = int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", str(SAFE_LOCAL_NUM_CTX)))
     except (TypeError, ValueError):
-        max_ctx = 32768
+        max_ctx = SAFE_LOCAL_NUM_CTX
     # 4096 is intentionally supported only when a constrained device
     # explicitly caps itself there. Unconstrained/default nodes preserve the
     # established 8K minimum and may expand through the larger buckets.
@@ -125,6 +126,9 @@ def _ollama_capability() -> CapabilityDescriptor | None:
             "conversation_model": _ollama_model_for_role("conversation"),
             "fast_model": _ollama_model_for_role("fast"),
             "utility_model": _ollama_model_for_role("utility"),
+            "hardware_profile": os.getenv("MARY_NODE_HARDWARE_PROFILE", "").strip() or "default",
+            "num_ctx": int(getattr(provider, "num_ctx", SAFE_LOCAL_NUM_CTX) or SAFE_LOCAL_NUM_CTX),
+            "max_ctx": int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", str(SAFE_LOCAL_NUM_CTX)) or SAFE_LOCAL_NUM_CTX),
         },
     )
 
@@ -478,7 +482,7 @@ class DesktopCapabilityNodeAgent:
         estimated_prompt_tokens, selected_ctx = _select_ollama_context(
             prompt_characters=prompt_characters,
             max_tokens=max_tokens,
-            provider_num_ctx=int(getattr(provider, "num_ctx", 8192) or 8192),
+            provider_num_ctx=int(getattr(provider, "num_ctx", SAFE_LOCAL_NUM_CTX) or SAFE_LOCAL_NUM_CTX),
         )
         provider.num_ctx = selected_ctx
         try:

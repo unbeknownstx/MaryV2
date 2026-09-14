@@ -10,6 +10,12 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from mary.distributed.hardware_profiles import (
+    SAFE_LOCAL_KEEP_ALIVE,
+    SAFE_LOCAL_MODEL,
+    SAFE_LOCAL_NUM_CTX,
+)
+
 from ..interface import (
     GenerationCost,
     GenerationPrivacy,
@@ -67,7 +73,7 @@ class OllamaProvider(LLMInterface):
     ) -> None:
         self.model = model or os.getenv(
             "MARY_OLLAMA_MODEL",
-            "qwen3:4b",
+            SAFE_LOCAL_MODEL,
         )
         self.base_url = (
             base_url
@@ -84,7 +90,7 @@ class OllamaProvider(LLMInterface):
         )
         self.keep_alive: str | int = os.getenv(
             "MARY_OLLAMA_KEEP_ALIVE",
-            "30m",
+            SAFE_LOCAL_KEEP_ALIVE,
         )
         self.think = os.getenv(
             "MARY_OLLAMA_THINK",
@@ -93,7 +99,7 @@ class OllamaProvider(LLMInterface):
         self.num_ctx = int(
             os.getenv(
                 "MARY_OLLAMA_NUM_CTX",
-                "8192",
+                str(SAFE_LOCAL_NUM_CTX),
             )
         )
         self.health_timeout = float(

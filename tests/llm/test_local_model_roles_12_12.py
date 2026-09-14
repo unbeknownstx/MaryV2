@@ -14,6 +14,20 @@ def test_local_model_catalog_has_small_current_hardware_candidates():
     assert "qwen3:4b" in by_name
 
 
+def test_safe_local_defaults_use_small_model(monkeypatch):
+    for key in (
+        "MARY_OLLAMA_MODEL",
+        "MARY_OLLAMA_CONVERSATION_MODEL",
+        "MARY_OLLAMA_UTILITY_MODEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    assert _ollama_model_for_role("general") == "qwen3:1.7b"
+    assert _ollama_model_for_role("conversation") == "qwen3:1.7b"
+    assert _ollama_model_for_role("fast") == "qwen3:1.7b"
+    assert _ollama_model_for_role("utility") == "qwen3:1.7b"
+
+
 def test_device_conversation_role_honors_smaller_conversation_override(monkeypatch):
     monkeypatch.setenv("MARY_OLLAMA_MODEL", "qwen3:4b-instruct")
     monkeypatch.setenv("MARY_OLLAMA_CONVERSATION_MODEL", "qwen3:1.7b")
