@@ -63,6 +63,9 @@ class FakeProvider(LLMInterface):
 def _router(*, ollama=False):
     config = Config()
     config.llm.routing_strategy = "free_first"
+    # These legacy/local-host scenarios intentionally exercise an Ollama-first
+    # policy; production defaults are cloud-first unless explicitly overridden.
+    config.llm.conversation_provider_order = ["ollama", "groq", "gemini", "openrouter"]
     router = LLMRouter(config)
     providers = {
         "ollama": FakeProvider("ollama", available=ollama, model="qwen3:4b-instruct"),
