@@ -1,5 +1,5 @@
-from types import SimpleNamespace
 from time import monotonic
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,8 +25,7 @@ def _enqueue_search(broker):
 
 
 def _expire_active_claim(broker, base_id):
-    internal = broker.get(base_id)
-    assert internal is not None
+    internal = broker._tasks[base_id]
     internal.claimed_monotonic = monotonic() - 31.0
 
 
@@ -36,17 +35,19 @@ def test_claim_delivery_id_is_attempt_scoped_and_bounded_without_leaking_to_stat
     base_id = task.task_id
 
     claimed = broker.poll("node-a")
-    assert claimed is not task
+    assert claimed is task
     delivered = claimed.to_dict()["task_id"]
 
+    assert claimed.task_id == base_id
     assert delivered.startswith(base_id + ".1.")
     assert delivered != base_id
     assert len(delivered) <= 96
     assert claimed.to_dict()["claim_attempt"] == 1
 
-    internal = broker.get(base_id)
-    assert internal is task
-    assert internal.to_dict()["task_id"] == base_id
+    public = broker.get(base_id)
+    assert public is not None
+    assert public is not task
+    assert public.to_dict()["task_id"] == base_id
     snapshot = broker.snapshot()
     assert snapshot["tasks"][-1]["task_id"] == base_id
     assert delivered not in str(snapshot)
