@@ -1,10 +1,11 @@
 param(
     [int]$WarmRuns = 2,
-    [string[]]$Models = @("qwen3:1.7b", "qwen3:4b"),
+    [string[]]$Models = @("qwen3:1.7b"),
     [string]$Report = "",
     [string]$BaseUrl = "http://127.0.0.1:11434",
     [ValidateSet("compact_v1", "compact_v2")]
     [string]$PromptProfile = "compact_v2",
+    [switch]$Include4BControl,
     [switch]$IncludeInstructControl,
     [switch]$Overwrite
 )
@@ -23,13 +24,17 @@ try {
         $Report = Join-Path $ReportDirectory "qwen-micro-cortex-$Stamp.json"
     }
 
+    # This Windows launcher is safe for the creator's 4 GB RX580 by default.
+    # Larger controls remain available only through explicit switches or a
+    # caller-supplied -Models list so an ordinary benchmark cannot surprise-load
+    # a 4B model onto the display GPU.
+    if ($Include4BControl -and $Models -notcontains "qwen3:4b") {
+        $Models = @($Models) + "qwen3:4b"
+    }
     if ($IncludeInstructControl -and $Models -notcontains "qwen3:4b-instruct") {
         $Models = @($Models) + "qwen3:4b-instruct"
     }
 
-    # Importing the benchmark may load package definitions transitively, but it
-    # does not instantiate or call Mary's state owners. Keep an isolated path
-    # anyway so future diagnostics cannot touch the live persistent root.
     $PreviousDataDirectory = $env:MARY_DATA_DIR
     $TempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
     $IsolatedDataDirectory = [System.IO.Path]::GetFullPath(
@@ -54,6 +59,9 @@ try {
     Write-Host "Prompt profile: $PromptProfile"
     Write-Host "Ollama endpoint: $EndpointDisplay"
     Write-Host "Thinking: disabled; streaming: enabled; context: 1024; output ceiling: 48 tokens"
+    if ($Models | Where-Object { $_ -match '^qwen3:4b' }) {
+        Write-Warning "A 4B control was explicitly requested. On the RX580 4 GB display GPU this is experimental and may exhaust safe VRAM headroom."
+    }
     Write-Host "Warm novel prompts and exact repeats are reported separately."
     Write-Host "Cold measurement temporarily unloads only the requested model tags; requested residency is restored best-effort." -ForegroundColor DarkGray
     Write-Host "No model will be selected, promoted, or connected to production routing." -ForegroundColor DarkGray
@@ -86,7 +94,7 @@ try {
             if (-not $ResolvedIsolatedParent.Equals($ResolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
                 throw "Refusing to remove an isolated data path outside the system temp root."
             }
-            Remove-Item -LiteralPath $ResolvedIsolatedDataDirectory -Recurse -Force
+            Remove-Item -LiteralPath $IsolatedDataDirectory -Recurse -Force
         }
     }
 } finally {
