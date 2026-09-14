@@ -62,12 +62,10 @@ def test_busy_realtime_node_yields_background_work_to_idle_peer():
     )
 
     assert background.selected_node_id == "a-idle"
-    status = broker.compute_status()
-    assert status["live_load"]["z-fast"] == {
-        "active_realtime": 1,
-        "active_background": 0,
-        "stream_critical": True,
-    }
+    load = broker.compute_status()["live_load"]["z-fast"]
+    assert load["active_realtime"] == 1
+    assert load["active_background"] == 0
+    assert load["stream_critical"] is True
 
 
 def test_static_benchmark_preference_returns_after_realtime_pressure_clears():
