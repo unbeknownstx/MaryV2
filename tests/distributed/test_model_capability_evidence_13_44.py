@@ -64,3 +64,18 @@ def test_evidence_overlay_carries_structured_json_without_claiming_authority():
     assert overlay["measured_embeddings"] is False
     assert overlay["trained_context"] == 32768
     assert evidence.to_dict()["authority"] == "measured_runtime_evidence_only"
+
+    instance = model_instance_from_capability(
+        node_id="node",
+        capability_name="llm.openai_compat",
+        metadata={
+            "configured_model": "model",
+            "supports_structured_json": False,
+            **overlay,
+        },
+    )
+    assert instance is not None
+    assert instance.capabilities["structured_json"].value is True
+    assert instance.capabilities["structured_json"].source == "measured"
+    assert instance.capabilities["embeddings"].value is False
+    assert instance.capabilities["embeddings"].source == "measured"
