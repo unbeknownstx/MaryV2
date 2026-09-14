@@ -16,7 +16,13 @@ from .interface import (
     ProviderRoute,
     LLMResponse,
 )
-
+from .local_engine_discovery import (
+    DetectedLocalEngine,
+    LocalEnginePreset,
+    PRESETS as LOCAL_ENGINE_PRESETS,
+    discover_local_engines,
+    discovery_status as local_engine_discovery_status,
+)
 from .router import LLMRouter
 
 
@@ -32,4 +38,9 @@ __all__ = [
     "dispatch_generation",
     "generation_correlation_id",
     "LLMRouter",
+    "DetectedLocalEngine",
+    "LocalEnginePreset",
+    "LOCAL_ENGINE_PRESETS",
+    "discover_local_engines",
+    "local_engine_discovery_status",
 ]
