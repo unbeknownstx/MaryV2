@@ -181,10 +181,10 @@ class LLMConfig:
     )
     conversation_provider_order: list[str] = field(
         default_factory=lambda: [
-            "ollama",
             "groq",
             "gemini",
             "openrouter",
+            "ollama",
         ]
     )
     frontier_provider_order: list[str] = field(
