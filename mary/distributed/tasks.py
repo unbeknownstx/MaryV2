@@ -12,6 +12,10 @@ blindly replayed.
 13.51 wires the existing benchmark-aware HomeComputeScheduler into this real
 broker. Cold start preserves NodeRegistry.choose(). Once content-free execution
 samples exist, measured operation latency/reliability may improve node choice.
+
+13.52 feeds currently claimed broker work back into the same scheduler as
+process-local NodeLoad. This provides immediate contention awareness without a
+new heartbeat protocol or any additional execution authority.
 """
 from __future__ import annotations
 
@@ -22,7 +26,7 @@ from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
 
-from .compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, WorkloadRequest
+from .compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, NodeLoad, WorkloadRequest
 from .nodes import NodeRegistry
 from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
 from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_sensor_task_args
@@ -31,6 +35,7 @@ from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_senso
 _ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
 _REPLAY_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *SENSOR_CAPABILITIES}
+_REALTIME_OPERATIONS = {"conversation", "quick_answer", "stt", "vision"}
 ExecutionPolicy = Callable[[str], None]
 
 
@@ -69,7 +74,7 @@ def _workload_for(capability: str, args: dict[str, Any] | None) -> WorkloadReque
     return WorkloadRequest(
         capability=str(capability).strip().lower(),
         operation=operation,
-        realtime=operation in {"conversation", "quick_answer", "stt", "vision"},
+        realtime=operation in _REALTIME_OPERATIONS,
         privacy_required=str(capability).strip().lower().startswith("sensor."),
         local_preferred=True,
         cost_sensitive=True,
@@ -228,7 +233,7 @@ class DeviceTaskBroker:
     They are not Mary memories or canonical character state.
     """
 
-    VERSION = "13.51"
+    VERSION = "13.52"
 
     def __init__(
         self,
@@ -270,22 +275,56 @@ class DeviceTaskBroker:
             self._compute_scheduler = HomeComputeScheduler(registry, benchmarks=self._benchmark_book)
         return self._compute_scheduler
 
+    def _active_loads(self, node_ids: set[str]) -> dict[str, NodeLoad]:
+        counts = {
+            node_id: {"realtime": 0, "background": 0}
+            for node_id in node_ids
+        }
+        for task in self._tasks.values():
+            if task.status != "claimed" or task.selected_node_id not in counts:
+                continue
+            lane = "realtime" if task.operation in _REALTIME_OPERATIONS else "background"
+            counts[task.selected_node_id][lane] += 1
+        return {
+            node_id: NodeLoad(
+                node_id=node_id,
+                active_realtime=values["realtime"],
+                active_background=values["background"],
+                stream_critical=values["realtime"] > 0,
+            )
+            for node_id, values in counts.items()
+        }
+
     def _select_node(self, registry: NodeRegistry, capability: str, args: dict[str, Any]) -> Any:
         fallback = registry.choose(capability)
         if fallback is None:
             return None
+        candidates_fn = getattr(registry, "candidates", None)
+        if not callable(candidates_fn):
+            return fallback
+        candidates = list(candidates_fn(capability))
+        if not candidates:
+            return fallback
         operation = _operation_for(capability, args)
+        node_ids = {str(node.node_id) for node in candidates}
+        loads = self._active_loads(node_ids)
+        has_active_load = any(
+            load.active_realtime > 0 or load.active_background > 0
+            for load in loads.values()
+        )
         has_runtime_evidence = any(
             self._benchmark_book.summary(node.node_id, capability, operation).get("samples", 0) > 0
-            for node in registry.candidates(capability)
+            for node in candidates
         )
-        if not has_runtime_evidence:
+        if not has_runtime_evidence and not has_active_load:
             return fallback
-        selected = self._scheduler_for(registry).choose(_workload_for(capability, args))
+        scheduler = self._scheduler_for(registry)
+        for load in loads.values():
+            scheduler.update_load(load)
+        selected = scheduler.choose(_workload_for(capability, args))
         if selected is None:
             return fallback
-        eligible_ids = {node.node_id for node in registry.candidates(capability)}
-        return selected if selected.node_id in eligible_ids else fallback
+        return selected if selected.node_id in node_ids else fallback
 
     def enqueue(self, registry: NodeRegistry, *, capability: str, intent: str, args: dict[str, Any] | None, requester_device_id: str) -> DeviceCapabilityTask:
         normalized = str(capability or "").strip().lower()
@@ -441,11 +480,25 @@ class DeviceTaskBroker:
 
     def compute_status(self) -> dict[str, Any]:
         snapshot = self._benchmark_book.snapshot()
+        active_node_ids = {
+            task.selected_node_id
+            for task in self._tasks.values()
+            if task.status == "claimed"
+        }
+        live_loads = self._active_loads(active_node_ids)
         return {
             "version": self.VERSION,
             "scheduler": "home_compute_scheduler",
             "sample_count": len(snapshot.get("samples", [])),
             "benchmarks": snapshot,
+            "live_load": {
+                node_id: {
+                    "active_realtime": load.active_realtime,
+                    "active_background": load.active_background,
+                    "stream_critical": load.stream_critical,
+                }
+                for node_id, load in sorted(live_loads.items())
+            },
             "authority": "operational_hint_only",
             "content_retained": False,
         }
@@ -463,7 +516,7 @@ class DeviceTaskBroker:
             "max_claim_attempts": self.max_claim_attempts,
             "replay_safe_capabilities": sorted(_REPLAY_SAFE_CAPABILITIES),
             "scheduler_samples": self.compute_status()["sample_count"],
-            "policy": "typed device tasks; stalled replay-safe claims roll over; measured execution may improve node selection; permissions remain device-local",
+            "policy": "typed device tasks; stalled replay-safe claims roll over; measured execution and live broker load may improve node selection; permissions remain device-local",
         }
 
     def _rollover_claim_locked(self, task: DeviceCapabilityTask) -> DeviceCapabilityTask | None:
