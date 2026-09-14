@@ -107,8 +107,8 @@ Mac, Linux, and Windows can expose locally reachable LLM runtimes to the same ca
 
 ```bash
 python -m scripts.node_permissions allow llm.llama_cpp
-python -m scripts.run_capability_node --enroll-only
-python -m scripts.run_capability_node
+python -m scripts.run_home_node --enroll-only
+python -m scripts.run_home_node
 ```
 
 For llama.cpp, start `llama-server` first and set `MARY_LLAMA_CPP_ENABLED=true`. Core may use the node only through the typed `llm.llama_cpp` task contract. The node chooses the actual GGUF/LoRA combination and can reject execution locally.
