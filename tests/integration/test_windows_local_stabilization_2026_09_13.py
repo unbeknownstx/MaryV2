@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent, IntentType
 from mary.cognition.orchestrator import CognitiveOrchestrator
 from mary.cognition.reasoning import ReasoningEngine
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
+from mary.desktop.device_node import _select_ollama_context
 from mary.llm.interface import LLMResponse
 from mary.runtime.introspection import RuntimeIntrospection
 from mary.runtime import terminal
@@ -205,6 +208,47 @@ def test_explicit_private_route_does_not_turn_task_into_fast_conversation(monkey
     assert router.request.purpose is None
     assert result.metadata["local_fast_override_applied"] is False
     assert result.metadata["local_fast_context"] is False
+
+
+def test_rx580_profile_pins_all_local_roles_and_context(monkeypatch):
+    for key in (
+        "MARY_OLLAMA_MODEL",
+        "MARY_OLLAMA_CONVERSATION_MODEL",
+        "MARY_OLLAMA_UTILITY_MODEL",
+        "MARY_OLLAMA_NUM_CTX",
+        "MARY_DEVICE_OLLAMA_MAX_CTX",
+        "MARY_OLLAMA_KEEP_ALIVE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    values = run_home_node._apply_hardware_profile("windows-rx580-4gb")
+
+    assert values["MARY_OLLAMA_MODEL"] == "qwen3:1.7b"
+    assert values["MARY_OLLAMA_CONVERSATION_MODEL"] == "qwen3:1.7b"
+    assert values["MARY_OLLAMA_UTILITY_MODEL"] == "qwen3:1.7b"
+    assert values["MARY_OLLAMA_NUM_CTX"] == "4096"
+    assert values["MARY_DEVICE_OLLAMA_MAX_CTX"] == "4096"
+    assert values["MARY_OLLAMA_KEEP_ALIVE"] == "10m"
+
+
+def test_rx580_context_cap_uses_4096_and_rejects_oversized_turn(monkeypatch):
+    monkeypatch.setenv("MARY_DEVICE_OLLAMA_MAX_CTX", "4096")
+
+    estimated, selected = _select_ollama_context(
+        prompt_characters=2400,
+        max_tokens=96,
+        provider_num_ctx=4096,
+    )
+
+    assert estimated == 800
+    assert selected == 4096
+
+    with pytest.raises(RuntimeError, match="bounded Ollama context"):
+        _select_ollama_context(
+            prompt_characters=9000,
+            max_tokens=1024,
+            provider_num_ctx=4096,
+        )
 
 
 def test_home_node_does_not_advertise_denied_sensor_as_routable(tmp_path, monkeypatch):

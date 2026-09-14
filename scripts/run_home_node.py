@@ -28,6 +28,39 @@ from mary.distributed.sensors import sensor_capabilities
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
 
 
+_HARDWARE_PROFILES: dict[str, dict[str, str]] = {
+    "windows-rx580-4gb": {
+        # Keep the display GPU comfortably below its practical VRAM ceiling.
+        # One small model owns every automatic Ollama role on this node.
+        "MARY_OLLAMA_MODEL": "qwen3:1.7b",
+        "MARY_OLLAMA_CONVERSATION_MODEL": "qwen3:1.7b",
+        "MARY_OLLAMA_UTILITY_MODEL": "qwen3:1.7b",
+        "MARY_OLLAMA_NUM_CTX": "4096",
+        "MARY_DEVICE_OLLAMA_MAX_CTX": "4096",
+        "MARY_OLLAMA_KEEP_ALIVE": "10m",
+        "MARY_LOCAL_FAST_MAX_TOKENS": "96",
+    },
+}
+
+
+def _apply_hardware_profile(name: str | None) -> dict[str, str]:
+    """Apply an explicit device-local safety profile.
+
+    Profiles affect only this node process. They do not change Core authority,
+    provider policy on other devices, or Mary identity/state.
+    """
+
+    normalized = str(name or "").strip().lower()
+    if not normalized:
+        return {}
+    values = _HARDWARE_PROFILES.get(normalized)
+    if values is None:
+        raise ValueError(f"Unsupported hardware profile: {normalized}")
+    for key, value in values.items():
+        os.environ[key] = value
+    return dict(values)
+
+
 def _optional_int(name: str) -> int | None:
     raw = os.getenv(name, "").strip()
     if not raw:
@@ -128,9 +161,16 @@ def _authorized_sensor_capabilities(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Mary's bounded cross-platform home capability node.")
     parser.add_argument("--benchmark-profile", type=Path, default=None, help="Benchmark JSON produced by scripts.benchmark_home_node.")
+    parser.add_argument(
+        "--hardware-profile",
+        choices=sorted(_HARDWARE_PROFILES),
+        default=None,
+        help="Apply an explicit device-local inference safety profile.",
+    )
     parser.add_argument("--enroll-only", action="store_true", help="Establish durable node trust and exit.")
     args = parser.parse_args(argv)
     load_dotenv()
+    hardware_profile = _apply_hardware_profile(args.hardware_profile)
     _verify_bounded_agent_contract()
 
     core_url = os.getenv("MARY_CORE_URL", "").strip()
@@ -211,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 64)
     print(f"node:              {agent.display_name}")
     print(f"platform:          {agent.platform}")
+    print(f"hardware profile:  {args.hardware_profile or 'default'}")
     print(f"benchmark profile: {'loaded' if benchmark_loaded else 'not loaded'}")
     print("capabilities:")
     for capability in capabilities:

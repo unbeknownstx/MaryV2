@@ -19,7 +19,7 @@ Use the creator's existing Mac, Windows PC, local models and cloud providers as 
 
 Detects portable resource hints including CPU threads, memory, Apple Silicon/Metal visibility, Vulkan-loader visibility, optional creator-supplied GPU label/VRAM, and local runtime availability for Ollama, llama.cpp and whisper.cpp.
 
-The RX 480 and other non-CUDA GPUs are treated as **benchmark candidates**, not hard-coded successes. If Vulkan is present, policy recommends measuring llama/whisper/preprocessing behavior before assigning work.
+The RX 580 and other non-CUDA GPUs are treated as **benchmark candidates**, not hard-coded successes. If Vulkan is present, policy recommends measuring llama/whisper/preprocessing behavior before assigning work.
 
 ### `mary.distributed.benchmarking`
 
@@ -95,6 +95,33 @@ $env:MARY_NODE_GPU_MEMORY_GIB="4"
 ```
 
 These labels are descriptive only; they never cause routing by themselves.
+
+## Windows RX 580 4 GB safety profile
+
+A 4 GB Polaris display GPU should keep explicit VRAM headroom for Windows. The
+home-node launcher therefore exposes a device-local profile that pins every
+automatic Ollama role to `qwen3:1.7b`, keeps a 4096-token context ceiling and
+uses a shorter keep-alive:
+
+```powershell
+python -m scripts.run_home_node --hardware-profile windows-rx580-4gb --benchmark-profile "$HOME\.maryv2\node_benchmark_13_11.json"
+```
+
+The profile changes only the node process. It does not move Mary state off Core
+or change routing on other devices. If a prompt does not fit inside the 4096
+local context bound, the node rejects that generation instead of silently
+expanding local GPU memory use.
+
+Ollama server scheduling/VRAM settings must be present in the Ollama server
+process itself. On Windows, use the companion helper in a dedicated terminal:
+
+```powershell
+.\scripts\start_ollama_rx580_safe.ps1
+```
+
+That helper configures one loaded model, one parallel request, 4096 default
+context and a 1 GiB GPU-overhead reservation before starting `ollama serve`.
+It is intentionally process-scoped unless `-Persist` is supplied.
 
 ## Follow-on empirical tests
 

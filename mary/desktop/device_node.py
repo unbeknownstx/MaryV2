@@ -58,6 +58,36 @@ def _ollama_model_for_role(role: str) -> str:
     }.get(str(role or "general").strip().lower(), general)
 
 
+def _select_ollama_context(
+    *,
+    prompt_characters: int,
+    max_tokens: int,
+    provider_num_ctx: int,
+) -> tuple[int, int]:
+    """Return (estimated_prompt_tokens, selected_ctx) within the device cap."""
+
+    estimated_prompt_tokens = max(1, (max(0, int(prompt_characters)) + 2) // 3)
+    required_ctx = estimated_prompt_tokens + max(1, int(max_tokens)) + 2048
+    try:
+        max_ctx = int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", "32768"))
+    except (TypeError, ValueError):
+        max_ctx = 32768
+    # 4096 is intentionally supported for constrained display GPUs. Larger
+    # nodes keep the existing 8K+ behavior through their configured/default cap.
+    max_ctx = max(4096, min(65536, max_ctx))
+    base_ctx = max(2048, min(max_ctx, int(provider_num_ctx or 8192)))
+    target = max(base_ctx, required_ctx)
+    buckets = (4096, 8192, 16384, 32768, 65536)
+    selected_ctx = next((size for size in buckets if size >= target), max_ctx)
+    selected_ctx = min(selected_ctx, max_ctx)
+    if required_ctx > selected_ctx:
+        raise RuntimeError(
+            "Local Mary prompt exceeds this device's bounded Ollama context "
+            f"(estimated_required={required_ctx}, max_ctx={selected_ctx})."
+        )
+    return estimated_prompt_tokens, selected_ctx
+
+
 def _ollama_capability() -> CapabilityDescriptor | None:
     """Probe the same Ollama endpoint/model configuration used for execution."""
 
@@ -436,25 +466,14 @@ class DesktopCapabilityNodeAgent:
             for item in raw_messages
             if isinstance(item, dict)
         )
-        # Conservative token estimate plus explicit headroom. Local nodes may
-        # spend extra RAM/time instead of rejecting Mary's grounded context.
-        estimated_prompt_tokens = max(1, (prompt_characters + 2) // 3)
-        required_ctx = estimated_prompt_tokens + max_tokens + 2048
-        try:
-            max_ctx = int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", "32768"))
-        except (TypeError, ValueError):
-            max_ctx = 32768
-        max_ctx = max(8192, min(65536, max_ctx))
-        base_ctx = max(4096, int(getattr(provider, "num_ctx", 8192) or 8192))
-        target = max(base_ctx, required_ctx)
-        buckets = (8192, 16384, 32768, 65536)
-        selected_ctx = next((size for size in buckets if size >= target), max_ctx)
-        selected_ctx = min(selected_ctx, max_ctx)
-        if required_ctx > selected_ctx:
-            raise RuntimeError(
-                "Local Mary prompt exceeds this device's bounded Ollama context "
-                f"(estimated_required={required_ctx}, max_ctx={selected_ctx})."
-            )
+        # Conservative token estimate plus explicit headroom. Constrained nodes
+        # may deliberately cap context; oversized turns fail instead of silently
+        # expanding GPU memory use.
+        estimated_prompt_tokens, selected_ctx = _select_ollama_context(
+            prompt_characters=prompt_characters,
+            max_tokens=max_tokens,
+            provider_num_ctx=int(getattr(provider, "num_ctx", 8192) or 8192),
+        )
         provider.num_ctx = selected_ctx
         try:
             device_timeout = float(os.getenv("MARY_DEVICE_OLLAMA_GENERATION_TIMEOUT", "420"))
