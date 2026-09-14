@@ -6,10 +6,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 $settings = [ordered]@{
-    OLLAMA_CONTEXT_LENGTH   = "4096"
-    OLLAMA_NUM_PARALLEL     = "1"
+    OLLAMA_CONTEXT_LENGTH    = "4096"
+    OLLAMA_NUM_PARALLEL      = "1"
     OLLAMA_MAX_LOADED_MODELS = "1"
-    OLLAMA_GPU_OVERHEAD     = "1073741824"
+    OLLAMA_GPU_OVERHEAD      = "1073741824"
 }
 
 Write-Host "MARYV2 RX580 4GB OLLAMA SAFETY PROFILE"
@@ -20,6 +20,25 @@ foreach ($entry in $settings.GetEnumerator()) {
         [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "User")
     }
     Write-Host ("{0,-26} {1}" -f $entry.Key, $entry.Value)
+}
+
+# Mary may expose its own llama.cpp runtime on PATH for capability discovery.
+# Ollama ships its own ggml/runtime libraries and must not inherit Mary's
+# llama.cpp DLL directory, otherwise Windows can resolve an incompatible
+# ggml-base.dll before Ollama's own libraries. This terminal is dedicated to
+# Ollama, so keep only unrelated PATH entries for the server lifetime.
+$PathSeparator = [IO.Path]::PathSeparator
+$OriginalPathEntries = @($env:PATH -split [regex]::Escape([string]$PathSeparator))
+$SafePathEntries = @(
+    $OriginalPathEntries | Where-Object {
+        $entry = [string]$_
+        $normalized = $entry.Replace('/', '\').TrimEnd('\').ToLowerInvariant()
+        -not ($normalized -match '\\maryv2\\runtimes\\llama\.cpp(?:\\|$)')
+    }
+)
+if ($SafePathEntries.Count -ne $OriginalPathEntries.Count) {
+    $env:PATH = ($SafePathEntries -join $PathSeparator)
+    Write-Host "OLLAMA_PATH_ISOLATION       removed MaryV2 llama.cpp runtime DLL directory"
 }
 
 $running = @(Get-Process ollama -ErrorAction SilentlyContinue)
