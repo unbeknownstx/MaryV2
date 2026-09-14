@@ -14,6 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from mary.distributed.benchmarking import build_profile, save_profile
+from mary.distributed.hardware_profiles import available_hardware_profiles, apply_hardware_profile
 
 
 def _default_output() -> Path:
@@ -29,11 +30,18 @@ def _default_output() -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Benchmark this Mary capability node.")
     parser.add_argument("--local-llm", action="store_true", help="Also benchmark reachable Ollama/llama.cpp using a fixed synthetic prompt.")
+    parser.add_argument(
+        "--hardware-profile",
+        choices=available_hardware_profiles(),
+        default=None,
+        help="Apply the same node-local inference profile used by scripts.run_home_node.",
+    )
     parser.add_argument("--repeats", type=int, default=2, help="Benchmark repetitions (1-6).")
     parser.add_argument("--output", type=Path, default=None, help="Profile destination outside the repository.")
     parser.add_argument("--print-json", action="store_true", help="Print the sanitized profile JSON after saving.")
     args = parser.parse_args(argv)
     load_dotenv()
+    apply_hardware_profile(args.hardware_profile)
 
     profile = build_profile(
         include_local_llm=bool(args.local_llm),
@@ -44,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     print("MARYV2 13.11 NODE BENCHMARK")
     print("=" * 64)
     print(f"node:             {profile.get('node_id')}")
+    print(f"hardware profile: {args.hardware_profile or 'default'}")
     resource = dict(profile.get("resource") or {})
     print(f"platform:         {resource.get('platform')} / {resource.get('machine')}")
     print(f"cpu threads:      {resource.get('cpu_count')}")

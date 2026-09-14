@@ -20,45 +20,17 @@ from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
 from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
 from mary.distributed.creative_runtime import creative_runtime_catalog
 from mary.distributed.inference_acceleration import local_acceleration_status
+from mary.distributed.hardware_profiles import (
+    HARDWARE_PROFILES as _HARDWARE_PROFILES,
+    SAFE_LOCAL_MODEL,
+    apply_hardware_profile as _apply_hardware_profile,
+)
 from mary.distributed.local_runtime_catalog import local_runtime_catalog
 from mary.distributed.os_environment import MaryOSEnvironmentProfile
 from mary.distributed.resource_profile import RuntimeResourceProfile
 from mary.distributed.sensor_node import SensorCapabilityNodeAgent
 from mary.distributed.sensors import sensor_capabilities
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
-
-
-_HARDWARE_PROFILES: dict[str, dict[str, str]] = {
-    "windows-rx580-4gb": {
-        # Keep the display GPU comfortably below its practical VRAM ceiling.
-        # One small model owns every automatic Ollama role on this node.
-        "MARY_OLLAMA_MODEL": "qwen3:1.7b",
-        "MARY_OLLAMA_CONVERSATION_MODEL": "qwen3:1.7b",
-        "MARY_OLLAMA_UTILITY_MODEL": "qwen3:1.7b",
-        "MARY_OLLAMA_NUM_CTX": "4096",
-        "MARY_DEVICE_OLLAMA_MAX_CTX": "4096",
-        "MARY_OLLAMA_KEEP_ALIVE": "10m",
-        "MARY_LOCAL_FAST_MAX_TOKENS": "96",
-    },
-}
-
-
-def _apply_hardware_profile(name: str | None) -> dict[str, str]:
-    """Apply an explicit device-local safety profile.
-
-    Profiles affect only this node process. They do not change Core authority,
-    provider policy on other devices, or Mary identity/state.
-    """
-
-    normalized = str(name or "").strip().lower()
-    if not normalized:
-        return {}
-    values = _HARDWARE_PROFILES.get(normalized)
-    if values is None:
-        raise ValueError(f"Unsupported hardware profile: {normalized}")
-    for key, value in values.items():
-        os.environ[key] = value
-    return dict(values)
 
 
 def _optional_int(name: str) -> int | None:
@@ -77,8 +49,8 @@ def _resource_capability() -> CapabilityDescriptor:
     runtime = os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "ollama").strip().lower() or "ollama"
     model = (
         os.getenv("MARY_LOCAL_INFERENCE_MODEL", "").strip()
-        or os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b").strip()
-        or "qwen3:4b"
+        or os.getenv("MARY_OLLAMA_MODEL", SAFE_LOCAL_MODEL).strip()
+        or SAFE_LOCAL_MODEL
     )
     acceleration = local_acceleration_status(
         model=model,
