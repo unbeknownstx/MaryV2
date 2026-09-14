@@ -2,11 +2,14 @@
 
 This layer answers a different question from provider/node discovery:
 
-    reachable != executable != feasible != preferred
+    reachable != executable != feasible != suitable != preferred
 
 It is deliberately advisory. It does not grant device permission, spend money,
 change Mary identity/state, or silently promote a model into a production route.
 Promotion remains evidence-driven.
+
+13.37 extends suitability with measured correctness/useful-throughput while
+remaining backward-compatible with latency/success-only node evidence.
 """
 from __future__ import annotations
 
@@ -16,29 +19,34 @@ from .provider_catalog import FRONTIER_PROVIDER_NAMES, public_provider_catalog
 
 
 VERSION = "13.35"
+RELIABILITY_REVISION = "13.37"
 
 TASK_LANES: dict[str, dict[str, Any]] = {
     "realtime_voice": {
         "latency_budget_ms": 1500.0,
         "min_success_rate": 0.95,
+        "min_accuracy": 0.90,
         "realtime": True,
-        "description": "Speech/backchannel path; latency dominates.",
+        "description": "Speech/backchannel path; latency and reliability dominate.",
     },
     "social_instant": {
         "latency_budget_ms": 2500.0,
         "min_success_rate": 0.90,
+        "min_accuracy": 0.80,
         "realtime": True,
         "description": "Fast banter/presence; slow engines should not block the floor.",
     },
     "conversation": {
         "latency_budget_ms": 10000.0,
         "min_success_rate": 0.85,
+        "min_accuracy": 0.75,
         "realtime": True,
         "description": "Normal interactive conversation.",
     },
     "private_conversation": {
         "latency_budget_ms": 60000.0,
         "min_success_rate": 0.75,
+        "min_accuracy": 0.70,
         "realtime": False,
         "privacy_required": True,
         "description": "Creator-selected local/private conversation; slower local inference is acceptable.",
@@ -46,30 +54,35 @@ TASK_LANES: dict[str, dict[str, Any]] = {
     "deep_reasoning": {
         "latency_budget_ms": 180000.0,
         "min_success_rate": 0.70,
+        "min_accuracy": 0.75,
         "realtime": False,
-        "description": "Hard reasoning where quality matters more than immediate latency.",
+        "description": "Hard reasoning where correctness matters more than immediate latency.",
     },
     "coding_agent": {
         "latency_budget_ms": 180000.0,
         "min_success_rate": 0.80,
+        "min_accuracy": 0.80,
         "realtime": False,
         "description": "Coding/engineering work; prefer measured correctness and tool fit.",
     },
     "research_synthesis": {
         "latency_budget_ms": 180000.0,
         "min_success_rate": 0.80,
+        "min_accuracy": 0.75,
         "realtime": False,
         "description": "Research/long synthesis with provenance retained above the model layer.",
     },
     "long_context": {
         "latency_budget_ms": 300000.0,
         "min_success_rate": 0.75,
+        "min_accuracy": 0.70,
         "realtime": False,
         "description": "Large-context work where context capacity can outweigh latency.",
     },
     "background": {
         "latency_budget_ms": 600000.0,
         "min_success_rate": 0.65,
+        "min_accuracy": 0.60,
         "realtime": False,
         "description": "Offline/background work; cheap idle compute is valuable even when slow.",
     },
@@ -107,7 +120,9 @@ def assess_local_capability_route(
     latency = _float(bench.get("benchmark_latency_ms"))
     success = _float(bench.get("benchmark_success_rate"))
     throughput = _float(bench.get("benchmark_throughput"))
-    measured = any(item is not None for item in (latency, success, throughput))
+    accuracy = _float(bench.get("benchmark_accuracy"))
+    useful_throughput = _float(bench.get("benchmark_useful_throughput"))
+    measured = any(item is not None for item in (latency, success, throughput, accuracy, useful_throughput))
 
     if not measured:
         status = "experimental"
@@ -115,6 +130,9 @@ def assess_local_capability_route(
     elif success is not None and success < float(profile["min_success_rate"]):
         status = "avoid"
         reason = "measured_reliability_below_lane_requirement"
+    elif accuracy is not None and accuracy < float(profile["min_accuracy"]):
+        status = "avoid"
+        reason = "measured_accuracy_below_lane_requirement"
     elif latency is not None and latency > float(profile["latency_budget_ms"]):
         if bool(profile.get("realtime")):
             status = "avoid"
@@ -135,10 +153,13 @@ def assess_local_capability_route(
             "latency_ms": latency,
             "success_rate": success,
             "throughput": throughput,
+            "accuracy": accuracy,
+            "useful_throughput": useful_throughput,
         },
         "requirements": {
             "latency_budget_ms": profile["latency_budget_ms"],
             "min_success_rate": profile["min_success_rate"],
+            "min_accuracy": profile["min_accuracy"],
             "realtime": bool(profile.get("realtime")),
             "privacy_required": bool(profile.get("privacy_required", False)),
         },
@@ -167,11 +188,7 @@ def _frontier_status(
         item = dict(catalog.get(name) or {"name": name})
         status = dict(published.get(name) or {})
         configured = bool(status.get("available", False))
-        active_model = str(
-            status.get("model")
-            or item.get("default_model")
-            or ""
-        )
+        active_model = str(status.get("model") or item.get("default_model") or "")
         item.update({
             "configured": configured,
             "active_model": active_model,
@@ -215,20 +232,15 @@ def build_model_execution_fabric(
 
     routes = dict(capability_routes or {})
     local_route = dict(routes.get("llm.ollama") or {})
-    local_suitability = {
-        lane: assess_local_capability_route(local_route, lane)
-        for lane in TASK_LANES
-    }
+    local_suitability = {lane: assess_local_capability_route(local_route, lane) for lane in TASK_LANES}
 
     return {
         "version": VERSION,
+        "reliability_revision": RELIABILITY_REVISION,
         "active_candidates": active,
         "frontier_catalog": _frontier_status(routing),
         "task_lanes": {
-            name: {
-                **dict(values),
-                "authority": "selection_policy_only",
-            }
+            name: {**dict(values), "authority": "selection_policy_only"}
             for name, values in TASK_LANES.items()
         },
         "local_ollama_suitability": local_suitability,
@@ -237,11 +249,14 @@ def build_model_execution_fabric(
             "local_preference": "prefer_when_lane_suitable",
             "free_cloud_fallback_order": ["groq", "gemini", "openrouter"],
             "paid_frontier": "explicit_only",
+            "quality_metric": "correctness_weighted_useful_throughput_when_available",
             "cohesion_priority": "successful_end_to_end_behavior_over_provider_novelty",
         },
         "promotion_policy": {
             "reachable_is_not_preferred": True,
             "benchmark_before_promotion": True,
+            "correctness_matters_more_than_raw_speed": True,
+            "raw_outputs_not_required_for_operational_benchmarks": True,
             "paid_requires_existing_authorization": True,
             "private_requires_local_or_private_capability": True,
             "models_never_own_identity_or_memory": True,

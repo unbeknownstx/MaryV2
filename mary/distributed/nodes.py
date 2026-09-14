@@ -74,7 +74,7 @@ class NodeDescriptor:
 
 
 class NodeRegistry:
-    VERSION = "13.11"
+    VERSION = "13.37"
 
     def __init__(self, *, stale_after: float = 90.0) -> None:
         self.stale_after = max(10.0, float(stale_after))
@@ -169,12 +169,12 @@ class NodeRegistry:
         return [node for node in self.available() if node.supports(normalized)]
 
     @staticmethod
-    def _benchmark_score(cap: CapabilityDescriptor) -> tuple[int, int, float]:
+    def _benchmark_score(cap: CapabilityDescriptor) -> tuple[int, int, float, float]:
         """Return a stable preference tuple from sanitized operational hints.
 
-        Missing benchmark data remains neutral so old/unbenchmarked nodes still
-        work. A benchmark can only influence routing among already-routable
-        candidates; it never grants capability or execution authority.
+        Correctness joins latency as routing evidence in 13.37. Missing quality
+        data stays neutral so legacy nodes remain routable. Benchmarks only rank
+        already-authorized capabilities; they never create authority.
         """
         metadata = dict(cap.metadata or {})
         try:
@@ -182,13 +182,19 @@ class NodeRegistry:
         except (TypeError, ValueError):
             success = -1.0
         try:
+            accuracy = float(metadata.get("benchmark_accuracy"))
+        except (TypeError, ValueError):
+            accuracy = -1.0
+        try:
             latency = float(metadata.get("benchmark_latency_ms"))
         except (TypeError, ValueError):
             latency = -1.0
-        has_measurement = 0 if (success >= 0.0 or latency >= 0.0) else 1
-        failure_penalty = 0 if success < 0.0 or success >= 0.75 else 1
+        has_measurement = 0 if (success >= 0.0 or accuracy >= 0.0 or latency >= 0.0) else 1
+        reliability = min([v for v in (success, accuracy) if v >= 0.0], default=-1.0)
+        failure_penalty = 0 if reliability < 0.0 or reliability >= 0.75 else 1
+        quality_sort = -accuracy if accuracy >= 0.0 else 0.0
         latency_value = latency if latency >= 0.0 else float("inf")
-        return (failure_penalty, has_measurement, latency_value)
+        return (failure_penalty, has_measurement, quality_sort, latency_value)
 
     def choose(self, capability: str, *, prefer_private: bool = True, prefer_local: bool = True) -> NodeDescriptor | None:
         normalized = str(capability).strip().lower()
@@ -196,7 +202,7 @@ class NodeRegistry:
         if not candidates:
             return None
 
-        def score(node: NodeDescriptor) -> tuple[int, int, int, int, int, int, float, str]:
+        def score(node: NodeDescriptor) -> tuple[int, int, int, int, int, int, float, float, str]:
             cap = node.capabilities[normalized]
             benchmark = self._benchmark_score(cap)
             return (
@@ -207,6 +213,7 @@ class NodeRegistry:
                 benchmark[0],
                 benchmark[1],
                 benchmark[2],
+                benchmark[3],
                 node.node_id,
             )
 
@@ -226,6 +233,17 @@ class NodeRegistry:
             prefer_private=prefer_private,
             prefer_local=prefer_local,
         )
+        benchmark_keys = {
+            "benchmark_latency_ms",
+            "benchmark_success_rate",
+            "benchmark_throughput",
+            "benchmark_accuracy",
+            "benchmark_useful_throughput",
+            "benchmark_output_tokens",
+            "benchmark_truncated_runs",
+            "benchmark_profile_version",
+            "benchmark_reliability_revision",
+        }
         return {
             "capability": normalized,
             "available": selected is not None,
@@ -239,7 +257,7 @@ class NodeRegistry:
                 node.node_id: {
                     key: value
                     for key, value in dict(node.capabilities[normalized].metadata or {}).items()
-                    if key in {"benchmark_latency_ms", "benchmark_success_rate", "benchmark_throughput", "benchmark_profile_version"}
+                    if key in benchmark_keys
                 }
                 for node in candidates
             },
