@@ -19,6 +19,7 @@ from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.desktop.static_server import DesktopStaticServer
 from mary.desktop.authority import resolve_desktop_application
 from mary.runtime.application import MaryApplication, create_application
+from mary.runtime.resource_reporting_gateway import ResourceReportingGateway
 
 
 class MaryWebEnginePage(QWebEnginePage):
@@ -74,7 +75,7 @@ class MaryDesktopWindow(QMainWindow):
             and _desktop_capability_node_enabled()
         ):
             self.node_agent = DesktopCapabilityNodeAgent(
-                application.gateway,
+                ResourceReportingGateway(application.gateway),
                 application=application,
                 bridge=self.bridge,
             )
