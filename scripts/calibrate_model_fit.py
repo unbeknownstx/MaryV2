@@ -109,10 +109,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"observed delta GiB:   {fit.get('accelerator_observed_delta_gib')}")
     print(f"fit-hint status:      {fit.get('fit_hint_status')}")
     suggested = fit.get("suggested_accelerator_gib_general")
-    if fit.get("suggestion_safe_to_apply") and suggested is not None:
+    if fit.get("recommendation_supported_by_measurement") and suggested is not None:
         print(f"suggested general fit:{suggested} GiB")
         print(f"optional env setting: {_env_name(args.runtime)}={suggested}")
-        print("note:                  suggestion is not applied automatically")
+        print("scope:                 measured model/context only; remeasure after changes")
+        print("note:                  recommendation is not applied automatically")
     else:
         print("suggested general fit:none — do not guess; rerun from a verified cold model state")
     print(f"artifact:              {target}")
