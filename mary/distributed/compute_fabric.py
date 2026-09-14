@@ -3,6 +3,10 @@
 This module does not own identity, memory, permissions, or durable truth. It
 ranks already-advertised capabilities using bounded runtime evidence so the same
 Mary Core can make useful use of heterogeneous Mac/Windows/cloud resources.
+
+13.54 adds explicit-hint-only accelerator fit planning. A node may advertise a
+measured/configured per-role accelerator-memory footprint; absent that hint,
+fit remains unknown and existing selection behavior is preserved.
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ from threading import RLock
 from typing import Any, Iterable
 
 from .nodes import NodeDescriptor, NodeRegistry
+from .resource_broker import ResourceSnapshot, WorkloadFootprint, plan_resource_handoff
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,11 @@ class NodeLoad:
     cpu_fraction: float | None = None
     memory_fraction: float | None = None
     accelerator_fraction: float | None = None
+    memory_total_gib: float | None = None
+    memory_free_gib: float | None = None
+    accelerator_total_gib: float | None = None
+    accelerator_free_gib: float | None = None
+    unified_memory: bool = False
     stream_critical: bool = False
 
     @property
@@ -124,15 +134,38 @@ class NodeLoad:
         return pressure
 
 
+def _explicit_accelerator_requirement(metadata: dict[str, Any], operation: str) -> float | None:
+    """Read a bounded explicit footprint hint; never infer one from a model ID."""
+    role = {
+        "conversation": "conversation",
+        "quick_answer": "fast",
+        "utility": "utility",
+        "general": "general",
+    }.get(str(operation or "general").strip().lower(), "general")
+    values = dict(metadata or {})
+    raw = values.get(f"resource_accelerator_gib_{role}")
+    if raw is None and role != "general":
+        raw = values.get("resource_accelerator_gib_general")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        required = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if required <= 0.0 or required > 4096.0:
+        return None
+    return round(required, 3)
+
+
 class HomeComputeScheduler:
     """Rank node candidates without granting execution permission.
 
     The task broker remains the execution boundary. This class only provides a
     better selection decision using readiness, privacy, cost, measured latency,
-    and live load.
+    explicit fit evidence, and live load.
     """
 
-    VERSION = "13.53"
+    VERSION = "13.54"
 
     def __init__(self, registry: NodeRegistry, *, benchmarks: BenchmarkBook | None = None) -> None:
         self.registry = registry
@@ -147,6 +180,29 @@ class HomeComputeScheduler:
     def load_for(self, node_id: str) -> NodeLoad:
         with self._lock:
             return self._loads.get(str(node_id), NodeLoad(node_id=str(node_id)))
+
+    def _fit_plan(self, node: NodeDescriptor, request: WorkloadRequest, load: NodeLoad):
+        cap = node.capabilities[request.capability]
+        required = _explicit_accelerator_requirement(dict(cap.metadata or {}), request.operation)
+        if required is None:
+            return None
+        snapshot = ResourceSnapshot(
+            node_id=node.node_id,
+            ram_total_gb=load.memory_total_gib,
+            ram_free_gb=load.memory_free_gib,
+            vram_total_gb=load.accelerator_total_gib,
+            vram_free_gb=load.accelerator_free_gib,
+            active_realtime=bool(load.stream_critical),
+        )
+        return plan_resource_handoff(
+            snapshot,
+            WorkloadFootprint(
+                name=f"{request.capability}:{request.operation}",
+                vram_gb=required,
+                realtime=bool(request.realtime),
+            ),
+            policy="auto",
+        )
 
     def _score(self, node: NodeDescriptor, request: WorkloadRequest) -> tuple[float, str]:
         cap = node.capabilities[request.capability]
@@ -178,6 +234,22 @@ class HomeComputeScheduler:
             score += 10.0
             reasons.append("zero_cost")
 
+        load = self.load_for(node.node_id)
+        fit = self._fit_plan(node, request, load)
+        if fit is not None:
+            if fit.status == "infeasible":
+                return (-10_000.0, f"resource_infeasible:{fit.reason}")
+            if fit.status == "fits":
+                score += 8.0
+                reasons.append("resource_fit")
+            elif fit.status in {"handoff", "prefer_other_node"}:
+                # Planning only: never unload/evict automatically. Prefer a peer
+                # that fits cleanly when one is available.
+                score -= 36.0
+                reasons.append(f"resource_{fit.status}")
+            elif fit.status == "unknown":
+                reasons.append("resource_fit_unknown")
+
         bench = self.benchmarks.summary(node.node_id, request.capability, request.operation)
         latency = bench.get("median_latency_ms")
         success_rate = bench.get("success_rate")
@@ -190,7 +262,6 @@ class HomeComputeScheduler:
             score += (28.0 if request.realtime else 12.0) * latency_factor
             reasons.append(f"median={latency:.0f}ms")
 
-        load = self.load_for(node.node_id)
         penalty = 36.0 * load.pressure
         if load.stream_critical and not request.realtime:
             penalty += 30.0
@@ -219,11 +290,12 @@ class HomeComputeScheduler:
             score, reason = self._score(node, normalized)
             if score <= -9000:
                 continue
+            load = self.load_for(node.node_id)
             ranked.append({
                 "node_id": node.node_id,
                 "score": round(score, 3),
                 "reason": reason,
-                "load_pressure": round(self.load_for(node.node_id).pressure, 3),
+                "load_pressure": round(load.pressure, 3),
                 "benchmark": self.benchmarks.summary(node.node_id, capability, normalized.operation),
             })
         ranked.sort(key=lambda item: (-float(item["score"]), str(item["node_id"])))
@@ -245,7 +317,7 @@ class HomeComputeScheduler:
             "candidates": ranked,
             "execution": "not_authorized",
             "authority": "scheduling_hint_only",
-            "policy": "selection never grants permission; execution still uses the bounded device-task channel",
+            "policy": "selection never grants permission; explicit fit hints never trigger automatic resource eviction",
         }
 
 
