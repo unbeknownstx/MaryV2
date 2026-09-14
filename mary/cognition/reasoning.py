@@ -188,21 +188,41 @@ class ReasoningEngine:
         # low-latency conversation path.
         local_decision = mind.get("local_mind", {}) if isinstance(mind, dict) else {}
         local_class = str(local_decision.get("response_class") or "") if isinstance(local_decision, dict) else ""
+        explicit_local_fast = self._explicit_local_fast_requested()
+        local_fast_override_applied = False
         risk_route_applied = False
         if local_class == "thinking_required":
-            turn_policy = TurnPolicyDecision(
-                category="response_risk_thinking",
-                generation_purpose=None,
-                local_first=False,
-                rationale="bounded local precision policy requires model-backed thinking",
-            )
-            lane = LaneDecision(
-                ConversationLane.THINKING,
-                "bounded local precision policy requires thinking",
-                12_000,
-                True,
-            )
-            risk_route_applied = True
+            if explicit_local_fast and turn_policy.generation_purpose == "conversation":
+                # An explicit creator local/private route is allowed to choose
+                # latency over the advisory response-risk escalation for a turn
+                # already classified as conversation. This never converts a
+                # task/general turn into conversation and never grants new
+                # execution authority.
+                if lane.lane not in {
+                    ConversationLane.SOCIAL_INSTANT,
+                    ConversationLane.CONVERSATION,
+                }:
+                    lane = LaneDecision(
+                        ConversationLane.CONVERSATION,
+                        "explicit local/private conversational fast-path override",
+                        3_500,
+                        False,
+                    )
+                local_fast_override_applied = True
+            else:
+                turn_policy = TurnPolicyDecision(
+                    category="response_risk_thinking",
+                    generation_purpose=None,
+                    local_first=False,
+                    rationale="bounded local precision policy requires model-backed thinking",
+                )
+                lane = LaneDecision(
+                    ConversationLane.THINKING,
+                    "bounded local precision policy requires thinking",
+                    12_000,
+                    True,
+                )
+                risk_route_applied = True
         elif local_class == "open_conversation":
             # Response-risk is a refinement layer, not a replacement for a
             # stronger semantic turn classification. Preserve explicit
@@ -236,7 +256,10 @@ class ReasoningEngine:
         if (
             generation_purpose == "conversation"
             and lane.lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
-            and engagement_mode not in {"engaged", "deep"}
+            and (
+                explicit_local_fast
+                or engagement_mode not in {"engaged", "deep"}
+            )
         ):
             routing_purpose = "conversation_fast"
         if (
@@ -504,6 +527,7 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "local_fast_override_applied": local_fast_override_applied,
                 "local_fast_context": local_fast_context,
                 "prompt_characters": prompt_characters,
             }
@@ -560,6 +584,7 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "local_fast_override_applied": local_fast_override_applied,
                 "local_fast_context": local_fast_context,
                 "prompt_characters": prompt_characters,
                 "deliberation_execution": (
@@ -1636,11 +1661,9 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             },
         }
 
-    def _local_fast_context_enabled(self, routing_purpose: str | None) -> bool:
-        """Use a compact prompt only for an explicit local/private fast-chat route."""
+    def _explicit_local_fast_requested(self) -> bool:
+        """Return whether the creator explicitly selected local/private generation."""
 
-        if str(routing_purpose or "").strip().lower() != "conversation_fast":
-            return False
         getter = getattr(self.llm, "session_override_status", None)
         if not callable(getter):
             return False
@@ -1651,6 +1674,14 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         return bool(
             str(status.get("route") or "").strip().lower() in {"private", "local", "offline"}
             or str(status.get("provider") or "").strip().lower() == "ollama"
+        )
+
+    def _local_fast_context_enabled(self, routing_purpose: str | None) -> bool:
+        """Use a compact prompt only for an explicit local/private fast-chat route."""
+
+        return bool(
+            str(routing_purpose or "").strip().lower() == "conversation_fast"
+            and self._explicit_local_fast_requested()
         )
 
     @staticmethod
