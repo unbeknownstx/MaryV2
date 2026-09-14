@@ -7,6 +7,8 @@ Mary Core can make useful use of heterogeneous Mac/Windows/cloud resources.
 13.54 adds explicit-hint-only accelerator fit planning. A node may advertise a
 measured/configured per-role accelerator-memory footprint; absent that hint,
 fit remains unknown and existing selection behavior is preserved.
+13.55 records one bounded content-free adaptive routing explanation for
+observability; prompts, task args, results, and credentials are never retained.
 """
 from __future__ import annotations
 
@@ -35,18 +37,20 @@ class BenchmarkSample:
 
 
 class BenchmarkBook:
-    """Small process-local benchmark evidence store.
+    """Small process-local benchmark and routing-evidence store.
 
-    Benchmarks are operational hints only. They are intentionally not Mary
-    memory and may be discarded on restart or rebuilt after hardware changes.
+    Evidence is operational only. It is intentionally not Mary memory and may
+    be discarded on restart or rebuilt after hardware changes.
     """
 
     VERSION = "13.11"
+    ROUTING_REVISION = "13.55"
 
     def __init__(self, *, max_samples_per_key: int = 12) -> None:
         self.max_samples_per_key = max(3, min(50, int(max_samples_per_key)))
         self._lock = RLock()
         self._samples: dict[tuple[str, str, str], list[BenchmarkSample]] = {}
+        self._last_adaptive_decision: dict[str, Any] = {}
 
     def record(self, sample: BenchmarkSample) -> None:
         key = (
@@ -93,10 +97,68 @@ class BenchmarkBook:
             "authority": "operational_hint_only",
         }
 
+    def record_adaptive_decision(
+        self,
+        *,
+        capability: str,
+        operation: str,
+        selected_node_id: str | None,
+        outcome: str,
+        candidates: Iterable[dict[str, Any]],
+    ) -> None:
+        safe_candidates: list[dict[str, Any]] = []
+        for raw in list(candidates)[:8]:
+            item = dict(raw or {})
+            benchmark = dict(item.get("benchmark") or {})
+            safe_candidates.append({
+                "node_id": str(item.get("node_id") or "")[:160],
+                "score": round(float(item.get("score") or 0.0), 3),
+                "reason": str(item.get("reason") or "")[:240],
+                "load_pressure": round(max(0.0, min(1.0, float(item.get("load_pressure") or 0.0))), 3),
+                "benchmark": {
+                    "samples": max(0, int(benchmark.get("samples") or 0)),
+                    "success_rate": benchmark.get("success_rate"),
+                    "median_latency_ms": benchmark.get("median_latency_ms"),
+                    "median_throughput": benchmark.get("median_throughput"),
+                    "authority": "operational_hint_only",
+                },
+            })
+        decision = {
+            "revision": self.ROUTING_REVISION,
+            "capability": str(capability or "").strip().lower()[:80],
+            "operation": str(operation or "general").strip().lower()[:80],
+            "selected_node_id": (str(selected_node_id)[:160] if selected_node_id else None),
+            "outcome": str(outcome or "unknown")[:80],
+            "candidates": safe_candidates,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "authority": "operational_observation_only",
+            "content_retained": False,
+        }
+        with self._lock:
+            self._last_adaptive_decision = decision
+
+    def last_adaptive_decision(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                **self._last_adaptive_decision,
+                "candidates": [dict(item) for item in self._last_adaptive_decision.get("candidates", [])],
+            } if self._last_adaptive_decision else {}
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             items = [sample.to_dict() for values in self._samples.values() for sample in values]
-        return {"version": self.VERSION, "samples": items, "authority": "operational_hint_only"}
+            decision = {
+                **self._last_adaptive_decision,
+                "candidates": [dict(item) for item in self._last_adaptive_decision.get("candidates", [])],
+            } if self._last_adaptive_decision else {}
+        return {
+            "version": self.VERSION,
+            "routing_revision": self.ROUTING_REVISION,
+            "samples": items,
+            "last_adaptive_decision": decision,
+            "authority": "operational_hint_only",
+            "content_retained": False,
+        }
 
 
 @dataclass(frozen=True)
@@ -176,7 +238,7 @@ class HomeComputeScheduler:
     explicit fit evidence, and live load.
     """
 
-    VERSION = "13.54"
+    VERSION = "13.55"
 
     def __init__(self, registry: NodeRegistry, *, benchmarks: BenchmarkBook | None = None) -> None:
         self.registry = registry
@@ -254,8 +316,6 @@ class HomeComputeScheduler:
                 score += 8.0
                 reasons.append("resource_fit")
             elif fit.status in {"handoff", "prefer_other_node"}:
-                # Planning only: never unload/evict automatically. Prefer a peer
-                # that fits cleanly when one is available.
                 score -= 36.0
                 reasons.append(f"resource_{fit.status}")
             elif fit.status == "unknown":
@@ -327,14 +387,46 @@ class HomeComputeScheduler:
     def choose(self, request: WorkloadRequest) -> NodeDescriptor | None:
         ranked = self.rank(request)
         if ranked:
-            return self.registry.get(str(ranked[0]["node_id"]))
+            selected_id = str(ranked[0]["node_id"])
+            self.benchmarks.record_adaptive_decision(
+                capability=request.capability,
+                operation=request.operation,
+                selected_node_id=selected_id,
+                outcome="selected",
+                candidates=ranked,
+            )
+            return self.registry.get(selected_id)
         candidates = list(self.registry.candidates(str(request.capability).strip().lower()))
         if candidates:
             plans = [self._fit_plan(node, request, self.load_for(node.node_id)) for node in candidates]
             if plans and all(plan is not None and plan.status == "infeasible" for plan in plans):
+                rejected = []
+                for node, plan in zip(candidates, plans):
+                    load = self.load_for(node.node_id)
+                    rejected.append({
+                        "node_id": node.node_id,
+                        "score": -10_000.0,
+                        "reason": f"resource_infeasible:{plan.reason}",
+                        "load_pressure": round(load.pressure, 3),
+                        "benchmark": self.benchmarks.summary(node.node_id, request.capability, request.operation),
+                    })
+                self.benchmarks.record_adaptive_decision(
+                    capability=request.capability,
+                    operation=request.operation,
+                    selected_node_id=None,
+                    outcome="measured_no_fit",
+                    candidates=rejected,
+                )
                 raise LookupError(
                     f"No eligible node has measured accelerator capacity for {request.capability}:{request.operation}."
                 )
+        self.benchmarks.record_adaptive_decision(
+            capability=request.capability,
+            operation=request.operation,
+            selected_node_id=None,
+            outcome="no_ranked_candidate",
+            candidates=(),
+        )
         return None
 
     def route_preview(self, request: WorkloadRequest) -> dict[str, Any]:
