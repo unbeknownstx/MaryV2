@@ -1,8 +1,15 @@
 $ErrorActionPreference = "Stop"
 
 $Root = (Split-Path -Parent $PSScriptRoot)
-$Launcher = Join-Path $Root "scripts\launch_windows_node.ps1"
-$TaskName = "MaryV2 Windows Capability Node"
+$Launcher = Join-Path $Root "scripts\launch_home_node_windows.ps1"
+$TaskName = "MaryV2 Home Capability Node"
+$LegacyTaskName = "MaryV2 Windows Capability Node"
+
+$legacy = Get-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+if ($null -ne $legacy) {
+    Unregister-ScheduledTask -TaskName $LegacyTaskName -Confirm:$false
+    Write-Host "Removed legacy scheduled task: $LegacyTaskName"
+}
 
 if (-not (Test-Path $Launcher)) {
     throw "MaryV2 Windows node launcher was not found: $Launcher"
@@ -26,9 +33,9 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Principal $Principal `
     -Settings $Settings `
-    -Description "MaryV2 headless Windows capability node. Exposes approved local capabilities such as Ollama to canonical Mary Core; does not launch Desktop or own Mary state." `
+    -Description "MaryV2 canonical Windows home capability node. Uses the bounded hardware profile, exposes approved local capabilities to Mary Core, and never owns Mary state." `
     -Force | Out-Null
 
 Write-Host "Installed scheduled task: $TaskName"
-Write-Host "The task starts at your Windows logon and runs the headless capability node only."
+Write-Host "The task starts the canonical home capability node at Windows logon."
 Write-Host "Run it now with: Start-ScheduledTask -TaskName '$TaskName'"

@@ -1,9 +1,21 @@
 $ErrorActionPreference = "Stop"
-$TaskName = "MaryV2 Windows Capability Node"
-$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($null -eq $existing) {
-    Write-Host "Scheduled task is not installed: $TaskName"
-    exit 0
+
+$TaskNames = @(
+    "MaryV2 Home Capability Node",
+    "MaryV2 Windows Capability Node"
+)
+
+$removed = $false
+foreach ($TaskName in $TaskNames) {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -eq $existing) {
+        continue
+    }
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    Write-Host "Removed scheduled task: $TaskName"
+    $removed = $true
 }
-Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-Write-Host "Removed scheduled task: $TaskName"
+
+if (-not $removed) {
+    Write-Host "No MaryV2 Windows capability-node scheduled task is installed."
+}
