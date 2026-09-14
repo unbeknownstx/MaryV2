@@ -67,7 +67,7 @@ The assignment below is a starting hypothesis only; tonight's measurements decid
 | Local private conversation/utility | Best benchmarked local node | Falls back without cloud and keeps private lanes local |
 | STT / VAD | Mac M1 candidate | Metal-friendly local audio workload; benchmark before locking |
 | OBS / stream relay / screen capture | Windows | Stream source is physically on this machine |
-| Screen/perception preprocessing | Windows CPU/RX 480 Vulkan candidate | Keeps raw screen data local; measure Vulkan vs CPU |
+| Screen/perception preprocessing | Windows CPU/RX 580 Vulkan candidate | Keeps raw screen data local; measure Vulkan vs CPU |
 | Embeddings/indexing/summaries | Idle local node | Background work should use otherwise-idle compute |
 | Heavy reasoning/vision/generation | Cloud specialist or queued local worker | Does not block realtime conversation |
 | Avatar renderer | Windows initially | Co-located with OBS; renderer remains presentation-only |
@@ -87,11 +87,11 @@ If the profile is written somewhere custom:
 python -m scripts.run_home_node --benchmark-profile /path/to/node_benchmark_13_11.json
 ```
 
-Windows PowerShell can optionally label currently known GPU hardware before benchmarking/registration:
+Windows RX 580 4 GB should benchmark and launch through the same hardware profile so measurements match the advertised runtime:
 
 ```powershell
-$env:MARY_NODE_GPU_LABEL="AMD Radeon RX 480"
-$env:MARY_NODE_GPU_MEMORY_GIB="4"
+python -m scripts.benchmark_home_node --hardware-profile windows-rx580-4gb --local-llm --repeats 3
+python -m scripts.run_home_node --hardware-profile windows-rx580-4gb --benchmark-profile "$HOME\.maryv2\node_benchmark_13_11.json"
 ```
 
 These labels are descriptive only; they never cause routing by themselves.
@@ -137,6 +137,11 @@ It is intentionally process-scoped unless `-Persist` is supplied.
 - no distributed identity or memory authority;
 - no automatic training from conversations;
 - no arbitrary shell execution;
-- no assumption that RX 480 acceleration is useful until measured;
+- no assumption that RX 580 acceleration is useful until measured;
 - no mandatory local model, MCP server, STT engine or creative service at Core startup;
 - no requirement to wait for future GPU hardware.
+
+
+### Benchmark validity
+
+Local-LLM benchmark metadata is applied only when its recorded model/context fingerprint matches the active capability advertisement. A model or context change invalidates the old measurement rather than silently reusing stale routing evidence.
