@@ -3,11 +3,12 @@
 The wrapped gateway remains the authority/transport owner. This adapter only
 adds a tiny, cached `_resource` envelope to successful device-task completions.
 It never changes node permissions, task status, Mary state, or ordinary client
-traffic. Probe failure is soft and leaves the original completion untouched.
+traffic. Resource probes refresh asynchronously so hardware observation never
+sits on the model/tool completion critical path.
 """
 from __future__ import annotations
 
-from threading import RLock
+from threading import RLock, Thread
 from time import monotonic
 from typing import Any, Callable
 
@@ -33,22 +34,51 @@ class ResourceReportingGateway:
         self._lock = RLock()
         self._last_sample_at = -1.0
         self._last_payload: dict[str, Any] = {}
+        self._refreshing = False
+        self._start_refresh()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._gateway, name)
 
+    def _start_refresh(self) -> None:
+        with self._lock:
+            if self._refreshing:
+                return
+            self._refreshing = True
+        thread = Thread(
+            target=self._refresh_resource_cache,
+            name="MaryNodeResourceProbe",
+            daemon=True,
+        )
+        thread.start()
+
+    def _refresh_resource_cache(self) -> None:
+        try:
+            payload = dict(telemetry_from_observation(self._observer()) or {})
+        except Exception:
+            payload = {}
+        measured_at = monotonic()
+        with self._lock:
+            self._last_payload = payload
+            self._last_sample_at = measured_at
+            self._refreshing = False
+
     def _resource_payload(self) -> dict[str, Any]:
         now = monotonic()
+        should_refresh = False
         with self._lock:
-            if self._last_sample_at >= 0.0 and now - self._last_sample_at < self._sample_seconds:
+            fresh = (
+                self._last_sample_at >= 0.0
+                and now - self._last_sample_at < self._sample_seconds
+            )
+            if fresh:
                 return dict(self._last_payload)
-            try:
-                payload = dict(telemetry_from_observation(self._observer()) or {})
-            except Exception:
-                payload = {}
-            self._last_sample_at = now
-            self._last_payload = payload
-            return dict(payload)
+            should_refresh = not self._refreshing
+        if should_refresh:
+            self._start_refresh()
+        # Never extend stale hardware evidence just because a refresh is slow or
+        # unavailable. Core's own telemetry TTL can then expire old pressure.
+        return {}
 
     def complete_capability_task(
         self,
