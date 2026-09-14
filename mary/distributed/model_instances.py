@@ -19,7 +19,7 @@ import re
 from typing import Any, Iterable
 
 
-VERSION = "13.39"
+VERSION = "13.47"
 _LEVEL = {"unknown": 0, "heuristic": 1, "known": 2, "advertised": 3, "measured": 4}
 _SAFE_SEGMENT = re.compile(r"[^a-zA-Z0-9._:@+\-]+")
 
@@ -193,6 +193,12 @@ def model_instance_from_capability(
             advertised=values.get("supports_embeddings"),
             known=values.get("known_embeddings"),
             heuristic=values.get("heuristic_embeddings"),
+        ),
+        "structured_json": capability_fact(
+            measured=values.get("measured_structured_json"),
+            advertised=values.get("supports_structured_json"),
+            known=values.get("known_structured_json"),
+            heuristic=values.get("heuristic_structured_json"),
         ),
     }
 
