@@ -24,6 +24,7 @@ from mary.llm.interface import (
 )
 from mary.llm.router import LLMRouter
 from mary.orchestration.consultation import ExpertConsultant
+from mary.orchestration.evidence_selection import select_prompt_evidence
 from mary.orchestration.models import ProvenanceSource
 from mary.orchestration.orchestrator import OrchestrationPlan, OrchestrationRoute
 from mary.orchestration.workspace import TaskWorkspaceManager
@@ -88,6 +89,7 @@ class OrchestrationExecutor:
         self.workspace = workspace
         self.expert = expert
         self._last_result: ExecutionResult | None = None
+        self._last_prompt_evidence: dict[str, Any] = {}
 
     def status(self) -> dict[str, Any]:
         return {
@@ -95,6 +97,7 @@ class OrchestrationExecutor:
             "silent_tool_execution": False,
             "silent_paid_execution": False,
             "human_authority_route_executes": False,
+            "prompt_evidence": dict(self._last_prompt_evidence),
             "last_result": self._last_result.to_dict() if self._last_result else None,
         }
 
@@ -374,6 +377,11 @@ class OrchestrationExecutor:
     ) -> str:
         limit = self.router.config.governance.task_text_characters
         if redacted_only:
+            self._last_prompt_evidence = {
+                "policy_version": "13.46",
+                "selected_count": 0,
+                "reason": "redacted_only_prompt",
+            }
             return clip_text(
                 f"REDACTED REQUEST: {clip_text(prompt or '', limit)}",
                 limit * 2,
@@ -381,7 +389,9 @@ class OrchestrationExecutor:
         lines = [f"TASK: {clip_text(task.objective, limit)}"]
         if prompt:
             lines.append(f"REQUEST: {clip_text(prompt, limit)}")
-        evidence = task.evidence[-8:]
+        selection = select_prompt_evidence(task.evidence, max_items=8)
+        self._last_prompt_evidence = selection.telemetry()
+        evidence = selection.selected
         if evidence:
             lines.append("EVIDENCE:")
             for item in evidence:
