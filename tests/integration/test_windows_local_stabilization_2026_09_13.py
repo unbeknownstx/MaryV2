@@ -137,6 +137,76 @@ def test_explicit_private_fast_chat_compiles_bounded_worker_context(monkeypatch)
     assert result.metadata["provider"] == "ollama"
 
 
+def test_explicit_private_chat_beats_engaged_thinking_advisory(monkeypatch):
+    monkeypatch.setenv("MARY_LOCAL_FAST_CONTEXT_CHARS", "3200")
+    monkeypatch.setenv("MARY_LOCAL_FAST_MAX_TOKENS", "80")
+    router = _PrivateRouter()
+    engine = ReasoningEngine(router)
+    context = CognitiveContext(
+        input_text=(
+            "idk, I just want to talk for a minute. "
+            "That whole local-model test was kind of wild."
+        ),
+        conversation=[],
+        memories=[],
+        user_context={"name": "Unbe"},
+        mind_state={
+            "disposition": {"preferred_length": "short", "mode": "conversation"},
+            "continuity": {"drive": "react", "allow_follow_up_question": False},
+            "conversation_engagement": {"effective_mode": "engaged"},
+            "local_mind": {
+                "response_class": "thinking_required",
+                "escalation_reason": "advisory precision classifier",
+            },
+        },
+    )
+    intent = Intent(
+        intent_type=IntentType.CONVERSATION,
+        confidence=0.9,
+        description="ordinary conversation",
+    )
+
+    result = engine.reason(context, intent)
+
+    assert router.request is not None
+    assert router.request.operation == "conversation"
+    assert router.request.purpose == "conversation_fast"
+    assert router.request.max_tokens == 80
+    assert result.metadata["conversation_lane"]["lane"] == "conversation"
+    assert result.metadata["local_fast_override_applied"] is True
+    assert result.metadata["response_risk_route_applied"] is False
+    assert result.metadata["local_fast_context"] is True
+
+
+def test_explicit_private_route_does_not_turn_task_into_fast_conversation(monkeypatch):
+    router = _PrivateRouter()
+    engine = ReasoningEngine(router)
+    context = CognitiveContext(
+        input_text="Explain how BGP route selection works.",
+        conversation=[],
+        memories=[],
+        user_context={"name": "Unbe"},
+        mind_state={
+            "disposition": {"preferred_length": "medium", "mode": "task"},
+            "conversation_engagement": {"effective_mode": "engaged"},
+            "local_mind": {"response_class": "thinking_required"},
+        },
+    )
+    intent = Intent(
+        intent_type=IntentType.INFORMATION,
+        confidence=0.99,
+        description="technical information request",
+    )
+
+    result = engine.reason(context, intent)
+
+    assert router.request is not None
+    assert router.request.operation == "task_generation"
+    assert router.request.purpose is None
+    assert result.metadata["local_fast_override_applied"] is False
+    assert result.metadata["local_fast_context"] is False
+
+
 def test_home_node_does_not_advertise_denied_sensor_as_routable(tmp_path, monkeypatch):
     permissions = DeviceExecutionPermissions(tmp_path / "permissions.json")
     permissions.allow("sensor.audio_transcribe")
