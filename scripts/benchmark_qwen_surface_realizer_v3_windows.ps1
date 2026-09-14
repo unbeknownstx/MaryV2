@@ -21,6 +21,9 @@ try {
         $Report = Join-Path $ReportDirectory "qwen-surface-realizer-v3-$Stamp.json"
     }
 
+    # Historical V3 comparison pair: "qwen3:1.7b", "qwen3:4b-instruct".
+    # On this Windows/RX580 profile the 4B control is never automatic; request
+    # -IncludeInstructControl explicitly when intentionally running that experiment.
     if ($IncludeInstructControl -and $Models -notcontains "qwen3:4b-instruct") {
         $Models = @($Models) + "qwen3:4b-instruct"
     }
