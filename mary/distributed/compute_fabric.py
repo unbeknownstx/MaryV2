@@ -1,6 +1,6 @@
 """Adaptive, benchmark-aware scheduling for Mary's replaceable compute nodes.
 
-This module does not own identity, memory, permissions, or durable truth.  It
+This module does not own identity, memory, permissions, or durable truth. It
 ranks already-advertised capabilities using bounded runtime evidence so the same
 Mary Core can make useful use of heterogeneous Mac/Windows/cloud resources.
 """
@@ -112,12 +112,13 @@ class NodeLoad:
     active_background: int = 0
     cpu_fraction: float | None = None
     memory_fraction: float | None = None
+    accelerator_fraction: float | None = None
     stream_critical: bool = False
 
     @property
     def pressure(self) -> float:
         pressure = min(1.0, 0.28 * self.active_realtime + 0.12 * self.active_background)
-        for value in (self.cpu_fraction, self.memory_fraction):
+        for value in (self.cpu_fraction, self.memory_fraction, self.accelerator_fraction):
             if value is not None:
                 pressure = max(pressure, max(0.0, min(1.0, float(value))))
         return pressure
@@ -131,7 +132,7 @@ class HomeComputeScheduler:
     and live load.
     """
 
-    VERSION = "13.11"
+    VERSION = "13.53"
 
     def __init__(self, registry: NodeRegistry, *, benchmarks: BenchmarkBook | None = None) -> None:
         self.registry = registry
@@ -184,8 +185,6 @@ class HomeComputeScheduler:
             score += 18.0 * float(success_rate)
             reasons.append(f"success={success_rate:.2f}")
         if latency is not None:
-            # Realtime work strongly favors lower measured latency; background
-            # work still benefits but does not starve slower useful machines.
             budget = 2500.0 if request.realtime else 15_000.0
             latency_factor = max(0.0, 1.0 - min(float(latency), budget) / budget)
             score += (28.0 if request.realtime else 12.0) * latency_factor
