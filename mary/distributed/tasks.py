@@ -4,10 +4,14 @@ Core may select a replaceable device node and queue a narrowly typed task, but
 execution always occurs on the device under that device's local permission
 policy. There is intentionally no shell-command task type here.
 
-13.50 adds bounded claim leases without changing the device protocol. If a
-replay-safe claim stalls, the old attempt is terminally expired and a new task
-ID is queued as its replacement. Late completion of the old ID cannot mutate the
-replacement. MCP work is never blindly replayed.
+13.50 adds bounded claim leases. If a replay-safe claim stalls, the old attempt
+is terminally expired and a new task ID is queued as its replacement. Late
+completion of the old ID cannot mutate the replacement. MCP work is never
+blindly replayed.
+
+13.51 wires the existing benchmark-aware HomeComputeScheduler into this real
+broker. Cold start preserves NodeRegistry.choose(). Once content-free execution
+samples exist, measured operation latency/reliability may improve node choice.
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
 
+from .compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, WorkloadRequest
 from .nodes import NodeRegistry
 from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
 from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_sensor_task_args
@@ -35,6 +40,40 @@ def _utc_now() -> str:
 
 def _clean_text(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
+
+
+def _operation_for(capability: str, args: dict[str, Any] | None) -> str:
+    name = str(capability or "").strip().lower()
+    values = dict(args or {})
+    if name in {"llm.ollama", "llm.llama_cpp"}:
+        role = str(values.get("role") or "general").strip().lower()
+        return {
+            "conversation": "conversation",
+            "fast": "quick_answer",
+            "utility": "utility",
+            "general": "general",
+        }.get(role, "general")
+    if name == "personal_search":
+        return "search"
+    if "audio" in name and "transcrib" in name:
+        return "stt"
+    if name.startswith("sensor.screen"):
+        return "vision"
+    if name.startswith("mcp."):
+        return "tool"
+    return "general"
+
+
+def _workload_for(capability: str, args: dict[str, Any] | None) -> WorkloadRequest:
+    operation = _operation_for(capability, args)
+    return WorkloadRequest(
+        capability=str(capability).strip().lower(),
+        operation=operation,
+        realtime=operation in {"conversation", "quick_answer", "stt", "vision"},
+        privacy_required=str(capability).strip().lower().startswith("sensor."),
+        local_preferred=True,
+        cost_sensitive=True,
+    )
 
 
 def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[str, Any]:
@@ -153,12 +192,14 @@ class DeviceCapabilityTask:
     attempt: int = 1
     root_task_id: str = ""
     replacement_task_id: str = ""
+    operation: str = "general"
     claimed_monotonic: float | None = field(default=None, repr=False)
     created_monotonic: float = field(default_factory=monotonic, repr=False)
 
     def __post_init__(self) -> None:
         if not self.root_task_id:
             self.root_task_id = self.task_id
+        self.operation = str(self.operation or "general").strip().lower()[:80] or "general"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -176,17 +217,18 @@ class DeviceCapabilityTask:
             "attempt": self.attempt,
             "root_task_id": self.root_task_id,
             "replacement_task_id": self.replacement_task_id,
+            "operation": self.operation,
         }
 
 
 class DeviceTaskBroker:
     """Small in-memory Core broker for bounded device tasks.
 
-    Device tasks are intentionally ephemeral. They are not Mary memories or
-    canonical character state, and a Core restart may discard them.
+    Device tasks, scheduler evidence, and live load are intentionally ephemeral.
+    They are not Mary memories or canonical character state.
     """
 
-    VERSION = "13.50"
+    VERSION = "13.51"
 
     def __init__(
         self,
@@ -209,6 +251,9 @@ class DeviceTaskBroker:
         self._execution_policy = execution_policy
         self._tasks: dict[str, DeviceCapabilityTask] = {}
         self._order: list[str] = []
+        self._benchmark_book = BenchmarkBook()
+        self._compute_scheduler: HomeComputeScheduler | None = None
+        self._scheduler_registry: NodeRegistry | None = None
 
     def set_execution_policy(self, policy: ExecutionPolicy | None) -> None:
         with self._condition:
@@ -219,23 +264,48 @@ class DeviceTaskBroker:
         if self._execution_policy is not None:
             self._execution_policy(kind)
 
+    def _scheduler_for(self, registry: NodeRegistry) -> HomeComputeScheduler:
+        if self._compute_scheduler is None or self._scheduler_registry is not registry:
+            self._scheduler_registry = registry
+            self._compute_scheduler = HomeComputeScheduler(registry, benchmarks=self._benchmark_book)
+        return self._compute_scheduler
+
+    def _select_node(self, registry: NodeRegistry, capability: str, args: dict[str, Any]) -> Any:
+        fallback = registry.choose(capability)
+        if fallback is None:
+            return None
+        operation = _operation_for(capability, args)
+        has_runtime_evidence = any(
+            self._benchmark_book.summary(node.node_id, capability, operation).get("samples", 0) > 0
+            for node in registry.candidates(capability)
+        )
+        if not has_runtime_evidence:
+            return fallback
+        selected = self._scheduler_for(registry).choose(_workload_for(capability, args))
+        if selected is None:
+            return fallback
+        eligible_ids = {node.node_id for node in registry.candidates(capability)}
+        return selected if selected.node_id in eligible_ids else fallback
+
     def enqueue(self, registry: NodeRegistry, *, capability: str, intent: str, args: dict[str, Any] | None, requester_device_id: str) -> DeviceCapabilityTask:
         normalized = str(capability or "").strip().lower()
         if normalized not in _ALLOWED_EXECUTION_CAPABILITIES:
             raise ValueError(f"Capability execution is not supported: {normalized}")
+        sanitized_args = _sanitize_task_args(normalized, args)
         with self._condition:
             self._enforce_execution_policy("device_task.enqueue")
             self._expire_locked()
-            selected = registry.choose(normalized)
+            selected = self._select_node(registry, normalized, sanitized_args)
             if selected is None:
                 raise LookupError(f"No connected node supports capability: {normalized}")
             task = DeviceCapabilityTask(
                 task_id=f"capability_task_{uuid4().hex}",
                 capability=normalized,
                 intent=_clean_text(intent, 500),
-                args=_sanitize_task_args(normalized, args),
+                args=sanitized_args,
                 requester_device_id=_clean_text(requester_device_id or "unknown-device", 160),
                 selected_node_id=selected.node_id,
+                operation=_operation_for(normalized, sanitized_args),
             )
             self._tasks[task.task_id] = task
             self._order.append(task.task_id)
@@ -291,15 +361,25 @@ class DeviceTaskBroker:
                 raise PermissionError(f"Capability node is not live: {node_id}")
             if task.status in _TERMINAL_STATUSES:
                 return task
-            # Legacy/direct completion of queued work remains compatible. A task
-            # that was rolled over is already terminal, so this cannot overwrite
-            # its replacement.
+
+            claimed_at = task.claimed_monotonic
             task.status = normalized_status
             task.claimed = True
             task.result = _sanitize_task_result(task.capability, result) if normalized_status == "completed" else {}
             task.error = _clean_text(error, 500)
             task.claimed_monotonic = None
             task.updated_at = _utc_now()
+
+            # Permission rejection is policy evidence, not hardware/model
+            # reliability. Only actual completed/failed execution is measured.
+            if claimed_at is not None and normalized_status in {"completed", "failed"}:
+                self._benchmark_book.record(BenchmarkSample(
+                    node_id=task.selected_node_id,
+                    capability=task.capability,
+                    operation=task.operation,
+                    latency_ms=max(0.0, (monotonic() - claimed_at) * 1000.0),
+                    success=normalized_status == "completed",
+                ))
             self._condition.notify_all()
             return task
 
@@ -359,6 +439,17 @@ class DeviceTaskBroker:
             self._expire_locked()
             return self._tasks.get(str(task_id))
 
+    def compute_status(self) -> dict[str, Any]:
+        snapshot = self._benchmark_book.snapshot()
+        return {
+            "version": self.VERSION,
+            "scheduler": "home_compute_scheduler",
+            "sample_count": len(snapshot.get("samples", [])),
+            "benchmarks": snapshot,
+            "authority": "operational_hint_only",
+            "content_retained": False,
+        }
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             self._expire_locked()
@@ -371,7 +462,8 @@ class DeviceTaskBroker:
             "claim_lease_seconds": self.claim_lease_seconds,
             "max_claim_attempts": self.max_claim_attempts,
             "replay_safe_capabilities": sorted(_REPLAY_SAFE_CAPABILITIES),
-            "policy": "typed device tasks; stalled replay-safe claims roll over to a new task id; permissions remain device-local",
+            "scheduler_samples": self.compute_status()["sample_count"],
+            "policy": "typed device tasks; stalled replay-safe claims roll over; measured execution may improve node selection; permissions remain device-local",
         }
 
     def _rollover_claim_locked(self, task: DeviceCapabilityTask) -> DeviceCapabilityTask | None:
@@ -386,6 +478,7 @@ class DeviceTaskBroker:
             selected_node_id=task.selected_node_id,
             attempt=task.attempt + 1,
             root_task_id=task.root_task_id,
+            operation=task.operation,
         )
         self._tasks[replacement.task_id] = replacement
         self._order.append(replacement.task_id)
