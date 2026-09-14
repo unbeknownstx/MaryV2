@@ -1,7 +1,6 @@
-from time import monotonic
+from threading import Thread
+from time import monotonic, sleep
 from types import SimpleNamespace
-
-import pytest
 
 from mary.distributed.tasks import DeviceTaskBroker
 
@@ -24,111 +23,136 @@ def _enqueue_search(broker):
     )
 
 
-def _expire_active_claim(broker, base_id):
-    internal = broker._tasks[base_id]
+def _expire_active_claim(broker, task_id):
+    internal = broker._tasks[task_id]
     internal.claimed_monotonic = monotonic() - 31.0
 
 
-def test_claim_delivery_id_is_attempt_scoped_and_bounded_without_leaking_to_status():
+def test_claim_keeps_canonical_task_id_and_protocol_shape():
     broker = DeviceTaskBroker(claim_lease_seconds=30.0)
     task = _enqueue_search(broker)
     base_id = task.task_id
 
     claimed = broker.poll("node-a")
     assert claimed is task
-    delivered = claimed.to_dict()["task_id"]
-
     assert claimed.task_id == base_id
-    assert delivered.startswith(base_id + ".1.")
-    assert delivered != base_id
-    assert len(delivered) <= 96
-    assert claimed.to_dict()["claim_attempt"] == 1
-
-    public = broker.get(base_id)
-    assert public is not None
-    assert public is not task
-    assert public.to_dict()["task_id"] == base_id
-    snapshot = broker.snapshot()
-    assert snapshot["tasks"][-1]["task_id"] == base_id
-    assert delivered not in str(snapshot)
+    assert claimed.to_dict()["task_id"] == base_id
+    assert claimed.attempt == 1
+    assert claimed.root_task_id == base_id
+    assert claimed.replacement_task_id == ""
 
 
-def test_expired_replay_safe_claim_requeues_with_new_attempt_and_rejects_stale_completion():
+def test_expired_replay_safe_claim_rolls_over_to_new_task_id():
     broker = DeviceTaskBroker(claim_lease_seconds=30.0, max_claim_attempts=2)
-    task = _enqueue_search(broker)
-    base_id = task.task_id
+    first = _enqueue_search(broker)
+    root_id = first.task_id
 
-    first = broker.poll("node-a")
-    first_delivery = first.to_dict()["task_id"]
-    _expire_active_claim(broker, base_id)
+    assert broker.poll("node-a") is first
+    _expire_active_claim(broker, root_id)
 
     second = broker.poll("node-a")
-    second_delivery = second.to_dict()["task_id"]
-    assert second.claim_attempt == 2
-    assert second_delivery != first_delivery
+    assert second is not None
+    assert second.task_id != root_id
+    assert second.attempt == 2
+    assert second.root_task_id == root_id
 
-    with pytest.raises(PermissionError, match="stale claim attempt"):
-        broker.complete(
-            node_id="node-a",
-            task_id=first_delivery,
-            status="completed",
-            result={"items": []},
-        )
+    old = broker.get(root_id)
+    assert old is not None
+    assert old.status == "expired"
+    assert old.replacement_task_id == second.task_id
+    assert "rolled over" in old.error.lower()
+
+
+def test_late_old_completion_cannot_overwrite_replacement():
+    broker = DeviceTaskBroker(claim_lease_seconds=30.0, max_claim_attempts=2)
+    first = _enqueue_search(broker)
+    root_id = first.task_id
+    broker.poll("node-a")
+    _expire_active_claim(broker, root_id)
+
+    second = broker.poll("node-a")
+    assert second is not None
+
+    stale = broker.complete(
+        node_id="node-a",
+        task_id=root_id,
+        status="completed",
+        result={"count": 99},
+    )
+    assert stale.status == "expired"
+    assert stale.result == {}
 
     completed = broker.complete(
         node_id="node-a",
-        task_id=second_delivery,
+        task_id=second.task_id,
         status="completed",
-        result={"items": []},
+        result={"count": 1},
     )
     assert completed.status == "completed"
+    assert completed.result == {"count": 1}
+    assert broker.get(root_id).result == {}
 
 
-def test_bare_legacy_completion_is_rejected_after_reissue():
+def test_waiter_on_original_task_follows_replacement_chain():
     broker = DeviceTaskBroker(claim_lease_seconds=30.0, max_claim_attempts=2)
-    task = _enqueue_search(broker)
-    base_id = task.task_id
-
+    first = _enqueue_search(broker)
+    root_id = first.task_id
     broker.poll("node-a")
-    _expire_active_claim(broker, base_id)
+    _expire_active_claim(broker, root_id)
+
+    result_holder = []
+
+    def waiter():
+        result_holder.append(broker.wait_for_terminal(root_id, timeout_seconds=2.0))
+
+    thread = Thread(target=waiter)
+    thread.start()
+    sleep(0.02)
     second = broker.poll("node-a")
-    assert second.claim_attempt == 2
+    assert second is not None
+    broker.complete(
+        node_id="node-a",
+        task_id=second.task_id,
+        status="completed",
+        result={"count": 1},
+    )
+    thread.join(timeout=1.0)
 
-    with pytest.raises(PermissionError, match="missing its active claim lease"):
-        broker.complete(
-            node_id="node-a",
-            task_id=base_id,
-            status="completed",
-            result={"items": []},
-        )
+    assert not thread.is_alive()
+    assert len(result_holder) == 1
+    assert result_holder[0] is not None
+    assert result_holder[0].task_id == second.task_id
+    assert result_holder[0].status == "completed"
 
 
-def test_replay_safe_task_expires_when_claim_attempt_budget_is_exhausted():
+def test_replay_safe_task_expires_when_attempt_budget_is_exhausted():
     broker = DeviceTaskBroker(claim_lease_seconds=30.0, max_claim_attempts=2)
-    task = _enqueue_search(broker)
-    base_id = task.task_id
+    first = _enqueue_search(broker)
+    root_id = first.task_id
+    broker.poll("node-a")
+    _expire_active_claim(broker, root_id)
 
-    broker.poll("node-a")
-    _expire_active_claim(broker, base_id)
-    broker.poll("node-a")
-    _expire_active_claim(broker, base_id)
+    second = broker.poll("node-a")
+    assert second is not None
+    _expire_active_claim(broker, second.task_id)
 
     assert broker.poll("node-a") is None
-    current = broker.get(base_id)
+    current = broker.get(second.task_id)
     assert current is not None
     assert current.status == "expired"
-    assert "claim lease expired" in current.error.lower()
+    assert current.replacement_task_id == ""
+    assert "unsafe or exhausted" in current.error.lower()
 
 
-def test_first_attempt_legacy_base_id_remains_compatible():
+def test_direct_unclaimed_completion_remains_compatible():
     broker = DeviceTaskBroker(claim_lease_seconds=30.0)
     task = _enqueue_search(broker)
-    broker.poll("node-a")
 
     completed = broker.complete(
         node_id="node-a",
         task_id=task.task_id,
         status="completed",
-        result={"items": []},
+        result={"count": 1},
     )
     assert completed.status == "completed"
+    assert completed.result == {"count": 1}
