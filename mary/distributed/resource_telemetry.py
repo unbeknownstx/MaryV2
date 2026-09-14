@@ -64,14 +64,16 @@ class ResourceTelemetry:
 
     @property
     def accelerator_fraction(self) -> float | None:
-        # Apple Silicon shares system RAM. Do not invent dedicated VRAM pressure
-        # when the node explicitly reports unified-memory semantics.
         if self.apple_unified_memory and self.vram_total_gib is None:
             return self.memory_fraction
         return _used_fraction(self.vram_total_gib, self.vram_free_gib)
 
+    def transport_dict(self) -> dict[str, Any]:
+        """Return only fields permitted to cross the node/Core boundary."""
+        return asdict(self)
+
     def to_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
+        payload = self.transport_dict()
         payload["memory_fraction"] = self.memory_fraction
         payload["accelerator_fraction"] = self.accelerator_fraction
         payload["authority"] = "operational_measurement_only"
@@ -147,4 +149,4 @@ def telemetry_from_observation(observation: Any) -> dict[str, Any]:
         "apple_unified_memory": bool(getattr(observation, "apple_unified_memory", False)),
         "source": source,
     }
-    return sanitize_resource_telemetry(payload).to_dict()
+    return sanitize_resource_telemetry(payload).transport_dict()
