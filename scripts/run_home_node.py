@@ -35,6 +35,7 @@ from mary.distributed.resource_profile import RuntimeResourceProfile
 from mary.distributed.sensor_node import SensorCapabilityNodeAgent
 from mary.distributed.sensors import sensor_capabilities
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
+from mary.runtime.resource_reporting_gateway import ResourceReportingGateway
 
 
 def _optional_int(name: str) -> int | None:
@@ -195,9 +196,10 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(gateway, RemoteMaryGateway):
         print("Home node did not resolve remote Mary Core authority.")
         return 2
+    node_gateway = ResourceReportingGateway(gateway)
 
     agent = SensorCapabilityNodeAgent(
-        gateway,
+        node_gateway,
         application=None,
         bridge=None,
         capabilities=capabilities,
