@@ -102,6 +102,21 @@ class RuntimeIntrospection:
         text = normalize_for_matching(str(query or ""))
         tokens = set(text.split())
 
+        node_terms = (
+            "windows", "pc", "computer", "machine", "node", "mac", "macbook",
+            "linux", "device",
+        )
+        node_role_terms = (
+            "what role", "which role", "role does", "role this", "role the",
+            "what does this", "what does my", "what does the", "purpose of",
+            "job of",
+        )
+        if (
+            any(term in text for term in node_terms)
+            and any(term in text for term in node_role_terms)
+        ):
+            return RuntimeQuery("node_role")
+
         for provider in self._PROVIDERS:
             aliases = self._PROVIDER_ALIASES.get(provider, (provider,))
             if any(alias in text for alias in aliases):
@@ -150,6 +165,7 @@ class RuntimeIntrospection:
         configured_conversation_route: list[str],
         session_override: dict[str, Any] | None = None,
         last_generation: dict[str, Any] | None = None,
+        nodes: dict[str, Any] | None = None,
     ) -> str:
         request = self.classify(query)
         providers = dict(environment.get("providers", {}) or {})
@@ -157,6 +173,14 @@ class RuntimeIntrospection:
         effective_task = list(environment.get("effective_task_route", []) or [])
         host = str(environment.get("host_type", "unknown"))
         platform_name = str(environment.get("platform", "unknown"))
+
+        if request.kind == "node_role":
+            return self._node_role_answer(
+                query=query,
+                nodes=dict(nodes or {}),
+                host=host,
+                platform_name=platform_name,
+            )
 
         if request.kind == "providers":
             return self._providers_answer(
@@ -225,6 +249,80 @@ class RuntimeIntrospection:
         elif override.get("provider"):
             parts.append(f"A process-local provider override is active: {override.get('provider')}.")
         return " ".join(parts)
+
+    def _node_role_answer(
+        self,
+        *,
+        query: str,
+        nodes: dict[str, Any],
+        host: str,
+        platform_name: str,
+    ) -> str:
+        """Explain a concrete node from Core-owned registry evidence."""
+
+        text = normalize_for_matching(str(query or ""))
+        raw_nodes = [
+            dict(item)
+            for item in list(nodes.get("nodes") or [])
+            if isinstance(item, dict)
+        ]
+        platform_hint = None
+        if "windows" in text or " pc " in f" {text} ":
+            platform_hint = "windows"
+        elif any(term in text for term in ("macbook", "macos", " mac ")):
+            platform_hint = "macos"
+        elif "linux" in text:
+            platform_hint = "linux"
+
+        candidates = [
+            item for item in raw_nodes
+            if bool(item.get("connected", False))
+            and (
+                platform_hint is None
+                or str(item.get("platform") or "").strip().lower() == platform_hint
+            )
+        ]
+        if not candidates:
+            label = platform_hint or "requested"
+            return (
+                f"I don't currently have a connected {label} capability node in my "
+                f"Core registry. My canonical Core is still running on {host} / "
+                f"{platform_name}; losing a worker changes capability, not identity."
+            )
+
+        node = candidates[0]
+        node_id = str(node.get("display_name") or node.get("node_id") or "unnamed-node")
+        node_platform = str(node.get("platform") or "unknown")
+        capabilities = []
+        resource = {}
+        for name, raw in dict(node.get("capabilities") or {}).items():
+            data = dict(raw or {})
+            if bool(data.get("routable", data.get("available", False))):
+                capabilities.append(str(name))
+            if str(name) == "runtime.resource_profile":
+                resource = dict(data.get("metadata") or {})
+
+        capability_text = self._natural_list(capabilities) if capabilities else "no currently routable capability"
+        resource_bits: list[str] = []
+        if resource.get("cpu_count") not in (None, ""):
+            resource_bits.append(f"{resource.get('cpu_count')} CPU threads")
+        if resource.get("memory_gib") not in (None, ""):
+            resource_bits.append(f"{resource.get('memory_gib')} GiB RAM")
+        if resource.get("vulkan"):
+            resource_bits.append("Vulkan")
+        resource_text = (
+            " Its reported resources include " + self._natural_list(resource_bits) + "."
+            if resource_bits else ""
+        )
+
+        return (
+            f"{node_id} is a connected {node_platform} replaceable capability node beneath "
+            f"my canonical Core on {host} / {platform_name}. It contributes {capability_text}."
+            + resource_text
+            + " It does not own my identity, relationship state, memory, or canonical state; "
+              "Core does. If this node disconnects, I remain the same Mary and lose only the "
+              "capabilities it was supplying until another allowed route/node is available."
+        )
 
     @staticmethod
     def _route(names: list[str]) -> str:

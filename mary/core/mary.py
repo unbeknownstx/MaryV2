@@ -3563,6 +3563,12 @@ class Mary:
             else {"provider": None, "route": None}
         )
 
+        nodes = (
+            self.node_registry.snapshot()
+            if callable(getattr(self.node_registry, "snapshot", None))
+            else {}
+        )
+
         return self.runtime_introspection.render(
             query=query,
             environment=environment,
@@ -3571,6 +3577,7 @@ class Mary:
             configured_conversation_route=conversation_order,
             session_override=override,
             last_generation=dict(self._last_generation_metadata or {}),
+            nodes=nodes,
         )
 
     # ================================================================

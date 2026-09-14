@@ -1096,6 +1096,42 @@ class CognitiveOrchestrator:
         if is_personal_runtime_reaction(text):
             return None
 
+        # Questions about what a concrete host/node does for Mary are runtime
+        # introspection, not an invitation for a provider to improvise Mary's
+        # architecture. Keep the detection semantic rather than tied to one
+        # exact Windows sentence.
+        runtime_device_terms = (
+            "windows", "pc", "computer", "machine", "node", "mac", "macbook",
+            "linux", "device",
+        )
+        runtime_role_terms = (
+            "what role", "which role", "role does", "role this", "role the",
+            "what does this", "what does my", "what does the", "purpose of",
+            "job of",
+        )
+        runtime_scope_terms = (
+            "architecture", "system", "runtime", "for you", "for u",
+            "your setup", "your stack",
+        )
+        if (
+            any(term in normalized for term in runtime_device_terms)
+            and any(term in normalized for term in runtime_role_terms)
+            and any(term in normalized for term in runtime_scope_terms)
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description=(
+                    "Creator asks what role a concrete machine/node plays in Mary's "
+                    "actual runtime architecture."
+                ),
+                parameters={
+                    "query": text,
+                    "self_query_type": "runtime_architecture",
+                },
+                source="runtime_node_role_detector",
+            )
+
         patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
             ("runtime_architecture", (
                 "what is your underlying architecture running on",

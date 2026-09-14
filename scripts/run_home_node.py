@@ -113,6 +113,18 @@ def _verify_bounded_agent_contract() -> None:
         raise RuntimeError("Home sensor node must remain a bounded DesktopCapabilityNodeAgent extension.")
 
 
+def _authorized_sensor_capabilities(
+    permissions: DeviceExecutionPermissions,
+) -> list[CapabilityDescriptor]:
+    """Advertise sensor workers only when the local device has opted in."""
+
+    return [
+        capability
+        for capability in sensor_capabilities()
+        if permissions.is_allowed(capability.name)
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Mary's bounded cross-platform home capability node.")
     parser.add_argument("--benchmark-profile", type=Path, default=None, help="Benchmark JSON produced by scripts.benchmark_home_node.")
@@ -127,7 +139,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     permissions = DeviceExecutionPermissions()
-    capabilities = [*headless_node_capabilities(permissions), *sensor_capabilities(), _resource_capability()]
+    capabilities = [
+        *headless_node_capabilities(permissions),
+        *_authorized_sensor_capabilities(permissions),
+        _resource_capability(),
+    ]
 
     benchmark_path = _profile_path(args.benchmark_profile)
     benchmark_loaded = False

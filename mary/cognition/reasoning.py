@@ -21,6 +21,7 @@ evidence already supplied in cognitive context.
 
 from dataclasses import dataclass, field
 import json
+import os
 import re
 from typing import Any
 
@@ -244,16 +245,35 @@ class ReasoningEngine:
         ):
             generation_kwargs["purpose"] = routing_purpose
 
-        messages = (
-            LLMMessage(
-                role="system",
-                content=self._system_prompt(context),
-            ),
-            LLMMessage(
-                role="user",
-                content=prompt,
-            ),
-        )
+        local_fast_context = self._local_fast_context_enabled(routing_purpose)
+        if local_fast_context:
+            try:
+                local_fast_max_tokens = int(
+                    os.getenv("MARY_LOCAL_FAST_MAX_TOKENS", "96")
+                )
+            except (TypeError, ValueError):
+                local_fast_max_tokens = 96
+            local_fast_max_tokens = max(48, min(256, local_fast_max_tokens))
+            generation_kwargs["max_tokens"] = min(
+                int(generation_kwargs.get("max_tokens") or local_fast_max_tokens),
+                local_fast_max_tokens,
+            )
+            messages = self._local_fast_messages(
+                context=context,
+                intent=intent,
+            )
+        else:
+            messages = (
+                LLMMessage(
+                    role="system",
+                    content=self._system_prompt(context),
+                ),
+                LLMMessage(
+                    role="user",
+                    content=prompt,
+                ),
+            )
+        prompt_characters = sum(len(str(item.content or "")) for item in messages)
         operation = (
             GenerationOperation.CONVERSATION.value
             if generation_purpose == "conversation"
@@ -275,6 +295,7 @@ class ReasoningEngine:
         ).strip()
         deliberation_enabled = bool(
             self.deliberation_executor is not None
+            and not local_fast_context
             and deliberation_requested_strategy in {"verify_once", "branch_verify"}
             and not local_tool_grounded
             and not self_grounded
@@ -483,6 +504,8 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "local_fast_context": local_fast_context,
+                "prompt_characters": prompt_characters,
             }
         else:
             if deliberation_outcome is None:
@@ -537,6 +560,8 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "local_fast_context": local_fast_context,
+                "prompt_characters": prompt_characters,
                 "deliberation_execution": (
                     {
                         **deliberation_outcome.to_dict(),
@@ -1610,6 +1635,148 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 if key in performance
             },
         }
+
+    def _local_fast_context_enabled(self, routing_purpose: str | None) -> bool:
+        """Use a compact prompt only for an explicit local/private fast-chat route."""
+
+        if str(routing_purpose or "").strip().lower() != "conversation_fast":
+            return False
+        getter = getattr(self.llm, "session_override_status", None)
+        if not callable(getter):
+            return False
+        try:
+            status = dict(getter() or {})
+        except Exception:
+            return False
+        return bool(
+            str(status.get("route") or "").strip().lower() in {"private", "local", "offline"}
+            or str(status.get("provider") or "").strip().lower() == "ollama"
+        )
+
+    @staticmethod
+    def _local_fast_render(value: Any, limit: int) -> str:
+        """Render bounded prompt evidence without changing any canonical owner."""
+
+        try:
+            rendered = json.dumps(value, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            rendered = str(value)
+        rendered = " ".join(rendered.split())
+        if len(rendered) <= limit:
+            return rendered
+        return rendered[: max(0, limit - 1)].rstrip() + "…"
+
+    def _local_fast_messages(
+        self,
+        *,
+        context: CognitiveContext,
+        intent: Intent | None,
+    ) -> tuple[LLMMessage, LLMMessage]:
+        """Compile only turn-relevant Mary context for latency-sensitive local chat.
+
+        Canonical Core still owns the full state. This is a disposable worker
+        prompt projection so a small resident local model does not need Mary's
+        entire world on every conversational turn.
+        """
+
+        try:
+            budget = int(os.getenv("MARY_LOCAL_FAST_CONTEXT_CHARS", "5000"))
+        except (TypeError, ValueError):
+            budget = 5000
+        budget = max(2500, min(12000, budget))
+
+        sections: list[str] = [
+            "Current user input:\n" + self._local_fast_render(context.input_text, 1400)
+        ]
+        if intent is not None:
+            sections.append(
+                "Intent:\n"
+                + self._local_fast_render(
+                    {
+                        "type": intent.intent_type.value,
+                        "description": intent.description,
+                    },
+                    500,
+                )
+            )
+
+        recent: list[dict[str, str]] = []
+        for raw in list(context.conversation or [])[-4:]:
+            if not isinstance(raw, dict):
+                continue
+            role = str(raw.get("role") or "")[:16]
+            content = self._local_fast_render(raw.get("content") or "", 650)
+            if role and content:
+                recent.append({"role": role, "content": content})
+        if recent:
+            sections.append(
+                "Recent conversation (continuity only):\n"
+                + self._local_fast_render(recent, 2200)
+            )
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        selected_mind = {
+            key: mind.get(key)
+            for key in (
+                "disposition",
+                "continuity",
+                "conversation_engagement",
+                "dialogue_plan",
+                "character_expression",
+                "runtime_context",
+                "public_performance_guard",
+            )
+            if mind.get(key) not in (None, "", [], {})
+        }
+        if selected_mind:
+            sections.append(
+                "Selected Mary turn state:\n"
+                + self._local_fast_render(selected_mind, 2200)
+            )
+
+        if context.memories:
+            sections.append(
+                "Relevant memory evidence:\n"
+                + self._local_fast_render(list(context.memories)[:3], 1200)
+            )
+
+        if context.relevant_knowledge:
+            sections.append(
+                "Relevant grounded evidence:\n"
+                + self._local_fast_render(list(context.relevant_knowledge)[:3], 1200)
+            )
+
+        if context.user_context:
+            creator_profile = self._compact_creator_profile(context.user_context)
+            if creator_profile:
+                sections.append(
+                    "Creator profile (facts about Unbe, never Mary's identity):\n"
+                    + self._local_fast_render(creator_profile, 1100)
+                )
+
+        if context.active_goals:
+            sections.append(
+                "Active goals:\n"
+                + self._local_fast_render(list(context.active_goals)[:3], 700)
+            )
+
+        user_prompt = "\n\n".join(sections)
+        if len(user_prompt) > budget:
+            user_prompt = user_prompt[: budget - 1].rstrip() + "…"
+
+        system_prompt = (
+            "You are Mary, the same persistent character owned by Mary Core. "
+            "This is a latency-sensitive local conversation pass: use only the selected "
+            "state/evidence below, speak naturally to Unbe, and do not invent memory, "
+            "runtime facts, capabilities, actions, relationship facts, or hidden motives. "
+            "The local model is a replaceable language worker, never Mary's identity. "
+            "React before advising. Keep ordinary chat concise—usually one to four spoken "
+            "sentences—and do not expose private reasoning."
+        )
+        return (
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_prompt),
+        )
 
     def _build_prompt(
         self,

@@ -214,7 +214,11 @@ def run_remote_interactive(gateway: MaryRuntimeGateway) -> None:
             if text.lower() in {"exit", "quit"}:
                 break
             if text.startswith("/"):
-                rendered = _remote_command(gateway, text.lower(), last)
+                try:
+                    rendered = _remote_command(gateway, text.lower(), last)
+                except Exception as exc:
+                    print(f"[Mary Diagnostic Error] {type(exc).__name__}: {exc}")
+                    continue
                 print(rendered if rendered is not None else "Unknown remote command. Type /help.")
                 continue
             try:
