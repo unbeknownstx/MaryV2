@@ -13,7 +13,7 @@ from typing import Any
 from .compute_fabric import NodeLoad
 
 
-VERSION = "13.53"
+VERSION = "13.54"
 _ALLOWED_KEYS = {
     "ram_total_gib",
     "ram_free_gib",
@@ -68,6 +68,18 @@ class ResourceTelemetry:
             return self.memory_fraction
         return _used_fraction(self.vram_total_gib, self.vram_free_gib)
 
+    @property
+    def accelerator_total_gib(self) -> float | None:
+        if self.apple_unified_memory and self.vram_total_gib is None:
+            return self.ram_total_gib
+        return self.vram_total_gib
+
+    @property
+    def accelerator_free_gib(self) -> float | None:
+        if self.apple_unified_memory and self.vram_free_gib is None:
+            return self.ram_free_gib
+        return self.vram_free_gib
+
     def transport_dict(self) -> dict[str, Any]:
         """Return only fields permitted to cross the node/Core boundary."""
         return asdict(self)
@@ -76,6 +88,8 @@ class ResourceTelemetry:
         payload = self.transport_dict()
         payload["memory_fraction"] = self.memory_fraction
         payload["accelerator_fraction"] = self.accelerator_fraction
+        payload["accelerator_total_gib"] = self.accelerator_total_gib
+        payload["accelerator_free_gib"] = self.accelerator_free_gib
         payload["authority"] = "operational_measurement_only"
         return payload
 
@@ -119,7 +133,7 @@ def sanitize_resource_telemetry(payload: dict[str, Any] | None) -> ResourceTelem
 
 
 def merge_resource_load(base: NodeLoad, telemetry: ResourceTelemetry) -> NodeLoad:
-    """Add measured resource pressure without changing task-count pressure."""
+    """Add measured resource pressure/capacity without changing task counts."""
     return NodeLoad(
         node_id=base.node_id,
         active_realtime=base.active_realtime,
@@ -127,6 +141,11 @@ def merge_resource_load(base: NodeLoad, telemetry: ResourceTelemetry) -> NodeLoa
         cpu_fraction=base.cpu_fraction,
         memory_fraction=telemetry.memory_fraction,
         accelerator_fraction=telemetry.accelerator_fraction,
+        memory_total_gib=telemetry.ram_total_gib,
+        memory_free_gib=telemetry.ram_free_gib,
+        accelerator_total_gib=telemetry.accelerator_total_gib,
+        accelerator_free_gib=telemetry.accelerator_free_gib,
+        unified_memory=telemetry.apple_unified_memory,
         stream_critical=base.stream_critical,
     )
 
