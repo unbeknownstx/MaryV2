@@ -1,15 +1,16 @@
-# MaryV2 13.50–13.53 — Resilient Compute Routing
+# MaryV2 13.50–13.55 — Resilient Compute Routing
 
 ## Purpose
 
-MaryV2 uses replaceable capability nodes without moving identity, memory, relationship state, permissions, or canonical truth out of Mary Core. The 13.50–13.53 extension makes that compute fabric more resilient and situationally aware while preserving the same authority boundary.
+MaryV2 uses replaceable capability nodes without moving identity, memory, relationship state, permissions, or canonical truth out of Mary Core. The 13.50–13.55 extension makes that compute fabric more resilient, situationally aware, fit-aware, and explainable while preserving the same authority boundary.
 
-The routing stack now reasons from four bounded classes of operational evidence:
+The routing stack now reasons from five bounded classes of operational evidence:
 
 1. claim health and replay safety;
 2. measured execution success/latency;
 3. currently claimed realtime/background work;
-4. fresh RAM/accelerator pressure reported by capability nodes.
+4. fresh RAM/accelerator pressure reported by capability nodes;
+5. explicit device-local workload-fit measurements/configuration.
 
 None of these signals grants execution permission.
 
@@ -94,11 +95,70 @@ The canonical headless launcher `scripts.run_home_node` and optional Desktop com
 
 ### Core ingestion
 
-`DeviceTaskBroker.complete()` removes `_resource` before capability result sanitization/storage. Valid telemetry is converted to `NodeLoad.memory_fraction` and `NodeLoad.accelerator_fraction`; malformed telemetry increments a rejection counter without changing the task's success/failure status.
+`DeviceTaskBroker.complete()` removes `_resource` before capability result sanitization/storage. Valid telemetry is converted into process-local `NodeLoad` resource pressure/capacity; malformed telemetry increments a rejection counter without changing the task's success/failure status.
 
 Resource reports are process-local and expire quickly (90 seconds by default). Stale reports disappear rather than being treated as durable knowledge.
 
 Apple Silicon is modeled as unified memory; the system does not pretend unified RAM is dedicated VRAM.
+
+## 13.54 — Explicit fit-aware routing
+
+The pre-existing 13.37 `plan_resource_handoff()` planner is now part of live scheduling, but only when the node supplies an explicit resource requirement.
+
+Mary does **not** infer memory requirements from model names, parameter counts, quantization labels, GPU brands, or marketing specifications.
+
+Supported fixed metadata hints are:
+
+- `resource_accelerator_gib_general`
+- `resource_accelerator_gib_conversation`
+- `resource_accelerator_gib_fast`
+- `resource_accelerator_gib_utility`
+
+Capability-node operators may supply the corresponding device-local environment values:
+
+- `MARY_OLLAMA_RESOURCE_ACCELERATOR_GIB`
+- `MARY_OLLAMA_RESOURCE_ACCELERATOR_GIB_GENERAL`
+- `MARY_OLLAMA_RESOURCE_ACCELERATOR_GIB_CONVERSATION`
+- `MARY_OLLAMA_RESOURCE_ACCELERATOR_GIB_FAST`
+- `MARY_OLLAMA_RESOURCE_ACCELERATOR_GIB_UTILITY`
+- `MARY_LLAMA_CPP_RESOURCE_ACCELERATOR_GIB`
+- `MARY_LLAMA_CPP_RESOURCE_ACCELERATOR_GIB_GENERAL`
+- `MARY_LLAMA_CPP_RESOURCE_ACCELERATOR_GIB_CONVERSATION`
+- `MARY_LLAMA_CPP_RESOURCE_ACCELERATOR_GIB_FAST`
+- `MARY_LLAMA_CPP_RESOURCE_ACCELERATOR_GIB_UTILITY`
+
+The common value fills missing roles; a role-specific value overrides it. These values should come from actual device-local measurement/configuration, not guesses.
+
+Fit behavior is deliberately bounded:
+
+- `fits`: small scheduling confidence bonus;
+- `handoff` / `prefer_other_node`: scheduling penalty only;
+- `unknown`: existing routing behavior is preserved;
+- `infeasible`: that candidate is removed;
+- if every otherwise-eligible candidate has explicit fresh evidence proving no fit, enqueue fails cleanly instead of knowingly scheduling an out-of-memory workload.
+
+The fit planner never unloads/evicts a model automatically and never makes an untrusted, offline, unavailable, or unpermitted node eligible.
+
+Apple Silicon uses explicitly reported unified-memory capacity as accelerator capacity; discrete GPU nodes use measured VRAM.
+
+## 13.55 — Explainable adaptive routing
+
+`BenchmarkBook` now retains one bounded **last adaptive routing decision** as disposable operational diagnostics. It is surfaced through the broker's existing `compute_status()` benchmark projection, so no new network endpoint or permission surface is required.
+
+The diagnostic may contain:
+
+- capability and normalized operation;
+- selected node ID or no-fit outcome;
+- up to eight candidate node IDs;
+- bounded scores/reasons/load pressure;
+- content-free benchmark summaries;
+- a timestamp and authority marker.
+
+It never contains task intent, messages, prompt text, arguments, model/tool result content, raw resource envelopes, credentials, or arbitrary candidate metadata.
+
+Cold-start `NodeRegistry` fallback is not mislabeled as an adaptive decision: the decision remains empty until the adaptive scheduler actually participates.
+
+This makes PC/Mac testing auditable: a creator can see whether a route was influenced by measured reliability, current load, resource pressure, or explicit fit evidence without exposing the private work itself.
 
 ## Selection order and authority
 
@@ -117,18 +177,20 @@ Core-derived claimed-work pressure
     ↓
 fresh RAM / accelerator pressure
     ↓
-advisory best-worker selection
+explicit measured/configured workload fit (when available)
+    ↓
+advisory best-worker selection + content-free explanation
     ↓
 DeviceTaskBroker dispatch
     ↓
 node-local permission gate
 ```
 
-Resource capacity, benchmark speed, or scheduler score can **never** make an otherwise ineligible node trusted, live, capable, or authorized.
+Resource capacity, benchmark speed, fit evidence, or scheduler score can **never** make an otherwise ineligible node trusted, live, capable, or authorized.
 
 ## Privacy and retention
 
-All 13.50–13.53 scheduling evidence is operational and disposable. It is not:
+All 13.50–13.55 scheduling evidence is operational and disposable. It is not:
 
 - Mary memory;
 - relationship state;
@@ -142,7 +204,7 @@ A process restart may discard the evidence safely and rebuild it from future exe
 
 ## Hardware philosophy
 
-This extension supports Mary's "use what you have" architecture. A Windows PC, Mac, future CUDA GPU, older server GPU, or other bounded worker can remain replaceable. Mary Core does not need to become the largest inference process; it coordinates workers using eligibility, observed quality, current contention, and fresh resource pressure while protecting one canonical identity.
+This extension supports Mary's "use what you have" architecture. A Windows PC, Mac, future CUDA GPU, older server GPU, or other bounded worker can remain replaceable. Mary Core does not need to become the largest inference process; it coordinates workers using eligibility, observed quality, current contention, fresh resource pressure, and explicit task-fit evidence while protecting one canonical identity.
 
 ## Verification targets
 
@@ -151,7 +213,7 @@ The deterministic suite covers:
 - stale-attempt isolation and replacement lineage;
 - retry exhaustion / unsafe replay suppression;
 - cold-start compatibility;
-- runtime benchmark evidence influencing routing;
+- runtime and static benchmark evidence influencing routing correctly;
 - permission rejection excluded from reliability scoring;
 - realtime/background load balancing;
 - strict resource telemetry validation;
@@ -159,6 +221,13 @@ The deterministic suite covers:
 - resource result stripping / no content retention;
 - asynchronous node-side resource sampling;
 - probe failure remaining fail-soft;
-- legal full result payloads remaining valid.
+- legal full result payloads remaining valid;
+- explicit fit routing and stale-fit fallback;
+- all-measured-no-fit fail-closed behavior;
+- Apple unified-memory fit;
+- unavailable nodes not resurrected by capacity;
+- fixed fit-hint projection at node registration;
+- bounded/content-free adaptive route diagnostics;
+- cold registry fallback not misattributed to the adaptive scheduler.
 
 Platform, convergence, native iPhone, and web gates remain independent guards that this compute work does not accidentally move Mary authority into a client or node.
