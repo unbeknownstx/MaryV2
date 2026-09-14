@@ -61,6 +61,12 @@ from .resource_broker import (
     WorkloadFootprint,
     plan_resource_handoff,
 )
+from .resource_probe import (
+    GPUObservation,
+    LiveResourceObservation,
+    observe_live_resources,
+    resource_snapshot,
+)
 from .specialist_catalog import CATALOG as SPECIALIST_CATALOG, SpecialistBackend, backend as specialist_backend, specialist_status
 
 __all__ = [
@@ -117,6 +123,10 @@ __all__ = [
     "ResourceSnapshot",
     "WorkloadFootprint",
     "plan_resource_handoff",
+    "GPUObservation",
+    "LiveResourceObservation",
+    "observe_live_resources",
+    "resource_snapshot",
     "SPECIALIST_CATALOG",
     "SpecialistBackend",
     "specialist_backend",

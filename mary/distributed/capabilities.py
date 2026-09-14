@@ -109,6 +109,37 @@ def capabilities_from_environment(environment: Any) -> list[CapabilityDescriptor
     try:
         profile = RuntimeResourceProfile.detect()
         profile_data = profile.to_dict()
+        resource_metadata = {
+            "platform": profile_data.get("platform", "unknown"),
+            "machine": profile_data.get("machine", "unknown"),
+            "cpu_count": profile_data.get("cpu_count", 1),
+            "memory_gib": profile_data.get("memory_gib", "unknown"),
+            "apple_silicon": profile_data.get("apple_silicon", False),
+            "ollama": profile_data.get("ollama_available", False),
+            "llama_cpp": profile_data.get("llama_cpp_available", False),
+            "whisper_cpp": profile_data.get("whisper_cpp_available", False),
+        }
+        try:
+            from .resource_probe import observe_live_resources
+
+            live = observe_live_resources()
+            primary = live.primary_gpu
+            if live.ram_free_gib is not None:
+                resource_metadata["memory_free_gib"] = live.ram_free_gib
+            resource_metadata["apple_unified_memory"] = live.apple_unified_memory
+            if primary is not None:
+                if primary.label:
+                    resource_metadata["gpu_label_live"] = primary.label
+                resource_metadata["gpu_backend"] = primary.backend
+                resource_metadata["gpu_resource_source"] = primary.source
+                if primary.total_gib is not None:
+                    resource_metadata["gpu_memory_gib_live"] = primary.total_gib
+                if primary.free_gib is not None:
+                    resource_metadata["gpu_memory_free_gib"] = primary.free_gib
+        except Exception:
+            # Live resource telemetry is optional and must never make a node
+            # unavailable merely because a vendor utility is absent or slow.
+            pass
         output.append(
             CapabilityDescriptor(
                 name="runtime.resource_profile",
@@ -117,16 +148,7 @@ def capabilities_from_environment(environment: Any) -> list[CapabilityDescriptor
                 local=True,
                 cost="free",
                 latency="instant",
-                metadata={
-                    "platform": profile_data.get("platform", "unknown"),
-                    "machine": profile_data.get("machine", "unknown"),
-                    "cpu_count": profile_data.get("cpu_count", 1),
-                    "memory_gib": profile_data.get("memory_gib", "unknown"),
-                    "apple_silicon": profile_data.get("apple_silicon", False),
-                    "ollama": profile_data.get("ollama_available", False),
-                    "llama_cpp": profile_data.get("llama_cpp_available", False),
-                    "whisper_cpp": profile_data.get("whisper_cpp_available", False),
-                },
+                metadata=resource_metadata,
             )
         )
         if profile.llama_cpp_available:
