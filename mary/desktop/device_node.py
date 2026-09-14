@@ -43,11 +43,12 @@ def _ollama_model_for_role(role: str) -> str:
     """
 
     general = os.getenv("MARY_OLLAMA_MODEL", "qwen3:4b").strip() or "qwen3:4b"
-    # Preserve Mary's existing local-role contract: the conversation override
-    # is the latency-sensitive model used by conversation_fast/social lanes.
-    # Engaged/deep conversation keeps the richer general model.
-    conversation = general
-    fast = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip() or general
+    # Device-owned conversation override applies to all conversational lanes.
+    # The Core may distinguish fast vs engaged/deep conversation semantically,
+    # but a constrained node can intentionally keep both on the same smaller
+    # local model without changing Mary's canonical state or Core policy.
+    conversation = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip() or general
+    fast = conversation
     utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip() or fast
     return {
         "general": general,
