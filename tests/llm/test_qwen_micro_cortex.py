@@ -376,8 +376,8 @@ def test_benchmark_preserves_production_routes_defaults_and_environment(monkeypa
     router_before = LLMRouter(Config.from_environment())
     task_route_before = router_before._provider_order(None)
     conversation_route_before = router_before.conversation_provider_order()
-    assert OllamaProvider().model_name() == "qwen3:4b"
-    assert router_before._get_provider_for_purpose("ollama", "conversation_fast").model_name() == "qwen3:4b"
+    assert OllamaProvider().model_name() == "qwen3:1.7b"
+    assert router_before._get_provider_for_purpose("ollama", "conversation_fast").model_name() == "qwen3:1.7b"
 
     report = run_benchmark(
         client=FakeOllamaClient(),
@@ -389,7 +389,7 @@ def test_benchmark_preserves_production_routes_defaults_and_environment(monkeypa
     router_after = LLMRouter(Config.from_environment())
     assert router_after._provider_order(None) == task_route_before
     assert router_after.conversation_provider_order() == conversation_route_before
-    assert OllamaProvider().model_name() == "qwen3:4b"
+    assert OllamaProvider().model_name() == "qwen3:1.7b"
     assert {name: os.environ.get(name) for name in tracked} == environment_before
     assert report["production_integration"] is False
     assert report["production_routing_modified"] is False

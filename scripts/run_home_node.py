@@ -162,7 +162,12 @@ def main(argv: list[str] | None = None) -> int:
     if benchmark_path is not None and benchmark_path.exists():
         try:
             capabilities = apply_benchmark_profile(capabilities, load_profile(benchmark_path))
-            benchmark_loaded = True
+            benchmark_loaded = any(
+                "benchmark_profile_version" in dict(item.metadata or {})
+                for item in capabilities
+            )
+            if not benchmark_loaded:
+                print("Benchmark profile loaded but no compatible measurements matched the active runtime.")
         except Exception as exc:
             print(f"Benchmark profile ignored: {type(exc).__name__}: {exc}")
 

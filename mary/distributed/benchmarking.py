@@ -99,6 +99,9 @@ def benchmark_local_llm(provider: Any, *, repeats: int = 2, max_tokens: int = 24
         token_median = median([item for item in output_tokens if item >= 0])
         throughput = token_median / (median_ms / 1000.0) if median_ms > 0 else None
     return {
+        "model": str(getattr(provider, "model_name", lambda: "")() or "")[:160],
+        "num_ctx": int(getattr(provider, "num_ctx", 0) or 0),
+        "thinking": bool(getattr(provider, "think", False)),
         "median_latency_ms": round(median_ms, 2) if median_ms is not None else None,
         "success_rate": round(len(latencies) / total, 3) if total else 0.0,
         "samples": len(latencies),
@@ -175,6 +178,45 @@ def apply_benchmark_profile(
     for item in capabilities:
         measured = dict(capability_results.get(item.name) or {})
         metadata = dict(item.metadata)
+
+        if measured and item.name.startswith("llm."):
+            measured_model = str(measured.get("model") or "").strip()
+            configured_model = str(
+                metadata.get("configured_model")
+                or metadata.get("model")
+                or ""
+            ).strip()
+            measured_ctx = int(measured.get("num_ctx") or 0)
+            configured_ctx = int(metadata.get("num_ctx") or 0)
+            mismatch = (
+                not measured_model
+                or (configured_model and measured_model != configured_model)
+                or (
+                    measured_ctx > 0
+                    and configured_ctx > 0
+                    and measured_ctx != configured_ctx
+                )
+            )
+            if mismatch:
+                metadata["benchmark_ignored_reason"] = (
+                    "missing_runtime_fingerprint"
+                    if not measured_model
+                    else "runtime_fingerprint_mismatch"
+                )
+                if measured_model:
+                    metadata["benchmark_measured_model"] = measured_model[:160]
+                output.append(CapabilityDescriptor(
+                    name=item.name,
+                    available=item.available,
+                    private=item.private,
+                    local=item.local,
+                    cost=item.cost,
+                    latency=item.latency,
+                    readiness=item.readiness,
+                    metadata=metadata,
+                ))
+                continue
+
         latency = measured.get("median_latency_ms")
         success = measured.get("success_rate")
         throughput = measured.get("throughput_tokens_per_second")
@@ -184,7 +226,10 @@ def apply_benchmark_profile(
             metadata["benchmark_success_rate"] = round(max(0.0, min(1.0, float(success))), 3)
         if isinstance(throughput, (int, float)) and throughput >= 0:
             metadata["benchmark_throughput"] = round(float(throughput), 3)
-        metadata["benchmark_profile_version"] = PROFILE_VERSION
+        if measured:
+            metadata["benchmark_profile_version"] = PROFILE_VERSION
+            if measured.get("model"):
+                metadata["benchmark_model"] = str(measured.get("model"))[:160]
         output.append(CapabilityDescriptor(
             name=item.name,
             available=item.available,

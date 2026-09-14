@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from mary.distributed import CapabilityDescriptor, NodeDescriptor, NodeRegistry
 from mary.distributed.compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, NodeLoad, WorkloadRequest
+from mary.distributed.benchmarking import apply_benchmark_profile
 
 
 def _node(node_id: str, latency_ms: float) -> NodeDescriptor:
@@ -78,3 +79,39 @@ def test_benchmark_book_is_operational_hint_only():
     assert snapshot["authority"] == "operational_hint_only"
     assert "prompt" not in str(snapshot).lower()
     assert "response" not in str(snapshot).lower()
+
+
+def test_llm_benchmark_without_model_fingerprint_is_ignored():
+    capability = CapabilityDescriptor(
+        "llm.ollama",
+        metadata={"configured_model": "qwen3:1.7b", "num_ctx": 4096},
+    )
+    profile = {"capabilities": {"llm.ollama": {
+        "median_latency_ms": 100.0,
+        "success_rate": 1.0,
+    }}}
+
+    [result] = apply_benchmark_profile([capability], profile)
+
+    assert "benchmark_latency_ms" not in result.metadata
+    assert result.metadata["benchmark_ignored_reason"] == "missing_runtime_fingerprint"
+
+
+def test_matching_llm_benchmark_fingerprint_is_applied():
+    capability = CapabilityDescriptor(
+        "llm.ollama",
+        metadata={"configured_model": "qwen3:1.7b", "num_ctx": 4096},
+    )
+    profile = {"capabilities": {"llm.ollama": {
+        "model": "qwen3:1.7b",
+        "num_ctx": 4096,
+        "median_latency_ms": 190.0,
+        "success_rate": 1.0,
+        "throughput_tokens_per_second": 28.0,
+    }}}
+
+    [result] = apply_benchmark_profile([capability], profile)
+
+    assert result.metadata["benchmark_latency_ms"] == 190.0
+    assert result.metadata["benchmark_model"] == "qwen3:1.7b"
+    assert result.metadata["benchmark_profile_version"] == "13.11"
