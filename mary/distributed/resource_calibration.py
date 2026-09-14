@@ -2,7 +2,7 @@
 
 Calibration is explicit benchmark tooling, not runtime routing. It observes a
 synthetic benchmark from a known provider, proves model residency when the
-runtime supports it, and may produce a conservative *suggested* general-role
+runtime supports it, and may produce a conservative *suggested* role-specific
 accelerator requirement. It never mutates environment variables or Mary state.
 """
 from __future__ import annotations
@@ -15,7 +15,8 @@ import urllib.request
 from .resource_probe import LiveResourceObservation, observe_live_resources
 
 
-REVISION = "13.56"
+REVISION = "13.57"
+_ALLOWED_ROLES = frozenset({"general", "conversation", "fast", "utility"})
 
 
 def _normal_model(value: Any) -> str:
@@ -23,6 +24,13 @@ def _normal_model(value: Any) -> str:
     if text.endswith(":latest"):
         text = text[:-7]
     return text
+
+
+def _role(value: str) -> str:
+    normalized = str(value or "general").strip().lower()
+    if normalized not in _ALLOWED_ROLES:
+        raise ValueError("role must be general, conversation, fast, or utility")
+    return normalized
 
 
 def ollama_residency(
@@ -92,6 +100,7 @@ def measure_provider_fit(
     provider: Any,
     operation: Callable[[], Any],
     *,
+    role: str = "general",
     observer: Callable[[], LiveResourceObservation] = observe_live_resources,
     residency_probe: Callable[[Any], str] = ollama_residency,
 ) -> tuple[Any, dict[str, Any]]:
@@ -99,9 +108,10 @@ def measure_provider_fit(
 
     A fit recommendation requires a proven not-loaded -> loaded transition plus
     a measurable accelerator-memory delta. The recommendation is scoped to the
-    exact model/context measured here; it is not a guarantee of every future
+    exact role/model/context measured here; it is not a guarantee of every future
     workload's transient peak allocation.
     """
+    normalized_role = _role(role)
     try:
         model = str(provider.model_name() or "")[:160]
     except Exception:
@@ -164,11 +174,12 @@ def measure_provider_fit(
     else:
         status = "fit_suggestion_unavailable"
 
+    role_key = f"suggested_accelerator_gib_{normalized_role}"
     measurement = {
         "revision": REVISION,
         "model": model,
         "num_ctx": num_ctx,
-        "role": "general",
+        "role": normalized_role,
         "residency_before": before_residency,
         "residency_after": after_residency,
         "ram_observed_delta_gib": ram_delta,
@@ -178,10 +189,11 @@ def measure_provider_fit(
         "accelerator_source": accelerator_source,
         "apple_unified_memory": unified,
         "fit_hint_status": status,
-        "suggested_accelerator_gib_general": suggested,
+        "suggested_accelerator_gib": suggested,
+        role_key: suggested,
         "recommendation_supported_by_measurement": recommendation_available,
         "suggestion_policy": "cold-load observed delta + max(0.5 GiB, 10%) headroom; rounded upward to 0.25 GiB",
-        "suggestion_scope": "configured general model at measured num_ctx; remeasure after model/context/runtime changes",
+        "suggestion_scope": f"configured {normalized_role} model at measured num_ctx; remeasure after model/context/runtime changes",
         "authority": "operational_measurement_only",
         "content_retained": False,
     }
