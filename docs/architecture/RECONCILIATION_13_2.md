@@ -99,7 +99,7 @@ In intentional standalone development, the same `MaryApplication` topology runs 
 4. Environment-configured policy/order applies (`MARY_LLM_ROUTING_STRATEGY`, `MARY_LLM_FREE_ORDER`, `MARY_LLM_CONVERSATION_ORDER`, primary/fallback settings).
 5. Defaults apply if unset.
 
-Default task/general `free_first`: **Groq → Gemini → OpenRouter → Ollama**. Default conversation: **Ollama → Groq → Gemini → OpenRouter**. The private/local/offline route forces Ollama. Expert/paid/OpenAI route uses the configured expert provider only for explicitly authorized work. Availability, provider errors, and cooldowns determine the effective subset and next attempt; policy order alone is not evidence a provider was used.
+Default task/general `free_first`: **Groq → Gemini → OpenRouter → Ollama**. Default conversation: **Groq → Gemini → OpenRouter → Ollama**. A host may explicitly choose local-first when measured hardware suitability justifies it. The private/local/offline route forces Ollama. Expert/paid/OpenAI route uses the configured expert provider only for explicitly authorized work. Availability, provider errors, and cooldowns determine the effective subset and next attempt; policy order alone is not evidence a provider was used.
 
 ## Intentionally disconnected or non-authoritative systems
 
