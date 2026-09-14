@@ -157,6 +157,17 @@ def _explicit_accelerator_requirement(metadata: dict[str, Any], operation: str) 
     return round(required, 3)
 
 
+def _metadata_number(metadata: dict[str, Any], key: str) -> float | None:
+    raw = dict(metadata or {}).get(key)
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value
+
+
 class HomeComputeScheduler:
     """Rank node candidates without granting execution permission.
 
@@ -253,14 +264,26 @@ class HomeComputeScheduler:
         bench = self.benchmarks.summary(node.node_id, request.capability, request.operation)
         latency = bench.get("median_latency_ms")
         success_rate = bench.get("success_rate")
+        static = dict(cap.metadata or {})
+        static_used = False
+        if success_rate is None:
+            candidate = _metadata_number(static, "benchmark_success_rate")
+            if candidate is not None and 0.0 <= candidate <= 1.0:
+                success_rate = candidate
+                static_used = True
+        if latency is None:
+            candidate = _metadata_number(static, "benchmark_latency_ms")
+            if candidate is not None and candidate >= 0.0:
+                latency = candidate
+                static_used = True
         if success_rate is not None:
             score += 18.0 * float(success_rate)
-            reasons.append(f"success={success_rate:.2f}")
+            reasons.append(f"{'static_' if static_used and bench.get('samples', 0) == 0 else ''}success={success_rate:.2f}")
         if latency is not None:
             budget = 2500.0 if request.realtime else 15_000.0
             latency_factor = max(0.0, 1.0 - min(float(latency), budget) / budget)
             score += (28.0 if request.realtime else 12.0) * latency_factor
-            reasons.append(f"median={latency:.0f}ms")
+            reasons.append(f"{'static_' if static_used and bench.get('samples', 0) == 0 else ''}median={latency:.0f}ms")
 
         penalty = 36.0 * load.pressure
         if load.stream_critical and not request.realtime:
@@ -303,9 +326,16 @@ class HomeComputeScheduler:
 
     def choose(self, request: WorkloadRequest) -> NodeDescriptor | None:
         ranked = self.rank(request)
-        if not ranked:
-            return None
-        return self.registry.get(str(ranked[0]["node_id"]))
+        if ranked:
+            return self.registry.get(str(ranked[0]["node_id"]))
+        candidates = list(self.registry.candidates(str(request.capability).strip().lower()))
+        if candidates:
+            plans = [self._fit_plan(node, request, self.load_for(node.node_id)) for node in candidates]
+            if plans and all(plan is not None and plan.status == "infeasible" for plan in plans):
+                raise LookupError(
+                    f"No eligible node has measured accelerator capacity for {request.capability}:{request.operation}."
+                )
+        return None
 
     def route_preview(self, request: WorkloadRequest) -> dict[str, Any]:
         ranked = self.rank(request)
