@@ -72,9 +72,9 @@ at the already-approved PC:
    with CurrentUser DPAPI, clears the process environment, and exits.
 5. Remove any historical `MARY_NODE_ENROLLMENT_GRANT` entry from `.env` or the
    Windows user environment.
-6. Start the existing Scheduled Task:
+6. Start the canonical home-node Scheduled Task:
 
-   `Start-ScheduledTask -TaskName "MaryV2 Windows Capability Node"`
+   `Start-ScheduledTask -TaskName "MaryV2 Home Capability Node"`
 
 7. Verify Core reports the same node ID, a connected lease, and fresh heartbeat.
 
