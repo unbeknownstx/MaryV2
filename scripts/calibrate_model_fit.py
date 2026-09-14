@@ -20,7 +20,12 @@ from mary.distributed.benchmarking import (
     node_id_from_environment,
 )
 from mary.distributed.hardware_profiles import apply_hardware_profile, available_hardware_profiles
-from mary.distributed.resource_calibration import REVISION, measure_provider_fit
+from mary.distributed.resource_calibration import measure_provider_fit
+from mary.distributed.resource_hint_provenance import (
+    VERSION,
+    calibration_fingerprint,
+    provenance_env_name,
+)
 
 
 _ROLES = ("general", "conversation", "fast", "utility")
@@ -28,7 +33,7 @@ _ROLES = ("general", "conversation", "fast", "utility")
 
 def _default_output(role: str) -> Path:
     runtime_root = os.getenv("MARY_RUNTIME_DIR", "").strip()
-    filename = f"model_fit_13_57_{role}.json"
+    filename = f"model_fit_13_58_{role}.json"
     if runtime_root:
         return Path(runtime_root).expanduser() / filename
     return Path.home() / ".maryv2" / filename
@@ -36,9 +41,6 @@ def _default_output(role: str) -> Path:
 
 def _provider(runtime: str, role: str):
     if runtime == "ollama":
-        # Use the same device-owned role policy as real capability-node
-        # execution. This tool measures production configuration; it does not
-        # maintain a second role-to-model map.
         from mary.desktop.device_node import _ollama_model_for_role
         from mary.llm.providers.ollama import OllamaProvider
         return OllamaProvider(model=_ollama_model_for_role(role))
@@ -89,15 +91,23 @@ def main(argv: list[str] | None = None) -> int:
         ),
         role=args.role,
     )
+    fit = dict(measurement or {})
+    provenance = calibration_fingerprint(
+        runtime=args.runtime,
+        role=args.role,
+        model=str(fit.get("model") or provider.model_name() or ""),
+        num_ctx=int(fit.get("num_ctx") or getattr(provider, "num_ctx", 0) or 0),
+    )
     artifact = {
-        "version": REVISION,
+        "version": VERSION,
         "node_id": node_id_from_environment(),
         "host_fingerprint": host_fingerprint(),
         "measured_at": datetime.now(timezone.utc).isoformat(),
         "runtime": args.runtime,
         "role": args.role,
         "benchmark": dict(benchmark_result or {}),
-        "resource_fit": dict(measurement or {}),
+        "resource_fit": fit,
+        "fit_provenance": provenance,
         "authority": "operational_measurement_only",
         "content_retained": False,
         "environment_mutated": False,
@@ -107,8 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(artifact, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    fit = artifact["resource_fit"]
-    print("MARYV2 13.57 MODEL FIT CALIBRATION")
+    print("MARYV2 13.58 MODEL FIT CALIBRATION")
     print("=" * 64)
     print(f"node:                 {artifact['node_id']}")
     print(f"runtime:              {args.runtime}")
@@ -124,8 +133,9 @@ def main(argv: list[str] | None = None) -> int:
     if fit.get("recommendation_supported_by_measurement") and suggested is not None:
         print(f"suggested {args.role} fit: {suggested} GiB")
         print(f"optional env setting: {_env_name(args.runtime, args.role)}={suggested}")
+        print(f"provenance setting:   {provenance_env_name(args.runtime, args.role)}={provenance}")
         print("scope:                 measured role/model/context only; remeasure after changes")
-        print("note:                  recommendation is not applied automatically")
+        print("note:                  both values are operator-applied; nothing is changed automatically")
     else:
         print(f"suggested {args.role} fit: none — do not guess; rerun from a verified cold model state")
     print(f"artifact:              {target}")
