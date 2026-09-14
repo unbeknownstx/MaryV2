@@ -523,7 +523,7 @@ class LLMRouter:
             getattr(
                 self.config.llm,
                 "conversation_provider_order",
-                ["ollama", "groq", "gemini", "openrouter"],
+                ["groq", "gemini", "openrouter", "ollama"],
             )
         )
 
@@ -534,7 +534,7 @@ class LLMRouter:
                 order.append(name)
 
         if "ollama" not in order:
-            order.insert(0, "ollama")
+            order.append("ollama")
 
         # Conversation may fall back to Mary's normal free pool, but paid OpenAI
         # is never introduced by this purpose route.
