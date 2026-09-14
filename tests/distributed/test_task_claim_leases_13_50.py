@@ -12,6 +12,9 @@ class _Registry:
     def choose(self, capability):
         return SimpleNamespace(node_id=self.node_id)
 
+    def candidates(self, capability):
+        return [SimpleNamespace(node_id=self.node_id)]
+
 
 def _enqueue_search(broker):
     return broker.enqueue(
