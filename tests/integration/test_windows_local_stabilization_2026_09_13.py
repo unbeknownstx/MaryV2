@@ -167,6 +167,15 @@ class _FailingProbeGateway:
             "mary": {"name": "Mary"},
         }
 
+    def conversation(self):
+        return {}
+
+    def dashboard(self):
+        return {}
+
+    def workspace(self):
+        return {}
+
     def runtime_action(self, *_args, **_kwargs):
         raise RuntimeError("simulated probe failure")
 
