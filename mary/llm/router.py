@@ -1009,7 +1009,11 @@ class LLMRouter:
             if self._session_provider_override is not None or self._session_route_override is not None:
                 effective_provider = self._session_provider_override
                 effective_route = self._session_route_override
-                effective_purpose = None
+                # Session overrides constrain provider/route selection; they do
+                # not erase the semantic generation purpose. Purpose-specific
+                # adapters (for example Ollama's conversation_fast -> fast
+                # device role) still need this value to select the right worker.
+                effective_purpose = purpose
 
         resolved_max_tokens = self._generation_max_tokens(
             max_tokens,
