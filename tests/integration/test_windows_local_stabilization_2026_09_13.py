@@ -11,6 +11,7 @@ from mary.desktop.device_node import _select_ollama_context
 from mary.llm.interface import LLMResponse
 from mary.runtime.introspection import RuntimeIntrospection
 from mary.runtime import terminal
+from mary.runtime.turn_policy import TurnPolicyEngine
 from scripts import run_home_node
 
 
@@ -36,6 +37,20 @@ class _PrivateRouter:
             finish_reason="stop",
             usage={"prompt_tokens": 700, "completion_tokens": 7, "total_tokens": 707},
         )
+
+
+def test_bare_arithmetic_is_task_not_character_conversation():
+    policy = TurnPolicyEngine().decide(
+        input_text="whats 2x2?",
+        intent=Intent(
+            intent_type=IntentType.QUESTION,
+            confidence=0.9,
+            description="simple arithmetic question",
+        ),
+    )
+
+    assert policy.category == "task_general"
+    assert policy.generation_purpose is None
 
 
 def test_windows_node_role_question_is_runtime_self_query():

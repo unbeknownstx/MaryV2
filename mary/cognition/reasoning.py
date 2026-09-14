@@ -1731,18 +1731,27 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 )
             )
 
-        recent: list[dict[str, str]] = []
+        recent_lines: list[str] = []
         for raw in list(context.conversation or [])[-4:]:
             if not isinstance(raw, dict):
                 continue
-            role = str(raw.get("role") or "")[:16]
-            content = self._local_fast_render(raw.get("content") or "", 650)
-            if role and content:
-                recent.append({"role": role, "content": content})
-        if recent:
+            role = str(raw.get("role") or "")[:16].lower()
+            limit = 650 if role == "user" else 360
+            content = self._local_fast_render(raw.get("content") or "", limit)
+            if not content:
+                continue
+            if role == "user":
+                recent_lines.append("Unbe said: " + content)
+            elif role == "assistant":
+                recent_lines.append(
+                    "Prior Mary reply (continuity only; do NOT copy wording): " + content
+                )
+        if recent_lines:
             sections.append(
-                "Recent conversation (continuity only):\n"
-                + self._local_fast_render(recent, 2200)
+                "Recent conversation — preserve the thread, not Mary's old wording. "
+                "Only Unbe lines are evidence about Unbe; prior Mary lines are generated "
+                "continuity and must never become creator history:\n"
+                + self._local_fast_render(recent_lines, 2200)
             )
 
         mind = context.mind_state if isinstance(context.mind_state, dict) else {}
@@ -1801,6 +1810,9 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "state/evidence below, speak naturally to Unbe, and do not invent memory, "
             "runtime facts, capabilities, actions, relationship facts, or hidden motives. "
             "The local model is a replaceable language worker, never Mary's identity. "
+            "Answer the current user input directly. Prior Mary replies are continuity-only, "
+            "not examples to imitate: do not repeat or closely paraphrase their wording, opening, "
+            "punchline, or filler. Only user-role text can establish what Unbe said. "
             "React before advising. Keep ordinary chat concise—usually one to four spoken "
             "sentences—and do not expose private reasoning."
         )

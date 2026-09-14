@@ -717,6 +717,10 @@ class CognitiveOrchestrator:
             # heuristics.  Keep this ownership-specific: "about me" here means
             # Unbe, not Mary's own self-memory.
             creator_memory_patterns = (
+                # A bare broad recall question is about Mary's overall creator/session
+                # continuity, not only the episodic/semantic stores.
+                r"^what do you remember$",
+                r"^tell me what you remember$",
                 r"\bwhat(?: are)?(?: some)?(?: of the)? things (?:do )?you remember about me\b",
                 r"\bwhat(?: are)?(?: some)? memories (?:do )?you have about me\b",
                 r"\btell me(?: some)? things you remember about me\b",

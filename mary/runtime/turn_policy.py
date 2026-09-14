@@ -85,6 +85,10 @@ class TurnPolicyEngine:
     # for factual/technical information. These override a coarse CONVERSATION
     # label unless a relational pattern above clearly applies.
     _TASK_PATTERNS: tuple[str, ...] = (
+        # Bare arithmetic is a factual/task turn even when phrased casually
+        # ("what's 2x2?"). Do not let relationship/conversation routing turn a
+        # calculator sanity-check into character improvisation.
+        r"^\s*(?:what(?:'s|s| is)\s+)?[+-]?\d+(?:\.\d+)?\s*(?:[x×*/+\-]|times|plus|minus|divided by)\s*[+-]?\d+(?:\.\d+)?\s*\??$",
         r"^\s*what is\b",
         r"^\s*who is\b",
         r"^\s*when (?:is|did|was|were|does)\b",

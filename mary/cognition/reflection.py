@@ -215,6 +215,16 @@ class ReflectionEngine:
             lane = ConversationLane(lane_name)
         except ValueError:
             lane = ConversationLane.THINKING
+        local_retry = self._local_fresh_retry(
+            context=context,
+            reasoning=reasoning,
+            intent=intent,
+            lane=lane,
+            issues=issues,
+        )
+        if local_retry is not None:
+            return local_retry
+
         reflection_policy = choose_reflection_action(lane, issues)
         if reflection_policy.action == "local_repair":
             repaired = local_conversation_repair(
@@ -440,6 +450,144 @@ class ReflectionEngine:
                 "finish_reason": response.finish_reason,
                 "usage": response.usage,
                 "llm_calls": 1,
+            },
+        )
+
+    def _local_fresh_retry(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+        intent: Intent | None,
+        lane: ConversationLane,
+        issues: list[str],
+    ) -> ReflectionResult | None:
+        """Retry a stuck local conversational turn without feeding its bad prose back.
+
+        Small local models can copy their own recent output when that output is
+        present in the compact continuity window. For repetition/provenance
+        failures, one small from-scratch retry is safer than a large editor prompt
+        that includes the failed answer verbatim.
+        """
+
+        if lane not in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}:
+            return None
+        if str(reasoning.metadata.get("provider") or "").strip().lower() != "ollama":
+            return None
+
+        retry_markers = (
+            "continuity boundary:",
+            "continuity/style boundary:",
+            "repeats mary's recent opening",
+            "conversation provenance boundary:",
+        )
+        if not any(any(marker in str(issue).lower() for marker in retry_markers) for issue in issues):
+            return None
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        openings = [
+            str(item).strip()
+            for item in list(continuity.get("recent_openings", []) or [])[-3:]
+            if str(item).strip()
+        ]
+        recent_user = [
+            " ".join(str(item.get("content") or "").split())[:500]
+            for item in list(context.conversation or [])[-6:]
+            if isinstance(item, dict)
+            and str(item.get("role") or "").lower() == "user"
+            and str(item.get("content") or "").strip()
+        ][-2:]
+
+        user_parts = [
+            "CURRENT INPUT:\n" + str(context.input_text or "").strip()[:1200],
+        ]
+        if recent_user:
+            user_parts.append(
+                "RECENT UNBE CONTEXT (facts/continuity only):\n"
+                + "\n".join("- " + item for item in recent_user)
+            )
+        if openings:
+            user_parts.append(
+                "RECENT MARY OPENINGS TO AVOID:\n"
+                + "\n".join("- " + item for item in openings)
+            )
+        user_parts.append(
+            "Write a fresh reply from scratch. Answer CURRENT INPUT directly. "
+            "Do not mention correction, auditing, provenance, or the fact that a retry happened."
+        )
+
+        try:
+            response = dispatch_generation(
+                self.llm,
+                GenerationRequest(
+                    messages=(
+                        LLMMessage(
+                            role="system",
+                            content=(
+                                "You are Mary. This is a compact local retry after a conversational "
+                                "loop or attribution mistake. Use only the current input and user-role "
+                                "context below. Do not copy prior Mary wording or invent what Unbe said. "
+                                "Keep it natural and concise; return only the reply."
+                            ),
+                        ),
+                        LLMMessage(role="user", content="\n\n".join(user_parts)),
+                    ),
+                    operation=GenerationOperation.CONVERSATION.value,
+                    privacy=GenerationPrivacy.LOCAL_ONLY.value,
+                    cost_class=GenerationCost.ZERO_LOCAL.value,
+                    correlation_id=generation_correlation_id("reflection-local-fresh-retry"),
+                    purpose="conversation_fast",
+                    max_tokens=96,
+                ),
+            )
+        except LLMProviderError:
+            return None
+
+        revised = str(response.content or "").strip()
+        if not revised:
+            return None
+
+        retry_reasoning = ReasoningResult(
+            response=revised,
+            metadata={
+                "provider": str(response.provider or "ollama"),
+                "model": str(response.model or ""),
+            },
+        )
+        retry_issues: list[str] = []
+        retry_issues.extend(
+            self._conversation_provenance_audit(
+                context=context,
+                reasoning=retry_reasoning,
+            )
+        )
+        recent_mary = [
+            str(item).strip()
+            for item in list(continuity.get("recent_mary_responses", []) or [])
+            if str(item).strip()
+        ]
+        retry_issues.extend(self._near_duplicate_response_audit(revised, recent_mary))
+        retry_issues.extend(
+            self._semantic_style_repetition_audit(context, revised, recent_mary)
+        )
+        if retry_issues:
+            return None
+
+        return ReflectionResult(
+            decision=ReflectionDecision.REVISE,
+            confidence=0.90,
+            assessment="Local conversation loop/provenance issue was regenerated from fresh user-grounded context.",
+            issues=issues,
+            revised_response=revised,
+            metadata={
+                "mode": "local_fresh_retry",
+                "provider": response.provider,
+                "model": response.model,
+                "finish_reason": response.finish_reason,
+                "usage": response.usage,
+                "llm_calls": 1,
+                "conversation_lane": lane.value,
             },
         )
 

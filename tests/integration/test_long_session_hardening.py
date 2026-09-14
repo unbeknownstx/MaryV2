@@ -130,6 +130,14 @@ def test_creator_memory_overview_routes_to_relationship_model_before_generic_mem
     assert intent.parameters["relationship_query_type"] == "memory_overview"
 
 
+def test_bare_what_do_you_remember_uses_creator_session_overview():
+    app = _application()
+    intent = app.mary.cognition.detect_intent("what do you remember?")
+
+    assert intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert intent.parameters["relationship_query_type"] == "memory_overview"
+
+
 def test_creator_memory_overview_knows_creator_and_recent_session_without_llm():
     router = SequenceRouter([
         "Yeah, that makes sense.",
