@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
 .\.venv\Scripts\python.exe -m scripts.mcp_node_diagnostics status
 ```
 
-The PC can then run `scripts\launch_windows_node.ps1` or the optional scheduled logon task already provided by the repository.
+The PC should run `scripts\launch_home_node_windows.ps1` or the optional canonical home-node scheduled logon task. Legacy Windows/capability launchers are compatibility wrappers and must not create a second node registration.
 
 ## iPhone
 
