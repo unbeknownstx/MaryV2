@@ -9,13 +9,10 @@ is terminally expired and a new task ID is queued as its replacement. Late
 completion of the old ID cannot mutate the replacement. MCP work is never
 blindly replayed.
 
-13.51 wires the existing benchmark-aware HomeComputeScheduler into this real
-broker. Cold start preserves NodeRegistry.choose(). Once content-free execution
-samples exist, measured operation latency/reliability may improve node choice.
-
-13.52 feeds currently claimed broker work back into the same scheduler as
-process-local NodeLoad. This provides immediate contention awareness without a
-new heartbeat protocol or any additional execution authority.
+13.51 wires the benchmark-aware HomeComputeScheduler into the real broker.
+13.52 feeds currently claimed broker work back as process-local NodeLoad.
+13.53 accepts a tiny allowlisted resource report on task completion, expires it
+quickly, and folds measured RAM/accelerator pressure into the same scheduler.
 """
 from __future__ import annotations
 
@@ -29,6 +26,7 @@ from uuid import uuid4
 from .compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, NodeLoad, WorkloadRequest
 from .nodes import NodeRegistry
 from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
+from .resource_telemetry import ResourceTelemetry, merge_resource_load, sanitize_resource_telemetry
 from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_sensor_task_args
 
 
@@ -229,11 +227,11 @@ class DeviceCapabilityTask:
 class DeviceTaskBroker:
     """Small in-memory Core broker for bounded device tasks.
 
-    Device tasks, scheduler evidence, and live load are intentionally ephemeral.
-    They are not Mary memories or canonical character state.
+    Device tasks, scheduler evidence, and resource telemetry are intentionally
+    ephemeral. They are not Mary memories or canonical character state.
     """
 
-    VERSION = "13.52"
+    VERSION = "13.53"
 
     def __init__(
         self,
@@ -242,6 +240,7 @@ class DeviceTaskBroker:
         ttl_seconds: float = 900.0,
         claim_lease_seconds: float = 660.0,
         max_claim_attempts: int = 2,
+        resource_ttl_seconds: float = 90.0,
         lifecycle_lock: RLock | None = None,
         live_node: Callable[[str], bool] | None = None,
         execution_policy: ExecutionPolicy | None = None,
@@ -250,6 +249,7 @@ class DeviceTaskBroker:
         self.ttl_seconds = max(30.0, float(ttl_seconds))
         self.claim_lease_seconds = max(30.0, min(float(claim_lease_seconds), self.ttl_seconds))
         self.max_claim_attempts = max(1, min(5, int(max_claim_attempts)))
+        self.resource_ttl_seconds = max(10.0, min(600.0, float(resource_ttl_seconds)))
         self._lock = lifecycle_lock or RLock()
         self._condition = Condition(self._lock)
         self._live_node = live_node
@@ -259,6 +259,8 @@ class DeviceTaskBroker:
         self._benchmark_book = BenchmarkBook()
         self._compute_scheduler: HomeComputeScheduler | None = None
         self._scheduler_registry: NodeRegistry | None = None
+        self._resources: dict[str, tuple[float, ResourceTelemetry]] = {}
+        self._resource_rejections = 0
 
     def set_execution_policy(self, policy: ExecutionPolicy | None) -> None:
         with self._condition:
@@ -269,6 +271,25 @@ class DeviceTaskBroker:
         if self._execution_policy is not None:
             self._execution_policy(kind)
 
+    def update_resource_telemetry(self, node_id: str, payload: dict[str, Any] | None) -> ResourceTelemetry:
+        node_key = str(node_id or "").strip()[:160]
+        if not node_key:
+            raise ValueError("resource telemetry requires node_id")
+        report = sanitize_resource_telemetry(payload)
+        with self._lock:
+            self._resources[node_key] = (monotonic(), report)
+        return report
+
+    def _resource_for(self, node_id: str) -> ResourceTelemetry | None:
+        entry = self._resources.get(str(node_id))
+        if entry is None:
+            return None
+        measured_at, report = entry
+        if monotonic() - measured_at > self.resource_ttl_seconds:
+            self._resources.pop(str(node_id), None)
+            return None
+        return report
+
     def _scheduler_for(self, registry: NodeRegistry) -> HomeComputeScheduler:
         if self._compute_scheduler is None or self._scheduler_registry is not registry:
             self._scheduler_registry = registry
@@ -276,24 +297,23 @@ class DeviceTaskBroker:
         return self._compute_scheduler
 
     def _active_loads(self, node_ids: set[str]) -> dict[str, NodeLoad]:
-        counts = {
-            node_id: {"realtime": 0, "background": 0}
-            for node_id in node_ids
-        }
+        counts = {node_id: {"realtime": 0, "background": 0} for node_id in node_ids}
         for task in self._tasks.values():
             if task.status != "claimed" or task.selected_node_id not in counts:
                 continue
             lane = "realtime" if task.operation in _REALTIME_OPERATIONS else "background"
             counts[task.selected_node_id][lane] += 1
-        return {
-            node_id: NodeLoad(
+        output: dict[str, NodeLoad] = {}
+        for node_id, values in counts.items():
+            base = NodeLoad(
                 node_id=node_id,
                 active_realtime=values["realtime"],
                 active_background=values["background"],
                 stream_critical=values["realtime"] > 0,
             )
-            for node_id, values in counts.items()
-        }
+            report = self._resource_for(node_id)
+            output[node_id] = merge_resource_load(base, report) if report is not None else base
+        return output
 
     def _select_node(self, registry: NodeRegistry, capability: str, args: dict[str, Any]) -> Any:
         fallback = registry.choose(capability)
@@ -308,15 +328,18 @@ class DeviceTaskBroker:
         operation = _operation_for(capability, args)
         node_ids = {str(node.node_id) for node in candidates}
         loads = self._active_loads(node_ids)
-        has_active_load = any(
-            load.active_realtime > 0 or load.active_background > 0
+        has_live_pressure = any(
+            load.active_realtime > 0
+            or load.active_background > 0
+            or load.memory_fraction is not None
+            or load.accelerator_fraction is not None
             for load in loads.values()
         )
         has_runtime_evidence = any(
             self._benchmark_book.summary(node.node_id, capability, operation).get("samples", 0) > 0
             for node in candidates
         )
-        if not has_runtime_evidence and not has_active_load:
+        if not has_runtime_evidence and not has_live_pressure:
             return fallback
         scheduler = self._scheduler_for(registry)
         for load in loads.values():
@@ -401,16 +424,24 @@ class DeviceTaskBroker:
             if task.status in _TERMINAL_STATUSES:
                 return task
 
+            raw_result = dict(result or {})
+            resource_payload = raw_result.pop("_resource", None)
+            if resource_payload is not None:
+                try:
+                    if not isinstance(resource_payload, dict) or len(resource_payload) > 8:
+                        raise ValueError("resource telemetry must be a small JSON object")
+                    self.update_resource_telemetry(task.selected_node_id, resource_payload)
+                except (TypeError, ValueError):
+                    self._resource_rejections += 1
+
             claimed_at = task.claimed_monotonic
             task.status = normalized_status
             task.claimed = True
-            task.result = _sanitize_task_result(task.capability, result) if normalized_status == "completed" else {}
+            task.result = _sanitize_task_result(task.capability, raw_result) if normalized_status == "completed" else {}
             task.error = _clean_text(error, 500)
             task.claimed_monotonic = None
             task.updated_at = _utc_now()
 
-            # Permission rejection is policy evidence, not hardware/model
-            # reliability. Only actual completed/failed execution is measured.
             if claimed_at is not None and normalized_status in {"completed", "failed"}:
                 self._benchmark_book.record(BenchmarkSample(
                     node_id=task.selected_node_id,
@@ -479,29 +510,40 @@ class DeviceTaskBroker:
             return self._tasks.get(str(task_id))
 
     def compute_status(self) -> dict[str, Any]:
-        snapshot = self._benchmark_book.snapshot()
-        active_node_ids = {
-            task.selected_node_id
-            for task in self._tasks.values()
-            if task.status == "claimed"
-        }
-        live_loads = self._active_loads(active_node_ids)
-        return {
-            "version": self.VERSION,
-            "scheduler": "home_compute_scheduler",
-            "sample_count": len(snapshot.get("samples", [])),
-            "benchmarks": snapshot,
-            "live_load": {
-                node_id: {
-                    "active_realtime": load.active_realtime,
-                    "active_background": load.active_background,
-                    "stream_critical": load.stream_critical,
-                }
-                for node_id, load in sorted(live_loads.items())
-            },
-            "authority": "operational_hint_only",
-            "content_retained": False,
-        }
+        with self._lock:
+            self._expire_locked()
+            benchmark_snapshot = self._benchmark_book.snapshot()
+            resource_nodes = {
+                node_id for node_id in self._resources
+                if self._resource_for(node_id) is not None
+            }
+            active_node_ids = resource_nodes | {
+                task.selected_node_id
+                for task in self._tasks.values()
+                if task.status == "claimed"
+            }
+            live_loads = self._active_loads(active_node_ids)
+            return {
+                "version": self.VERSION,
+                "scheduler": "home_compute_scheduler",
+                "sample_count": len(benchmark_snapshot.get("samples", [])),
+                "benchmarks": benchmark_snapshot,
+                "live_load": {
+                    node_id: {
+                        "active_realtime": load.active_realtime,
+                        "active_background": load.active_background,
+                        "memory_fraction": load.memory_fraction,
+                        "accelerator_fraction": load.accelerator_fraction,
+                        "stream_critical": load.stream_critical,
+                    }
+                    for node_id, load in sorted(live_loads.items())
+                },
+                "resource_reports": len(resource_nodes),
+                "resource_rejections": self._resource_rejections,
+                "resource_ttl_seconds": self.resource_ttl_seconds,
+                "authority": "operational_hint_only",
+                "content_retained": False,
+            }
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -516,7 +558,7 @@ class DeviceTaskBroker:
             "max_claim_attempts": self.max_claim_attempts,
             "replay_safe_capabilities": sorted(_REPLAY_SAFE_CAPABILITIES),
             "scheduler_samples": self.compute_status()["sample_count"],
-            "policy": "typed device tasks; stalled replay-safe claims roll over; measured execution and live broker load may improve node selection; permissions remain device-local",
+            "policy": "typed device tasks; measured execution, claimed work, and fresh bounded resource pressure may improve node selection; permissions remain device-local",
         }
 
     def _rollover_claim_locked(self, task: DeviceCapabilityTask) -> DeviceCapabilityTask | None:
@@ -541,6 +583,9 @@ class DeviceTaskBroker:
     def _expire_locked(self) -> None:
         now = monotonic()
         changed = False
+        for node_id, (measured_at, _report) in list(self._resources.items()):
+            if now - measured_at > self.resource_ttl_seconds:
+                self._resources.pop(node_id, None)
         for task in list(self._tasks.values()):
             if task.status in _TERMINAL_STATUSES:
                 continue
