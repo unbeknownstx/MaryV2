@@ -228,7 +228,6 @@ def test_learning_invitation_asks_from_current_unresolved_gap(tmp_path, monkeypa
     app = _application()
     mary = app.mary
 
-    # Fill four tracked categories. Values remains a real gap.
     assert mary.relationship.learn_explicit("my favorite color is blue") is not None
     assert mary.relationship.learn_explicit("i am interested in creating stories") is not None
     assert mary.relationship.learn_explicit("my main goal is finish MaryV2") is not None
@@ -252,13 +251,11 @@ def test_creator_share_after_learning_question_still_uses_existing_relationship_
     app.run("i value loyalty a lot")
     profile = mary.relationship.profile()
 
-    # This test is intentionally permissive about the generated key; the
-    # existing relationship learner owns parsing/storage and must remain active.
     values = profile.get("values", [])
     assert any("loyal" in str(value).lower() for value in values)
 
 
-def test_system_contract_reports_single_authoritative_router_and_local_conversation(tmp_path, monkeypatch):
+def test_system_contract_reports_single_authoritative_router_and_configured_conversation_route(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     app = _application()
     mary = app.mary
@@ -266,7 +263,8 @@ def test_system_contract_reports_single_authoritative_router_and_local_conversat
 
     assert snapshot["single_llm_router"] is True
     assert snapshot["shared_emotion_state"] is True
-    assert snapshot["conversation_route"][0] == "ollama"
+    assert snapshot["conversation_route"][0] == "groq"
+    assert "ollama" in snapshot["conversation_route"]
     assert snapshot["task_route"][0] == "groq"
     assert mary.system_contract.validate(mary) == []
 
