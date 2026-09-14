@@ -64,7 +64,27 @@ if ($StartOllama) {
     if (-not $OllamaReady) {
         $Ollama = Get-Command ollama -ErrorAction SilentlyContinue
         if ($null -ne $Ollama) {
-            Start-Process -FilePath $Ollama.Source -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+            # Ollama ships its own ggml/runtime DLLs. Mary may expose a separate
+            # llama.cpp runtime on PATH for node capability discovery; do not let
+            # that directory leak into the child Ollama process. Temporarily
+            # scrub it only while Start-Process snapshots the environment, then
+            # restore PATH so Mary's home node can still discover llama.cpp.
+            $OriginalPath = $env:PATH
+            $PathSeparator = [IO.Path]::PathSeparator
+            $PathEntries = @($OriginalPath -split [regex]::Escape([string]$PathSeparator))
+            $SafePathEntries = @(
+                $PathEntries | Where-Object {
+                    $entry = [string]$_
+                    $normalized = $entry.Replace('/', '\').TrimEnd('\').ToLowerInvariant()
+                    -not ($normalized -match '\\maryv2\\runtimes\\llama\.cpp(?:\\|$)')
+                }
+            )
+            try {
+                $env:PATH = ($SafePathEntries -join $PathSeparator)
+                Start-Process -FilePath $Ollama.Source -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+            } finally {
+                $env:PATH = $OriginalPath
+            }
             Start-Sleep -Seconds 2
         }
     }
