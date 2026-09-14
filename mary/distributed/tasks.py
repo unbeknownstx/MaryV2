@@ -11,7 +11,7 @@ claim lease expires; MCP work is never blindly replayed.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 import secrets
 from threading import Condition, RLock
@@ -163,13 +163,8 @@ class DeviceCapabilityTask:
         return f"{self.task_id}.{self.claim_attempt}.{self.claim_token}"
 
     def to_dict(self) -> dict[str, Any]:
-        # A claimed task is a delivery contract. The serialized task_id is bound
-        # to this exact attempt so existing device executors automatically echo
-        # the lease identity back on completion. The canonical base ID remains
-        # internal and is what dispatch/status callers receive before a claim.
-        delivery_id = self.completion_id
         return {
-            "task_id": delivery_id,
+            "task_id": self.task_id,
             "capability": self.capability,
             "intent": self.intent,
             "args": dict(self.args),
@@ -276,7 +271,15 @@ class DeviceTaskBroker:
                     task.status = "claimed"
                     task.error = ""
                     task.updated_at = _utc_now()
-                    return task
+                    # Return a delivery copy whose task_id carries the attempt
+                    # lease. Internal/status state keeps the canonical base ID,
+                    # so lease material is exposed only to the selected worker.
+                    return replace(
+                        task,
+                        task_id=task.completion_id,
+                        claim_token="",
+                        claimed_monotonic=None,
+                    )
                 remaining = deadline - monotonic()
                 if remaining <= 0.0:
                     return None
@@ -322,9 +325,6 @@ class DeviceTaskBroker:
                 raise PermissionError("Capability task is not currently claimed.")
 
             if supplied_attempt is None:
-                # Compatibility for one-attempt legacy workers. Once a task has
-                # ever been reissued, a bare base ID can no longer identify the
-                # active attempt and is rejected fail-closed.
                 if task.claim_attempt != 1:
                     raise PermissionError("Capability task completion is missing its active claim lease.")
             else:
@@ -439,9 +439,7 @@ class DeviceTaskBroker:
             else:
                 task.status = "expired"
                 task.claimed = True
-                task.error = (
-                    "Capability task claim lease expired; unsafe or exhausted work was not replayed."
-                )
+                task.error = "Capability task claim lease expired; unsafe or exhausted work was not replayed."
             task.updated_at = _utc_now()
             changed = True
         if changed:
