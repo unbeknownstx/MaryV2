@@ -55,6 +55,12 @@ from .execution_reliability import (
     stable_args_fingerprint,
     transient_error,
 )
+from .model_capability_evidence import (
+    CapabilityProbeResult,
+    ModelCapabilityEvidence,
+    build_capability_evidence,
+    run_boolean_probe,
+)
 from .resource_broker import (
     ResourceHandoffPlan,
     ResourceSnapshot,
@@ -119,6 +125,10 @@ __all__ = [
     "should_retry",
     "stable_args_fingerprint",
     "transient_error",
+    "CapabilityProbeResult",
+    "ModelCapabilityEvidence",
+    "build_capability_evidence",
+    "run_boolean_probe",
     "ResourceHandoffPlan",
     "ResourceSnapshot",
     "WorkloadFootprint",
