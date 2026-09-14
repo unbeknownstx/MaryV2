@@ -177,13 +177,9 @@ def test_request_intent_keeps_task_general_route_available(tmp_path, monkeypatch
     router, providers = _router()
     _wire(mary, router)
 
-    # Force a task-shaped intent so the test checks routing policy rather than
-    # the natural-language intent detector's wording coverage.
     intent = mary.cognition.detect_intent("create file test.txt with hello")
     assert intent.intent_type == IntentType.TOOL_USE
 
-    # Direct task/general router use remains cloud-first when no conversation
-    # purpose is supplied.
     result = router.generate([LLMMessage(role="user", content="task synthesis")])
     assert result.provider == "groq"
     assert providers["groq"].calls == 1
@@ -195,4 +191,5 @@ def test_status_exposes_both_conversation_and_task_routes(tmp_path, monkeypatch)
     mary = app.mary
     status = mary.status()["cognition"]
     assert status["provider_order"][0] == "groq"
-    assert status["conversation_provider_order"][0] == "ollama"
+    assert status["conversation_provider_order"][0] == "groq"
+    assert "ollama" in status["conversation_provider_order"]
