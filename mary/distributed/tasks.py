@@ -2,12 +2,18 @@
 
 Core may select a replaceable device node and queue a narrowly typed task, but
 execution always occurs on the device under that device's local permission
-policy.  There is intentionally no shell-command task type here.
+policy. There is intentionally no shell-command task type here.
+
+13.50 adds attempt-scoped claim leases. A claimed delivery carries a completion
+ID bound to that exact attempt. Late completions from an older attempt cannot
+overwrite a newer attempt. Only replay-safe capabilities may be requeued after a
+claim lease expires; MCP work is never blindly replayed.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import secrets
 from threading import Condition, RLock
 from time import monotonic
 from typing import Any, Callable
@@ -20,6 +26,7 @@ from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_senso
 
 _ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
+_REPLAY_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *SENSOR_CAPABILITIES}
 ExecutionPolicy = Callable[[str], None]
 
 
@@ -57,11 +64,6 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             content = str(raw_message.get("content") or "").strip()
             if not content:
                 raise ValueError(f"{provider_label} messages cannot be empty.")
-            # Mary normally sends one substantial grounded system message plus
-            # one user/task message.  The broker's real transport/security
-            # boundary is the 48K total task budget below; a smaller per-message
-            # ceiling incorrectly rejected legitimate canonical Core prompts
-            # before they could ever reach an enrolled local model node.
             if len(content) > 48_000:
                 raise ValueError(f"A single {provider_label} message exceeds the 48000 character task limit.")
             total_characters += len(content)
@@ -149,11 +151,25 @@ class DeviceCapabilityTask:
     result: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     claimed: bool = False
+    claim_attempt: int = 0
+    claim_token: str = field(default="", repr=False)
+    claimed_monotonic: float | None = field(default=None, repr=False)
     created_monotonic: float = field(default_factory=monotonic, repr=False)
 
+    @property
+    def completion_id(self) -> str:
+        if self.status != "claimed" or not self.claim_token or self.claim_attempt < 1:
+            return self.task_id
+        return f"{self.task_id}.{self.claim_attempt}.{self.claim_token}"
+
     def to_dict(self) -> dict[str, Any]:
+        # A claimed task is a delivery contract. The serialized task_id is bound
+        # to this exact attempt so existing device executors automatically echo
+        # the lease identity back on completion. The canonical base ID remains
+        # internal and is what dispatch/status callers receive before a claim.
+        delivery_id = self.completion_id
         return {
-            "task_id": self.task_id,
+            "task_id": delivery_id,
             "capability": self.capability,
             "intent": self.intent,
             "args": dict(self.args),
@@ -164,6 +180,8 @@ class DeviceCapabilityTask:
             "updated_at": self.updated_at,
             "result": dict(self.result),
             "error": self.error,
+            "claim_attempt": self.claim_attempt,
+            "claim_lease": "attempt_scoped" if self.status == "claimed" else "none",
         }
 
 
@@ -174,11 +192,23 @@ class DeviceTaskBroker:
     canonical character state, and a Core restart may discard them.
     """
 
-    VERSION = "13.12"
+    VERSION = "13.50"
 
-    def __init__(self, *, max_tasks: int = 200, ttl_seconds: float = 900.0, lifecycle_lock: RLock | None = None, live_node: Callable[[str], bool] | None = None, execution_policy: ExecutionPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        max_tasks: int = 200,
+        ttl_seconds: float = 900.0,
+        claim_lease_seconds: float = 660.0,
+        max_claim_attempts: int = 2,
+        lifecycle_lock: RLock | None = None,
+        live_node: Callable[[str], bool] | None = None,
+        execution_policy: ExecutionPolicy | None = None,
+    ) -> None:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
+        self.claim_lease_seconds = max(30.0, min(float(claim_lease_seconds), self.ttl_seconds))
+        self.max_claim_attempts = max(1, min(5, int(max_claim_attempts)))
         self._lock = lifecycle_lock or RLock()
         self._condition = Condition(self._lock)
         self._live_node = live_node
@@ -239,8 +269,12 @@ class DeviceTaskBroker:
                     task = self._tasks.get(task_id)
                     if task is None or task.selected_node_id != node_id or task.status != "queued" or task.claimed:
                         continue
+                    task.claim_attempt += 1
+                    task.claim_token = secrets.token_urlsafe(18)
+                    task.claimed_monotonic = monotonic()
                     task.claimed = True
                     task.status = "claimed"
+                    task.error = ""
                     task.updated_at = _utc_now()
                     return task
                 remaining = deadline - monotonic()
@@ -248,15 +282,33 @@ class DeviceTaskBroker:
                     return None
                 self._condition.wait(timeout=remaining)
 
+    @staticmethod
+    def _parse_completion_id(value: str) -> tuple[str, int | None, str]:
+        text = str(value or "").strip()
+        parts = text.rsplit(".", 2)
+        if len(parts) != 3:
+            return text, None, ""
+        base, raw_attempt, token = parts
+        if not base.startswith("capability_task_"):
+            return text, None, ""
+        try:
+            attempt = int(raw_attempt)
+        except (TypeError, ValueError):
+            return text, None, ""
+        if attempt < 1 or not token:
+            return text, None, ""
+        return base, attempt, token
+
     def complete(self, *, node_id: str, task_id: str, status: str, result: dict[str, Any] | None = None, error: str = "", live_node: Callable[[str], bool] | None = None) -> DeviceCapabilityTask:
         normalized_status = str(status or "").strip().lower()
         if normalized_status not in {"completed", "rejected", "failed"}:
             raise ValueError("Task completion status must be completed, rejected, or failed.")
+        base_task_id, supplied_attempt, supplied_token = self._parse_completion_id(task_id)
         with self._lock:
             self._expire_locked()
-            task = self._tasks.get(str(task_id))
+            task = self._tasks.get(base_task_id)
             if task is None:
-                raise KeyError(f"Unknown capability task: {task_id}")
+                raise KeyError(f"Unknown capability task: {base_task_id}")
             if task.selected_node_id != str(node_id):
                 raise PermissionError("A capability task may only be completed by its selected node.")
             validator = live_node or self._live_node
@@ -266,10 +318,27 @@ class DeviceTaskBroker:
                 raise PermissionError(f"Capability node is not live: {node_id}")
             if task.status in _TERMINAL_STATUSES:
                 return task
+            if task.status != "claimed":
+                raise PermissionError("Capability task is not currently claimed.")
+
+            if supplied_attempt is None:
+                # Compatibility for one-attempt legacy workers. Once a task has
+                # ever been reissued, a bare base ID can no longer identify the
+                # active attempt and is rejected fail-closed.
+                if task.claim_attempt != 1:
+                    raise PermissionError("Capability task completion is missing its active claim lease.")
+            else:
+                if supplied_attempt != task.claim_attempt:
+                    raise PermissionError("Capability task completion belongs to a stale claim attempt.")
+                if not supplied_token or not secrets.compare_digest(supplied_token, task.claim_token):
+                    raise PermissionError("Capability task completion claim lease is invalid.")
+
             task.status = normalized_status
             task.claimed = True
             task.result = _sanitize_task_result(task.capability, result) if normalized_status == "completed" else {}
             task.error = _clean_text(error, 500)
+            task.claim_token = ""
+            task.claimed_monotonic = None
             task.updated_at = _utc_now()
             self._condition.notify_all()
             return task
@@ -286,6 +355,8 @@ class DeviceTaskBroker:
                 continue
             task.status = "expired"
             task.claimed = True
+            task.claim_token = ""
+            task.claimed_monotonic = None
             task.error = _clean_text(reason, 500)
             task.updated_at = _utc_now()
             expired += 1
@@ -299,7 +370,7 @@ class DeviceTaskBroker:
         except (TypeError, ValueError):
             timeout = 0.0
         deadline = monotonic() + timeout
-        task_key = str(task_id)
+        task_key, _attempt, _token = self._parse_completion_id(task_id)
         with self._condition:
             while True:
                 self._expire_locked()
@@ -312,9 +383,10 @@ class DeviceTaskBroker:
                 self._condition.wait(timeout=remaining)
 
     def get(self, task_id: str) -> DeviceCapabilityTask | None:
+        task_key, _attempt, _token = self._parse_completion_id(task_id)
         with self._lock:
             self._expire_locked()
-            return self._tasks.get(str(task_id))
+            return self._tasks.get(task_key)
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -325,11 +397,15 @@ class DeviceTaskBroker:
             "tasks": tasks[-50:],
             "queued": sum(1 for item in tasks if item["status"] == "queued"),
             "claimed": sum(1 for item in tasks if item["status"] == "claimed"),
-            "policy": "Core queues typed capability tasks; device-local permission controls execution",
+            "claim_lease_seconds": self.claim_lease_seconds,
+            "max_claim_attempts": self.max_claim_attempts,
+            "replay_safe_capabilities": sorted(_REPLAY_SAFE_CAPABILITIES),
+            "policy": "Core queues typed capability tasks; device-local permission controls execution; claimed work is attempt-scoped",
         }
 
     def _expire_locked(self) -> None:
         now = monotonic()
+        changed = False
         for task in self._tasks.values():
             if task.status in _TERMINAL_STATUSES:
                 continue
@@ -337,9 +413,39 @@ class DeviceTaskBroker:
             if unavailable or now - task.created_monotonic > self.ttl_seconds:
                 task.status = "expired"
                 task.claimed = True
+                task.claim_token = ""
+                task.claimed_monotonic = None
                 task.error = "Capability node became unavailable before task completion." if unavailable else "Capability task expired before completion."
                 task.updated_at = _utc_now()
-        self._condition.notify_all()
+                changed = True
+                continue
+
+            lease_expired = (
+                task.status == "claimed"
+                and task.claimed_monotonic is not None
+                and now - task.claimed_monotonic > self.claim_lease_seconds
+            )
+            if not lease_expired:
+                continue
+
+            replay_safe = task.capability in _REPLAY_SAFE_CAPABILITIES
+            can_requeue = replay_safe and task.claim_attempt < self.max_claim_attempts
+            task.claim_token = ""
+            task.claimed_monotonic = None
+            if can_requeue:
+                task.status = "queued"
+                task.claimed = False
+                task.error = ""
+            else:
+                task.status = "expired"
+                task.claimed = True
+                task.error = (
+                    "Capability task claim lease expired; unsafe or exhausted work was not replayed."
+                )
+            task.updated_at = _utc_now()
+            changed = True
+        if changed:
+            self._condition.notify_all()
 
     def _trim_locked(self) -> None:
         while len(self._order) > self.max_tasks:
