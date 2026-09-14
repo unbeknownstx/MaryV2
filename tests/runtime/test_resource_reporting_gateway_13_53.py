@@ -1,3 +1,5 @@
+from threading import Event
+
 from mary.distributed.resource_probe import GPUObservation, LiveResourceObservation
 from mary.runtime.resource_reporting_gateway import ResourceReportingGateway
 
@@ -39,12 +41,15 @@ def _observation():
 def test_success_attaches_raw_allowlisted_resource_payload_and_caches_probe():
     gateway = _Gateway()
     calls = {"count": 0}
+    ready = Event()
 
     def observer():
         calls["count"] += 1
+        ready.set()
         return _observation()
 
     wrapped = ResourceReportingGateway(gateway, sample_seconds=30.0, observer=observer)
+    assert ready.wait(1.0)
     wrapped.complete_capability_task("capability_task_a", status="completed", result={"content": "one"})
     wrapped.complete_capability_task("capability_task_b", status="completed", result={"content": "two"})
 
@@ -63,26 +68,36 @@ def test_success_attaches_raw_allowlisted_resource_payload_and_caches_probe():
     assert gateway.calls[1]["result"]["_resource"] == resource
 
 
-def test_rejected_and_failed_completions_never_probe_or_attach_resources():
+def test_rejected_and_failed_completions_do_not_trigger_resource_refresh():
     gateway = _Gateway()
     calls = {"count": 0}
+    ready = Event()
 
     def observer():
         calls["count"] += 1
+        ready.set()
         return _observation()
 
     wrapped = ResourceReportingGateway(gateway, observer=observer)
+    assert ready.wait(1.0)
     wrapped.complete_capability_task("capability_task_a", status="rejected", error="permission denied")
     wrapped.complete_capability_task("capability_task_b", status="failed", error="runtime failed")
 
-    assert calls["count"] == 0
+    assert calls["count"] == 1
     assert gateway.calls[0]["result"] == {}
     assert gateway.calls[1]["result"] == {}
 
 
 def test_full_eight_field_business_result_is_preserved_without_resource_injection():
     gateway = _Gateway()
-    wrapped = ResourceReportingGateway(gateway, observer=_observation)
+    ready = Event()
+
+    def observer():
+        ready.set()
+        return _observation()
+
+    wrapped = ResourceReportingGateway(gateway, observer=observer)
+    assert ready.wait(1.0)
     result = {f"field_{index}": index for index in range(8)}
 
     wrapped.complete_capability_task("capability_task_a", status="completed", result=result)
@@ -93,11 +108,14 @@ def test_full_eight_field_business_result_is_preserved_without_resource_injectio
 
 def test_probe_failure_is_soft_and_does_not_change_successful_completion():
     gateway = _Gateway()
+    finished = Event()
 
     def observer():
+        finished.set()
         raise RuntimeError("probe unavailable")
 
     wrapped = ResourceReportingGateway(gateway, observer=observer)
+    assert finished.wait(1.0)
     response = wrapped.complete_capability_task(
         "capability_task_a",
         status="completed",
@@ -107,3 +125,26 @@ def test_probe_failure_is_soft_and_does_not_change_successful_completion():
     assert response["ok"] is True
     assert gateway.calls[0]["status"] == "completed"
     assert gateway.calls[0]["result"] == {"content": "ok"}
+
+
+def test_completion_uses_no_resource_envelope_while_background_probe_is_busy():
+    gateway = _Gateway()
+    entered = Event()
+    release = Event()
+
+    def observer():
+        entered.set()
+        release.wait(1.0)
+        return _observation()
+
+    wrapped = ResourceReportingGateway(gateway, observer=observer)
+    assert entered.wait(1.0)
+    response = wrapped.complete_capability_task(
+        "capability_task_a",
+        status="completed",
+        result={"content": "fast"},
+    )
+    release.set()
+
+    assert response["ok"] is True
+    assert gateway.calls[0]["result"] == {"content": "fast"}
