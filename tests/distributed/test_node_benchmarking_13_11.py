@@ -17,12 +17,20 @@ def test_cpu_reference_benchmark_is_small_and_sanitized():
 
 
 def test_apply_benchmark_profile_only_adds_operational_metadata():
-    capability = CapabilityDescriptor("llm.ollama", private=True, local=True, metadata={"model": "test"})
+    capability = CapabilityDescriptor(
+        "llm.ollama",
+        private=True,
+        local=True,
+        metadata={"model": "test", "num_ctx": 4096},
+    )
     profile = {
         "version": PROFILE_VERSION,
         "authority": "operational_hint_only",
         "capabilities": {
             "llm.ollama": {
+                "model": "test",
+                "num_ctx": 4096,
+                "thinking": False,
                 "median_latency_ms": 456.7,
                 "success_rate": 1.0,
                 "throughput_tokens_per_second": 22.5,
@@ -35,6 +43,31 @@ def test_apply_benchmark_profile_only_adds_operational_metadata():
     assert updated.metadata["benchmark_success_rate"] == 1.0
     assert updated.metadata["benchmark_throughput"] == 22.5
     assert updated.metadata["benchmark_profile_version"] == PROFILE_VERSION
+    assert updated.metadata["benchmark_model"] == "test"
+
+
+def test_llm_benchmark_without_runtime_fingerprint_is_ignored():
+    capability = CapabilityDescriptor(
+        "llm.ollama",
+        private=True,
+        local=True,
+        metadata={"configured_model": "qwen3:1.7b", "num_ctx": 4096},
+    )
+    profile = {
+        "version": PROFILE_VERSION,
+        "authority": "operational_hint_only",
+        "capabilities": {
+            "llm.ollama": {
+                "median_latency_ms": 999.0,
+                "success_rate": 1.0,
+            }
+        },
+    }
+
+    updated = apply_benchmark_profile([capability], profile)[0]
+
+    assert "benchmark_latency_ms" not in updated.metadata
+    assert updated.metadata["benchmark_ignored_reason"] == "missing_runtime_fingerprint"
 
 
 def test_resource_profile_exposes_acceleration_as_hints_only():
