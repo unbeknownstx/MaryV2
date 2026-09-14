@@ -1,6 +1,6 @@
-# Windows Headless Capability Node
+# Windows Home Capability Node
 
-The Windows node lets canonical remote Mary Core use approved local capabilities (currently including Ollama) without requiring Mary Desktop to be open.
+The canonical Windows home node lets remote Mary Core use approved local capabilities without requiring Mary Desktop to be open. Desktop remains a presentation surface by default and does not register a competing capability node.
 
 ## One-time permission
 
@@ -11,7 +11,7 @@ python -m scripts.node_permissions allow llm.ollama
 ## Manual launch
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\launch_windows_node.ps1
+powershell -ExecutionPolicy Bypass -File scripts\launch_home_node_windows.ps1
 ```
 
 ## Start automatically at user logon
@@ -27,3 +27,7 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall_windows_node_task.ps1
 ```
 
 The task launches the node only. It does not launch Desktop and does not create a second Mary identity/state authority.
+
+
+The older `launch_windows_node.ps1` and `scripts.run_windows_node` entrypoints are compatibility wrappers only; both delegate to `scripts.run_home_node`.
+For the current RX 580 4 GB host, the canonical launcher applies the `windows-rx580-4gb` profile and bounded Ollama server settings before registration.
