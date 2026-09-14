@@ -164,7 +164,7 @@ class DeviceCapabilityTask:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "task_id": self.task_id,
+            "task_id": self.completion_id,
             "capability": self.capability,
             "intent": self.intent,
             "args": dict(self.args),
@@ -176,8 +176,11 @@ class DeviceCapabilityTask:
             "result": dict(self.result),
             "error": self.error,
             "claim_attempt": self.claim_attempt,
-            "claim_lease": "attempt_scoped" if self.status == "claimed" else "none",
+            "claim_lease": "attempt_scoped" if self.status == "claimed" and self.claim_token else "none",
         }
+
+    def public_copy(self) -> "DeviceCapabilityTask":
+        return replace(self, claim_token="", claimed_monotonic=None)
 
 
 class DeviceTaskBroker:
@@ -271,15 +274,7 @@ class DeviceTaskBroker:
                     task.status = "claimed"
                     task.error = ""
                     task.updated_at = _utc_now()
-                    # Return a delivery copy whose task_id carries the attempt
-                    # lease. Internal/status state keeps the canonical base ID,
-                    # so lease material is exposed only to the selected worker.
-                    return replace(
-                        task,
-                        task_id=task.completion_id,
-                        claim_token="",
-                        claimed_monotonic=None,
-                    )
+                    return task
                 remaining = deadline - monotonic()
                 if remaining <= 0.0:
                     return None
@@ -320,12 +315,12 @@ class DeviceTaskBroker:
                     self._expire_pending_for_node_locked(str(node_id), reason="Capability node became unavailable before task completion.")
                 raise PermissionError(f"Capability node is not live: {node_id}")
             if task.status in _TERMINAL_STATUSES:
-                return task
+                return task.public_copy()
             if task.status != "claimed":
                 raise PermissionError("Capability task is not currently claimed.")
 
             if supplied_attempt is None:
-                if task.claim_attempt != 1:
+                if task.claim_attempt not in {0, 1}:
                     raise PermissionError("Capability task completion is missing its active claim lease.")
             else:
                 if supplied_attempt != task.claim_attempt:
@@ -341,7 +336,7 @@ class DeviceTaskBroker:
             task.claimed_monotonic = None
             task.updated_at = _utc_now()
             self._condition.notify_all()
-            return task
+            return task.public_copy()
 
     def expire_pending_for_node(self, node_id: str, *, reason: str = "Capability node is unavailable.") -> int:
         clean_node_id = str(node_id or "").strip()
@@ -376,22 +371,23 @@ class DeviceTaskBroker:
                 self._expire_locked()
                 task = self._tasks.get(task_key)
                 if task is None or task.status in _TERMINAL_STATUSES:
-                    return task
+                    return task.public_copy() if task is not None else None
                 remaining = deadline - monotonic()
                 if remaining <= 0.0:
-                    return task
+                    return task.public_copy()
                 self._condition.wait(timeout=remaining)
 
     def get(self, task_id: str) -> DeviceCapabilityTask | None:
         task_key, _attempt, _token = self._parse_completion_id(task_id)
         with self._lock:
             self._expire_locked()
-            return self._tasks.get(task_key)
+            task = self._tasks.get(task_key)
+            return task.public_copy() if task is not None else None
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             self._expire_locked()
-            tasks = [self._tasks[task_id].to_dict() for task_id in self._order if task_id in self._tasks]
+            tasks = [self._tasks[task_id].public_copy().to_dict() for task_id in self._order if task_id in self._tasks]
         return {
             "version": self.VERSION,
             "tasks": tasks[-50:],
