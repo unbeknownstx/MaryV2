@@ -17,7 +17,11 @@ from dotenv import load_dotenv
 
 from mary.desktop.device_node import DesktopCapabilityNodeAgent, headless_node_capabilities
 from mary.distributed import CapabilityDescriptor, DeviceExecutionPermissions
-from mary.distributed.benchmarking import apply_benchmark_profile, load_profile
+from mary.distributed.benchmarking import (
+    apply_benchmark_profile,
+    host_fingerprint,
+    load_profile,
+)
 from mary.distributed.creative_runtime import creative_runtime_catalog
 from mary.distributed.inference_acceleration import local_acceleration_status
 from mary.distributed.hardware_profiles import (
@@ -161,13 +165,19 @@ def main(argv: list[str] | None = None) -> int:
     benchmark_loaded = False
     if benchmark_path is not None and benchmark_path.exists():
         try:
-            capabilities = apply_benchmark_profile(capabilities, load_profile(benchmark_path))
-            benchmark_loaded = any(
-                "benchmark_profile_version" in dict(item.metadata or {})
-                for item in capabilities
-            )
-            if not benchmark_loaded:
-                print("Benchmark profile loaded but no compatible measurements matched the active runtime.")
+            benchmark_profile = load_profile(benchmark_path)
+            measured_host = str(benchmark_profile.get("host_fingerprint") or "").strip()
+            current_host = host_fingerprint()
+            if measured_host and measured_host != current_host:
+                print("Benchmark profile ignored: host fingerprint does not match this machine.")
+            else:
+                capabilities = apply_benchmark_profile(capabilities, benchmark_profile)
+                benchmark_loaded = any(
+                    "benchmark_profile_version" in dict(item.metadata or {})
+                    for item in capabilities
+                )
+                if not benchmark_loaded:
+                    print("Benchmark profile loaded but no compatible measurements matched the active runtime.")
         except Exception as exc:
             print(f"Benchmark profile ignored: {type(exc).__name__}: {exc}")
 
@@ -245,11 +255,28 @@ def main(argv: list[str] | None = None) -> int:
     print(f"execution allowed: {', '.join(allowed) if allowed else 'none (default deny)'}")
     print("sensor policy:      transcription/screen capture are explicit local opt-ins")
     print("authority:          compute/evidence only; Mary Core owns identity/state")
+    print("registration:       starting / waiting for Core acknowledgement")
     print("Press Ctrl+C to stop the node.")
 
+    last_registered: bool | None = None
+    last_error = ""
     try:
         while not stop.wait(1.0):
-            pass
+            status = agent.status()
+            registered = bool(status.get("registered", False))
+            error = str(status.get("last_error") or "").strip()
+            if registered != last_registered:
+                print(
+                    "registration:       "
+                    + ("connected to canonical Core" if registered else "not connected / retrying")
+                )
+                last_registered = registered
+            if error and error != last_error:
+                print(f"registration detail: {error}")
+                last_error = error
+            elif not error and last_error:
+                print("registration detail: recovered")
+                last_error = ""
     finally:
         agent.stop()
         print("Home node disconnected.")
