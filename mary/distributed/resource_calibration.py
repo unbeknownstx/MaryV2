@@ -82,7 +82,7 @@ def _delta(before_free: float | None, after_free: float | None) -> float | None:
 
 
 def _suggest_requirement(delta_gib: float) -> float:
-    """Add transparent safety headroom and round upward to 0.25 GiB."""
+    """Add transparent measurement headroom and round upward to 0.25 GiB."""
     measured = max(0.0, float(delta_gib))
     headroom = max(0.5, measured * 0.10)
     return round(math.ceil((measured + headroom) * 4.0) / 4.0, 2)
@@ -95,11 +95,12 @@ def measure_provider_fit(
     observer: Callable[[], LiveResourceObservation] = observe_live_resources,
     residency_probe: Callable[[Any], str] = ollama_residency,
 ) -> tuple[Any, dict[str, Any]]:
-    """Run one synthetic benchmark operation and return result + safe measurements.
+    """Run one synthetic benchmark operation and return result + measurements.
 
-    A fit suggestion requires a proven not-loaded -> loaded transition plus a
-    measurable accelerator-memory delta. Otherwise measurements are retained for
-    diagnostics but recommendation fields remain null.
+    A fit recommendation requires a proven not-loaded -> loaded transition plus
+    a measurable accelerator-memory delta. The recommendation is scoped to the
+    exact model/context measured here; it is not a guarantee of every future
+    workload's transient peak allocation.
     """
     try:
         model = str(provider.model_name() or "")[:160]
@@ -143,10 +144,14 @@ def measure_provider_fit(
 
     proven_cold_load = before_residency == "not_loaded" and after_residency == "loaded"
     measurable = accelerator_delta is not None and accelerator_delta >= 0.125
-    safe_to_suggest = bool(proven_cold_load and measurable)
-    suggested = _suggest_requirement(accelerator_delta) if safe_to_suggest and accelerator_delta is not None else None
+    recommendation_available = bool(proven_cold_load and measurable)
+    suggested = (
+        _suggest_requirement(accelerator_delta)
+        if recommendation_available and accelerator_delta is not None
+        else None
+    )
 
-    if safe_to_suggest:
+    if recommendation_available:
         status = "cold_load_measured"
     elif before_residency == "loaded":
         status = "model_already_resident"
@@ -174,8 +179,9 @@ def measure_provider_fit(
         "apple_unified_memory": unified,
         "fit_hint_status": status,
         "suggested_accelerator_gib_general": suggested,
-        "suggestion_safe_to_apply": safe_to_suggest,
+        "recommendation_supported_by_measurement": recommendation_available,
         "suggestion_policy": "cold-load observed delta + max(0.5 GiB, 10%) headroom; rounded upward to 0.25 GiB",
+        "suggestion_scope": "configured general model at measured num_ctx; remeasure after model/context/runtime changes",
         "authority": "operational_measurement_only",
         "content_retained": False,
     }
