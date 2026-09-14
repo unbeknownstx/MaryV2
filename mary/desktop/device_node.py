@@ -72,12 +72,18 @@ def _select_ollama_context(
         max_ctx = int(os.getenv("MARY_DEVICE_OLLAMA_MAX_CTX", "32768"))
     except (TypeError, ValueError):
         max_ctx = 32768
-    # 4096 is intentionally supported for constrained display GPUs. Larger
-    # nodes keep the existing 8K+ behavior through their configured/default cap.
+    # 4096 is intentionally supported only when a constrained device
+    # explicitly caps itself there. Unconstrained/default nodes preserve the
+    # established 8K minimum and may expand through the larger buckets.
     max_ctx = max(4096, min(65536, max_ctx))
-    base_ctx = max(2048, min(max_ctx, int(provider_num_ctx or 8192)))
+    constrained_4k = max_ctx <= 4096
+    base_floor = 4096 if constrained_4k else 8192
+    base_ctx = max(base_floor, min(max_ctx, int(provider_num_ctx or base_floor)))
     target = max(base_ctx, required_ctx)
-    buckets = (4096, 8192, 16384, 32768, 65536)
+    buckets = (
+        (4096,) if constrained_4k
+        else (8192, 16384, 32768, 65536)
+    )
     selected_ctx = next((size for size in buckets if size >= target), max_ctx)
     selected_ctx = min(selected_ctx, max_ctx)
     if required_ctx > selected_ctx:
