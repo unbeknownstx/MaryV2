@@ -300,12 +300,11 @@ def _project_social(
     max_words = 8
 
     if act == DialogueAct.GREET:
-        response_intent = "Acknowledge the greeting briefly."
+        # Pure greetings should not sound like a help-desk prompt. Acknowledge
+        # the creator warmly and let the next conversational beat come from the
+        # creator/model route naturally instead of auto-appending "want to talk?".
+        response_intent = "Acknowledge the greeting briefly and naturally."
         meanings = ("Acknowledge the greeting.",)
-        if allow_question:
-            question = SemanticQuestion(QuestionKind.INVITATION, ADDRESSEE, "talk")
-            meanings += ("Invite ordinary conversation to continue.",)
-            max_sentences = 2
     elif act == DialogueAct.ACKNOWLEDGE:
         response_intent = "Acknowledge the creator briefly."
         meanings = ("Give one brief acknowledgement.",)
@@ -733,9 +732,17 @@ def _project_status(
         goals = _mapping_sequence(agency.get("active_goals"))
         if not goals:
             goals = _mapping_sequence(hot_state.get("active_goals"))
+        curiosities = _mapping_sequence(hot_state.get("curiosities"))
+
         description = None
+        recipient = None
+        object_text = ""
         if goals:
-            description = goals[0].get("description") or goals[0].get("title") or goals[0].get("goal")
+            description = (
+                goals[0].get("description")
+                or goals[0].get("title")
+                or goals[0].get("goal")
+            )
         if description is not None:
             value = _atomic_semantic_text(
                 description,
@@ -745,15 +752,42 @@ def _project_status(
             fact_value = value
             predicate = "am keeping"
             object_text = f"{value} in mind"
+        elif curiosities:
+            raw_curiosity = (
+                curiosities[0].get("description")
+                or curiosities[0].get("title")
+                or curiosities[0].get("question")
+            )
+            curiosity = _atomic_semantic_text(
+                raw_curiosity,
+                "represented curiosity",
+                limit=140,
+            )
+            creator_name = str(hot_state.get("creator_name") or "").strip()
+            normalized = curiosity.casefold()
+            if (
+                "learn more about" in normalized
+                and creator_name
+                and creator_name.casefold() in normalized
+            ):
+                fact_value = "still curious about the creator"
+                predicate = "am still curious about"
+                recipient = ADDRESSEE
+            else:
+                fact_value = f"thinking about {curiosity}"
+                predicate = "am thinking about"
+                object_text = curiosity
         else:
-            fact_value = "present in this conversation"
-            predicate = "am here in this conversation"
-            object_text = ""
+            fact_value = "here with the creator"
+            predicate = "am just here with"
+            recipient = ADDRESSEE
+
         clause = RealizationClause(
             clause_id="status-activity",
             frame=ClauseFrame.EVENT,
             subject=SELF,
             predicate=predicate,
+            recipient=recipient,
             object_text=object_text,
             authority="mary_canonical",
             source_id="turn-status:activity",
