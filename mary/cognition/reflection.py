@@ -1715,7 +1715,7 @@ class ReflectionEngine:
             "the", "and", "that", "this", "with", "your", "you", "from", "have",
             "just", "like", "really", "about", "what", "when", "where", "which",
             "would", "could", "should", "there", "their", "they", "them", "think",
-            "sounds", "maybe", "thing", "things", "mary", "unbe",
+            "sounds", "maybe", "thing", "things", "mary", "unbe", "you've", "you're",
         }
         return [
             word for word in re.findall(r"[a-z0-9']+", str(text).lower())
