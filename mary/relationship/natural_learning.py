@@ -136,7 +136,7 @@ class NaturalRelationshipLearner:
 
         # Interaction-style wording is not a durable hobby/interest. Unless it
         # matched the explicit communication-preference grammar above, fail closed.
-        if re.match(r"^i (?:really )?(?:like|love|enjoy) it when you\\b", text):
+        if re.match(r"^i (?:really )?(?:like|love|enjoy) it when you\b", text):
             return None
 
         interest_patterns = (
