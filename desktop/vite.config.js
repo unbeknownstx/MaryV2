@@ -12,7 +12,9 @@ function marySafeRendererPlugin() {
     enforce: 'pre',
     transform(code, id) {
       if (!/[\\/]desktop[\\/]src[\\/]main\.js$/.test(id)) return null;
-      let next = code;
+      // Git may check source out as CRLF on Windows. The safety transform
+      // uses canonical LF markers so build behavior is identical on every host.
+      let next = code.replace(/\r\n?/g, '\n');
       next = replaceRequired(
         next,
         'installExperienceLayer({ app });',
