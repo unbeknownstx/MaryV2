@@ -33,6 +33,7 @@ from mary.llm.interface import (
 from mary.llm.providers.ollama import OllamaProvider
 from mary.distributed.hardware_profiles import SAFE_LOCAL_MODEL, SAFE_LOCAL_NUM_CTX
 from mary.llm.providers.llama_cpp import LlamaCppProvider
+from mary.llm.providers.local_runtime import LocalRuntimeProvider
 from mary.runtime.gateway import RemoteMaryGateway
 
 
@@ -154,6 +155,35 @@ def _llama_cpp_capability() -> CapabilityDescriptor | None:
         },
     )
 
+
+def _local_model_capability() -> CapabilityDescriptor | None:
+    """Advertise the host's selected local conversation runtime under one stable capability."""
+
+    provider = LocalRuntimeProvider(role="conversation")
+    status = provider.runtime_status()
+    if not bool(status.get("available")):
+        return None
+    model = str(status.get("model") or provider.model_name())[:160]
+    runtime = str(status.get("runtime") or provider.runtime_name())[:64]
+    return CapabilityDescriptor(
+        name="llm.local",
+        available=True,
+        private=True,
+        local=True,
+        cost="local",
+        latency="interactive",
+        metadata={
+            "runtime": runtime,
+            "configured_model": model,
+            "general_model": model,
+            "conversation_model": model,
+            "fast_model": model,
+            "utility_model": model,
+            "runtime_order": list(status.get("order") or []),
+            "hardware_profile": os.getenv("MARY_NODE_HARDWARE_PROFILE", "").strip() or "default",
+        },
+    )
+
 def desktop_capabilities(
     application: Any,
     bridge: Any,
@@ -207,6 +237,9 @@ def desktop_capabilities(
             metadata={"available_app_count": available_apps},
         ),
     ]
+    local_model = _local_model_capability()
+    if local_model is not None:
+        items.append(local_model)
     ollama = _ollama_capability()
     if ollama is not None:
         items.append(ollama)
@@ -222,6 +255,9 @@ def headless_local_llm_capabilities() -> list[CapabilityDescriptor]:
     """Return executable local-LLM capabilities for a headless device node."""
 
     items: list[CapabilityDescriptor] = []
+    local_model = _local_model_capability()
+    if local_model is not None:
+        items.append(local_model)
     ollama = _ollama_capability()
     if ollama is not None:
         items.append(ollama)
@@ -411,6 +447,8 @@ class DesktopCapabilityNodeAgent:
         try:
             if capability == "personal_search":
                 result_payload = self._execute_personal_search(dict(task.get("args") or {}))
+            elif capability == "llm.local":
+                result_payload = self._execute_local_model(dict(task.get("args") or {}))
             elif capability == "llm.ollama":
                 result_payload = self._execute_ollama(dict(task.get("args") or {}))
             elif capability == "llm.llama_cpp":
@@ -457,6 +495,68 @@ class DesktopCapabilityNodeAgent:
             tool=tool,
             arguments=dict(arguments),
         )
+
+    def _execute_local_model(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Run one bounded generation through the host-selected local runtime."""
+
+        raw_messages = list(args.get("messages") or [])
+        if not raw_messages:
+            raise ValueError("llm.local task requires messages.")
+        role = str(args.get("role") or "general").strip().lower()
+        if role not in {"general", "conversation", "fast", "utility"}:
+            raise ValueError("Unsupported llm.local model role.")
+
+        provider = LocalRuntimeProvider(role=role)
+        if not provider.is_available():
+            raise RuntimeError("No configured local model runtime is ready on this device.")
+
+        messages = [
+            LLMMessage(
+                role=str(item.get("role") or "user"),
+                content=str(item.get("content") or ""),
+            )
+            for item in raw_messages
+            if isinstance(item, dict)
+        ]
+        if len(messages) != len(raw_messages):
+            raise ValueError("llm.local task contains an invalid message.")
+
+        max_tokens = max(1, min(2048, int(args.get("max_tokens", 1024))))
+        generation_request = GenerationRequest(
+            messages=tuple(messages),
+            operation=(
+                GenerationOperation.CONVERSATION.value
+                if role in {"conversation", "fast"}
+                else GenerationOperation.TASK_GENERATION.value
+            ),
+            privacy=GenerationPrivacy.LOCAL_ONLY.value,
+            cost_class=GenerationCost.ZERO_LOCAL.value,
+            correlation_id=generation_correlation_id("device-local"),
+            purpose=f"device_local_{role}",
+            temperature=float(args.get("temperature", 0.7)),
+            max_tokens=max_tokens,
+        )
+        response = provider.generate_constrained(generation_request)
+        content = str(response.content or "").strip()
+        if not content:
+            raise RuntimeError("Local model runtime returned an empty response.")
+        if len(content) > 32_000:
+            content = content[:31_999].rstrip() + "…"
+
+        usage = dict(response.usage or {})
+        safe_usage = {
+            key: max(0, int(usage.get(key, 0) or 0))
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+        }
+        return {
+            "content": content,
+            "provider": "local_device",
+            "runtime": provider.runtime_name(),
+            "model": str(response.model or provider.model_name())[:160],
+            "finish_reason": str(response.finish_reason or "")[:80],
+            "usage": safe_usage,
+            "privacy": "generated on selected device; raw provider payload not returned",
+        }
 
     def _execute_ollama(self, args: dict[str, Any]) -> dict[str, Any]:
         """Run one bounded chat generation through the PC's configured Ollama."""
