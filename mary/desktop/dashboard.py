@@ -300,12 +300,45 @@ def _memory_archive(mary) -> dict[str, Any]:
             "when": _relative_label(item.get("created_at")),
         })
 
+    try:
+        episodic_total = int(mary.memory.episodic.count())
+    except Exception:
+        episodic_total = len(episodic)
+    try:
+        semantic_total = int(mary.memory.semantic.count())
+    except Exception:
+        semantic_total = len(semantic)
+    try:
+        shared_history_total = int(mary.relationship_history.count())
+    except Exception:
+        shared_history_total = len(shared_history)
+    try:
+        milestone_total = int(mary.relationship_milestones.count())
+    except Exception:
+        milestone_total = len(milestones)
+    try:
+        profile_total = len(mary.user_model.profile_records)
+    except Exception:
+        profile_total = 0
+    try:
+        relationship_observation_total = len(
+            mary.relationship_understanding.observations
+        )
+    except Exception:
+        relationship_observation_total = 0
+
     return {
         "episodic": episodic,
         "semantic": semantic,
         "shared_history": shared_history,
         "milestones": milestones,
         "counts": {
+            "episodic_total": episodic_total,
+            "semantic_total": semantic_total,
+            "shared_history_total": shared_history_total,
+            "milestones_total": milestone_total,
+            "creator_profile_total": profile_total,
+            "relationship_observation_total": relationship_observation_total,
             "episodic_visible": len(episodic),
             "semantic_visible": len(semantic),
             "shared_history_visible": len(shared_history),
