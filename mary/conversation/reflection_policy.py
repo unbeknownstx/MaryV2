@@ -54,6 +54,7 @@ def choose_reflection_action(lane: ConversationLane, issues: Iterable[str]) -> R
         "conversation handoff boundary",
         "over-formats a casual conversational reply as a list",
         "uses a table for a casual conversational reply",
+        "conversation register boundary",
     )
     if (
         lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
@@ -79,6 +80,18 @@ def local_conversation_repair(text: str, *, micro: bool = False) -> str:
     value = re.sub(r"^Great to hear(?: that| you[^.!?]*)?[.!]\s*", "Nice. ", value, flags=re.IGNORECASE)
     value = re.sub(r"^(?:That )?sounds like a relief[.!]\s*", "Nice. ", value, flags=re.IGNORECASE)
     value = re.sub(r"^I'm here to help\.?\s*", "I'm here. ", value, flags=re.IGNORECASE)
+
+    # Distinctive Mary slang is valid character evidence, but when the local
+    # audit flags stacked/forced register, remove the flavor tokens rather than
+    # spending another model call merely to rewrite the same semantic answer.
+    value = re.sub(
+        r"(?i)(?:^|(?<=[\s,;—-]))(?:bucko|nah fam|feller|what up gang|twinnn)(?:[,.!?])?\s*",
+        "",
+        value,
+    )
+    value = re.sub(r"(?i)\bno drama,?\s*no fluff[.!]?\s*", "", value)
+    value = re.sub(r"(?i)\bhit me with the deets\b", "tell me what you mean", value)
+    value = re.sub(r"(?i)\blet'?s get that beat cooked\b", "let's get it done", value)
 
     # Flatten accidental list formatting in a short spoken response.
     value = re.sub(r"(?m)^\s*[-*]\s+", "", value)
