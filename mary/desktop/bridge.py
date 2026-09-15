@@ -31,6 +31,7 @@ from mary.desktop.turn_trace import build_turn_trace
 from mary.presence import PresenceEventType
 from mary.presence.websocket_server import LocalPresenceWebSocket
 from mary.conversation import ConversationLane, classify_conversation_lane
+from mary.distributed.permissions import DeviceExecutionPermissions
 from mary.desktop.conversation_runtime import (
     DesktopConversationRuntime,
     DesktopConversationState,
@@ -527,6 +528,8 @@ class MaryDesktopBridge(QObject):
         self._pending_turn_submitted_at: float | None = None
         self._active_feedback_user_text: str = ""
         self._last_feedback_context: dict[str, Any] = {}
+        self._node_agent: Any | None = None
+        self._device_permissions = DeviceExecutionPermissions()
 
         self.microphone.stateChanged.connect(
             self._on_microphone_state_changed
@@ -966,6 +969,71 @@ class MaryDesktopBridge(QObject):
                 "nodes": mary.node_registry.snapshot(),
             }
         )
+
+    def attach_node_agent(self, agent: Any | None) -> None:
+        """Attach the bounded local capability host owned by the Desktop window."""
+        self._node_agent = agent
+        if agent is not None:
+            permissions = getattr(agent, "permissions", None)
+            if permissions is not None:
+                self._device_permissions = permissions
+
+    @Slot(result=str)
+    def getLocalComputePermission(self) -> str:  # noqa: N802 - JS-facing API
+        allowed = self._device_permissions.is_allowed("llm.local")
+        agent = self._node_agent
+        status = {}
+        if agent is not None:
+            try:
+                status = dict(agent.status() or {})
+            except Exception:
+                status = {}
+        return _json({
+            "ok": True,
+            "capability": "llm.local",
+            "enabled": bool(allowed),
+            "registered": bool(status.get("registered", False)),
+            "default": "deny",
+            "authority": "device_local_permission",
+        })
+
+    @Slot(bool, result=str)
+    def setLocalComputePermission(self, enabled: bool) -> str:  # noqa: N802
+        """Explicit creator control for this host's bounded local LLM executor."""
+
+        try:
+            if bool(enabled):
+                status = self._device_permissions.allow("llm.local")
+            else:
+                status = self._device_permissions.deny("llm.local")
+
+            agent = self._node_agent
+            registration = {}
+            if agent is not None:
+                try:
+                    registration = dict(agent.refresh_registration() or {})
+                except Exception as exc:
+                    registration = {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+
+            self._emit_dashboard_state()
+            return _json({
+                "ok": True,
+                "capability": "llm.local",
+                "enabled": self._device_permissions.is_allowed("llm.local"),
+                "registration": registration,
+                "allowed_capabilities": list(status.get("allowed_capabilities", []) or []),
+                "authority": "device_local_permission",
+            })
+        except Exception as exc:
+            return _json({
+                "ok": False,
+                "capability": "llm.local",
+                "enabled": self._device_permissions.is_allowed("llm.local"),
+                "error": f"{type(exc).__name__}: {exc}",
+            })
 
     @Slot(result=str)
     def getAvatarState(
