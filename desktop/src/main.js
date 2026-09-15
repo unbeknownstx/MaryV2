@@ -1807,8 +1807,17 @@ function renderDiagnostics() {
     <div class="workspace-panel"><h3>Local Compute</h3>
       <div class="data-row"><span>Ready</span><strong>${localRoute.available ? 'YES' : 'FALLBACK'}</strong></div>
       <div class="data-row"><span>Selected node</span><strong>${escapeHtml(localRoute.selected_node_id || '—')}</strong></div>
-      <div class="data-row"><span>Execution</span><strong>${escapeHtml(titleCase(localRoute.execution || 'permission bounded'))}</strong></div>
-      <p>LM Studio, Ollama, llama.cpp and future runtimes remain replaceable workers behind the same local-device contract.</p>
+      <div class="data-row"><span>Engine</span><strong>${escapeHtml(titleCase(localRoute.selected_runtime || '—'))}</strong></div>
+      <div class="data-row"><span>Model</span><strong>${escapeHtml(localRoute.selected_model || '—')}</strong></div>
+      <div class="data-row"><span>Execution</span><strong class="compute-state ${localRoute.execution === 'authorized' ? 'authorized' : localRoute.available ? 'permission-required' : 'offline'}">${escapeHtml(titleCase(localRoute.execution || 'permission required'))}</strong></div>
+      <div class="compute-permission">
+        <button id="local-compute-toggle" data-enable-local-compute="${localRoute.execution === 'authorized' ? 'false' : 'true'}" ${localRoute.available ? '' : 'disabled'}>${localRoute.execution === 'authorized' ? 'Disable local compute on this PC' : 'Enable local compute on this PC'}</button>
+        <small>${localRoute.available
+          ? (localRoute.execution === 'authorized'
+            ? 'This device may execute bounded llm.local tasks. Core still owns Mary and cloud remains fallback.'
+            : 'The runtime is ready, but device execution is intentionally permission-gated until you enable it.')
+          : 'Start or install an approved local runtime first. Mary will keep using cloud fallback meanwhile.'}</small>
+      </div>
     </div>
     <div class="workspace-panel"><h3>Execution Portfolio</h3>
       <div class="data-row"><span>Candidates</span><strong>${activeCandidates.length}</strong></div>
@@ -2021,7 +2030,7 @@ function bindWorkspaceActions() {
   $('#research-create')?.addEventListener('click',()=>{const title=$('#research-title')?.value?.trim();if(!title||!bridge?.createResearchThread)return;bridge.createResearchThread(title,'',(raw)=>{const r=parsePayload(raw);if(r.ok)bridge.getDashboardState?.((x)=>applyDashboardState(x));});});
   $$('[data-arcade]').forEach((button)=>button.addEventListener('click',()=>bridge?.playArcade?.(button.dataset.arcade,'','',(raw)=>{const r=parsePayload(raw);const node=$('#arcade-result');if(node)node.textContent=r.message||r.result||r.error||'Done.';})));
   $('#presence-idle-test')?.addEventListener('click',()=>bridge?.getIdleAction?.((raw)=>applyIdleAction(raw,{preview:true})));
-  $$('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
+  $('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
     bridge?.setPerformanceContext?.(button.dataset.performanceContext,(raw)=>{
       const r=parsePayload(raw);
       if(r.error){toast(r.error,'error');return;}
@@ -2030,6 +2039,21 @@ function bindWorkspaceActions() {
       renderWorkspace('stream');
     });
   }));
+  $('#local-compute-toggle')?.addEventListener('click',()=>{
+    const button=$('#local-compute-toggle');
+    const enable=button?.dataset.enableLocalCompute === 'true';
+    if(!bridge?.setLocalComputePermission){toast('Local compute permission control is unavailable on this surface.','error');return;}
+    button.disabled=true;
+    bridge.setLocalComputePermission(enable,(raw)=>{
+      const r=parsePayload(raw);
+      if(!r.ok){toast(r.error||'Could not change local compute permission.','error');button.disabled=false;return;}
+      toast(enable ? 'Local compute enabled on this PC.' : 'Local compute disabled on this PC.');
+      bridge.getDashboardState?.((stateRaw)=>{
+        applyDashboardState(stateRaw);
+        if(currentScreen === 'diagnostics') renderWorkspace('diagnostics');
+      });
+    });
+  });
   $$('#workspace-body [data-project-file]').forEach((button) => button.addEventListener('click', () => {
     const path = button.dataset.projectFile || '';
     if (button.dataset.referenceOnly === 'true') {
