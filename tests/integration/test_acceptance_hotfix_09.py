@@ -191,5 +191,6 @@ def test_status_exposes_both_conversation_and_task_routes(tmp_path, monkeypatch)
     mary = app.mary
     status = mary.status()["cognition"]
     assert status["provider_order"][0] == "groq"
-    assert status["conversation_provider_order"][0] == "groq"
+    assert status["conversation_provider_order"][0] == "local_device"
+    assert "groq" in status["conversation_provider_order"]
     assert "ollama" in status["conversation_provider_order"]
