@@ -20,7 +20,12 @@ from .provider_catalog import (
 )
 
 
-VERSION = "13.64"
+# Keep the long-lived public model-execution contract on 13.35. Newer provider
+# governance is an integration layer, not a replacement protocol. This preserves
+# callers/tests that key off the model-execution schema while still exposing the
+# current integration revision explicitly.
+VERSION = "13.35"
+INTEGRATION_REVISION = "13.64"
 MODEL_SUITABILITY_REVISION = "13.35"
 RELIABILITY_REVISION = "13.37"
 PROVIDER_OPERATIONAL_REVISION = "13.64"
@@ -235,6 +240,7 @@ def build_model_execution_fabric(
 
     return {
         "version": VERSION,
+        "integration_revision": INTEGRATION_REVISION,
         "model_suitability_revision": MODEL_SUITABILITY_REVISION,
         "reliability_revision": RELIABILITY_REVISION,
         "provider_operational_revision": PROVIDER_OPERATIONAL_REVISION,
