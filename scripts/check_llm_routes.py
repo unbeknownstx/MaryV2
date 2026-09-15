@@ -76,9 +76,9 @@ def _provider_for_live_probe(
 ):
     # Match Mary's real short-conversation Groq lane. Other providers do not
     # currently have a purpose-specific model instance.
-    if name == "groq":
+    if name in {"groq", "local_device"}:
         return router._get_provider_for_purpose(
-            "groq",
+            name,
             "social_instant",
         )
     return router.get_provider(name)
@@ -165,7 +165,7 @@ def main() -> None:
         "--live-provider",
         action="append",
         choices=[
-            "groq", "gemini", "openrouter", "ollama", "llama_cpp",
+            "local_device", "groq", "gemini", "openrouter", "ollama", "llama_cpp",
             *FRONTIER_PROVIDER_NAMES, "openai", "openai_compatible",
         ],
         help=(
