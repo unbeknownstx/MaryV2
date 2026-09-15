@@ -14,6 +14,7 @@ from mary.distributed import DeviceTaskBroker, NodeRegistry
 from mary.llm.interface import (
     GenerationCost,
     GenerationPrivacy,
+    GenerationRequest,
     LLMInterface,
     LLMMessage,
     LLMProviderError,
@@ -75,11 +76,13 @@ class DeviceLocalProvider(LLMInterface):
             return self.for_role("conversation")
         return self.for_role("general")
 
-    def generate(
+    def _generate(
         self,
         messages: list[LLMMessage],
-        temperature: float = 0.7,
-        max_tokens: int = 2048,
+        *,
+        temperature: float,
+        max_tokens: int,
+        timeout_seconds: float | None = None,
     ) -> LLMResponse:
         selected = self.registry.choose("llm.local")
         if selected is None:
@@ -104,9 +107,12 @@ class DeviceLocalProvider(LLMInterface):
             },
             requester_device_id="mary-core-llm-router",
         )
+        wait_seconds = self.timeout_seconds
+        if timeout_seconds is not None:
+            wait_seconds = max(0.1, min(wait_seconds, float(timeout_seconds)))
         completed = self.broker.wait_for_terminal(
             task.task_id,
-            timeout_seconds=self.timeout_seconds,
+            timeout_seconds=wait_seconds,
         )
         if completed is None:
             raise LLMProviderError(
@@ -138,6 +144,31 @@ class DeviceLocalProvider(LLMInterface):
             finish_reason=str(result.get("finish_reason") or "") or None,
             usage=dict(result.get("usage") or {}),
             raw=None,
+        )
+
+    def generate(
+        self,
+        messages: list[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ) -> LLMResponse:
+        return self._generate(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    def generate_constrained(
+        self,
+        request: GenerationRequest,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> LLMResponse:
+        return self._generate(
+            list(request.messages),
+            temperature=0.7 if request.temperature is None else request.temperature,
+            max_tokens=2048 if request.max_tokens is None else request.max_tokens,
+            timeout_seconds=timeout_seconds,
         )
 
     def is_available(self) -> bool:
