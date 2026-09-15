@@ -215,6 +215,7 @@ def ensure_lm_studio_runtime() -> dict[str, Any]:
 
     os.environ.setdefault("MARY_LM_STUDIO_BASE_URL", "http://127.0.0.1:1234/v1")
     os.environ["MARY_LM_STUDIO_MODEL"] = identifier
+    os.environ["MARY_LM_STUDIO_BACKING_MODEL"] = load_model
     if os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "auto").strip().lower() in {"", "auto"}:
         os.environ["MARY_LOCAL_INFERENCE_RUNTIME"] = "lm_studio"
 
@@ -225,6 +226,7 @@ def ensure_lm_studio_runtime() -> dict[str, Any]:
         "ready": bool(runtime_status.get("available")),
         "state": "ready" if runtime_status.get("available") else "endpoint_not_ready",
         "model": str(runtime_status.get("model") or identifier),
+        "backing_model": load_model,
         "identifier": identifier,
         "base_url": os.environ["MARY_LM_STUDIO_BASE_URL"],
     }
