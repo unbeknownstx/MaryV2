@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from time import monotonic
 from typing import Any
 
@@ -113,6 +114,7 @@ class _ConversationWorker(QObject):
                         "desktop",
                     ),
                     "voice_input": bool(self.voice_input),
+                    "client_local_time": datetime.now().astimezone().isoformat(timespec="seconds"),
                 },
             )
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
