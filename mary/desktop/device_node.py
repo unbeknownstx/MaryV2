@@ -239,12 +239,21 @@ def desktop_capabilities(
     ]
     local_model = _local_model_capability()
     if local_model is not None:
+        local_model.metadata["execution_authorized"] = bool(
+            permissions is not None and permissions.is_allowed("llm.local")
+        )
         items.append(local_model)
     ollama = _ollama_capability()
     if ollama is not None:
+        ollama.metadata["execution_authorized"] = bool(
+            permissions is not None and permissions.is_allowed("llm.ollama")
+        )
         items.append(ollama)
     llama_cpp = _llama_cpp_capability()
     if llama_cpp is not None:
+        llama_cpp.metadata["execution_authorized"] = bool(
+            permissions is not None and permissions.is_allowed("llm.llama_cpp")
+        )
         items.append(llama_cpp)
     if permissions is not None:
         items.extend(MCPFabric(permissions).capability_descriptors())
@@ -348,6 +357,20 @@ class DesktopCapabilityNodeAgent:
             "local": True,
         }
 
+    def refresh_capabilities(self) -> list[CapabilityDescriptor]:
+        """Rebuild device capability metadata after a local permission change."""
+        if self.application is not None and self.bridge is not None:
+            self._capabilities = desktop_capabilities(
+                self.application,
+                self.bridge,
+                self.permissions,
+            )
+        return list(self._capabilities)
+
+    def refresh_registration(self) -> dict[str, Any]:
+        self.refresh_capabilities()
+        return self.register()
+
     def register(self) -> dict[str, Any]:
         payload = self.registration_payload()
         result = self.gateway.register_node(**payload)
@@ -400,7 +423,10 @@ class DesktopCapabilityNodeAgent:
             "capabilities": [item.to_dict() for item in self._capabilities],
             "allowed_execution_capabilities": sorted(self.permissions.allowed()),
             "mcp": self._mcp_fabric.status(),
-            "execution_authorized": False,
+            "execution_authorized": any(
+                self.permissions.is_allowed(name)
+                for name in ("llm.local", "llm.ollama", "llm.llama_cpp")
+            ),
             "execution_default": "deny",
             "last_task": dict(self._last_task),
             "last_error": self._last_error,
