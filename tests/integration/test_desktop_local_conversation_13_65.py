@@ -183,3 +183,118 @@ def test_auto_fast_voice_can_fall_back_after_runtime_cloud_failure():
     assert result["provider"] == "windows_sapi"
     assert result["fallback_from"] == "elevenlabs"
     assert "RuntimeError" in result["primary_error"]
+
+
+
+def test_fast_device_provider_does_not_inherit_general_180_second_timeout(monkeypatch):
+    monkeypatch.delenv("MARY_DEVICE_LOCAL_FAST_TIMEOUT", raising=False)
+    monkeypatch.delenv("MARY_DEVICE_LOCAL_TIMEOUT", raising=False)
+
+    provider = DeviceLocalProvider(
+        registry=SimpleNamespace(),
+        broker=SimpleNamespace(),
+        role="general",
+    )
+
+    assert provider.timeout_seconds == 180.0
+    assert provider.for_purpose("conversation").timeout_seconds == 180.0
+    assert provider.for_purpose("conversation_fast").timeout_seconds == 12.0
+    assert provider.for_purpose("social_instant").timeout_seconds == 12.0
+
+
+def test_fast_local_runtime_default_does_not_fall_through_to_heavy_lm_studio(monkeypatch):
+    monkeypatch.setenv("MARY_LOCAL_INFERENCE_RUNTIME", "auto")
+    monkeypatch.delenv("MARY_LOCAL_FAST_RUNTIME_ORDER", raising=False)
+
+    fast = LocalRuntimeProvider(role="fast")
+    conversation = LocalRuntimeProvider(role="conversation")
+
+    assert fast._runtime_order() == ("ollama",)
+    assert conversation._runtime_order()[0] == "lm_studio"
+
+
+def test_desktop_fast_worker_passes_short_generation_deadline(monkeypatch):
+    captured = {}
+
+    class FakeLocalRuntime:
+        def __init__(self, *, role="general"):
+            self.role = role
+
+        def is_available(self):
+            return True
+
+        def generate_constrained(self, request, *, timeout_seconds=None):
+            captured["role"] = self.role
+            captured["timeout_seconds"] = timeout_seconds
+            captured["request"] = request
+            return SimpleNamespace(
+                content="fast local reply",
+                model="qwen3:1.7b",
+                finish_reason="stop",
+                usage={},
+            )
+
+        def runtime_name(self):
+            return "ollama"
+
+        def model_name(self):
+            return "qwen3:1.7b"
+
+    monkeypatch.setattr(desktop_device_node, "LocalRuntimeProvider", FakeLocalRuntime)
+    monkeypatch.delenv("MARY_DEVICE_LOCAL_FAST_GENERATION_TIMEOUT", raising=False)
+
+    result = desktop_device_node.DesktopCapabilityNodeAgent._execute_local_model(
+        SimpleNamespace(),
+        {
+            "messages": [{"role": "user", "content": "hey"}],
+            "role": "fast",
+            "temperature": 0.7,
+            "max_tokens": 96,
+        },
+    )
+
+    assert captured["role"] == "fast"
+    assert captured["timeout_seconds"] == 10.0
+    assert result["provider"] == "local_device"
+    assert result["runtime"] == "ollama"
+    assert result["model"] == "qwen3:1.7b"
+
+
+def test_desktop_normal_conversation_keeps_full_local_generation_budget(monkeypatch):
+    captured = {}
+
+    class FakeLocalRuntime:
+        def __init__(self, *, role="general"):
+            self.role = role
+
+        def is_available(self):
+            return True
+
+        def generate_constrained(self, request, *, timeout_seconds=None):
+            captured["timeout_seconds"] = timeout_seconds
+            return SimpleNamespace(
+                content="normal local reply",
+                model="mary-conversation",
+                finish_reason="stop",
+                usage={},
+            )
+
+        def runtime_name(self):
+            return "lm_studio"
+
+        def model_name(self):
+            return "mary-conversation"
+
+    monkeypatch.setattr(desktop_device_node, "LocalRuntimeProvider", FakeLocalRuntime)
+
+    desktop_device_node.DesktopCapabilityNodeAgent._execute_local_model(
+        SimpleNamespace(),
+        {
+            "messages": [{"role": "user", "content": "tell me more"}],
+            "role": "conversation",
+            "temperature": 0.7,
+            "max_tokens": 256,
+        },
+    )
+
+    assert captured["timeout_seconds"] is None
