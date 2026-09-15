@@ -3003,6 +3003,41 @@ class Mary:
             if len(creator_memories) >= 4:
                 break
 
+        relationship_memories: list[str] = []
+        try:
+            recent_relationship = list(
+                self.relationship_history.get_recent(limit=24)
+            )
+        except Exception:
+            recent_relationship = []
+        for event in recent_relationship:
+            if not isinstance(event, dict):
+                continue
+            description = " ".join(
+                str(event.get("description") or "").split()
+            ).strip()
+            if not description or text_has_test_probe_marker(description):
+                continue
+            metadata = event.get("metadata", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
+            # Relationship history is canonical shared continuity, but broad
+            # creator recall should avoid system-only bookkeeping entries.
+            event_type = str(event.get("type") or "").strip().lower()
+            if event_type in {
+                "runtime",
+                "system",
+                "presence_lease",
+                "provider",
+                "telemetry",
+            }:
+                continue
+            if len(description) > 200:
+                description = description[:199].rstrip() + "…"
+            if description not in relationship_memories:
+                relationship_memories.append(description)
+            if len(relationship_memories) >= 5:
+                break
+
         session_shares: list[str] = []
         for item in reversed(recent_conversation):
             if not isinstance(item, dict) or str(item.get("role", "")) != "user":
@@ -3038,6 +3073,12 @@ class Mary:
 
         if creator_memories:
             pieces.append("A few durable memories I can actually retrieve are " + "; ".join(creator_memories) + ".")
+        if relationship_memories:
+            pieces.append(
+                "And our relationship history still contains shared continuity such as "
+                + "; ".join(relationship_memories)
+                + "."
+            )
         if session_shares:
             pieces.append("And from this current session I remember you saying " + "; ".join(session_shares) + ".")
 
