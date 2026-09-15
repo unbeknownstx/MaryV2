@@ -75,6 +75,23 @@ def test_device_local_provider_maps_conversation_purpose_without_model_authority
     assert provider.for_purpose("task_generation").role == "general"
 
 
+def test_runtime_supervisor_subprocess_uses_utf8_replacement_decoding(monkeypatch):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = list(command)
+        captured["kwargs"] = dict(kwargs)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(runtime_supervisor.subprocess, "run", fake_run)
+
+    runtime_supervisor._run(["lms", "status"], timeout=1.0)
+
+    assert captured["kwargs"]["text"] is True
+    assert captured["kwargs"]["encoding"] == "utf-8"
+    assert captured["kwargs"]["errors"] == "replace"
+
+
 def test_runtime_supervisor_recognizes_downloaded_and_loaded_lm_studio_rows():
     library = [
         {
