@@ -51,9 +51,12 @@ def _ollama_model_for_role(role: str) -> str:
     # local model without changing Mary's canonical state or Core policy.
     conversation = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip() or general
     utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip()
-    fast = (
-        os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip()
-        or conversation
+    explicit_fast = os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip()
+    # If conversation already has its own smaller/specialized model, preserve it
+    # for fast dialogue. Otherwise a configured utility model may serve as the
+    # bounded fast worker. An explicit FAST override always wins.
+    fast = explicit_fast or (
+        utility if utility and conversation == general else conversation
     )
     utility = utility or fast
     return {
