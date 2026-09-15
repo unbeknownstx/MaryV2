@@ -60,6 +60,15 @@ from mary.runtime.backup import (
     durable_fingerprint,
     durable_public_report,
     inspect_backup,
+    validate_json_state_payload,
+)
+from mary.runtime.continuity_recovery import (
+    RECOVERY_FORMAT,
+    apply_recovery_payload,
+    build_recovery_plan,
+    capture_continuity_state,
+    normalize_recovery_payload,
+    restore_continuity_state,
 )
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
 from mary.runtime.session_handshake import build_connected_session_handshake
@@ -521,6 +530,145 @@ class MaryCoreService:
                 2,
             ),
         }
+
+    @staticmethod
+    def _validate_continuity_recovery_payload(
+        payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Validate imported continuity without returning or logging its prose."""
+
+        normalized = normalize_recovery_payload(payload)
+        for name in ("memory", "relationship"):
+            encoded = (
+                json.dumps(
+                    normalized[name],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                )
+                + "\n"
+            ).encode("utf-8")
+            # Reuse canonical durable-state validation, including recursive
+            # credential-like key rejection. Recovery is continuity only.
+            validate_json_state_payload(encoded)
+        return normalized
+
+    def preview_continuity_recovery(
+        self,
+        payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Return a content-free merge plan for older creator-owned continuity."""
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        normalized = self._validate_continuity_recovery_payload(payload)
+        paths = getattr(getattr(self.mary, "config", None), "paths", None)
+        data_root = getattr(paths, "data", None)
+        if data_root is None:
+            raise RuntimeError("Canonical Mary data root is unavailable.")
+        sourcebook = getattr(self.mary, "character_sourcebook", None)
+
+        with self._turn_lock:
+            fingerprint = durable_fingerprint(
+                Path(data_root),
+                sourcebook=sourcebook,
+            )
+            plan = build_recovery_plan(self.mary, normalized)
+
+        return _json_safe({
+            "ok": True,
+            "format": RECOVERY_FORMAT,
+            "plan": plan,
+            "expected_durable_state_fingerprint": fingerprint[
+                "durable_state_fingerprint"
+            ],
+            "core_instance_id": self.instance_id,
+            "backup_ready": bool(str(os.getenv("MARY_BACKUP_DIR", "") or "").strip()),
+            "apply_confirmation": "MERGE_LOCAL_CONTINUITY",
+            "mutated": False,
+        })
+
+    def apply_continuity_recovery(
+        self,
+        payload: dict[str, Any] | None,
+        *,
+        expected_fingerprint: str,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        """Merge reviewed local continuity after backup and optimistic locking."""
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        if str(confirmation or "") != "MERGE_LOCAL_CONTINUITY":
+            raise PermissionError(
+                "Continuity recovery requires the exact creator confirmation."
+            )
+        expected = str(expected_fingerprint or "").strip()
+        if len(expected) != 64:
+            raise ValueError("expected durable-state fingerprint is invalid")
+
+        normalized = self._validate_continuity_recovery_payload(payload)
+        paths = getattr(getattr(self.mary, "config", None), "paths", None)
+        data_root = getattr(paths, "data", None)
+        if data_root is None:
+            raise RuntimeError("Canonical Mary data root is unavailable.")
+        if getattr(self.mary.memory, "storage_path", None) is None:
+            raise RuntimeError("Canonical memory persistence is unavailable.")
+        if getattr(self.mary.relationship, "path", None) is None:
+            raise RuntimeError("Canonical relationship persistence is unavailable.")
+        sourcebook = getattr(self.mary, "character_sourcebook", None)
+
+        with self._turn_lock:
+            current = durable_fingerprint(
+                Path(data_root),
+                sourcebook=sourcebook,
+            )
+            if current["durable_state_fingerprint"] != expected:
+                raise RuntimeError(
+                    "Canonical durable state changed after preview; run preview again."
+                )
+
+            # Refuse to mutate unless the normal protected canonical backup
+            # policy succeeds first.
+            backup = self.create_durable_backup()
+            snapshot = capture_continuity_state(self.mary)
+
+            try:
+                result = apply_recovery_payload(self.mary, normalized)
+                memory_saved = bool(self.mary.memory.save())
+                if not memory_saved:
+                    raise RuntimeError(
+                        "Canonical memory refused the recovery write."
+                    )
+                self.mary.relationship.save()
+            except Exception:
+                # Roll back live objects and rewrite the pre-merge state. The
+                # protected backup remains available even if rollback itself
+                # encounters an infrastructure failure.
+                restore_continuity_state(self.mary, snapshot)
+                try:
+                    self.mary.memory.save()
+                finally:
+                    self.mary.relationship.save()
+                raise
+
+            post = durable_fingerprint(
+                Path(data_root),
+                sourcebook=sourcebook,
+            )
+            return _json_safe({
+                "ok": True,
+                "format": RECOVERY_FORMAT,
+                "mutated": True,
+                "merge": result,
+                "backup": backup,
+                "before_durable_state_fingerprint": expected,
+                "after_durable_state_fingerprint": post[
+                    "durable_state_fingerprint"
+                ],
+                "core_instance_id": self.instance_id,
+            })
 
     def execution_allowed(self, *_args: Any, **_kwargs: Any) -> bool:
         """Policy callback for optional execution owners; identity stays in Core."""
