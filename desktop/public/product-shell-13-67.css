@@ -1,0 +1,984 @@
+/* MaryV2 13.67 — Desktop product polish and cascade hardening.
+   Presentation only. Mary Core remains the authority for identity, memory,
+   relationship, lifecycle, permissions and provider/model routing.
+
+   This file is injected after the historical presentation layers. It clears
+   inherited game-HUD effects that survived the 13.66 convergence pass, makes
+   Mary/Talk the visual center of gravity, and gives every workspace the same
+   opaque product language. */
+
+:root {
+  --mary67-bg: #050713;
+  --mary67-rail: #090c18;
+  --mary67-stage: #090d1c;
+  --mary67-surface: #0d1122;
+  --mary67-surface-2: #11162a;
+  --mary67-surface-3: #161b31;
+  --mary67-line: rgba(168, 181, 232, .13);
+  --mary67-line-strong: rgba(186, 197, 242, .22);
+  --mary67-text: #f7f4ff;
+  --mary67-muted: #aaa6b8;
+  --mary67-dim: #77798d;
+  --mary67-pink: #ff68b1;
+  --mary67-violet: #a98dff;
+  --mary67-cyan: #70ddff;
+  --mary67-green: #6ce5ae;
+  --mary67-amber: #ffd27c;
+  --mary67-danger: #ff748c;
+  --mary67-focus: #8ee7ff;
+  --mary67-radius-xl: 22px;
+  --mary67-radius-lg: 16px;
+  --mary67-radius-md: 11px;
+}
+
+/* -------------------------------------------------------------------------
+   Cascade reset: retire decorative 12.x HUD residue without removing the
+   underlying functional DOM nodes or runtime state.
+   ------------------------------------------------------------------------- */
+html,
+body,
+.app-shell {
+  cursor: default !important;
+}
+
+button,
+[role="button"],
+a,
+.nav-item,
+.game-card,
+.project-file,
+.action-button {
+  cursor: pointer !important;
+}
+
+.app-shell::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  animation: none !important;
+}
+
+.main-stage::before {
+  background: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+  mix-blend-mode: normal !important;
+}
+
+.avatar-stage::after {
+  inset: auto 12% 3% 12% !important;
+  width: auto !important;
+  height: 22% !important;
+  aspect-ratio: auto !important;
+  left: 12% !important;
+  bottom: 3% !important;
+  transform: none !important;
+  background: radial-gradient(ellipse at center, rgba(105, 115, 255, .12), transparent 70%) !important;
+  filter: blur(18px) !important;
+  opacity: .7 !important;
+  animation: none !important;
+}
+
+.neon-card:hover,
+.workspace-panel:hover,
+.game-card:hover {
+  transform: none !important;
+}
+
+.neon-card:hover {
+  border-color: var(--mary67-line-strong) !important;
+  box-shadow: none !important;
+}
+
+.avatar-hud {
+  display: none !important;
+}
+
+/* Keep fallback art deterministic and readable. Historical cross-fades are
+   attractive in demos but make the product feel like a slideshow. */
+.avatar-fallback .fallback-art {
+  animation: none !important;
+  transform: none !important;
+  opacity: 0 !important;
+}
+
+.avatar-fallback .fallback-art.art-a {
+  opacity: .92 !important;
+}
+
+.avatar-fallback .fallback-art.art-b,
+.avatar-fallback .fallback-art.art-c {
+  opacity: 0 !important;
+}
+
+/* -------------------------------------------------------------------------
+   Global shell and navigation
+   ------------------------------------------------------------------------- */
+.app-shell {
+  grid-template-columns: 236px minmax(620px, 1fr) 304px !important;
+  min-width: 1060px !important;
+  min-height: 650px !important;
+  background: var(--mary67-bg) !important;
+}
+
+.sidebar,
+.inspector-column {
+  background: var(--mary67-rail) !important;
+  border-color: rgba(160, 173, 226, .10) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.sidebar {
+  padding: 13px 11px 11px !important;
+}
+
+.brand-block {
+  padding: 5px 9px 10px !important;
+}
+
+.brand-logo {
+  font-size: 38px !important;
+  text-shadow: 0 0 15px rgba(255, 87, 171, .22) !important;
+}
+
+.brand-subtitle {
+  color: #a9a4b6 !important;
+}
+
+.brand-version {
+  color: #676a7d !important;
+}
+
+.nav-stack {
+  gap: 2px !important;
+  padding-right: 2px !important;
+}
+
+.nav-section-label {
+  margin: 10px 9px 4px !important;
+  color: #666b80 !important;
+  font-size: 8px !important;
+  letter-spacing: .14em !important;
+}
+
+.nav-item {
+  min-height: 38px !important;
+  border-radius: 9px !important;
+  padding: 0 9px !important;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease !important;
+}
+
+.nav-item:hover {
+  background: #11162a !important;
+  border-color: rgba(168, 181, 232, .10) !important;
+}
+
+.nav-item.active {
+  background: #15182d !important;
+  border-color: rgba(255, 104, 177, .28) !important;
+  box-shadow: inset 3px 0 0 var(--mary67-pink) !important;
+}
+
+.nav-icon {
+  color: #aca9bb !important;
+}
+
+.nav-item.active .nav-icon {
+  color: #ffc4df !important;
+}
+
+.nav-badge {
+  background: #0c1620 !important;
+  border-color: rgba(112, 221, 255, .17) !important;
+  color: #8ee7ff !important;
+}
+
+/* -------------------------------------------------------------------------
+   Titlebar and stage hierarchy
+   ------------------------------------------------------------------------- */
+.main-column {
+  grid-template-rows: 52px minmax(0, 1fr) 104px !important;
+  background: #060914 !important;
+}
+
+.titlebar {
+  height: 52px !important;
+  padding-left: 17px !important;
+  background: #090c18 !important;
+  border-bottom: 1px solid rgba(160, 173, 226, .10) !important;
+}
+
+.title-icon,
+.window-control {
+  height: 52px !important;
+}
+
+.title-icon:hover,
+.window-control:hover {
+  background: #13172a !important;
+}
+
+.welcome-copy {
+  color: #bdb9c9 !important;
+  font-size: 11px !important;
+}
+
+.main-stage {
+  margin: 10px 10px 0 !important;
+  border-radius: var(--mary67-radius-xl) !important;
+  border: 1px solid rgba(160, 173, 226, .12) !important;
+  background:
+    radial-gradient(circle at 76% 18%, rgba(101, 83, 218, .16), transparent 31%),
+    radial-gradient(circle at 80% 78%, rgba(255, 89, 170, .09), transparent 32%),
+    linear-gradient(145deg, #090c1a 0%, #0b0f21 53%, #080b18 100%) !important;
+  box-shadow: 0 20px 54px rgba(0, 0, 0, .30) !important;
+  overflow: hidden !important;
+}
+
+.main-stage::before {
+  content: "MARY" !important;
+  position: absolute !important;
+  inset: auto 4% 5% auto !important;
+  z-index: 1 !important;
+  color: transparent !important;
+  font-size: clamp(46px, 5.6vw, 88px) !important;
+  font-weight: 750 !important;
+  letter-spacing: .18em !important;
+  -webkit-text-stroke: 1px rgba(147, 160, 224, .045) !important;
+  pointer-events: none !important;
+}
+
+.ambient-grid {
+  opacity: .17 !important;
+}
+
+.ambient-orb {
+  opacity: .07 !important;
+}
+
+.stage-header {
+  top: 22px !important;
+  left: 51% !important;
+  right: 22px !important;
+  width: auto !important;
+}
+
+.stage-kicker {
+  color: #7c7e91 !important;
+}
+
+.stage-name {
+  font-size: 28px !important;
+  letter-spacing: .10em !important;
+}
+
+.stage-subtitle {
+  color: #9f9cad !important;
+}
+
+.online-badge {
+  background: #0d1819 !important;
+  border-color: rgba(108, 229, 174, .17) !important;
+  color: #b8f3d3 !important;
+  box-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------------
+   Human-facing system projection
+   ------------------------------------------------------------------------- */
+.system-rail {
+  left: 18px !important;
+  top: 18px !important;
+  width: calc(46% - 20px) !important;
+  gap: 7px !important;
+}
+
+.system-rail-item {
+  min-height: 50px !important;
+  padding: 8px 10px !important;
+  background: #101427 !important;
+  border: 1px solid rgba(168, 181, 232, .11) !important;
+  border-radius: 10px !important;
+}
+
+.system-rail-item span {
+  color: #74778b !important;
+}
+
+.system-rail-item strong {
+  color: #f4f1f8 !important;
+  font-size: 11px !important;
+}
+
+.system-rail-item small {
+  color: #888a9b !important;
+}
+
+.system-rail-item.core strong { color: var(--mary67-green) !important; }
+.system-rail-item.compute strong { color: var(--mary67-cyan) !important; }
+.system-rail-item.voice strong { color: #ffafd3 !important; }
+.system-rail-item.presence strong { color: #b8a4ff !important; }
+
+/* -------------------------------------------------------------------------
+   Talk + Mary stage
+   ------------------------------------------------------------------------- */
+.chat-card {
+  left: 18px !important;
+  top: 134px !important;
+  bottom: 18px !important;
+  width: calc(46% - 20px) !important;
+  min-height: 190px !important;
+  border-radius: 15px !important;
+  background: var(--mary67-surface) !important;
+  border: 1px solid rgba(168, 181, 232, .13) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .20) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.chat-scroll {
+  padding: 15px 15px 50px !important;
+  scrollbar-width: thin !important;
+}
+
+.message {
+  margin-bottom: 13px !important;
+}
+
+.message-meta {
+  color: #cb81a9 !important;
+  font-size: 9px !important;
+}
+
+.message.user .message-meta {
+  color: #75c9e5 !important;
+}
+
+.message .bubble,
+.bubble {
+  max-width: 92% !important;
+  padding: 9px 11px !important;
+  border-radius: 12px !important;
+  color: #f4f1f8 !important;
+  background: #161a2f !important;
+  border: 1px solid rgba(255, 255, 255, .055) !important;
+  font-size: 12px !important;
+  line-height: 1.58 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.message.mary .bubble {
+  background: #19182f !important;
+  border-color: rgba(255, 104, 177, .12) !important;
+  box-shadow: inset 2px 0 0 rgba(255, 104, 177, .36) !important;
+}
+
+.message.user .bubble {
+  background: #101d30 !important;
+  border-color: rgba(112, 221, 255, .11) !important;
+  box-shadow: inset -2px 0 0 rgba(112, 221, 255, .30) !important;
+}
+
+.message.system .bubble {
+  background: #1b1822 !important;
+  border-color: rgba(255, 210, 124, .12) !important;
+}
+
+.message-feedback {
+  opacity: .42 !important;
+}
+
+.message-feedback:hover,
+.message-feedback:focus-within {
+  opacity: .9 !important;
+}
+
+.thinking {
+  background: #0d1122 !important;
+  border-top-color: rgba(255, 255, 255, .05) !important;
+}
+
+.avatar-stage {
+  inset: 0 0 0 49% !important;
+  border-left: 1px solid rgba(160, 173, 226, .075) !important;
+  isolation: isolate !important;
+}
+
+#avatar-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  filter: saturate(1.03) contrast(1.02) drop-shadow(0 14px 34px rgba(0, 0, 0, .22)) !important;
+}
+
+.avatar-fallback {
+  background: #090d1b !important;
+}
+
+.avatar-fallback::after {
+  background:
+    linear-gradient(90deg, rgba(8, 11, 24, .95) 0%, rgba(8, 11, 24, .20) 28%, rgba(8, 11, 24, .06) 68%, rgba(8, 11, 24, .30) 100%),
+    linear-gradient(0deg, rgba(5, 8, 18, .76), transparent 46%) !important;
+}
+
+.fallback-art-stack,
+.fallback-art {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.fallback-art {
+  object-fit: cover !important;
+  object-position: 55% 30% !important;
+}
+
+.fallback-caption {
+  left: 20px !important;
+  bottom: 20px !important;
+  padding: 10px 12px !important;
+  border-radius: 10px !important;
+  background: #0d1224 !important;
+  border: 1px solid rgba(112, 221, 255, .14) !important;
+  box-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------------
+   Composer
+   ------------------------------------------------------------------------- */
+.composer-deck {
+  padding: 9px 12px 10px !important;
+  background: #070a14 !important;
+  border-top: 1px solid rgba(255, 255, 255, .035) !important;
+}
+
+.composer {
+  height: 58px !important;
+  min-height: 58px !important;
+  border-radius: 15px !important;
+  background: #111529 !important;
+  border: 1px solid rgba(168, 181, 232, .14) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16) !important;
+}
+
+#message-input {
+  color: #f7f4ff !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+#message-input::placeholder {
+  color: #74768a !important;
+}
+
+.round-button {
+  border: 1px solid rgba(255, 255, 255, .07) !important;
+  background: #171b31 !important;
+  box-shadow: none !important;
+}
+
+.round-button.send {
+  background: linear-gradient(145deg, #b83b7f, #6f43aa) !important;
+  border-color: rgba(255, 132, 198, .22) !important;
+}
+
+.round-button:hover {
+  filter: brightness(1.08) !important;
+  transform: none !important;
+}
+
+.compact-dock {
+  gap: 6px !important;
+}
+
+.compact-dock button,
+.quick-actions button {
+  min-height: 31px !important;
+  border-radius: 9px !important;
+  background: #0c1020 !important;
+  border: 1px solid rgba(255, 255, 255, .05) !important;
+  color: #aaa7b7 !important;
+  box-shadow: none !important;
+}
+
+.compact-dock button:hover,
+.quick-actions button:hover {
+  background: #14182b !important;
+  border-color: rgba(255, 104, 177, .15) !important;
+  color: #f8f5ff !important;
+}
+
+/* -------------------------------------------------------------------------
+   Workspace system — one visual grammar for Home, Memories, Personality,
+   Growth, Studio, Study, Command, Focus, Stream, Gallery, Media, Voice,
+   Mind, Runtime and Settings.
+   ------------------------------------------------------------------------- */
+.workspace-overlay {
+  inset: 14px !important;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden !important;
+  border-radius: 18px !important;
+  background: #0b0f1f !important;
+  border: 1px solid rgba(168, 181, 232, .14) !important;
+  box-shadow: 0 22px 64px rgba(0, 0, 0, .34) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.workspace-overlay.hidden {
+  display: none !important;
+}
+
+.workspace-header {
+  flex: 0 0 auto;
+  padding: 18px 21px 15px !important;
+  background: #0e1224 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, .05) !important;
+}
+
+.workspace-header .eyebrow,
+.eyebrow {
+  color: #8f8ba0 !important;
+  letter-spacing: .15em !important;
+}
+
+.workspace-header h2 {
+  margin-top: 4px !important;
+  color: #f7f4ff !important;
+  font-size: 23px !important;
+  letter-spacing: -.02em !important;
+}
+
+.workspace-header p {
+  color: #9c98aa !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+.workspace-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto !important;
+  padding: 18px 20px 24px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(151, 164, 218, .23) transparent !important;
+}
+
+.section-title {
+  margin: 20px 2px 9px !important;
+  color: #85889c !important;
+  font-size: 8px !important;
+  font-weight: 750 !important;
+  letter-spacing: .16em !important;
+}
+
+.section-title:first-child {
+  margin-top: 0 !important;
+}
+
+.workspace-grid {
+  gap: 10px !important;
+}
+
+.workspace-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.workspace-panel,
+.presence-panel,
+.presence-stat,
+.metric-card,
+.game-card {
+  background: var(--mary67-surface-2) !important;
+  border: 1px solid rgba(168, 181, 232, .11) !important;
+  border-radius: 13px !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.workspace-panel {
+  padding: 14px !important;
+}
+
+.workspace-panel.accent {
+  background:
+    linear-gradient(145deg, rgba(255, 104, 177, .035), transparent 48%),
+    #12162b !important;
+  border-color: rgba(255, 104, 177, .14) !important;
+}
+
+.workspace-panel h3 {
+  margin-top: 0 !important;
+  color: #f1eef8 !important;
+  font-size: 12px !important;
+}
+
+.workspace-panel p,
+.workspace-panel li,
+.workspace-panel small,
+.data-row,
+.metric-card span,
+.game-card small {
+  color: #aaa7b7 !important;
+  line-height: 1.5 !important;
+}
+
+.data-row {
+  min-height: 30px !important;
+  padding: 6px 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, .045) !important;
+}
+
+.data-row:last-child {
+  border-bottom: 0 !important;
+}
+
+.data-row strong {
+  color: #f0edf7 !important;
+  font-weight: 560 !important;
+}
+
+.metric-card strong {
+  color: var(--mary67-cyan) !important;
+}
+
+.game-card {
+  padding: 15px !important;
+}
+
+.ghost-button,
+.action-button,
+.workspace-panel button:not(.text-link),
+.screen-launcher-grid button {
+  border-radius: 9px !important;
+  background: #151a30 !important;
+  border: 1px solid rgba(168, 181, 232, .10) !important;
+  color: #d9d5e2 !important;
+  box-shadow: none !important;
+}
+
+.ghost-button:hover,
+.action-button:hover,
+.workspace-panel button:not(.text-link):hover,
+.screen-launcher-grid button:hover {
+  background: #1a1f36 !important;
+  border-color: rgba(112, 221, 255, .18) !important;
+  transform: none !important;
+}
+
+/* -------------------------------------------------------------------------
+   Inspector: contextual, useful, visually secondary.
+   ------------------------------------------------------------------------- */
+.inspector-scroll {
+  padding: 11px !important;
+  gap: 9px !important;
+}
+
+.inspector-card,
+.status-card,
+.music-card {
+  background: #0d1122 !important;
+  border: 1px solid rgba(168, 181, 232, .10) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.inspector-card {
+  padding: 12px !important;
+  border-radius: 13px !important;
+}
+
+.card-header {
+  margin-bottom: 9px !important;
+  color: #bcb9c8 !important;
+  font-size: 8px !important;
+  letter-spacing: .10em !important;
+}
+
+.system-overview-card {
+  background:
+    linear-gradient(145deg, rgba(255, 104, 177, .04), transparent 45%),
+    #101426 !important;
+}
+
+.system-overview-grid > div,
+.runtime-mini-grid > div,
+.ecosystem-mini-grid > div,
+.live-scene-mini > div {
+  background: #0b0f1e !important;
+  border: 1px solid rgba(255, 255, 255, .045) !important;
+  border-radius: 9px !important;
+}
+
+.text-link {
+  color: #aaa7b8 !important;
+}
+
+.text-link:hover {
+  color: #f5f2fb !important;
+}
+
+/* -------------------------------------------------------------------------
+   Interaction state: subtle, semantic edge emphasis rather than whole-screen
+   neon animation.
+   ------------------------------------------------------------------------- */
+.main-stage[data-interaction-state="listening"] .chat-card,
+.main-stage[data-interaction-state="transcribing"] .chat-card {
+  border-color: rgba(112, 221, 255, .24) !important;
+  box-shadow: inset 3px 0 0 rgba(112, 221, 255, .42) !important;
+}
+
+.main-stage[data-interaction-state="thinking"] .chat-card,
+.main-stage[data-interaction-state="responding"] .chat-card {
+  border-color: rgba(169, 141, 255, .22) !important;
+  box-shadow: inset 3px 0 0 rgba(169, 141, 255, .40) !important;
+}
+
+.main-stage[data-interaction-state="speaking"] .avatar-stage {
+  box-shadow: inset 2px 0 0 rgba(255, 104, 177, .19) !important;
+}
+
+.main-stage[data-interaction-state="interrupted"] .chat-card {
+  border-color: rgba(255, 210, 124, .20) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Dialogs / overlays
+   ------------------------------------------------------------------------- */
+.screen-launcher,
+.command-palette {
+  background: #0b0f1f !important;
+  border: 1px solid rgba(168, 181, 232, .16) !important;
+  box-shadow: 0 28px 88px rgba(0, 0, 0, .58) !important;
+  backdrop-filter: none !important;
+}
+
+.screen-launcher::backdrop,
+.command-palette::backdrop {
+  background: rgba(2, 4, 11, .84) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Accessibility
+   ------------------------------------------------------------------------- */
+::selection {
+  background: rgba(255, 104, 177, .28);
+  color: #fff;
+}
+
+.nav-item:focus-visible,
+.round-button:focus-visible,
+.title-icon:focus-visible,
+.window-control:focus-visible,
+.ghost-button:focus-visible,
+.text-link:focus-visible,
+.quick-actions button:focus-visible,
+.workspace-panel button:focus-visible,
+.screen-launcher-grid button:focus-visible,
+.message-feedback button:focus-visible {
+  outline: 2px solid var(--mary67-focus) !important;
+  outline-offset: 2px !important;
+}
+
+@media (prefers-contrast: more) {
+  .chat-card,
+  .workspace-overlay,
+  .composer,
+  .workspace-panel,
+  .inspector-card,
+  .system-rail-item {
+    border-color: rgba(255, 255, 255, .30) !important;
+  }
+
+  .message .bubble,
+  .workspace-panel p,
+  .workspace-panel li,
+  .data-row,
+  .welcome-copy {
+    color: #fff !important;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Responsive Desktop — sacrifice inspector and decorative context before
+   conversation or Mary presence.
+   ------------------------------------------------------------------------- */
+@media (max-width: 1380px) {
+  .app-shell {
+    grid-template-columns: 210px minmax(570px, 1fr) 278px !important;
+    min-width: 1040px !important;
+  }
+
+  .brand-logo {
+    font-size: 34px !important;
+  }
+
+  .nav-item {
+    min-height: 35px !important;
+  }
+
+  .system-rail-item small {
+    display: none !important;
+  }
+
+  .workspace-grid.three {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1160px) {
+  .app-shell {
+    grid-template-columns: 194px minmax(560px, 1fr) !important;
+    min-width: 800px !important;
+  }
+
+  .inspector-column {
+    display: none !important;
+  }
+
+  .main-stage {
+    margin-right: 11px !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 72px minmax(0, 1fr) !important;
+    min-width: 680px !important;
+  }
+
+  .sidebar {
+    padding-inline: 7px !important;
+  }
+
+  .brand-block {
+    padding-inline: 0 !important;
+    text-align: center !important;
+  }
+
+  .brand-logo {
+    font-size: 28px !important;
+  }
+
+  .brand-subtitle,
+  .brand-version,
+  .nav-section-label,
+  .nav-item > span:not(.nav-icon):not(.nav-badge),
+  .nav-badge,
+  .status-card,
+  .music-card {
+    display: none !important;
+  }
+
+  .nav-item {
+    grid-template-columns: 1fr !important;
+    place-items: center !important;
+    padding: 0 !important;
+  }
+
+  .nav-icon {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .chat-card,
+  .system-rail {
+    width: calc(50% - 20px) !important;
+  }
+
+  .avatar-stage {
+    inset: 0 0 0 52% !important;
+  }
+
+  .stage-header {
+    left: 54% !important;
+  }
+
+  .workspace-grid.three {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-height: 800px) {
+  .main-column {
+    grid-template-rows: 48px minmax(0, 1fr) 96px !important;
+  }
+
+  .titlebar,
+  .title-icon,
+  .window-control {
+    height: 48px !important;
+  }
+
+  .brand-subtitle,
+  .brand-version {
+    display: none !important;
+  }
+
+  .nav-section-label {
+    margin-top: 6px !important;
+  }
+
+  .nav-item {
+    min-height: 31px !important;
+  }
+
+  .status-card {
+    display: none !important;
+  }
+
+  .music-card {
+    min-height: 64px !important;
+  }
+
+  .system-rail {
+    top: 14px !important;
+  }
+
+  .system-rail-item {
+    min-height: 43px !important;
+    padding-block: 6px !important;
+  }
+
+  .chat-card {
+    top: 112px !important;
+    bottom: 14px !important;
+  }
+
+  .stage-header {
+    top: 17px !important;
+  }
+}
+
+@media (max-height: 690px) {
+  .music-card {
+    display: none !important;
+  }
+
+  .main-column {
+    grid-template-rows: 46px minmax(0, 1fr) 90px !important;
+  }
+
+  .composer {
+    height: 54px !important;
+    min-height: 54px !important;
+  }
+
+  .compact-dock button,
+  .quick-actions button {
+    min-height: 27px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
