@@ -1,21 +1,23 @@
-"""Frontier/open-model provider catalog for MaryV2.
+"""Canonical secret-free provider catalog for MaryV2.
 
 This module is configuration metadata, not model authority. A catalog entry
 describes how Mary may reach an inference service; it never changes Mary's
-identity, memory, relationship state, or permission boundaries.
+identity, memory, relationship state, permissions, or provider eligibility.
 
-Model names are intentionally environment-overridable because frontier model
-aliases move quickly. Provider-specific model licenses must be checked at the
-model level before redistribution or self-hosting; an API preset does not imply
-that every model served by that vendor has the same license. Compatibility
-features are advertised conservatively: common chat-completions transport does
-not imply support for every OpenAI extension such as strict JSON Schema.
+13.60–13.64 health/quota/pressure/readiness evidence refines execution only
+after router eligibility. It does not create a second catalog or auto-enable a
+provider. Model aliases remain environment-overridable because frontier names
+move quickly; exact model licenses and provider terms remain model/service-level
+decisions.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from .interface import GenerationCost
+
+CATALOG_REVISION = "13.64"
+CATALOG_AUTHORITY = "creator_configuration_metadata_only"
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,8 @@ class ProviderPreset:
             "cost_class": self.cost_class,
             "structured_output": self.structured_output,
             "notes": self.notes,
+            "catalog_revision": CATALOG_REVISION,
+            "authority": CATALOG_AUTHORITY,
         }
 
 
@@ -59,7 +63,7 @@ PROVIDER_PRESETS: dict[str, ProviderPreset] = {
         model_env="MARY_DEEPSEEK_MODEL",
         default_model="deepseek-v4-flash",
         base_url_env="MARY_DEEPSEEK_BASE_URL",
-        notes="Direct DeepSeek V4 route; default tracks the official deepseek-v4-flash API ID and remains environment-overridable.",
+        notes="Direct DeepSeek route; model ID remains environment-overridable.",
     ),
     "zai": ProviderPreset(
         name="zai",
