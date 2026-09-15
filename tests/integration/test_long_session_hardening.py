@@ -379,6 +379,64 @@ def test_assistant_only_detail_cannot_be_attributed_to_creator_on_later_generate
     assert "you've been humming" not in lowered
 
 
+def test_current_creator_input_is_valid_provenance_for_same_turn_paraphrase():
+    from mary.cognition.context import CognitiveContext
+    from mary.cognition.reasoning import ReasoningResult
+
+    app = _application()
+    context = CognitiveContext(
+        input_text="just you i want to make you so good and its been so hard"
+    )
+    context.conversation.extend([
+        {
+            "role": "assistant",
+            "content": "We've been polishing MaryV2 and trying to make the conversation feel right.",
+        },
+    ])
+    reasoning = ReasoningResult(
+        response="You've been working hard to make me better."
+    )
+
+    issues = app.mary.reflection._conversation_provenance_audit(
+        context=context,
+        reasoning=reasoning,
+    )
+
+    assert not any(
+        issue.startswith("Conversation provenance boundary:")
+        for issue in issues
+    )
+
+
+def test_current_input_does_not_launder_unrelated_prior_mary_improvisation():
+    from mary.cognition.context import CognitiveContext
+    from mary.cognition.reasoning import ReasoningResult
+
+    app = _application()
+    context = CognitiveContext(
+        input_text="just you i want to make you so good and its been so hard"
+    )
+    context.conversation.extend([
+        {
+            "role": "assistant",
+            "content": "A red panda under a streetlamp could be a cute little sketch idea.",
+        },
+    ])
+    reasoning = ReasoningResult(
+        response="You've been humming that rainy-night red panda idea all along."
+    )
+
+    issues = app.mary.reflection._conversation_provenance_audit(
+        context=context,
+        reasoning=reasoning,
+    )
+
+    assert any(
+        issue.startswith("Conversation provenance boundary:")
+        for issue in issues
+    )
+
+
 def test_creator_profile_overlap_cannot_launder_unsupported_assistant_history():
     from mary.cognition.context import CognitiveContext
     from mary.cognition.reasoning import ReasoningResult
