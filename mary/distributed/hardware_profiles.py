@@ -20,6 +20,17 @@ HARDWARE_PROFILES: dict[str, dict[str, str]] = {
         "MARY_NODE_GPU_LABEL": "AMD Radeon RX 580",
         "MARY_NODE_GPU_MEMORY_GIB": "4",
     },
+    "mac-apple-silicon": {
+        "MARY_OLLAMA_MODEL": SAFE_LOCAL_MODEL,
+        "MARY_OLLAMA_CONVERSATION_MODEL": SAFE_LOCAL_MODEL,
+        "MARY_OLLAMA_UTILITY_MODEL": SAFE_LOCAL_MODEL,
+        "MARY_OLLAMA_NUM_CTX": str(SAFE_LOCAL_NUM_CTX),
+        "MARY_DEVICE_OLLAMA_MAX_CTX": str(SAFE_LOCAL_NUM_CTX),
+        "MARY_OLLAMA_KEEP_ALIVE": SAFE_LOCAL_KEEP_ALIVE,
+        "MARY_OLLAMA_THINK": "false",
+        "MARY_LOCAL_FAST_MAX_TOKENS": "96",
+        "MARY_NODE_GPU_LABEL": "Apple Silicon / Metal",
+    },
 }
 
 

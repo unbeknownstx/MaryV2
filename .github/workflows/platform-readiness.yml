@@ -33,7 +33,13 @@ jobs:
       - name: Platform readiness contract
         run: python -m scripts.platform_readiness --strict --json
       - name: Platform readiness tests
-        run: python -m pytest -q tests/scripts/test_platform_readiness_13_5.py tests/desktop/test_macos_safe_renderer_boot_13_6.py tests/continuity/test_memory_lab_retrieval_13_6.py
+        run: >-
+          python -m pytest -q
+          tests/scripts/test_platform_readiness_13_5.py
+          tests/scripts/test_host_platform_parity_13_69.py
+          tests/voice/test_macos_local_voice_parity_13_69.py
+          tests/desktop/test_macos_safe_renderer_boot_13_6.py
+          tests/continuity/test_memory_lab_retrieval_13_6.py
 
   desktop-build:
     name: Desktop Vite safe-renderer build

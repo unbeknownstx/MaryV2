@@ -2,8 +2,9 @@
 
 V2.12.8 adds an explicit *local-first* mode while keeping ElevenLabs as the
 optional premium voice.  Local engines are deliberately finite/configured:
-Piper when the executable+model are provided, then Windows SAPI on Windows.
-Cloud fallback is opt-in so an idle/long-running Mary cannot silently consume
+Piper when the executable+model are provided, Windows SAPI on Windows, or the
+built-in say/afconvert path on macOS. Cloud fallback is opt-in so an
+idle/long-running Mary cannot silently consume
 ElevenLabs credits.
 """
 from __future__ import annotations
@@ -13,6 +14,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 from time import monotonic
@@ -81,6 +83,14 @@ def _piper_paths() -> tuple[Path | None, Path | None]:
     if model_path is not None and (not model_path.exists() or not model_path.is_file()):
         model_path = None
     return exe_path, model_path
+
+
+def _macos_say_available() -> bool:
+    return bool(
+        sys.platform == "darwin"
+        and shutil.which("say")
+        and shutil.which("afconvert")
+    )
 
 
 def _apply_delivery_plan(settings: VoiceSettings, plan: DeliveryPlan | dict[str, Any] | None) -> VoiceSettings:
@@ -190,6 +200,18 @@ class DesktopVoiceEngine:
                 ),
                 local_engine="windows_sapi",
             )
+        if _macos_say_available():
+            voice_name = os.getenv("MARY_MACOS_TTS_VOICE", "").strip() or None
+            return cls(
+                status=DesktopVoiceStatus(
+                    True,
+                    "macos_say",
+                    voice_id=voice_name,
+                    model="say+afconvert",
+                    local=True,
+                ),
+                local_engine="macos_say",
+            )
         return cls(status=DesktopVoiceStatus(False, "local_first", local=True))
 
     @classmethod
@@ -226,6 +248,10 @@ class DesktopVoiceEngine:
                 voice_name = os.getenv("MARY_WINDOWS_TTS_VOICE", "").strip() or None
                 return cls(status=DesktopVoiceStatus(True, "windows_sapi", voice_id=voice_name, model="System.Speech", local=True),
                            local_engine="windows_sapi", cloud_fallback=fallback if fallback and fallback.status.enabled else None)
+            if _macos_say_available():
+                voice_name = os.getenv("MARY_MACOS_TTS_VOICE", "").strip() or None
+                return cls(status=DesktopVoiceStatus(True, "macos_say", voice_id=voice_name, model="say+afconvert", local=True),
+                           local_engine="macos_say", cloud_fallback=fallback if fallback and fallback.status.enabled else None)
             if fallback and fallback.status.enabled:
                 return fallback
             return cls(status=DesktopVoiceStatus(False, "local_first", local=True))
@@ -236,6 +262,18 @@ class DesktopVoiceEngine:
                        local_engine="piper" if piper_exe and piper_model else None, piper_executable=piper_exe, piper_model=piper_model)
         if provider_name in {"sapi", "windows_sapi"} and sys.platform == "win32":
             return cls(status=DesktopVoiceStatus(True, "windows_sapi", voice_id=os.getenv("MARY_WINDOWS_TTS_VOICE", "").strip() or None, model="System.Speech", local=True), local_engine="windows_sapi")
+        if provider_name in {"say", "macos_say"} and sys.platform == "darwin":
+            enabled = _macos_say_available()
+            return cls(
+                status=DesktopVoiceStatus(
+                    enabled,
+                    "macos_say",
+                    voice_id=os.getenv("MARY_MACOS_TTS_VOICE", "").strip() or None,
+                    model="say+afconvert",
+                    local=True,
+                ),
+                local_engine="macos_say" if enabled else None,
+            )
         return cls(status=DesktopVoiceStatus(False, provider_name))
 
     def render_text(self, text: str, *, user_text: str | None = None) -> str:
@@ -285,11 +323,64 @@ class DesktopVoiceEngine:
         finally:
             target.unlink(missing_ok=True)
 
+    def _synthesize_macos_say(self, text: str) -> bytes:
+        if sys.platform != "darwin":
+            raise RuntimeError("macOS say is only available on macOS.")
+        say = shutil.which("say")
+        afconvert = shutil.which("afconvert")
+        if not say or not afconvert:
+            raise RuntimeError("macOS local speech tools are unavailable.")
+
+        with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as handle:
+            source = Path(handle.name)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            target = Path(handle.name)
+        target.unlink(missing_ok=True)
+
+        voice_name = os.getenv("MARY_MACOS_TTS_VOICE", "").strip()
+        speed = _env_float("MARY_TTS_SPEED", 1.0, minimum=0.7, maximum=1.2)
+        words_per_minute = max(120, min(240, int(round(175 * speed))))
+        command = [say, "-o", str(source), "-r", str(words_per_minute)]
+        if voice_name:
+            command += ["-v", voice_name]
+
+        try:
+            spoken = subprocess.run(
+                command,
+                input=text.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+                check=False,
+            )
+            if spoken.returncode != 0 or not source.exists() or source.stat().st_size <= 44:
+                raise RuntimeError(
+                    (spoken.stderr.decode("utf-8", errors="ignore") or "macOS say synthesis failed.")[:500]
+                )
+
+            converted = subprocess.run(
+                [afconvert, "-f", "WAVE", "-d", "LEI16@22050", str(source), str(target)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+                check=False,
+            )
+            if converted.returncode != 0 or not target.exists() or target.stat().st_size <= 44:
+                raise RuntimeError(
+                    (converted.stderr.decode("utf-8", errors="ignore") or "macOS speech conversion failed.")[:500]
+                )
+            return target.read_bytes()
+        finally:
+            source.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+
     def _local_synthesize(self, spoken_text: str) -> dict[str, Any]:
         if self.local_engine == "piper":
             audio = self._synthesize_piper(spoken_text)
         elif self.local_engine == "windows_sapi":
             audio = self._synthesize_sapi(spoken_text)
+        elif self.local_engine == "macos_say":
+            audio = self._synthesize_macos_say(spoken_text)
         else:
             raise RuntimeError("No local TTS engine is configured.")
         return {**self.status.to_dict(), "status": "success", "format": "wav", "mime_type": "audio/wav",

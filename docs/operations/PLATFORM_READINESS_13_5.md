@@ -48,6 +48,14 @@ bash scripts/setup_macos.sh
 
 Local Ollama and llama.cpp continue to use the existing node/runtime paths. MCP services are configured by URL and exact tool allowlist; Mary never spawns arbitrary MCP subprocesses.
 
+The canonical always-on Mac capability host now mirrors the Windows home-node flow:
+
+```bash
+bash scripts/launch_home_node_macos.sh
+```
+
+On Apple Silicon the launcher defaults to the bounded `mac-apple-silicon` profile, uses the same durable enrollment/permission system, reuses `~/.maryv2/node_benchmark_13_11.json` when present, and starts an installed Ollama server only when requested and not already reachable. It never downloads a model automatically.
+
 ## Windows PC
 
 Use the existing isolated Windows setup, then add the host profile:

@@ -31,6 +31,10 @@ REQUIRED_REPO_PATHS = (
     "requirements-streaming.txt",
     "mary/distributed/mcp_fabric.py",
     "scripts/run_capability_node.py",
+    "scripts/run_home_node.py",
+    "scripts/launch_home_node_macos.sh",
+    "scripts/launch_home_node_windows.ps1",
+    "docs/operations/MAC_NODE.md",
     "ios/MaryV2iOS/project.yml",
 )
 
