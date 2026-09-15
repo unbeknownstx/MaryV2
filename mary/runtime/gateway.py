@@ -51,6 +51,7 @@ class MaryRuntimeGateway(Protocol):
         turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> GatewayTurnResult: ...
 
     def state(self) -> dict[str, Any]: ...
@@ -123,8 +124,10 @@ class LocalMaryGateway:
         text: str,
         *,
         conversation_id: str,
+        turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> GatewayTurnResult:
         if requested_mode:
             self.mary.engagement.set_mode(requested_mode)
@@ -139,6 +142,7 @@ class LocalMaryGateway:
                 "device_id": self.device_id,
                 "requested_mode": requested_mode,
                 "voice_input": bool(voice_input),
+                "client_local_time": client_local_time,
             },
         )
 
@@ -492,6 +496,7 @@ class RemoteMaryGateway:
         turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> GatewayTurnResult:
         with self._surface_lock:
             if self._closed:
@@ -506,6 +511,7 @@ class RemoteMaryGateway:
                 "conversation_id": conversation_id,
                 "requested_mode": requested_mode,
                 "voice_input": bool(voice_input),
+                "client_local_time": client_local_time,
             }
             if turn_id is not None:
                 turn_kwargs["turn_id"] = turn_id
