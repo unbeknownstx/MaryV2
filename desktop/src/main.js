@@ -79,6 +79,7 @@ let activeMouthExpression = null;
 let lipSyncWeight = 0;
 let activeSpeechAlignment = [];
 let currentVrm = null;
+let avatarLoadError = '';
 const BASE_DELIVERY_PLAN = { profile: 'neutral', energy: .4, gesture_energy: .3, avatar_expression: 'neutral', gesture_style: 'natural', gaze_style: 'engaged', head_style: 'natural', performance_beats: [] };
 let currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
 let currentPerformanceBeatIndex = -1;
@@ -249,7 +250,11 @@ function syncAvatarPresentation() {
   const caption = $('#avatar-fallback-caption');
   if (caption) caption.textContent = avatarPresentation === 'art'
     ? 'Portrait presentation · local reference art'
-    : (currentVrm ? 'Live VRM active' : 'VRM unavailable · local reference art');
+    : (currentVrm
+      ? 'Live VRM active'
+      : avatarLoadError
+        ? `VRM fallback · ${avatarLoadError.slice(0, 72)}`
+        : 'VRM unavailable · local reference art');
   $$('[data-avatar-presentation]').forEach((button) => {
     button.classList.toggle('active', button.dataset.avatarPresentation === avatarPresentation);
   });
@@ -404,6 +409,7 @@ async function loadMaryVrm() {
     }
     modelBounds = { box, size, center };
     modelBaseY = vrm.scene.position.y;
+    avatarLoadError = '';
     setAvatarFraming(avatarFraming);
     // Qt may settle the stage geometry one frame after the model finishes loading.
     window.requestAnimationFrame(() => setAvatarFraming(avatarFraming));
@@ -411,6 +417,7 @@ async function loadMaryVrm() {
     applyAvatarState({ expression: 'neutral', emotion_intensity: 0 });
   } catch (error) {
     console.warn('MaryCosma.vrm was not loaded:', error);
+    avatarLoadError = String(error?.message || error || 'VRM load failed');
     currentVrm = null;
     syncAvatarPresentation();
   }
@@ -1932,6 +1939,11 @@ function renderVoice() {
         <button class="action-button ${avatarPresentation === 'live' ? 'active' : ''}" data-avatar-presentation="live"><strong>Live 3D</strong><small>MaryCosma VRM · expressions + lip sync</small></button>
         <button class="action-button ${avatarPresentation === 'art' ? 'active' : ''}" data-avatar-presentation="art"><strong>Portrait Art</strong><small>Local Mary artwork · zero renderer dependency</small></button>
       </div>
+      <div class="avatar-runtime-note">
+        <strong>${currentVrm ? 'Live VRM ready' : 'Live VRM is in fallback mode'}</strong><br/>
+        ${escapeHtml(currentVrm ? 'Three.js + VRM renderer is active.' : (avatarLoadError || 'The renderer or model is not ready yet. Mary remains fully usable with portrait art.'))}
+        ${currentVrm ? '' : '<br/><button class="ghost-button" id="avatar-retry" style="margin-top:8px">Retry live VRM</button>'}
+      </div>
       <div class="section-title" style="margin-top:14px">CAMERA</div>
       <div class="action-grid"><button class="action-button" data-avatar-frame="full"><strong>Full</strong><small>Whole-character framing</small></button><button class="action-button" data-avatar-frame="portrait"><strong>Portrait</strong><small>Default companion framing</small></button><button class="action-button" data-avatar-frame="close"><strong>Close</strong><small>Face / upper body</small></button></div>
     </div>
@@ -2098,6 +2110,26 @@ function bindWorkspaceActions() {
     toast(button.dataset.avatarPresentation === 'art' ? 'Portrait Art presentation enabled.' : 'Live 3D presentation enabled.');
     if (currentScreen === 'voice') renderWorkspace('voice');
   }));
+  $('#avatar-retry')?.addEventListener('click', async () => {
+    avatarLoadError = '';
+    try {
+      const rendererReady = typeof initializeRenderer === 'function' ? initializeRenderer() : true;
+      if (!rendererReady) {
+        avatarLoadError = String(
+          typeof rendererFailure !== 'undefined' && rendererFailure
+            ? rendererFailure.message || rendererFailure
+            : 'WebGL renderer is unavailable on this host.'
+        );
+        syncAvatarPresentation();
+      } else {
+        await loadMaryVrm();
+      }
+    } catch (error) {
+      avatarLoadError = String(error?.message || error || 'Avatar retry failed');
+      syncAvatarPresentation();
+    }
+    if (currentScreen === 'voice') renderWorkspace('voice');
+  });
   $$('#workspace-body [data-prompt]').forEach((button) => button.addEventListener('click', () => {
     setScreen('chat');
     submitPrompt(button.dataset.prompt);
