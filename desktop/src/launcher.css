@@ -149,3 +149,118 @@
   .launcher-brand{font-size:58px}
   .launcher-capabilities{grid-template-columns:1fr}
 }
+
+
+/* 13.67 launcher product polish — match the finished Desktop shell. */
+.launcher-shell,
+.launcher-shell button {
+  cursor: default !important;
+}
+.launcher-shell button {
+  cursor: pointer !important;
+}
+.launcher-shell::before,
+.launcher-shell::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+}
+.launcher-shell {
+  background: #070a15 !important;
+}
+.launcher-art {
+  background-position: 70% 34% !important;
+  filter: saturate(1.01) contrast(1.025) brightness(.84) !important;
+}
+.launcher-shade {
+  background:
+    linear-gradient(90deg,#060914 0%,rgba(7,10,21,.995) 39%,rgba(7,10,21,.74) 59%,rgba(7,10,21,.24) 100%),
+    linear-gradient(0deg,rgba(4,6,13,.78),transparent 54%) !important;
+}
+.launcher-copy {
+  top: 12% !important;
+  width: min(510px, 48%) !important;
+  background: #0d1121 !important;
+  border-color: rgba(168,181,232,.15) !important;
+  box-shadow: 0 24px 64px rgba(0,0,0,.34) !important;
+}
+.launcher-brand {
+  font-size: 68px !important;
+  color: #ffabd1 !important;
+  text-shadow: 0 0 18px rgba(255,74,162,.24) !important;
+}
+.launcher-tagline {
+  color: #b9b5c4 !important;
+  line-height: 1.62 !important;
+}
+.launcher-capabilities > div {
+  background: #11162a !important;
+  border-color: rgba(168,181,232,.09) !important;
+}
+.launcher-capabilities strong {
+  color: #f4f1f8 !important;
+}
+.play-button {
+  background: linear-gradient(110deg,#b43a7c,#6a43a7) !important;
+  border-color: rgba(255,132,198,.25) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.24) !important;
+}
+.play-button:hover {
+  transform: none !important;
+  filter: brightness(1.08) !important;
+  box-shadow: 0 14px 30px rgba(0,0,0,.30) !important;
+}
+.launcher-actions button,
+.update-panel {
+  border-color: rgba(255,255,255,.055) !important;
+}
+.launcher-actions button {
+  background: #11162a !important;
+}
+.launcher-footer {
+  color: #77798b !important;
+}
+.launcher-toast {
+  background: #0d1121 !important;
+  border-color: rgba(255,104,177,.18) !important;
+  box-shadow: 0 18px 44px rgba(0,0,0,.32) !important;
+}
+.launcher-titlebar button:focus-visible,
+.play-button:focus-visible,
+.launcher-actions button:focus-visible {
+  outline: 2px solid #8ee7ff !important;
+  outline-offset: 2px !important;
+}
+@media (max-width: 980px) {
+  .launcher-copy {
+    left: 4% !important;
+    width: 60% !important;
+    padding: 26px 28px !important;
+  }
+  .launcher-brand {
+    font-size: 56px !important;
+  }
+}
+@media (max-height: 720px) {
+  .launcher-copy {
+    top: 10% !important;
+    padding-block: 24px !important;
+  }
+  .launcher-brand {
+    font-size: 54px !important;
+  }
+  .launcher-tagline {
+    margin-bottom: 14px !important;
+  }
+  .update-notes {
+    display: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launcher-shell *,
+  .launcher-shell *::before,
+  .launcher-shell *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
