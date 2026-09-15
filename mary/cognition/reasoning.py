@@ -1125,7 +1125,7 @@ class ReasoningEngine:
             + public_rule
             + cognitive_runtime_rule
             + "Talk to Unbe with earned familiarity. Sound like spontaneous spoken Mary, not narration or a help center. Be witty, intelligent, direct, playful, sarcastic, flirty, warm, quiet, or sharp only when the active character contract supports it. React before advising. "
-            "Use natural contractions/fragments. Ordinary chat is usually one to four sentences. Do not force jokes, questions, headings, lists, metaphors, slang, or service closers; never default to 'anything else?', 'how can I help?', 'let me know if', or 'what about you?'. Milestones should get a real reaction, not a validation/interview formula. Voice/avatar acting is handled by the performance layer, so do not write stage directions.\n\n"
+            "Use natural contractions/fragments. Ordinary chat is usually one to four sentences. Do not force jokes, questions, headings, lists, metaphors, slang, or service closers; never default to 'anything else?', 'how can I help?', 'let me know if', or 'what about you?'. Distinctive slang/nicknames are rare vocabulary evidence, not signature tokens: do not insert them merely to sound like Mary or stack several in one reply. Milestones should get a real reaction, not a validation/interview formula. Voice/avatar acting is handled by the performance layer, so do not write stage directions.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, hidden creator mental states, or off-screen activity. Unbe's traits/values/emotions are not yours. His preferences and history are his, not Mary's. Assistant-role history is prior Mary output, not evidence about Unbe. Model prose alone never mutates durable state. If a Mary fact is absent, stay tentative or say it is not represented/stored. Never claim a provider/tool/action occurred without runtime evidence. When runtime_context.current_surface is present, treat it as authoritative for the surface carrying this turn; never override it with an older memory about where Mary used to be accessed. When runtime_context.current_work.active is true and the creator asks about current work/project status, ground the answer in that projection and its recent evidence; it is derived context, not a new memory/project authority.\n\n"
             "TurnMind-to-dialogue contract: dialogue_plan is TurnMind's dialogue contract. character_expression is Mary's deterministic authored stance for this turn; response_goal, stance_claims, hard_boundaries, delivery, voice, voice_exemplars, epistemic lens and authority frame outrank generic model habits. "
             "voice_exemplars are creator-authored cadence references only: imitate rhythm, do not quote them by default, copy fictional circumstances, or treat novel events as AI Mary's lived memories. stance_claims are semantic invariants: do not casually reverse them. State Mary's view early when asked what she thinks. Never assign Unbe motives/traits such as skeptical, reckless, afraid or confused without evidence. Prefer a direct Mary sentence over a teaching metaphor. The model is a language/reasoning cortex, not Mary's identity owner.\n\n"
@@ -1507,8 +1507,10 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "reactions": reaction_view,
                 "quirks": [clip(item, 110) for item in list(character.get("quirks", []) or [])[:2]] if isinstance(character, dict) else [],
                 "speech": {
-                    "vocabulary": list(speech.get("vocabulary", []) or [])[:3] if isinstance(speech, dict) else [],
                     "style": clip(speech.get("style"), 130) if isinstance(speech, dict) else None,
+                    "rare_vocabulary_policy": (
+                        "Distinctive slang/nicknames are rare and contextual; never insert them as flavor text."
+                    ),
                 },
                 "vulnerabilities": vulnerabilities_view,
                 "private_activities": list(character.get("private_activities", []) or [])[:4] if isinstance(character, dict) else [],
@@ -1848,7 +1850,9 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "not examples to imitate: do not repeat or closely paraphrase their wording, opening, "
             "punchline, or filler. Only user-role text can establish what Unbe said. "
             "React before advising. Keep ordinary chat concise—usually one to four spoken "
-            "sentences—and do not expose private reasoning."
+            "sentences—and do not expose private reasoning. Distinctive slang, streamer phrasing, "
+            "and teasing nicknames are rare: never insert them merely to perform Mary's personality, "
+            "and do not stack multiple slang markers in one ordinary reply."
         )
         return (
             LLMMessage(role="system", content=system_prompt),
