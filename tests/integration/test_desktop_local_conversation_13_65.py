@@ -6,6 +6,7 @@ import pytest
 
 from mary.core.config import LLMConfig
 from mary.desktop import runtime_supervisor
+from mary.desktop import device_node as desktop_device_node
 from mary.distributed.permissions import DeviceExecutionPermissions
 from mary.distributed.tasks import _sanitize_task_args
 from mary.llm.providers import local_runtime as local_runtime_module
@@ -59,6 +60,16 @@ def test_fast_ollama_role_supports_explicit_small_model(monkeypatch):
 
     assert local_runtime_module._ollama_model_for_role("conversation") == "qwen3:4b"
     assert local_runtime_module._ollama_model_for_role("fast") == "qwen3:1.7b"
+
+
+def test_desktop_node_fast_role_can_reuse_configured_utility_model(monkeypatch):
+    monkeypatch.setenv("MARY_OLLAMA_MODEL", "qwen3:4b")
+    monkeypatch.setenv("MARY_OLLAMA_CONVERSATION_MODEL", "qwen3:4b")
+    monkeypatch.delenv("MARY_OLLAMA_FAST_MODEL", raising=False)
+    monkeypatch.setenv("MARY_OLLAMA_UTILITY_MODEL", "qwen3:1.7b")
+
+    assert desktop_device_node._ollama_model_for_role("conversation") == "qwen3:4b"
+    assert desktop_device_node._ollama_model_for_role("fast") == "qwen3:1.7b"
 
 
 def test_llm_local_task_uses_same_bounded_message_contract():
