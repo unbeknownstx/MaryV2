@@ -72,3 +72,28 @@ def test_windows_and_macos_setup_run_the_same_core_verification_stages() -> None
     ):
         assert stage in mac
         assert stage in windows
+
+
+def test_monterey_desktop_dependency_is_bounded_without_downgrading_windows() -> None:
+    requirements = _text("requirements-desktop.txt")
+    assert 'PySide6==6.9.3; sys_platform == "darwin"' in requirements
+    assert 'PySide6==6.11.1; sys_platform != "darwin"' in requirements
+
+
+def test_macos_setup_guards_the_physical_monterey_toolchain() -> None:
+    setup = _text("scripts/setup_macos.sh")
+    assert "python3.13" in setup
+    assert "sys.version_info[:2] < (3, 14)" in setup
+    assert "Node 22.12+" in setup
+    assert "mac < (13, 5)" in setup
+    assert "PySide6" in setup
+
+
+def test_ci_exercises_macos_desktop_on_the_compatibility_runtime() -> None:
+    workflow = _text(".github/workflows/platform-readiness.yml")
+    assert "macos-latest" in workflow
+    assert "python: '3.13'" in workflow
+    assert "Install macOS desktop runtime dependencies" in workflow
+    assert "macOS Qt desktop import smoke" in workflow
+    assert "macOS Node 22 desktop build contract" in workflow
+    assert "node-version: '22'" in workflow
