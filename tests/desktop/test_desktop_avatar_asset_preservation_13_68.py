@@ -55,3 +55,11 @@ def test_missing_personal_vrm_is_reported_without_fabricating_one(tmp_path, monk
         "filename": "MaryCosma.vrm",
         "source": "missing",
     }
+
+
+
+def test_companion_stage_hides_raw_avatar_fetch_errors():
+    main = (ROOT / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+    assert "Portrait mode · 3D avatar unavailable" in main
+    assert "`VRM fallback · ${avatarLoadError.slice" not in main
+    assert "console.warn('MaryCosma.vrm was not loaded:', error)" in main
