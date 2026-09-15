@@ -117,6 +117,39 @@ class MaryClient:
     def conversation_status(self) -> dict[str, Any]:
         return self._request("GET", "/v1/conversation")
 
+    def preview_continuity_recovery(
+        self,
+        continuity: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not isinstance(continuity, dict):
+            raise ValueError("continuity must be a JSON object")
+        return self._request(
+            "POST",
+            "/v1/admin/continuity-recovery/preview",
+            {"continuity": continuity},
+            timeout=max(self.timeout, 30.0),
+        )
+
+    def apply_continuity_recovery(
+        self,
+        continuity: dict[str, Any],
+        *,
+        expected_fingerprint: str,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        if not isinstance(continuity, dict):
+            raise ValueError("continuity must be a JSON object")
+        return self._request(
+            "POST",
+            "/v1/admin/continuity-recovery/apply",
+            {
+                "continuity": continuity,
+                "expected_fingerprint": str(expected_fingerprint or ""),
+                "confirmation": str(confirmation or ""),
+            },
+            timeout=max(self.timeout, 60.0),
+        )
+
     def growth_status(self) -> dict[str, Any]:
         return self._request("GET", "/v1/growth")
 
