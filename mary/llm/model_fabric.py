@@ -235,7 +235,12 @@ def build_model_execution_fabric(
         })
 
     routes = dict(capability_routes or {})
-    local_route = dict(routes.get("llm.ollama") or {})
+    local_route = dict(
+        routes.get("llm.local")
+        or routes.get("llm.ollama")
+        or routes.get("llm.llama_cpp")
+        or {}
+    )
     local_suitability = {lane: assess_local_capability_route(local_route, lane) for lane in TASK_LANES}
 
     return {
@@ -255,6 +260,8 @@ def build_model_execution_fabric(
             name: {**dict(values), "authority": "selection_policy_only"}
             for name, values in TASK_LANES.items()
         },
+        "local_device_suitability": local_suitability,
+        # Compatibility alias retained for existing diagnostics/tests.
         "local_ollama_suitability": local_suitability,
         "provider_execution_policy": {
             "ordering": "router_eligibility_then_resource_governor_then_bounded_attempts",
