@@ -218,9 +218,11 @@ def ensure_lm_studio_runtime() -> dict[str, Any]:
     os.environ.setdefault("MARY_LM_STUDIO_BASE_URL", "http://127.0.0.1:1234/v1")
     os.environ["MARY_LM_STUDIO_MODEL"] = identifier
     os.environ["MARY_LM_STUDIO_BACKING_MODEL"] = load_model
-    if os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "auto").strip().lower() in {"", "auto"}:
-        os.environ["MARY_LOCAL_INFERENCE_RUNTIME"] = "lm_studio"
-
+    # Keep an explicit creator runtime selection untouched. When the setting
+    # is "auto", do not collapse it to LM Studio merely because the 4B
+    # conversation model is ready: role-specific routing may use a smaller
+    # Ollama/other worker for conversation_fast while normal conversation keeps
+    # LM Studio as its first choice.
     provider = LocalRuntimeProvider(role="conversation")
     runtime_status = provider.runtime_status()
     return {
