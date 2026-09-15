@@ -6,7 +6,7 @@ MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not
 
 ## Current architecture
 
-MaryV2 through 13.64 keeps one canonical Mary Core while treating models, gateways, local engines and compute nodes as replaceable execution resources. The provider and model stack is now one cohesive pipeline rather than a sequence of independent extensions:
+MaryV2 through 13.65 keeps one canonical Mary Core while treating models, gateways, local engines and compute nodes as replaceable execution resources. 13.65 adds a product-oriented `local_device` conversation lane so opening Desktop can bring up an already-installed qualified local model and register it as bounded compute without moving Mary state onto that model or runtime. The provider and model stack is now one cohesive pipeline rather than a sequence of independent extensions:
 
 `GenerationRequest -> hard router eligibility -> ResourceGovernor operational evidence -> bounded provider execution -> normalized response`
 
@@ -25,6 +25,7 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/architecture/DESKTOP_STABLE_CONVERSATION_13_65.md` — one-click Desktop/local conversation runtime and authority boundary
 - `docs/architecture/FREELLMAPI_INTEGRATION_13_64.md` — unified provider/model execution fabric and 13.60–13.64 boundary
 - `docs/architecture/MODEL_EXECUTION_FABRIC_13_35.md` — task-aware model/node feasibility and promotion policy
 - `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider catalog and direct routes
@@ -74,6 +75,7 @@ MaryV2 currently includes:
 - qualified model/route identity, benchmark-before-promotion, task-lane suitability, resource-fit calibration and explainable adaptive routing;
 - optional OpenAI-compatible gateways, including a separately operated FreeLLMAPI gateway, without making them Core dependencies;
 - independent compatible-space embedding failover plus existing vector-index identity protections;
+- a unified `local_device` conversation lane over LM Studio, Ollama or llama.cpp, with best-effort Desktop runtime startup and free-cloud fallback;
 - Ollama, llama.cpp and compatible loopback local inference support;
 - durable memory, relationship continuity, developed-self state and authored character evidence;
 - voice/STT/TTS primitives, realtime interruption and sentence-level streaming primitives;
