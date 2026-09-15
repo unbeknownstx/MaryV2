@@ -13,9 +13,9 @@ def test_13_67_product_layer_is_injected_after_historical_public_layers():
     relational = vite.index("relational-13-8.css")
     current = vite.index("product-shell-13-67.css")
     assert polish < relational < current
-    assert "replaceAll('12.12', '13.67')" in vite
-    assert "replaceAll('13.7', '13.67')" in vite
-    assert "replaceAll('13.8', '13.67')" in vite
+    assert "replaceAll('12.12', '13.68')" in vite
+    assert "replaceAll('13.7', '13.68')" in vite
+    assert "replaceAll('13.8', '13.68')" in vite
 
 
 def test_13_67_clears_legacy_game_hud_without_removing_functional_nodes():
