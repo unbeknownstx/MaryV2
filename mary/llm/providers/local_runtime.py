@@ -161,7 +161,7 @@ class LocalRuntimeProvider(LLMInterface):
         if self.role == "fast":
             requested = os.getenv(
                 "MARY_LOCAL_FAST_RUNTIME_ORDER",
-                "ollama,lm_studio,llama_cpp",
+                "ollama",
             )
             ordered: list[str] = []
             for item in str(requested or "").split(","):
