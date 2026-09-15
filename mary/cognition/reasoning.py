@@ -1703,7 +1703,20 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             ]
         except Exception:
             return False
-        return bool(providers and providers[0] == "local_device")
+        if not providers or providers[0] != "local_device":
+            return False
+
+        # A configured preference is not evidence that a device is actually
+        # connected. Only compact the prompt automatically when the local
+        # provider is currently executable; otherwise preserve the full normal
+        # prompt for the cloud fallback route.
+        available = getattr(self.llm, "is_available", None)
+        if not callable(available):
+            return False
+        try:
+            return bool(available(provider="local_device"))
+        except Exception:
+            return False
 
     @staticmethod
     def _local_fast_render(value: Any, limit: int) -> str:
