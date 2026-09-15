@@ -33,9 +33,7 @@ class ResourceGovernor:
     completion_tokens: int = 0
     reasoning_tokens: int = 0
     cached_prompt_tokens: int = 0
-    model_scheduler: ModelIntelligenceScheduler = field(
-        default_factory=ModelIntelligenceScheduler.from_environment
-    )
+    model_scheduler: ModelIntelligenceScheduler = field(default_factory=ModelIntelligenceScheduler.from_environment)
     provider_health: ProviderHealthBook = field(default_factory=ProviderHealthBook)
     provider_pressure: ProviderPressureBook = field(default_factory=ProviderPressureBook)
     provider_quota: ProviderQuotaBook = field(default_factory=ProviderQuotaBook)
@@ -55,17 +53,11 @@ class ResourceGovernor:
 
     def provider_order(self, order: list[str]) -> list[str]:
         """Filter/rank an already-eligible route, then apply the hard attempt cap."""
-
         admitted = [name for name in order if self.provider_health.usable(name)]
         admitted = self.provider_quota.filter(admitted)
-        stable = [
-            name for name in admitted
-            if not (self._quota_hysteresis.get(str(name).strip().lower()) and self._quota_hysteresis[str(name).strip().lower()].pressured)
-        ]
+        stable = [name for name in admitted if not (self._quota_hysteresis.get(str(name).strip().lower()) and self._quota_hysteresis[str(name).strip().lower()].pressured)]
         scarce = [name for name in admitted if name not in stable]
         ranked = self.model_scheduler.rank(stable) + self.model_scheduler.rank(scarce)
-        # Ordered mode remains deterministic. Adaptive mode may use ephemeral
-        # provider pressure as an additional content-free routing signal.
         if self.model_scheduler.mode == "adaptive":
             ranked = self.provider_pressure.order(ranked)
         limit = max(1, int(self.limits.provider_attempts_per_generation))
@@ -76,8 +68,6 @@ class ResourceGovernor:
         return max(0, int(self.limits.paid_calls_per_task) - used)
 
     def reserve_paid_call(self, task_id: str) -> bool:
-        """Reserve one paid call before execution so duplicate calls are blocked."""
-
         key = str(task_id).strip()
         if not key or self.paid_remaining(key) <= 0:
             return False
@@ -87,22 +77,9 @@ class ResourceGovernor:
 
     def record_generation_start(self, *, route: str, order: list[str]) -> None:
         self._last_successful_provider = None
-        self._last_generation = {
-            "route": str(route or "configured"),
-            "provider_order": list(order),
-            "scheduler_mode": self.model_scheduler.mode,
-            "attempts": [],
-            "usage": {},
-        }
+        self._last_generation = {"route": str(route or "configured"), "provider_order": list(order), "scheduler_mode": self.model_scheduler.mode, "attempts": [], "usage": {}}
 
-    def record_attempt(
-        self,
-        provider: str,
-        status: str,
-        *,
-        latency_ms: float | None = None,
-        quality: float | None = None,
-    ) -> None:
+    def record_attempt(self, provider: str, status: str, *, latency_ms: float | None = None, quality: float | None = None) -> None:
         self.provider_attempts += 1
         provider_text = str(provider)
         status_text = str(status)
@@ -114,22 +91,22 @@ class ResourceGovernor:
             self.provider_health.update(name, "healthy")
             self.provider_pressure.success(name, latency_ms)
         elif state in {"cooldown", "rate_limit", "rate_limited"}:
-            self.provider_health.update(name, "rate_limited")
+            # The router owns its explicit cooldown ledger and must keep the
+            # provider in the next eligible order so it can emit deterministic
+            # `cooldown` telemetry. Pressure records the event without turning
+            # this secondary health book into a competing cooldown authority.
             self.provider_pressure.failure(name, rate_limited=True)
         elif state == "unavailable":
-            self.provider_health.update(name, "unreachable")
+            # Execution failure alone is not a durable readiness probe. Keep
+            # provider_health for explicit TTL-bounded readiness observations;
+            # otherwise legacy retry/fallback behavior would be silently lost.
             self.provider_pressure.failure(name)
         elif state not in {"not_configured", "skipped", "deadline_exceeded"}:
             self.provider_pressure.failure(name)
         attempts = self._last_generation.setdefault("attempts", [])
         attempts.append({"provider": provider_text, "status": status_text})
         del attempts[:-max(1, int(self.limits.provider_attempts_per_generation))]
-        self.model_scheduler.record_outcome(
-            provider,
-            status,
-            latency_ms=latency_ms,
-            quality=quality,
-        )
+        self.model_scheduler.record_outcome(provider, status, latency_ms=latency_ms, quality=quality)
 
     def record_usage(self, usage: dict[str, Any] | None) -> None:
         payload = dict(usage or {})
@@ -142,61 +119,19 @@ class ResourceGovernor:
         self.completion_tokens += completion
         self.reasoning_tokens += reasoning
         self.cached_prompt_tokens += cached
-        self._last_generation["usage"] = {
-            "prompt_tokens": prompt,
-            "completion_tokens": completion,
-            "reasoning_tokens": reasoning,
-            "cached_prompt_tokens": cached,
-            "total_tokens": total,
-        }
+        self._last_generation["usage"] = {"prompt_tokens": prompt, "completion_tokens": completion, "reasoning_tokens": reasoning, "cached_prompt_tokens": cached, "total_tokens": total}
         self.model_scheduler.record_usage(payload)
         if self._last_successful_provider:
             self.provider_quota.record(self._last_successful_provider, tokens=total)
 
-    def record_model_measurement(
-        self,
-        provider: str,
-        *,
-        latency_ms: float | None = None,
-        quality: float | None = None,
-        usage: dict[str, Any] | None = None,
-    ) -> None:
-        """Feed content-free benchmark/runtime evidence into adaptive routing."""
-
-        self.model_scheduler.record_measurement(
-            provider,
-            latency_ms=latency_ms,
-            quality=quality,
-            usage=usage,
-        )
+    def record_model_measurement(self, provider: str, *, latency_ms: float | None = None, quality: float | None = None, usage: dict[str, Any] | None = None) -> None:
+        self.model_scheduler.record_measurement(provider, latency_ms=latency_ms, quality=quality, usage=usage)
 
     def forget_task(self, task_id: str) -> None:
-        """Release process-local per-task counters after an ephemeral task is evicted."""
-
         self._paid_by_task.pop(str(task_id).strip(), None)
 
     def status(self) -> dict[str, Any]:
-        return {
-            "policy": "bounded_resource_governance",
-            "provider_attempts": self.provider_attempts,
-            "provider_successes": self.provider_successes,
-            "paid_calls": self.paid_calls,
-            "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens,
-            "reasoning_tokens": self.reasoning_tokens,
-            "cached_prompt_tokens": self.cached_prompt_tokens,
-            "total_tokens": self.prompt_tokens + self.completion_tokens,
-            "paid_calls_per_task": int(self.limits.paid_calls_per_task),
-            "provider_attempts_per_generation": int(self.limits.provider_attempts_per_generation),
-            "model_scheduler": self.model_scheduler.status(),
-            "provider_health": self.provider_health.snapshot(),
-            "provider_pressure": self.provider_pressure.snapshot(),
-            "provider_quota": self.provider_quota.snapshot(),
-            "quota_hysteresis": {
-                name: item.pressured for name, item in sorted(self._quota_hysteresis.items())
-            },
-            "last_generation": dict(self._last_generation),
-        }
+        return {"policy": "bounded_resource_governance", "provider_attempts": self.provider_attempts, "provider_successes": self.provider_successes, "paid_calls": self.paid_calls, "prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens, "reasoning_tokens": self.reasoning_tokens, "cached_prompt_tokens": self.cached_prompt_tokens, "total_tokens": self.prompt_tokens + self.completion_tokens, "paid_calls_per_task": int(self.limits.paid_calls_per_task), "provider_attempts_per_generation": int(self.limits.provider_attempts_per_generation), "model_scheduler": self.model_scheduler.status(), "provider_health": self.provider_health.snapshot(), "provider_pressure": self.provider_pressure.snapshot(), "provider_quota": self.provider_quota.snapshot(), "quota_hysteresis": {name: item.pressured for name, item in sorted(self._quota_hysteresis.items())}, "last_generation": dict(self._last_generation)}
 
     @staticmethod
     def _safe_int(value: Any) -> int:
