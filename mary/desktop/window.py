@@ -18,6 +18,7 @@ from mary.desktop.device_node import DesktopCapabilityNodeAgent
 from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.desktop.static_server import DesktopStaticServer
 from mary.desktop.authority import resolve_desktop_application
+from mary.desktop.frontend_build import ensure_desktop_frontend
 from mary.runtime.application import MaryApplication, create_application
 from mary.runtime.resource_reporting_gateway import ResourceReportingGateway
 
@@ -217,13 +218,7 @@ def _default_frontend_path(root: Path) -> Path:
 
 def run_desktop(application: MaryApplication | None = None) -> int:
     mary_app, project_root = resolve_desktop_application(application)
-    frontend_path = _default_frontend_path(project_root)
-
-    if not frontend_path.exists():
-        raise FileNotFoundError(
-            "Desktop frontend has not been built yet. Run `cd desktop`, "
-            "`npm install`, then `npm run build`."
-        )
+    frontend_path = ensure_desktop_frontend(project_root, page="index.html")
 
     qt_app = QApplication.instance() or QApplication(sys.argv)
     qt_app.setApplicationName("MaryV2")
