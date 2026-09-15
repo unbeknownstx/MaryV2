@@ -113,6 +113,11 @@ def build_turn_trace(
         "provider": str(reasoning_meta.get("provider") or "local/system"),
         "model": str(reasoning_meta.get("model") or "n/a"),
         "generation_purpose": str(reasoning_meta.get("generation_purpose") or "default/task"),
+        "routing_purpose": str(
+            reasoning_meta.get("routing_purpose")
+            or reasoning_meta.get("generation_purpose")
+            or "default/task"
+        ),
         "conversation_lane": str((reasoning_meta.get("conversation_lane") or {}).get("lane") or "n/a"),
         "reflection_mode": str(reflection_meta.get("mode") or "n/a"),
         "response_class": reasoning_meta.get("response_class"),
