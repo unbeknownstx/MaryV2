@@ -11,8 +11,9 @@ def test_13_67_product_layer_is_injected_after_historical_public_layers():
     vite = _text("desktop/vite.config.js")
     polish = vite.index("polish-13-7.css")
     relational = vite.index("relational-13-8.css")
-    current = vite.index("product-shell-13-67.css")
-    assert polish < relational < current
+    baseline = vite.index("product-shell-13-67.css")
+    current = vite.index("product-shell-13-68.css")
+    assert polish < relational < baseline < current
     assert "replaceAll('12.12', '13.68')" in vite
     assert "replaceAll('13.7', '13.68')" in vite
     assert "replaceAll('13.8', '13.68')" in vite
@@ -101,4 +102,4 @@ def test_13_67_launcher_matches_desktop_product_language():
 def test_13_67_safe_renderer_transform_is_windows_line_ending_invariant():
     vite = _text("desktop/vite.config.js")
     assert "code.replace(/\\r\\n?/g, '\\n')" in vite
-    assert "Mary safe-renderer marker missing: boot completion" not in vite
+    assert "Mary safe-renderer marker missing" in vite
