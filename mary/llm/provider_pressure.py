@@ -1,9 +1,10 @@
 """Ephemeral provider pressure evidence for MaryV2 13.60.
 
 Inspired by multi-provider gateways, but deliberately Mary-owned: this ledger
-contains no prompts, responses, keys, identity state, or durable memory.  It
-lets the LLM router avoid repeatedly spending scarce/free quota on a provider
-that is currently unhealthy or nearly exhausted.
+contains no prompts, responses, keys, identity state, or durable memory. It
+records content-free operational evidence while keeping ordinary configured
+routing stable unless an explicit pressure signal (for example quota headroom
+or an external cooldown) is present.
 """
 from __future__ import annotations
 
@@ -50,6 +51,17 @@ class ProviderPressure:
         self.quota_remaining_fraction = value
         self.last_update = time.monotonic()
 
+    def has_explicit_routing_signal(self, now: float | None = None) -> bool:
+        """Return whether pressure is authorized to influence route order.
+
+        Ordinary success/failure observations remain useful diagnostics and
+        scoring evidence, but do not by themselves override the creator's
+        configured provider order. Explicit quota headroom or an externally
+        supplied cooldown is required before this pressure book reorders.
+        """
+        now = time.monotonic() if now is None else float(now)
+        return self.quota_remaining_fraction is not None or self.cooldown_until > now
+
     def score(self, now: float | None = None) -> float:
         now = time.monotonic() if now is None else float(now)
         if self.cooldown_until > now:
@@ -71,6 +83,7 @@ class ProviderPressure:
             "quota_remaining_fraction": self.quota_remaining_fraction,
             "cooldown_remaining_seconds": round(max(0.0, self.cooldown_until - now), 2),
             "score": round(self.score(now), 4),
+            "routing_signal": self.has_explicit_routing_signal(now),
             "content_retained": False,
         }
 
@@ -99,6 +112,14 @@ class ProviderPressureBook:
 
     def quota(self, provider: str, remaining_fraction: float | None) -> None:
         self._entry(provider).set_quota_remaining(remaining_fraction)
+
+    def has_routing_signal(self, providers: list[str], now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else float(now)
+        for provider in providers:
+            item = self._items.get(str(provider).strip().lower())
+            if item is not None and item.has_explicit_routing_signal(now):
+                return True
+        return False
 
     def order(self, providers: list[str]) -> list[str]:
         # Stable sort preserves creator/configured order when evidence is absent/equal.
