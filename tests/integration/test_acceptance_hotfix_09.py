@@ -91,7 +91,7 @@ def _wire(mary: Mary, router: LLMRouter) -> None:
 def test_default_conversation_order_is_local_first():
     router, _ = _router()
     assert router._provider_order(None, purpose="conversation") == [
-        "ollama", "groq", "gemini", "openrouter"
+        "local_device", "ollama", "groq", "gemini", "openrouter"
     ]
 
 
