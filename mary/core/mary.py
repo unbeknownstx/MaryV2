@@ -1254,6 +1254,7 @@ class Mary:
             system_response = self._handle_conversation_recall(
                 recent_conversation,
                 recall_scope=str(intent.parameters.get("recall_scope", "recent_dialogue")),
+                workspace_context=workspace_context,
             )
             skip_cognition = True
 
@@ -2163,6 +2164,7 @@ class Mary:
         recent_conversation: list[dict[str, str]],
         *,
         recall_scope: str = "recent_dialogue",
+        workspace_context: dict[str, Any] | None = None,
     ) -> str:
         """Recall recent dialogue concisely without dumping whole prior replies."""
 
@@ -2193,6 +2195,7 @@ class Mary:
             # shared-work history, project milestones and explicitly tagged memory.
             return self._creator_shared_work_overview(
                 recent_conversation=recent_conversation,
+                workspace_context=workspace_context,
             )
 
         def compact(text: str | None, limit: int = 180) -> str:
@@ -2806,6 +2809,7 @@ class Mary:
         self,
         *,
         recent_conversation: list[dict[str, str]],
+        workspace_context: dict[str, Any] | None = None,
     ) -> str:
         """Recall grounded shared project/work continuity across durable layers."""
 
@@ -2830,6 +2834,27 @@ class Mary:
                 return
             seen.add(key)
             items.append((score, value, source))
+
+        # Live canonical workspace/current-work evidence outranks historical
+        # continuity for a question phrased in the present tense. This remains a
+        # derived projection and is never promoted into memory by this read path.
+        try:
+            current_work = build_current_work_projection(
+                self,
+                workspace_context,
+                limit=6,
+            )
+        except Exception:
+            current_work = {}
+        for index, item in enumerate(list(current_work.get("recent") or [])[:6]):
+            if not isinstance(item, dict):
+                continue
+            add(
+                item.get("summary"),
+                source=str(item.get("source") or "current_work"),
+                score=max(122, 132 - index),
+                creator_owned=False,
+            )
 
         # Current-session evidence is strongest for a question about current or
         # recent work. Only declarative shared-work statements pass the existing
