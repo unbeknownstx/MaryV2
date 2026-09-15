@@ -35,6 +35,7 @@ from mary.llm.interface import (
 )
 from mary.llm.output_quality import inspect_output_quality
 from mary.llm.model_fabric import build_model_execution_fabric
+from mary.llm.providers.device_local import DeviceLocalProvider
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
 from mary.llm.providers.device_llama_cpp import DeviceLlamaCppProvider
 from mary.protocol.models import (
@@ -183,11 +184,33 @@ class MaryCoreService:
             broker_kwargs["execution_policy"] = self.enforce_execution_policy
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
         self._install_execution_policy()
+        self._device_local_provider: DeviceLocalProvider | None = None
         self._device_ollama_provider: DeviceOllamaProvider | None = None
         self._device_llama_cpp_provider: DeviceLlamaCppProvider | None = None
+        self._attach_device_local_provider()
         self._attach_device_ollama_provider()
         self._attach_device_llama_cpp_provider()
         self._sync_creator_lifecycle()
+
+    def _attach_device_local_provider(self) -> None:
+        """Expose one replaceable host-local runtime through provider local_device.
+
+        The Core owns routing and Mary state. The connected device owns the
+        runtime choice, concrete model, and local permission. Until a node
+        advertises llm.local this provider simply reports unavailable, allowing
+        the normal free-cloud fallback order to continue.
+        """
+
+        router = getattr(self.mary, "llm", None)
+        registry = getattr(self.mary, "node_registry", None)
+        register = getattr(router, "register_provider", None)
+        if registry is None or not callable(register):
+            return
+        self._device_local_provider = DeviceLocalProvider(
+            registry,
+            self.device_tasks,
+        )
+        register("local_device", self._device_local_provider)
 
     def _attach_device_ollama_provider(self) -> None:
         """Let remote Core treat a connected Ollama node as provider ``ollama``.
