@@ -64,10 +64,11 @@ function marySafeRendererPlugin() {
       // Historical HTML labels should never make a current build look like an
       // unrelated 12.x/13.7 client. Runtime authority still comes from Core.
       next = next
-        .replaceAll('12.12', '13.67')
-        .replaceAll('13.7', '13.67')
-        .replaceAll('13.8', '13.67')
-        .replace('PERSONAL COMPANION SYSTEM · 13.67', 'PERSISTENT COMPANION SYSTEM · 13.67')
+        .replaceAll('12.12', '13.68')
+        .replaceAll('13.7', '13.68')
+        .replaceAll('13.8', '13.68')
+        .replaceAll('13.67', '13.68')
+        .replace('PERSONAL COMPANION SYSTEM · 13.68', 'PERSISTENT COMPANION SYSTEM · 13.68')
         .replace('Your AI Companion', 'Your Persistent AI Companion');
       return {
         html: next,
@@ -86,6 +87,11 @@ function marySafeRendererPlugin() {
             tag: 'link',
             injectTo: 'head',
             attrs: { rel: 'stylesheet', href: './product-shell-13-67.css' },
+          },
+          {
+            tag: 'link',
+            injectTo: 'head',
+            attrs: { rel: 'stylesheet', href: './product-shell-13-68.css' },
           },
           {
             tag: 'script',
