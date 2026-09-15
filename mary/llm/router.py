@@ -185,7 +185,11 @@ class LLMRouter:
             from .providers.ollama import OllamaProvider
 
             if purpose_name in {"conversation_fast", "social_instant"}:
-                fast_model = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip()
+                fast_model = (
+                    os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip()
+                    or os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip()
+                    or os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip()
+                )
                 return OllamaProvider(model=fast_model or None)
             return OllamaProvider()
 
