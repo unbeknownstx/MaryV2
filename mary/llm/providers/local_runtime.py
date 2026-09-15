@@ -72,7 +72,7 @@ def _ollama_model_for_role(role: str) -> str | None:
     role = _normalize_role(role)
     base = os.getenv("MARY_OLLAMA_MODEL", "").strip()
     conversation = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip() or base
-    fast = conversation
+    fast = os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip() or conversation
     utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip() or fast
     return {
         "general": base,
@@ -157,6 +157,20 @@ class LocalRuntimeProvider(LLMInterface):
         configured = os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "auto").strip().lower()
         if configured in _RUNTIME_NAMES:
             return (configured,)
+
+        if self.role == "fast":
+            requested = os.getenv(
+                "MARY_LOCAL_FAST_RUNTIME_ORDER",
+                "ollama,lm_studio,llama_cpp",
+            )
+            ordered: list[str] = []
+            for item in str(requested or "").split(","):
+                runtime = item.strip().lower()
+                if runtime in _RUNTIME_NAMES and runtime not in ordered:
+                    ordered.append(runtime)
+            if ordered:
+                return tuple(ordered)
+
         return _RUNTIME_NAMES
 
     def _build(self, runtime: str) -> LLMInterface:
