@@ -9,7 +9,7 @@ from typing import Any
 from .mcp_fabric import MCP_CAPABILITIES, MCP_SERVER_CAPABILITIES, normalize_mcp_tool_name
 from .sensors import SENSOR_CAPABILITIES
 
-_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
+_SAFE_CAPABILITIES = {"personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
 
 
 def default_permission_path() -> Path:
