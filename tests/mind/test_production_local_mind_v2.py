@@ -1234,3 +1234,72 @@ def test_qwen_shadow_environment_flags_cannot_change_local_output_or_call_a_mode
     }
     baseline_mind.close()
     enabled_mind.close()
+
+
+
+def test_pure_greeting_stays_local_without_helpdesk_invitation():
+    mary = Mary()
+    result = mary.mind.try_respond(
+        "hey mary",
+        intent=_unknown_intent(),
+        context={
+            "mind_state": {
+                "continuity": {"allow_follow_up_question": True},
+                "disposition": {"preferred_length": "micro"},
+            }
+        },
+    )
+
+    assert result.handled is True
+    assert result.metadata["response_class"] == "social_low_risk"
+    lowered = result.response.casefold()
+    assert "want to talk" not in lowered
+    assert "do you want" not in lowered
+    assert lowered in {"hey.", "hey, you.", "hi."}
+
+
+def test_activity_status_uses_curiosity_before_generic_companion_fallback():
+    composer = ProceduralLocalComposerV2()
+    plan = DialoguePlan(
+        DialogueAct.STATUS,
+        0.96,
+        "represented Mary activity question",
+        local=True,
+        slots={"status_kind": "activity"},
+    )
+
+    curious_projection = project_canonical_response_plan(
+        dialogue_plan=plan,
+        input_text="what are you up to?",
+        lane=_SOCIAL_LANE,
+        mind_state={},
+        hot_state={
+            "mary_name": "Mary",
+            "creator_name": "Unbe",
+            "dialogue_turn": 3,
+            "active_goals": [],
+            "curiosities": [{"description": "Learn more about Unbe"}],
+        },
+        owner_confirmations=AuthorityConfirmationBundle(),
+    )
+    assert curious_projection.canonical_plan is not None
+    curious = composer.compose(curious_projection.canonical_plan.realization, seed=11)
+    assert curious.text.casefold() == "i'm still curious about you."
+
+    fallback_projection = project_canonical_response_plan(
+        dialogue_plan=plan,
+        input_text="what are you up to?",
+        lane=_SOCIAL_LANE,
+        mind_state={},
+        hot_state={
+            "mary_name": "Mary",
+            "creator_name": "Unbe",
+            "dialogue_turn": 3,
+            "active_goals": [],
+            "curiosities": [],
+        },
+        owner_confirmations=AuthorityConfirmationBundle(),
+    )
+    assert fallback_projection.canonical_plan is not None
+    fallback = composer.compose(fallback_projection.canonical_plan.realization, seed=12)
+    assert fallback.text.casefold() == "i'm just here with you."
