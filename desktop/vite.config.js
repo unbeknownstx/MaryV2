@@ -109,7 +109,10 @@ export default defineConfig({
   plugins: [marySafeRendererPlugin()],
   build: {
     outDir: 'dist',
-    emptyOutDir: true,
+    // Personal VRM/VRoid assets are intentionally gitignored and may exist only
+    // on the creator host. Never let a routine Vite rebuild erase dist/models;
+    // frontend_build.py also preserves/restores them as a second safety net.
+    emptyOutDir: false,
     sourcemap: true,
     rolldownOptions: {
       input: {
