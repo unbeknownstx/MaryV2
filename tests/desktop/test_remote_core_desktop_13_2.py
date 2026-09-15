@@ -198,3 +198,70 @@ def test_desktop_resolver_rejects_ambiguous_local_plus_remote(monkeypatch):
 
     with pytest.raises(RuntimeError, match="two authorities"):
         desktop_authority.resolve_desktop_application(application=object())
+
+
+
+class FlakyProjectionClient(FakeClient):
+    def __init__(self):
+        super().__init__()
+        self.fail_reads = False
+
+    def state(self):
+        if self.fail_reads:
+            raise ConnectionError("transient core state read failed")
+        return super().state()
+
+    def dashboard(self):
+        if self.fail_reads:
+            raise ConnectionError("transient core dashboard read failed")
+        return super().dashboard()
+
+    def conversation_status(self):
+        if self.fail_reads:
+            raise ConnectionError("transient core conversation read failed")
+        return super().conversation_status()
+
+    def workspace(self):
+        if self.fail_reads:
+            raise ConnectionError("transient core workspace read failed")
+        return super().workspace()
+
+
+def test_remote_live_state_uses_stale_projection_during_transient_core_drop(tmp_path):
+    client = FlakyProjectionClient()
+    view = RemoteMaryApplicationView(
+        RemoteMaryGateway(client, surface="desktop"),
+        project_root=tmp_path,
+    )
+
+    warm = view.mary.live_state(runtime_status="idle")
+    assert warm["character"]["name"] == "Mary"
+    assert warm["_presentation"]["core_reachable"] is True
+
+    client.fail_reads = True
+    stale = view.mary.live_state(runtime_status="responding")
+
+    assert stale["character"]["name"] == "Mary"
+    assert stale["character"]["status"] == "responding"
+    assert stale["_presentation"]["core_reachable"] is False
+    assert stale["_presentation"]["stale"] is True
+
+
+def test_remote_dashboard_uses_last_projection_during_transient_core_drop(tmp_path):
+    client = FlakyProjectionClient()
+    view = RemoteMaryApplicationView(
+        RemoteMaryGateway(client, surface="desktop"),
+        project_root=tmp_path,
+    )
+
+    warm = view.dashboard_state(runtime_status="idle")
+    assert warm["live"]["character"]["name"] == "Mary"
+    assert warm["connection"]["core_reachable"] is True
+
+    client.fail_reads = True
+    stale = view.dashboard_state(runtime_status="responding")
+
+    assert stale["live"]["character"]["name"] == "Mary"
+    assert stale["live"]["character"]["status"] == "responding"
+    assert stale["connection"]["core_reachable"] is False
+    assert stale["connection"]["stale"] is True
