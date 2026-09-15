@@ -1277,7 +1277,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         if not isinstance(user_context, dict):
             return {}
 
-        def clip(value: Any, limit: int = 100) -> str:
+        def clip(value: Any, limit: int = 88) -> str:
             text = str(value).strip()
             if len(text) <= limit:
                 return text

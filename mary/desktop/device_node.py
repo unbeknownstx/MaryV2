@@ -53,7 +53,6 @@ def _ollama_model_for_role(role: str) -> str:
     utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip()
     fast = (
         os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip()
-        or utility
         or conversation
     )
     utility = utility or fast

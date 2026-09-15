@@ -511,8 +511,9 @@ class RemoteMaryGateway:
                 "conversation_id": conversation_id,
                 "requested_mode": requested_mode,
                 "voice_input": bool(voice_input),
-                "client_local_time": client_local_time,
             }
+            if client_local_time:
+                turn_kwargs["client_local_time"] = client_local_time
             if turn_id is not None:
                 turn_kwargs["turn_id"] = turn_id
             response = self.client.turn(
