@@ -160,3 +160,40 @@ input {
   .composer,
   .workspace-overlay { border-color: rgba(255,255,255,.28) !important; }
 }
+
+
+/* 13.66 final-cascade convergence.
+   This legacy polish file is injected after Vite's application CSS, so these
+   rules deliberately preserve the current product shell rather than reviving
+   the older translucent 13.7 layout. */
+.app-shell {
+  grid-template-columns: 248px minmax(640px, 1fr) 326px;
+  min-width: 1080px;
+  min-height: 680px;
+  background: #050713;
+}
+.sidebar,
+.inspector-column {
+  background: linear-gradient(180deg, #0a0d19 0%, #070a14 100%) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.neon-card,
+.chat-card,
+.workspace-overlay,
+.composer {
+  box-shadow: none;
+}
+.neon-card::before { display:none; }
+@media (max-width: 1380px) {
+  .app-shell { grid-template-columns: 218px minmax(570px,1fr) 290px; min-width:1080px; }
+  .inspector-column { display:block; }
+}
+@media (max-width: 1120px) {
+  .app-shell { grid-template-columns:196px minmax(560px,1fr); min-width:820px; }
+  .inspector-column { display:none; }
+}
+@media (max-width: 980px) {
+  .app-shell { grid-template-columns:76px minmax(0,1fr); min-width:680px; }
+  .nav-section-label { display:none; }
+}
