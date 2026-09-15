@@ -260,6 +260,13 @@ class NodeRegistry:
             "capability": normalized,
             "available": selected is not None,
             "selected_node_id": selected.node_id if selected is not None else None,
+            "selected_runtime": str(selected_metadata.get("runtime") or "")[:64],
+            "selected_model": str(
+                selected_metadata.get("conversation_model")
+                or selected_metadata.get("configured_model")
+                or selected_metadata.get("model")
+                or ""
+            )[:160],
             "candidate_node_ids": [node.node_id for node in candidates],
             "candidate_readiness": {
                 node.node_id: str(node.capabilities[normalized].readiness)
