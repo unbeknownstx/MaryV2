@@ -416,3 +416,12 @@ def test_orchestrator_accepts_explicit_intent():
         result.intent.intent_type
         == IntentType.QUESTION
     )
+
+
+def test_natural_creator_values_question_routes_to_structured_profile():
+    orchestrator = create_orchestrator()
+
+    intent = orchestrator.detect_intent("what are my most important values?")
+
+    assert intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert intent.parameters["query_type"] == "values"
