@@ -244,6 +244,18 @@ class NodeRegistry:
             "benchmark_profile_version",
             "benchmark_reliability_revision",
         }
+        selected_capability = (
+            selected.capabilities.get(normalized)
+            if selected is not None
+            else None
+        )
+        selected_metadata = dict(
+            getattr(selected_capability, "metadata", {}) or {}
+        )
+        execution_authorized = bool(
+            selected is not None
+            and selected_metadata.get("execution_authorized", False)
+        )
         return {
             "capability": normalized,
             "available": selected is not None,
@@ -262,8 +274,16 @@ class NodeRegistry:
                 for node in candidates
             },
             "candidate_count": len(candidates),
-            "execution": "not_authorized",
-            "policy": "routing selects a capable node only; execution requires a separate authorized device task channel",
+            "execution": (
+                "authorized"
+                if execution_authorized
+                else ("permission_required" if selected is not None else "unavailable")
+            ),
+            "execution_authorized": execution_authorized,
+            "policy": (
+                "routing selects a capable node; device-local execution remains "
+                "separately permission-gated"
+            ),
         }
 
     def snapshot(self) -> dict[str, Any]:
