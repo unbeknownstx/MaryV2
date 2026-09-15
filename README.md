@@ -4,35 +4,34 @@
 
 MaryV2 is a local-first, cloud-capable persistent character runtime. Mary is not a wrapper around one language model: identity, authored character evidence, relationship continuity, memory, developed self, agency, expression, permissions, realtime coordination, tools, and capability routing remain explicit systems around replaceable models and devices.
 
-## Current direction
+## Current architecture
 
-MaryV2 13.36 adds the **MaryOS Linux substrate**: a read-only OS/environment projection, Linux/systemd host readiness, a hardened user-service boot path for the existing bounded home node, and an explicit contract for future Quickshell/Hyprland and ISO work. MaryOS is a host layer beneath the same canonical Core; it adds no arbitrary shell/root executor and makes neither Linux nor Omarchy a Core startup dependency.
+MaryV2 through 13.64 keeps one canonical Mary Core while treating models, gateways, local engines and compute nodes as replaceable execution resources. The provider and model stack is now one cohesive pipeline rather than a sequence of independent extensions:
 
-MaryV2 13.29–13.33 now forms a **bounded cognitive research and execution layer** on top of the already-active 13.16–13.28 runtime: adaptive deliberation budgets, pass/verify/branch execution, non-mutating memory-action selection, content-free trajectory telemetry, proposal-only experience-informed strategy selection, duplex-conversation policy, and an optional research-runtime catalog for latent reasoning, CUDA serving, mobile inference, distributed inference, realtime voice, A2A and offline RL. None of these systems owns identity or memory, exposes private chain-of-thought, or automatically self-modifies production Mary.
+`GenerationRequest -> hard router eligibility -> ResourceGovernor operational evidence -> bounded provider execution -> normalized response`
 
-13.34 defines the **Computational State Fabric** for canonical/rebuildable/warm/ephemeral state. 13.35 adds the **Model Execution Fabric**: reachable engines are classified separately from feasible and preferred engines, so heterogeneous local/cloud compute can be benchmarked and promoted by task rather than by mere availability. Future RAM/NVMe/KV-cache infrastructure may keep Mary warm and fast, but losing caches must never erase who Mary is.
+The existing 13.15 provider catalog supplies creator/configuration-approved frontier/open-model metadata. The 13.35+ Model Execution Fabric classifies discovered, reachable, feasible, suitable and preferred compute by task. The 13.37–13.59 reliability/home-compute work adds qualified model identities, measured correctness/useful throughput, resource fit, live telemetry, load-aware routing, calibration provenance and explainable adaptive decisions. The 13.60–13.64 provider work adds health, quota, pressure, hysteresis, bounded failover, endpoint policy, catalog trust, provider-substitution detection, compatible embedding failover and transport capability checks. These are all operational evidence below Mary Core authority; none owns identity, memory, relationship, goals, permissions or developed self.
 
-MaryV2 13.15 adds a **frontier/open-model fabric** above the existing provider layer: direct optional DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together and Fireworks presets share one generic OpenAI-compatible transport, while future compatible services and local loopback servers can be added without another Core rewrite. These paid-capable routes are opt-in and never enter free-first merely because credentials exist; Mary remains the canonical identity/state authority above every model.
+FreeLLMAPI-derived engineering is integrated as patterns inside Mary's provider/model fabric, not as a second brain or mandatory service. A FreeLLMAPI instance may be used as an optional OpenAI-compatible gateway just like another replaceable endpoint. Direct Groq/Gemini/OpenRouter/frontier routes, Ollama/llama.cpp, local capability nodes and optional gateways can coexist because Mary owns authorization and selection above them.
 
-MaryV2 13.12 adds **bounded home sensor workers** to the 13.11 compute fabric: an explicitly authorized node can transcribe bounded microphone audio through the existing STT adapters or capture a bounded screenshot for perception, while both outputs remain ephemeral evidence rather than memory/action authority. This lets the Mac become a real STT worker candidate and the Windows stream machine become a real screen-evidence worker candidate without creating a second Mary.
+13.34 defines the **Computational State Fabric** for canonical/rebuildable/warm/ephemeral state. 13.35 defines the **Model Execution Fabric** for task-aware suitability. 13.36 adds the **MaryOS Linux substrate** without moving Core authority or introducing arbitrary shell/root execution. Later reliability and provider revisions extend those fabrics rather than creating new authority layers.
 
-MaryV2 13.11 turns the existing Mac/Windows capability-node architecture into a **benchmark-aware home compute fabric**: the same canonical Core can use both machines as replaceable workers, compare sanitized local performance evidence, and prefer the better equivalent node without moving identity/state authority or weakening device permissions. Metal/Vulkan/local-model usefulness is measured on the actual hardware rather than assumed, so current machines can be used to their fullest while realtime conversation stays independent from slower background/generation work.
+MaryV2 13.29–13.33 forms a bounded cognitive research/execution layer: adaptive deliberation budgets, pass/verify/branch execution, non-mutating memory-action selection, content-free trajectory telemetry, proposal-only experience-informed strategy selection and duplex-conversation policy. These systems do not expose private chain-of-thought or automatically self-modify production Mary.
 
-MaryV2 13.10 remains the live Twitch/OBS cohost foundation: Twitch EventSub chat enters the bounded stream-attention/floor pipeline, selected messages become public-safe canonical Mary turns, Mary can answer through Core TTS into a loopback OBS Browser Source, and optional typed Twitch replies remain separately permission/configuration bounded. Existing OBS/browser/perception context can inform what Mary says without becoming memory truth or viewer authority.
-
-The 13.9 native iPhone companion product remains the everyday mobile surface, and the 13.8 relational-presence architecture remains canonical relationship continuity beneath both private and public experiences.
+The native iPhone companion, PWA/Desktop/terminal surfaces, Twitch/OBS cohost, bounded MCP integrations, home compute/sensor nodes and future MaryOS/creator surfaces all remain projections or capabilities of the same Core.
 
 See:
 
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/architecture/FREELLMAPI_INTEGRATION_13_64.md` — unified provider/model execution fabric and 13.60–13.64 boundary
+- `docs/architecture/MODEL_EXECUTION_FABRIC_13_35.md` — task-aware model/node feasibility and promotion policy
+- `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider catalog and direct routes
+- `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` — durability/cache/recovery architecture
+- `docs/architecture/MARYOS_LINUX_SUBSTRATE_13_36.md` — Linux/systemd host substrate and future MaryOS boundary
 - `docs/architecture/RESEARCH_CONVERGENCE_13_29_13_32.md` — cognitive research convergence and promotion boundary
 - `docs/architecture/COGNITIVE_EXECUTION_13_33.md` — bounded pass/verify/branch execution and proposal-only strategy evidence
-- `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` — durability/cache/recovery architecture
-- `docs/architecture/MODEL_EXECUTION_FABRIC_13_35.md` — task-aware model/node feasibility and promotion policy
-- `docs/architecture/MARYOS_LINUX_SUBSTRATE_13_36.md` — Linux/systemd host substrate and future MaryOS boundary
-- `docs/architecture/OPEN_MODEL_FABRIC_13_15.md` — frontier/open-model provider fabric
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
 - `docs/architecture/STREAM_COHOST_13_10.md` — live Twitch/OBS cohost architecture
@@ -50,6 +49,8 @@ Key boundaries:
 
 - models generate; they do not become Mary;
 - nodes compute; they do not own identity/state;
+- provider catalogs describe routes; they do not authorize them;
+- health, quota, latency, benchmarks and resource fit are operational evidence, not Mary state;
 - renderers present; they do not define identity;
 - perception and external content are evidence/context until canonical owners accept them;
 - Twitch audience text is untrusted social context, never creator/tool authority;
@@ -65,10 +66,14 @@ MaryV2 currently includes:
 - a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - a bounded Twitch/OBS live-cohost host with Core-owned chat attention, creator-floor protection, Mary voice/captions and optional typed replies;
 - benchmark-aware Mac/Windows/Linux home compute nodes with disposable operational profiles and cross-platform launch tooling;
-- a MaryOS 13.36 Linux substrate with read-only host discovery and an optional systemd user-service path;
+- a MaryOS Linux substrate with read-only host discovery and an optional systemd user-service path;
 - explicit opt-in home-node STT and bounded screen-capture workers for realtime/perception pipelines;
 - Groq/Gemini/OpenRouter/Ollama routing plus explicit expert/provider paths;
-- an opt-in frontier/open-model fabric for DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together, Fireworks and future OpenAI-compatible services;
+- an opt-in frontier/open-model catalog for DeepSeek, Z.AI/GLM, Qwen, Kimi, MiniMax, Cerebras, Together, Fireworks and future compatible services;
+- a unified provider operational layer for health, quota, pressure, hysteresis, bounded failover, readiness, endpoint policy and content-free analytics;
+- qualified model/route identity, benchmark-before-promotion, task-lane suitability, resource-fit calibration and explainable adaptive routing;
+- optional OpenAI-compatible gateways, including a separately operated FreeLLMAPI gateway, without making them Core dependencies;
+- independent compatible-space embedding failover plus existing vector-index identity protections;
 - Ollama, llama.cpp and compatible loopback local inference support;
 - durable memory, relationship continuity, developed-self state and authored character evidence;
 - voice/STT/TTS primitives, realtime interruption and sentence-level streaming primitives;
