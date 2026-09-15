@@ -33,6 +33,7 @@ Mary does not replace:
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import re
 from typing import Any
@@ -1359,6 +1360,14 @@ class Mary:
                 )
             )
 
+        elif (
+            intent.intent_type == IntentType.INFORMATION
+            and str(intent.parameters.get("system_action") or "").strip().lower()
+            == "current_time"
+        ):
+            system_response = self._surface_time_response(turn_values)
+            skip_cognition = True
+
         else:
             system_response = self._handle_intent(
                 intent
@@ -2045,6 +2054,30 @@ class Mary:
             else {"provider": None, "route": None}
         )
         normalized = normalize_for_matching(input_text)
+
+        if normalized in {
+            "time now",
+            "current time",
+            "what time is it",
+            "what time is it now",
+            "what time is it right now",
+            "what is the time",
+            "whats the time",
+            "what's the time",
+            "tell me the time",
+        }:
+            return Intent(
+                intent_type=IntentType.INFORMATION,
+                confidence=0.99,
+                description="Creator asks for the current local time on this surface.",
+                parameters={
+                    "action": "current_time",
+                    "system_action": "current_time",
+                    "query": input_text,
+                },
+                source="surface_clock_detector",
+            )
+
         if (override.get("provider") or override.get("route")) and any(
             phrase in normalized
             for phrase in (
@@ -2064,6 +2097,37 @@ class Mary:
             )
 
         return intent
+
+    @staticmethod
+    def _surface_time_response(
+        turn_context: dict[str, Any] | None,
+    ) -> str:
+        """Answer from the creator surface clock, never from Railway/server time."""
+
+        values = dict(turn_context or {})
+        raw = str(values.get("client_local_time") or "").strip()
+        if not raw:
+            return (
+                "I don't have this surface's local clock in the turn yet, so I "
+                "shouldn't guess the time."
+            )
+
+        try:
+            moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return (
+                "I couldn't read this surface's local clock cleanly, so I "
+                "shouldn't guess the time."
+            )
+
+        if moment.tzinfo is None or moment.utcoffset() is None:
+            return (
+                "I don't have a timezone-aware surface clock for this turn, so I "
+                "shouldn't guess the time."
+            )
+
+        hour = moment.strftime("%I").lstrip("0") or "12"
+        return f"It's {hour}:{moment.strftime('%M')} {moment.strftime('%p')}."
 
     def _handle_intent(
         self,
@@ -3828,6 +3892,24 @@ class Mary:
                 and intent.intent_type == IntentType.SELF_QUERY
             ),
         }
+        if (
+            intent is not None
+            and intent.intent_type == IntentType.INFORMATION
+            and str(intent.parameters.get("system_action", "")).strip().lower()
+            == "current_time"
+        ):
+            reasoning_metadata.update({
+                "provider": "local/system",
+                "model": "n/a",
+                "generation_purpose": "surface_clock",
+                "turn_policy": {
+                    "category": "local_surface_context",
+                    "generation_purpose": "surface_clock",
+                    "local_first": False,
+                    "rationale": "current time comes from the authenticated creator surface clock",
+                },
+            })
+
         if (
             intent is not None
             and intent.intent_type == IntentType.SELF_QUERY
