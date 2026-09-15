@@ -9,7 +9,9 @@ empty ``desktop/dist`` before every build, which could delete a perfectly good
 local ``dist/models/MaryCosma.vrm`` and make a UI update look like an avatar
 renderer regression. This module therefore preserves/restores local avatar
 assets across a generated frontend rebuild and can stage an explicitly
-configured VRM from ``MARY_DESKTOP_VRM_PATH``.
+configured VRM from ``MARY_DESKTOP_VRM_PATH``. On creator Desktop,
+the bounded Downloads location is also checked for ``MaryCosma*.vrm`` so a
+recovered model can be reseeded without committing personal avatar assets.
 """
 
 from __future__ import annotations
@@ -86,6 +88,24 @@ def _configured_vrm_path(root: Path) -> Path | None:
             root / "assets" / "models" / "MaryCosma.vrm",
         )
     )
+
+    # Recovery convenience only: inspect the creator's conventional Downloads
+    # folder for the exact MaryCosma naming family. This is intentionally
+    # bounded and never becomes a general filesystem search.
+    downloads = Path.home() / "Downloads"
+    try:
+        downloaded = sorted(
+            (
+                item
+                for item in downloads.glob("MaryCosma*.vrm")
+                if item.is_file() and item.stat().st_size > 1024
+            ),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        downloaded = []
+    candidates.extend(downloaded[:4])
 
     for candidate in candidates:
         try:
@@ -170,6 +190,15 @@ def ensure_desktop_frontend(root: Path, *, page: str = "index.html") -> Path:
 
     desktop = root / "desktop"
     built_page = desktop / "dist" / page
+
+    # Seed a newly recovered/downloaded personal avatar even when the generated
+    # frontend itself is already current. Previously this only happened inside
+    # a Vite rebuild, so a valid VRM downloaded after the last build still
+    # produced a 404 until some unrelated source file changed.
+    configured_avatar = _configured_vrm_path(root)
+    if configured_avatar is not None:
+        _restore_local_avatar_assets(root, [configured_avatar])
+
     if not frontend_needs_build(root, page=page):
         return built_page
 
