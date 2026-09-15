@@ -2185,8 +2185,8 @@ class Mary:
             lowered = text.lower()
             if not any(marker in lowered for marker in work_markers):
                 return
-            if len(text) > 220:
-                text = text[:219].rstrip() + "…"
+            if len(text) > 160:
+                text = text[:159].rstrip() + "…"
             if text not in items:
                 items.append(text)
 
@@ -2929,6 +2929,32 @@ class Mary:
             evidence = self._shared_work_evidence(str(message.get("content", "")))
             if evidence:
                 add(evidence, source="current_session", score=120, creator_owned=True)
+
+        # A durable creator goal can itself be project evidence, but only when
+        # it carries strong project/work markers. Unrelated personal goals remain
+        # creator-profile data rather than becoming shared-work history.
+        try:
+            creator_profile = self._creator_profile_for_conversation()
+        except Exception:
+            creator_profile = {}
+        project_goal_markers = (
+            "maryv2", "mary v2", "project", "build", "building", "develop",
+            "finish", "ship", "deploy", "implement", "test", "debug",
+        )
+        creator_goals = (
+            list(creator_profile.get("goals") or [])[:6]
+            if isinstance(creator_profile, dict)
+            else []
+        )
+        for goal in creator_goals:
+            normalized_goal = normalize_for_matching(str(goal or ""))
+            if any(marker in normalized_goal for marker in project_goal_markers):
+                add(
+                    f"your durable goal is {goal}",
+                    source="creator_goal",
+                    score=108,
+                    creator_owned=False,
+                )
 
         # Durable shared-work history is the primary cross-restart source.
         for index, event in enumerate(self.relationship_history.get_recent(limit=32)):

@@ -22,6 +22,23 @@ def test_simple_greeting_is_answered_by_marys_local_mind_without_llm_call(monkey
     assert result.metadata["delivery_plan"]["profile"] in {"playful", "amused", "bright", "casual"}
 
 
+
+def test_full_turn_context_keeps_simple_greeting_on_local_mind():
+    mary = Mary()
+    intent = mary._detect_intent("hey mary")
+    context = mary._build_context(
+        "hey mary",
+        intent=intent,
+        recent_conversation=[],
+    )
+    result = mary.mind.try_respond(
+        "hey mary",
+        intent=intent,
+        context=context,
+    )
+    assert result.metadata.get("escalation_reason") is None, result.metadata.get("escalation_reason")
+    assert result.handled is True, result.metadata
+
 def test_local_mind_escalates_open_ended_language_instead_of_faking_intelligence():
     mary = Mary()
     decision = mary.mind.try_respond(

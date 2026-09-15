@@ -178,7 +178,10 @@ def test_large_creator_profile_still_keeps_normal_prompt_well_below_ceiling():
     messages, _kwargs = router.calls[0]
     combined = "\n".join(str(message.content) for message in messages)
 
-    assert len(combined) < 12_500
+    assert len(combined) < 12_500, (
+        len(str(messages[0].content)),
+        len(str(messages[1].content)),
+    )
     assert "fact_39" not in combined
     assert "goal 39" not in combined
 

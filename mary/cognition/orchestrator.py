@@ -762,6 +762,7 @@ class CognitiveOrchestrator:
             ),
             parameters={
                 "query": text,
+                "query_type": query_type,
                 "relationship_query_type": query_type,
             },
             source="basic_detector",

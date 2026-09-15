@@ -554,12 +554,15 @@ class LLMRouter:
                 order.append(name)
 
         if bool(getattr(self.config.llm, "conversation_local_first", True)):
-            # Railway/older .env profiles may carry a pre-13.65 cloud-only
-            # conversation order. Keep the connected local-device lane eligible
-            # first by default; provider availability still decides whether it
-            # actually executes, and the creator may explicitly opt out.
-            order = [name for name in order if name != "local_device"]
-            order.insert(0, "local_device")
+            # Keep the logical local-device lane first for legacy cloud-only
+            # profiles, but preserve an explicit concrete local runtime chosen
+            # first by the creator.
+            explicit_local_runtime = bool(
+                order and order[0] in {"ollama", "llama_cpp"}
+            )
+            if not explicit_local_runtime:
+                order = [name for name in order if name != "local_device"]
+                order.insert(0, "local_device")
 
         if "ollama" not in order:
             order.append("ollama")

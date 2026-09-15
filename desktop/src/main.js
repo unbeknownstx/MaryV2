@@ -1834,6 +1834,7 @@ function renderDiagnostics() {
             ? 'This device may execute bounded llm.local tasks. Core still owns Mary and cloud remains fallback.'
             : 'The runtime is ready, but device execution is intentionally permission-gated until you enable it.')
           : 'Start or install an approved local runtime first. Mary will keep using cloud fallback meanwhile.'}</small>
+        <small>Supported local runtime families: LM Studio, Ollama, llama.cpp. They are optional; cloud conversation remains available.</small>
       </div>
     </div>
     <div class="workspace-panel"><h3>Execution Portfolio</h3>
