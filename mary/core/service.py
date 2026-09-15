@@ -787,9 +787,18 @@ class MaryCoreService:
         if registry is not None:
             preview = getattr(registry, "route_preview", None)
             if callable(preview):
-                local_route = preview("llm.local")
-                ollama_route = preview("llm.ollama")
-                llama_cpp_route = preview("llm.llama_cpp")
+                def _safe_preview(capability: str) -> dict[str, Any]:
+                    try:
+                        return dict(preview(capability) or {})
+                    except Exception:
+                        # Capability-route diagnostics are advisory. Older
+                        # registries/test doubles may know only llm.ollama;
+                        # a missing newer route must never break Core state.
+                        return {}
+
+                local_route = _safe_preview("llm.local")
+                ollama_route = _safe_preview("llm.ollama")
+                llama_cpp_route = _safe_preview("llm.llama_cpp")
         capability_routes = {
             "llm.local": local_route,
             "llm.ollama": ollama_route,
