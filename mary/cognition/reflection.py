@@ -1413,6 +1413,22 @@ class ReflectionEngine:
             unsupported = terms - grounded_terms
             assistant_only = (terms & assistant_terms) - grounded_terms
 
+            # Same-turn paraphrases can depend on short meaningful tokens that
+            # the long-term provenance tokenizer intentionally ignores.
+            short_stop = {
+                "been", "have", "were", "said", "told", "your", "you", "just",
+                "want", "that", "this", "with", "from", "they", "them",
+            }
+            current_short_terms = {
+                word for word in re.findall(r"[a-z0-9']+", str(context.input_text or "").lower())
+                if len(word) >= 4 and word not in short_stop
+            }
+            sentence_short_terms = {
+                word for word in re.findall(r"[a-z0-9']+", sentence_lower)
+                if len(word) >= 4 and word not in short_stop
+            }
+            same_turn_short_support = current_short_terms & sentence_short_terms
+
             # Any assistant-origin content that is being attributed to Unbe is a
             # provenance violation even when some other word in the sentence is
             # legitimately grounded.  A single generic supported term must not be
@@ -1430,7 +1446,9 @@ class ReflectionEngine:
             # model turn rather than copied from a prior Mary turn.  Allow modest
             # paraphrase, but reject claims where unsupported content outweighs the
             # grounded substance.
-            if not supported or len(unsupported) > len(supported):
+            if (
+                not supported and not same_turn_short_support
+            ) or len(unsupported) > len(supported) + len(same_turn_short_support):
                 return [
                     "Conversation provenance boundary: Mary's response makes a creator "
                     "history attribution without enough support from user-role dialogue "

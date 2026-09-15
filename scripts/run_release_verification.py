@@ -141,6 +141,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("experiential_continuity_13_4", "scripts.verify_experiential_continuity_install"),
     ("performance_hardening_13_4_1", "scripts.verify_performance_hardening_13_4_1"),
     ("repository_structure", "scripts.verify_repository_structure"),
+    ("desktop_convergence_13_68", "scripts.verify_desktop_convergence_13_68"),
 )
 
 
