@@ -25,15 +25,21 @@ def test_desktop_build_keeps_13_7_base_polish_and_advances_current_product_layer
     vite = (ROOT / "desktop" / "vite.config.js").read_text(encoding="utf-8")
     base_css = (ROOT / "desktop" / "public" / "polish-13-7.css").read_text(encoding="utf-8")
     relational_css = (ROOT / "desktop" / "public" / "relational-13-8.css").read_text(encoding="utf-8")
+    current_css = (ROOT / "desktop" / "public" / "product-shell-13-67.css").read_text(encoding="utf-8")
     assert "polish-13-7.css" in vite
     assert "relational-13-8.css" in vite
-    assert "replaceAll('12.12', '13.8')" in vite
-    assert "replaceAll('13.7', '13.8')" in vite
+    assert "product-shell-13-67.css" in vite
+    assert "replaceAll('12.12', '13.67')" in vite
+    assert "replaceAll('13.7', '13.67')" in vite
+    assert "replaceAll('13.8', '13.67')" in vite
     assert "prefers-reduced-motion" in base_css
     assert "max-width: 1380px" in base_css
     assert "min-width: 960px" in base_css
     assert "shared-life-action" in relational_css
     assert "prefers-reduced-motion" in relational_css
+    assert "13.67" in current_css
+    assert ".app-shell::after" in current_css
+    assert ".workspace-overlay" in current_css
 
 
 def test_mobile_web_and_compatibility_wrapper_are_byte_aligned_for_shared_shell():
