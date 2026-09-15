@@ -83,7 +83,6 @@ class ProviderPressure:
             "quota_remaining_fraction": self.quota_remaining_fraction,
             "cooldown_remaining_seconds": round(max(0.0, self.cooldown_until - now), 2),
             "score": round(self.score(now), 4),
-            "routing_signal": self.has_explicit_routing_signal(now),
             "content_retained": False,
         }
 
