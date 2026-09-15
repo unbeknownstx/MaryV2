@@ -2108,16 +2108,37 @@ class MaryDesktopBridge(QObject):
     ) -> None:  # noqa: N802
         self.windowMoveRequested.emit()
 
+    def _emit_dashboard_state(
+        self,
+    ) -> None:
+        """Refresh presentation state without making it turn authority."""
+        try:
+            payload = self.getDashboardState()
+        except Exception as exc:
+            print(
+                "[MaryDesktop] dashboard projection unavailable: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return
+        self.dashboardStateChanged.emit(payload)
+
     def _emit_character_state(
         self,
     ) -> None:
-        self.characterStateChanged.emit(
-            self.getCharacterState()
-        )
+        """Best-effort UI projection; never abort a canonical conversation turn."""
+        try:
+            payload = self.getCharacterState()
+        except Exception as exc:
+            print(
+                "[MaryDesktop] character projection unavailable: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+        else:
+            self.characterStateChanged.emit(payload)
 
-        self.dashboardStateChanged.emit(
-            self.getDashboardState()
-        )
+        self._emit_dashboard_state()
 
     @Slot()
     def save(
@@ -2505,9 +2526,7 @@ class MaryDesktopBridge(QObject):
         self._pending_turn_trace = None
         self._pending_turn_submitted_at = None
 
-        self.dashboardStateChanged.emit(
-            self.getDashboardState()
-        )
+        self._emit_dashboard_state()
 
     @Slot(object)
     def _on_presence_finished(self, payload: object) -> None:
