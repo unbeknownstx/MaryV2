@@ -30,9 +30,9 @@ from .resource_telemetry import ResourceTelemetry, merge_resource_load, sanitize
 from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_sensor_task_args
 
 
-_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
+_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
-_REPLAY_SAFE_CAPABILITIES = {"personal_search", "llm.ollama", "llm.llama_cpp", *SENSOR_CAPABILITIES}
+_REPLAY_SAFE_CAPABILITIES = {"personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", *SENSOR_CAPABILITIES}
 _REALTIME_OPERATIONS = {"conversation", "quick_answer", "stt", "vision"}
 ExecutionPolicy = Callable[[str], None]
 
@@ -48,7 +48,7 @@ def _clean_text(value: Any, limit: int) -> str:
 def _operation_for(capability: str, args: dict[str, Any] | None) -> str:
     name = str(capability or "").strip().lower()
     values = dict(args or {})
-    if name in {"llm.ollama", "llm.llama_cpp"}:
+    if name in {"llm.local", "llm.ollama", "llm.llama_cpp"}:
         role = str(values.get("role") or "general").strip().lower()
         return {
             "conversation": "conversation",
@@ -87,7 +87,7 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
             raise ValueError("personal_search requires a non-empty query.")
         limit = int(values.get("limit", 8) or 8)
         return {"query": query, "limit": max(1, min(12, limit))}
-    if capability in {"llm.ollama", "llm.llama_cpp"}:
+    if capability in {"llm.local", "llm.ollama", "llm.llama_cpp"}:
         provider_label = capability
         raw_messages = values.get("messages")
         if not isinstance(raw_messages, list) or not raw_messages:
@@ -137,7 +137,7 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
         return sanitize_mcp_result(capability, values)
     if capability in SENSOR_CAPABILITIES:
         return sanitize_sensor_result(capability, values)
-    if capability not in {"llm.ollama", "llm.llama_cpp"}:
+    if capability not in {"llm.local", "llm.ollama", "llm.llama_cpp"}:
         return values
     content = str(values.get("content") or "").strip()
     if not content:
@@ -152,9 +152,26 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
             safe_usage[key] = max(0, int(usage_values.get(key, 0) or 0))
         except (TypeError, ValueError):
             safe_usage[key] = 0
+    runtime = str(values.get("runtime") or "").strip().lower()
+    if runtime not in {"lm_studio", "ollama", "llama_cpp"}:
+        runtime = (
+            "llama_cpp"
+            if capability == "llm.llama_cpp"
+            else "ollama"
+            if capability == "llm.ollama"
+            else "local"
+        )
+    provider = (
+        "local_device"
+        if capability == "llm.local"
+        else "llama_cpp"
+        if capability == "llm.llama_cpp"
+        else "ollama"
+    )
     return {
         "content": content,
-        "provider": "llama_cpp" if capability == "llm.llama_cpp" else "ollama",
+        "provider": provider,
+        "runtime": runtime,
         "model": str(values.get("model") or "unknown")[:160],
         "finish_reason": str(values.get("finish_reason") or "")[:80],
         "usage": safe_usage,
