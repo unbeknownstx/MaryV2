@@ -13,19 +13,20 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.10 live stream cohost](STREAM_COHOST_13_10.md),
 [13.11 home compute fabric](HOME_COMPUTE_FABRIC_13_11.md),
 [13.12 bounded home sensor workers](HOME_SENSOR_WORKERS_13_12.md),
-[13.13 public creator voice stream bridge](STREAM_SENSES_13_13.md), and
-[13.14 character intelligence / learning interop](CHARACTER_INTELLIGENCE_LEARNING_13_14.md), and
+[13.13 public creator voice stream bridge](STREAM_SENSES_13_13.md),
+[13.14 character intelligence / learning interop](CHARACTER_INTELLIGENCE_LEARNING_13_14.md),
 [13.15 frontier / open model fabric](OPEN_MODEL_FABRIC_13_15.md),
 [13.16 model intelligence](MODEL_INTELLIGENCE_13_16.md),
 [13.17 cognitive character runtime](COGNITIVE_CHARACTER_RUNTIME_13_17.md),
 [13.18–13.23 character runtime convergence](CHARACTER_RUNTIME_CONVERGENCE_13_18_13_23.md),
 [13.24 inference acceleration](INFERENCE_ACCELERATION_13_24.md),
-[13.25–13.28 ecosystem mining](ECOSYSTEM_MINING_13_25_13_28.md), and
+[13.25–13.28 ecosystem mining](ECOSYSTEM_MINING_13_25_13_28.md),
 [13.29–13.32 cognitive research convergence](RESEARCH_CONVERGENCE_13_29_13_32.md),
-[13.33 bounded cognitive execution](COGNITIVE_EXECUTION_13_33.md), and
+[13.33 bounded cognitive execution](COGNITIVE_EXECUTION_13_33.md),
 [13.34 computational state fabric](COMPUTATIONAL_STATE_FABRIC_13_34.md),
-[13.35 model execution fabric](MODEL_EXECUTION_FABRIC_13_35.md), and
-[13.36 MaryOS Linux substrate](MARYOS_LINUX_SUBSTRATE_13_36.md).
+[13.35 model execution fabric](MODEL_EXECUTION_FABRIC_13_35.md),
+[13.36 MaryOS Linux substrate](MARYOS_LINUX_SUBSTRATE_13_36.md), and
+[13.60–13.64 unified provider/model execution fabric](FREELLMAPI_INTEGRATION_13_64.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -55,8 +56,11 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Adaptive deliberation | `mary.cognition.deliberation` | ACTIVE POLICY 13.29 | Bounded single/verify/branch strategies, confidence/latency budgets and ephemeral structural workspace; private chain-of-thought is not exposed or persisted. |
 | Bounded cognitive execution | `mary.cognition.deliberation.DeliberationExecutor` | ACTIVE 13.33 | Executes caller-supplied single/verify/branch candidate workflows under pass/branch/latency bounds; intermediate candidates remain ephemeral and only structural outcome evidence may be recorded. |
 | Experience-informed strategy advisor | `mary.learning.strategy_advisor` | ACTIVE PROPOSAL 13.33 | Compares content-free trajectory outcomes and proposes an existing reasoning strategy; cannot mutate runtime policy, prompts, identity, memory, providers or weights. |
-| Provider routing | `mary.llm.router` | ACTIVE ENRICHED 13.15 | Free/cheap/private/expert plus explicit frontier/specialist routes; models never own identity. |
-| Frontier/open model fabric | `mary.llm.provider_catalog`, `mary.llm.providers.openai_compatible` | ACTIVE OPTIONAL 13.15/13.35 | Lazy direct DeepSeek/Z.AI-Qwen/Kimi/MiniMax/Cerebras/Together/Fireworks presets plus a generic OpenAI-compatible escape hatch. Paid-capable cloud routes are never injected into free-first merely because a key exists; loopback custom endpoints may advertise zero-local/local-only capability. Exact model license remains a model-level decision. |
+| Provider routing | `mary.llm.router`, `mary.governance.resource.ResourceGovernor` | ACTIVE UNIFIED 13.64 | Hard privacy/cost/operation/structured-output/fallback eligibility is applied first. Health, quota, pressure, hysteresis and adaptive evidence may only filter/demote/reorder that eligible set; they cannot introduce a provider. |
+| Provider catalog / frontier routes | `mary.llm.provider_catalog`, `mary.llm.providers.openai_compatible` | ACTIVE OPTIONAL 13.15/13.64 | Creator/configuration-approved secret-free metadata for DeepSeek/Z.AI-Qwen/Kimi/MiniMax/Cerebras/Together/Fireworks plus compatible endpoints. Catalogs cannot enable credentials, widen permissions, bypass routing policy or auto-promote a model. |
+| Provider operational evidence | `mary.llm.provider_health`, `provider_pressure`, `quota_guard`, `quota_hysteresis`, `readiness`, `adaptive_provider_routing`, `provider_analytics` | ACTIVE EPHEMERAL 13.60–13.64 | Content-free health/quota/latency/readiness evidence below router authorization. Deterministic cold-start order remains valid; adaptive evidence is bounded and non-authoritative. |
+| Provider/gateway trust boundary | `mary.llm.catalog_trust`, `provider_identity`, `endpoint_policy`, `transport_normalization`, `freellmapi` | ACTIVE OPTIONAL 13.64 | Signed-catalog freshness/replay protection, served-model substitution checks, endpoint/SSRF policy and capability-aware transport. FreeLLMAPI is a replaceable optional gateway, never a Core startup dependency or identity authority. |
+| Embedding provider routing | `mary.llm.embedding_router`, existing embedding/vector identity owners | ACTIVE BOUNDED 13.64 | Provider failover only across identical family/dimensions/vector-space identity; stored-vector identity remains authoritative above the route. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
 | Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional local capability; headless Windows node supported. |
 | Research/evidence | `mary.learning`, `mary.tools.web` | ACTIVE | External evidence remains provenance-bearing and temporary until accepted. |
@@ -64,8 +68,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. Sensor capabilities are default-deny local permissions. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
 | MaryOS Linux substrate | `mary.distributed.os_environment`, `scripts.maryos_status`, `maryos/` | ACTIVE FOUNDATION 13.36 | Read-only host/environment projection plus optional systemd user-service boot path for the existing bounded home node. No shell/root executor; Omarchy/Arch packaging remains optional/future. |
-| Home compute fabric | `mary.distributed.compute_fabric`, `mary.distributed.benchmarking`, `scripts.run_home_node` | ACTIVE OPTIONAL 13.11 | Benchmark-aware Mac/Windows/Linux worker selection and cross-platform node hosting; benchmark/resource data is disposable operational evidence only and never grants execution authority. |
-| Model execution fabric | `mary.llm.model_fabric`, Core compute-fabric projection | ACTIVE ADVISORY 13.35 | Separates discovered/available/authorized/feasible/suitable/preferred engines by task lane. Explicit private/local `conversation_fast` uses a bounded worker-context projection so small resident models do not ingest Mary's entire canonical state; deep/task work keeps the richer route. Local and frontier candidates remain benchmark-before-promotion; no spend, identity, memory or permission authority. |
+| Home compute fabric | `mary.distributed.compute_fabric`, `mary.distributed.benchmarking`, `scripts.run_home_node` | ACTIVE OPTIONAL 13.11/13.59 | Benchmark/load/resource-aware Mac/Windows/Linux worker selection; qualified model identities, resource-fit calibration/provenance and explainable decisions are disposable operational evidence only and never grant execution authority. |
+| Model execution fabric | `mary.llm.model_fabric`, Core compute-fabric projection | ACTIVE ADVISORY 13.35–13.64 | Canonical portfolio projection across provider catalog, local/node suitability and provider operational revision. Separates discovered/configured/authorized/reachable/feasible/capable/suitable/preferred by task lane; local/frontier/gateway candidates remain benchmark-before-promotion. No spend, identity, memory or permission authority. |
 | Runtime resource profiling | `mary.distributed.resource_profile` | ACTIVE HINT 13.11 | CPU/memory/Metal/Vulkan/local-runtime visibility and optional GPU labels/VRAM hints guide empirical testing only; hardware presence is not permission or proof of useful acceleration. |
 | Home sensor workers | `mary.distributed.sensors`, `mary.distributed.sensor_node` | ACTIVE OPTIONAL 13.12/13.14 | Default-deny typed `sensor.audio_transcribe`, `sensor.screen_capture`, and 13.14 `sensor.screen_describe`. Audio/screens/visual descriptions are ephemeral evidence, never memory truth or action authority. |
 | Specialist STT bridge | `mary.desktop.stt` | ACTIVE OPTIONAL 13.14 | Existing Groq/faster-whisper/whisper.cpp plus device-configured Qwen3-ASR/FluidAudio/specialist HTTP. Only loopback HTTP or HTTPS; task payloads cannot choose provider URL/model path/executable. |
@@ -128,4 +132,4 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 - Replace the bounded stream speech-duration estimate with explicit renderer/browser playback completion acknowledgement if stream-floor timing proves materially inaccurate in live testing.
 - Continue live cross-device/Core/node/Twitch/OBS testing under real provider/network failures and collect operational latency/readiness evidence.
 - Establish an intentional production continuity dataset after development/test state is discarded.
-- Implement the 13.34 computational-state inventory/diagnostics and measured KV/prefix-cache observability before promoting any persistent RAM/NVMe/remote cache service.
+- Continue measured resource-fit/provider calibration and exact-head cross-platform validation before promoting new models or gateways into preferred routes.
