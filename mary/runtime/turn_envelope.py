@@ -98,6 +98,21 @@ def build_turn_envelope(
             )
         )
 
+    # Surface-local time is ephemeral observation only. The protocol validates
+    # it before remote Core receives it; direct/local callers still get a tight
+    # character/length filter here. It never becomes identity or memory state.
+    if "client_local_time" in source:
+        local_time = str(source.get("client_local_time") or "").strip()
+        if (
+            local_time
+            and len(local_time) <= 64
+            and re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})",
+                local_time,
+            )
+        ):
+            envelope["client_local_time"] = local_time
+
     return envelope
 
 
