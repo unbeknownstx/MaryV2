@@ -1421,27 +1421,89 @@ function renderMind() {
 
 function renderMemories() {
   const highlights = dashboardState.memory_highlights || [];
+  const archive = dashboardState.memory_archive || {};
+  const episodes = archive.episodic || [];
+  const facts = archive.semantic || [];
+  const shared = archive.shared_history || [];
+  const milestones = archive.milestones || [];
   const activities = dashboardState.recent_activities || [];
   const memory = dashboardState.live?.memory || {};
-  return `
-    <div class="workspace-grid three">
-      <div class="workspace-panel accent"><h3>Episodic</h3><div class="data-row"><span>Stored experiences</span><strong>${memory.episodic ?? 0}</strong></div></div>
-      <div class="workspace-panel accent"><h3>Semantic</h3><div class="data-row"><span>Established knowledge</span><strong>${memory.semantic ?? 0}</strong></div></div>
-      <div class="workspace-panel accent"><h3>Working</h3><div class="data-row"><span>Active context</span><strong>${memory.working ?? 0}</strong></div></div>
+  const durableCount = Number(memory.episodic || 0) + Number(memory.semantic || 0);
+  const continuityCount = shared.length + milestones.length;
+  const archiveStatus = durableCount
+    ? `${durableCount} canonical memory record${durableCount === 1 ? '' : 's'} available.`
+    : continuityCount
+      ? `The current Core memory store is empty, but ${continuityCount} grounded relationship-history item${continuityCount === 1 ? '' : 's'} remain available.`
+      : 'The current Core has no visible durable memory or shared-history records yet.';
+
+  const episodicRows = listOrEmpty(episodes, (item) => `
+    <div class="memory-record">
+      <div class="memory-record-head"><span class="memory-source episodic">EPISODIC</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.content || 'Memory')}</strong>
+      <small>${escapeHtml(titleCase(item.event_type || item.source || 'interaction'))}</small>
     </div>
-    <div class="section-title">CURRENT CREATOR PROFILE HIGHLIGHTS</div>
-    <div class="memory-browser">
-      <div class="workspace-panel timeline">
-        ${listOrEmpty(highlights, (item) => `
-          <div class="data-row"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.title)}</strong></div>
-        `, 'Mary does not have structured creator highlights to show yet.')}
-      </div>
-      <div class="workspace-panel memory-detail">
-        <h3>Memory policy</h3>
-        <p>This screen intentionally starts with source-aware creator profile items and counts instead of dumping raw episodic files. Raw-memory browsing can be added as an explicit advanced view without changing Mary's memory architecture.</p>
-        <div class="data-row"><span>Backup recovered</span><strong>${memory.recovered_from_backup ? 'Yes' : 'No'}</strong></div>
-        <div class="data-row"><span>Recent activity</span><strong>${activities.length}</strong></div>
-      </div>
+  `, 'No episodic memories are stored in the current canonical Core memory file.');
+
+  const semanticRows = listOrEmpty(facts, (item) => `
+    <div class="memory-record">
+      <div class="memory-record-head"><span class="memory-source semantic">KNOWLEDGE</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.value || 'Knowledge')}</strong>
+      <small>${escapeHtml([item.subject, item.predicate].filter(Boolean).map(titleCase).join(' · ') || 'Semantic memory')}</small>
+    </div>
+  `, 'No semantic memories have been promoted in the current canonical Core.');
+
+  const sharedRows = listOrEmpty(shared, (item) => `
+    <div class="memory-record shared-history">
+      <div class="memory-record-head"><span class="memory-source shared">SHARED HISTORY</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.description || 'Shared event')}</strong>
+      <small>${escapeHtml(titleCase(item.kind || item.type || 'relationship'))}</small>
+    </div>
+  `, 'No bounded relationship-history entries are available.');
+
+  const milestoneRows = listOrEmpty(milestones, (item) => `
+    <div class="memory-record milestone">
+      <div class="memory-record-head"><span class="memory-source milestone">MILESTONE</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.title || 'Milestone')}</strong>
+      ${item.description && item.description !== item.title ? `<small>${escapeHtml(item.description)}</small>` : ''}
+    </div>
+  `, 'No relationship milestones are available.');
+
+  return `
+    <div class="memory-status-banner ${durableCount ? 'has-memory' : continuityCount ? 'has-continuity' : 'empty'}">
+      <div><span>CONTINUITY ARCHIVE</span><strong>${escapeHtml(archiveStatus)}</strong></div>
+      <small>Memory and relationship history stay separate canonical owners; this screen is a read-only creator view across both.</small>
+    </div>
+
+    <div class="workspace-grid four memory-count-grid">
+      <div class="workspace-panel memory-count-card"><span>EPISODIC</span><strong>${memory.episodic ?? 0}</strong><small>Stored experiences</small></div>
+      <div class="workspace-panel memory-count-card"><span>SEMANTIC</span><strong>${memory.semantic ?? 0}</strong><small>Established knowledge</small></div>
+      <div class="workspace-panel memory-count-card"><span>WORKING</span><strong>${memory.working ?? 0}</strong><small>Active context</small></div>
+      <div class="workspace-panel memory-count-card"><span>SHARED HISTORY</span><strong>${shared.length}</strong><small>Relationship-owned continuity</small></div>
+    </div>
+
+    <div class="section-title">MEMORY HIGHLIGHTS</div>
+    <div class="workspace-panel memory-highlight-panel">
+      ${listOrEmpty(highlights, (item) => `
+        <div class="data-row"><span>${escapeHtml(item.label || 'Memory')}</span><strong>${escapeHtml(item.title || '—')}</strong></div>
+      `, 'No structured highlights yet. The archive below still shows any canonical records that exist.')}
+    </div>
+
+    <div class="memory-archive-grid">
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Experiences</h3><span>${episodes.length}</span></div>${episodicRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Knowledge</h3><span>${facts.length}</span></div>${semanticRows}</section>
+    </div>
+
+    <div class="section-title">SHARED CONTINUITY</div>
+    <div class="memory-archive-grid">
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Shared history</h3><span>${shared.length}</span></div>${sharedRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Milestones</h3><span>${milestones.length}</span></div>${milestoneRows}</section>
+    </div>
+
+    <div class="workspace-panel memory-policy-panel">
+      <h3>What this means</h3>
+      <p>${escapeHtml(archive.policy || 'This is a bounded private projection over canonical memory and relationship continuity.')}</p>
+      <div class="data-row"><span>Backup recovered</span><strong>${memory.recovered_from_backup ? 'Yes' : 'No'}</strong></div>
+      <div class="data-row"><span>Recent activity</span><strong>${activities.length}</strong></div>
     </div>
   `;
 }
