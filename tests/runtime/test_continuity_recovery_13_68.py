@@ -203,3 +203,55 @@ def test_legacy_profile_facade_is_recovered_without_requiring_profile_records():
     assert result["added"]["creator_profile_records"] == 2
     assert mary.relationship.user_model.facts["favorite_tool"] == "terminal"
     assert "local AI" in mary.relationship.user_model.interests
+
+
+def test_profile_preview_matches_actual_merge_when_legacy_facade_duplicates_records():
+    mary = _mary()
+    payload = {
+        "memory": {},
+        "relationship": {
+            "user_model": {
+                "facts": {"favorite_tool": "terminal"},
+                "preferences": {"editor": "vscode"},
+                "interests": ["local AI"],
+                "profile_records": [
+                    {
+                        "id": "profile_1",
+                        "category": "fact",
+                        "key": "favorite_tool",
+                        "value": "terminal",
+                        "status": "current",
+                        "source": "creator_natural",
+                        "confidence": 1.0,
+                        "explicitly_shared": True,
+                    },
+                    {
+                        "id": "profile_2",
+                        "category": "preference",
+                        "key": "editor",
+                        "value": "vscode",
+                        "status": "current",
+                        "source": "creator_natural",
+                        "confidence": 1.0,
+                        "explicitly_shared": True,
+                    },
+                    {
+                        "id": "profile_3",
+                        "category": "interest",
+                        "key": "interest",
+                        "value": "local AI",
+                        "status": "current",
+                        "source": "creator_natural",
+                        "confidence": 1.0,
+                        "explicitly_shared": True,
+                    },
+                ],
+            },
+        },
+    }
+
+    plan = build_recovery_plan(mary, payload)
+    result = apply_recovery_payload(mary, payload)
+
+    assert plan["additions"]["creator_profile_records"] == 3
+    assert result["added"]["creator_profile_records"] == 3
