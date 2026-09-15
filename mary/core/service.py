@@ -781,12 +781,20 @@ class MaryCoreService:
         registry = getattr(self.mary, "node_registry", None)
         nodes = registry.snapshot() if callable(getattr(registry, "snapshot", None)) else {}
         tasks = self.device_tasks.snapshot()
+        local_route = {}
         ollama_route = {}
+        llama_cpp_route = {}
         if registry is not None:
             preview = getattr(registry, "route_preview", None)
             if callable(preview):
+                local_route = preview("llm.local")
                 ollama_route = preview("llm.ollama")
-        capability_routes = {"llm.ollama": ollama_route}
+                llama_cpp_route = preview("llm.llama_cpp")
+        capability_routes = {
+            "llm.local": local_route,
+            "llm.ollama": ollama_route,
+            "llm.llama_cpp": llama_cpp_route,
+        }
         try:
             model_execution = build_model_execution_fabric(
                 router,
