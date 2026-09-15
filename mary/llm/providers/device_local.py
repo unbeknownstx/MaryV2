@@ -38,11 +38,17 @@ class DeviceLocalProvider(LLMInterface):
         self.broker = broker
         self.role = self._normalize_role(role)
         if timeout_seconds is None:
+            timeout_env = (
+                "MARY_DEVICE_LOCAL_FAST_TIMEOUT"
+                if self.role == "fast"
+                else "MARY_DEVICE_LOCAL_TIMEOUT"
+            )
+            timeout_default = "12" if self.role == "fast" else "180"
             try:
-                timeout_seconds = float(os.getenv("MARY_DEVICE_LOCAL_TIMEOUT", "180"))
+                timeout_seconds = float(os.getenv(timeout_env, timeout_default))
             except (TypeError, ValueError):
-                timeout_seconds = 180.0
-        self.timeout_seconds = max(5.0, min(240.0, float(timeout_seconds)))
+                timeout_seconds = float(timeout_default)
+        self.timeout_seconds = max(3.0, min(240.0, float(timeout_seconds)))
 
     @staticmethod
     def _normalize_role(role: str) -> str:
@@ -61,11 +67,17 @@ class DeviceLocalProvider(LLMInterface):
         )
 
     def for_role(self, role: str) -> "DeviceLocalProvider":
+        normalized = self._normalize_role(role)
+        # Purpose adapters should receive their own role budget. In
+        # particular, conversation_fast must not inherit the 180 s general
+        # device wait merely because the registered provider was created as
+        # role=general.
+        inherited_timeout = self.timeout_seconds if normalized == self.role else None
         return DeviceLocalProvider(
             self.registry,
             self.broker,
-            role=self._normalize_role(role),
-            timeout_seconds=self.timeout_seconds,
+            role=normalized,
+            timeout_seconds=inherited_timeout,
         )
 
     def for_purpose(self, purpose: str | None) -> "DeviceLocalProvider":
