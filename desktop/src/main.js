@@ -253,7 +253,7 @@ function syncAvatarPresentation() {
     : (currentVrm
       ? 'Live VRM active'
       : avatarLoadError
-        ? `VRM fallback · ${avatarLoadError.slice(0, 72)}`
+        ? 'Portrait mode · 3D avatar unavailable'
         : 'VRM unavailable · local reference art');
   $$('[data-avatar-presentation]').forEach((button) => {
     button.classList.toggle('active', button.dataset.avatarPresentation === avatarPresentation);
