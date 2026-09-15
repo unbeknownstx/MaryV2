@@ -28,7 +28,8 @@ def test_desktop_build_keeps_13_7_base_polish_and_advances_current_product_layer
     current_css = (ROOT / "desktop" / "public" / "product-shell-13-68.css").read_text(encoding="utf-8")
     assert "polish-13-7.css" in vite
     assert "relational-13-8.css" in vite
-    assert "product-shell-13-67.css" in vite\n    assert "product-shell-13-68.css" in vite
+    assert "product-shell-13-67.css" in vite
+    assert "product-shell-13-68.css" in vite
     assert "replaceAll('12.12', '13.68')" in vite
     assert "replaceAll('13.7', '13.68')" in vite
     assert "replaceAll('13.8', '13.68')" in vite
