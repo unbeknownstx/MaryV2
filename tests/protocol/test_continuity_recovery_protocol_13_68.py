@@ -185,6 +185,7 @@ def test_recovery_apply_backs_up_merges_and_rejects_stale_replay(
     assert payload["backup"]["verified"] is True
     assert payload["merge"]["added"]["episodic"] == 1
     assert payload["merge"]["added"]["relationship_history"] == 1
+    assert payload["post_merge_verification"]["total_additions"] == 0
     assert payload["before_durable_state_fingerprint"] != (
         payload["after_durable_state_fingerprint"]
     )
