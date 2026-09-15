@@ -26,7 +26,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.34 computational state fabric](COMPUTATIONAL_STATE_FABRIC_13_34.md),
 [13.35 model execution fabric](MODEL_EXECUTION_FABRIC_13_35.md),
 [13.36 MaryOS Linux substrate](MARYOS_LINUX_SUBSTRATE_13_36.md), and
-[13.60–13.64 unified provider/model execution fabric](FREELLMAPI_INTEGRATION_13_64.md).
+[13.60–13.64 unified provider/model execution fabric](FREELLMAPI_INTEGRATION_13_64.md), and
+[13.65 stable Desktop conversation runtime](DESKTOP_STABLE_CONVERSATION_13_65.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -62,7 +63,9 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Provider/gateway trust boundary | `mary.llm.catalog_trust`, `provider_identity`, `endpoint_policy`, `transport_normalization`, `freellmapi` | ACTIVE OPTIONAL 13.64 | Signed-catalog freshness/replay protection, served-model substitution checks, endpoint/SSRF policy and capability-aware transport. FreeLLMAPI is a replaceable optional gateway, never a Core startup dependency or identity authority. |
 | Embedding provider routing | `mary.llm.embedding_router`, existing embedding/vector identity owners | ACTIVE BOUNDED 13.64 | Provider failover only across identical family/dimensions/vector-space identity; stored-vector identity remains authoritative above the route. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
-| Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional local capability; headless Windows node supported. |
+| Unified local conversation | `mary.llm.providers.local_runtime`, `device_local`, `llm.local` node executor | ACTIVE PRODUCT 13.65 | Ordinary conversation may prefer a permission-bounded replaceable host runtime (LM Studio/Ollama/llama.cpp); Core retains identity/state/routing authority and cloud fallback. |
+| Desktop runtime supervisor | `mary.desktop.runtime_supervisor` | ACTIVE BEST-EFFORT 13.65 | Starts/loads an already-installed qualified LM Studio model when available, enables bounded Desktop local compute, never downloads weights or blocks Mary startup. |
+| Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional explicit/private local capability; headless Windows node supported. |
 | Research/evidence | `mary.learning`, `mary.tools.web` | ACTIVE | External evidence remains provenance-bearing and temporary until accepted. |
 | Retrieval/reservoir | `mary.mind` | ACTIVE SUPPORT | FTS/vector/cache layers are derived, not truth authority. |
 | Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. Sensor capabilities are default-deny local permissions. |
