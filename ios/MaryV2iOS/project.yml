@@ -9,7 +9,7 @@ targets:
     sources:
       - Sources
     resources:
-      - Resources/Art
+      - Resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.unbeknownstx.MaryV2iOS
@@ -19,3 +19,4 @@ targets:
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Info.plist
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES

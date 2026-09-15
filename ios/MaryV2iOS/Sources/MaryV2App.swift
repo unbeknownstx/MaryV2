@@ -3,11 +3,6 @@ import SwiftUI
 @main
 struct MaryV2App: App {
     @StateObject private var app = AppState()
-<<<<<<< HEAD
-    var body: some Scene {
-        WindowGroup {
-            RootView().environmentObject(app).preferredColorScheme(.dark).task { await app.start() }
-=======
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -28,7 +23,6 @@ struct MaryV2App: App {
                         }
                     }
                 }
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
         }
     }
 }

@@ -1,7 +1,5 @@
 import Foundation
 
-<<<<<<< HEAD
-=======
 struct MaryMessage: Identifiable, Equatable {
     enum Role { case user, mary, system }
     let id = UUID()
@@ -110,7 +108,6 @@ enum PresencePhase: Equatable {
     }
 }
 
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
 enum MainTab: String, CaseIterable, Identifiable {
     case home, chat, together, work, focus, more
 
@@ -139,13 +136,6 @@ enum MainTab: String, CaseIterable, Identifiable {
     }
 }
 
-<<<<<<< HEAD
-enum ConversationMode: String, CaseIterable, Identifiable {
-    case adaptive, engaged, deep
-    var id: String { rawValue }
-    var label: String { switch self { case .adaptive: return "AUTO"; case .engaged: return "TALK"; case .deep: return "DEEP" } }
-}
-=======
 enum SharedLifeActivity: String, CaseIterable, Identifiable {
     case watch, game, create, study, work, music, date, unwind
     var id: String { rawValue }
@@ -226,25 +216,7 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
     case memories, growth, personality, presence, study, search, research
     case studio, gallery, media, voiceAvatar, devices, integrations
     case world, training, advanced
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
 
-enum PerformanceMode: String, CaseIterable, Identifiable {
-    case `private`, casual, focus, stream, performance
-    var id: String { rawValue }
-    var title: String { rawValue.capitalized }
-    var symbol: String {
-        switch self {
-        case .private: return "person.fill"
-        case .casual: return "cup.and.saucer.fill"
-        case .focus: return "scope"
-        case .stream: return "dot.radiowaves.left.and.right"
-        case .performance: return "theatermasks.fill"
-        }
-    }
-}
-
-enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
-    case memories, growth, personality, presence, study, search, research, studio, gallery, voiceAvatar, nodes, runtime, integrations, training, world, stream
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -257,44 +229,18 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .research: return "Research"
         case .studio: return "Studio"
         case .gallery: return "Gallery"
+        case .media: return "Media"
         case .voiceAvatar: return "Voice & Avatar"
-<<<<<<< HEAD
-        case .nodes: return "Nodes"
-        case .runtime: return "Runtime"
-=======
         case .devices: return "Devices"
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
         case .integrations: return "Integrations"
         case .world: return "World"
         case .training: return "Training"
-<<<<<<< HEAD
-        case .world: return "World"
-        case .stream: return "Stream"
-=======
         case .advanced: return "Advanced"
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
         }
     }
     var subtitle: String {
         switch self {
         case .memories: return "Continuity and recall"
-<<<<<<< HEAD
-        case .growth: return "Learning and development"
-        case .personality: return "Mary's current self"
-        case .presence: return "Live situational context"
-        case .study: return "Projects and review"
-        case .search: return "Search your connected nodes"
-        case .research: return "Persistent research threads"
-        case .studio: return "Creative productions"
-        case .gallery: return "Mary and project art"
-        case .voiceAvatar: return "Speech and presentation"
-        case .nodes: return "Mac and PC capability hosts"
-        case .runtime: return "Core health at a glance"
-        case .integrations: return "Connected services"
-        case .training: return "Feedback and training signals"
-        case .world: return "World context"
-        case .stream: return "Public performance state"
-=======
         case .growth: return "How Mary is developing"
         case .personality: return "Character and preferences"
         case .presence: return "What Mary is aware of now"
@@ -310,35 +256,17 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .world: return "Current world context"
         case .training: return "Feedback and adaptation"
         case .advanced: return "Core diagnostics"
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
         }
     }
     var symbol: String {
         switch self {
-<<<<<<< HEAD
-        case .memories: return "rectangle.stack.fill"
-        case .growth: return "arrow.up.right.circle.fill"
-        case .personality: return "sparkles"
-=======
         case .memories: return "brain.head.profile"
         case .growth: return "arrow.up.right.circle.fill"
         case .personality: return "heart.text.square.fill"
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
         case .presence: return "dot.radiowaves.left.and.right"
         case .study: return "book.closed.fill"
         case .search: return "magnifyingglass"
         case .research: return "doc.text.magnifyingglass"
-<<<<<<< HEAD
-        case .studio: return "wand.and.stars"
-        case .gallery: return "photo.on.rectangle.angled"
-        case .voiceAvatar: return "waveform.and.mic"
-        case .nodes: return "server.rack"
-        case .runtime: return "gauge.with.dots.needle.67percent"
-        case .integrations: return "link.circle.fill"
-        case .training: return "checkmark.seal.fill"
-        case .world: return "globe.americas.fill"
-        case .stream: return "dot.radiowaves.left.and.right"
-=======
         case .studio: return "paintbrush.fill"
         case .gallery: return "photo.on.rectangle.angled"
         case .media: return "play.rectangle.fill"
@@ -348,64 +276,10 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .world: return "globe.americas.fill"
         case .training: return "checkmark.seal.fill"
         case .advanced: return "gearshape.2.fill"
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
         }
     }
 }
 
-<<<<<<< HEAD
-struct MaryMessage: Identifiable, Equatable {
-    enum Role { case user, mary, system }
-    let id: UUID
-    let role: Role
-    let text: String
-    let createdAt: Date
-    init(id: UUID = UUID(), role: Role, text: String, createdAt: Date = Date()) {
-        self.id = id; self.role = role; self.text = text; self.createdAt = createdAt
-    }
-}
-
-struct TurnResponse: Codable {
-    let response: String
-    let conversation_id: String?
-    let turn_id: String?
-    let effective_mode: String?
-}
-
-struct MaryVoiceAudio {
-    let data: Data
-    let mimeType: String
-    let provider: String
-    let model: String
-    let cached: Bool
-}
-
-struct StatusChipModel: Identifiable {
-    let id = UUID()
-    let label: String
-    let value: String
-    let symbol: String
-    let positive: Bool
-}
-
-struct InsightCard: Identifiable {
-    let id = UUID()
-    let title: String
-    let detail: String
-    let symbol: String
-}
-
-struct GalleryItem: Identifiable, Hashable {
-    let id = UUID()
-    let title: String
-    let baseName: String
-    let ext: String
-}
-
-enum AppModal: Identifiable {
-    case settings, conversations
-    var id: String { switch self { case .settings: return "settings"; case .conversations: return "conversations" } }
-=======
 struct CompanionSnapshot {
     var currentProject = ""
     var currentSummary = ""
@@ -418,5 +292,4 @@ struct CompanionSnapshot {
 enum AppModal: String, Identifiable {
     case settings, voiceCall
     var id: String { rawValue }
->>>>>>> af6a549d6369d98ee0b5399980c297e333b8962c
 }
