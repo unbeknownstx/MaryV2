@@ -730,6 +730,7 @@ class ReflectionEngine:
         if current_opening and current_opening in recent_openings:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
+        issues.extend(self._forced_register_audit(context, text))
         issues.extend(self._generic_handoff_audit(context, text))
         issues.extend(self._dialogue_plan_audit(context, text))
         issues.extend(self._character_contract_audit(context, text))
@@ -761,6 +762,51 @@ class ReflectionEngine:
         )
 
         return issues
+
+    @staticmethod
+    def _forced_register_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Catch small-model drift into stacked slang/performative filler.
+
+        Mary's authored speech vocabulary remains valid character evidence. The
+        boundary here is frequency/context: distinctive tokens are rare and may
+        not become a generic style preset merely because a language worker saw
+        them in character state.
+        """
+
+        value = str(text or "").casefold().replace("’", "'")
+        creator = str(context.input_text or "").casefold().replace("’", "'")
+        rare_markers = (
+            "bucko",
+            "nah fam",
+            "feller",
+            "what up gang",
+            "twinnn",
+            "hit me with the deets",
+            "no drama, no fluff",
+            "no drama no fluff",
+            "get that beat cooked",
+            "what's the vibe",
+            "whats the vibe",
+        )
+        hits = sum(1 for marker in rare_markers if marker in value)
+        softening_feedback = bool(re.search(
+            r"\b(?:i hate how (?:hard|harsh|blunt|abrasive) you (?:are|sound)|"
+            r"i (?:don't|do not) like how (?:hard|harsh|blunt|abrasive) you (?:are|sound)|"
+            r"(?:stop|don't|do not) (?:being|sound(?:ing)?) so (?:hard|harsh|blunt|abrasive)|"
+            r"you(?:'re| are) (?:too|way too) (?:hard|harsh|blunt|abrasive))\b",
+            creator,
+            flags=re.IGNORECASE,
+        ))
+
+        if hits >= 2 or (softening_feedback and hits >= 1):
+            return [
+                "Conversation register boundary: over-forces rare slang/register "
+                "instead of matching the current turn."
+            ]
+        return []
 
     @staticmethod
     def _character_contract_audit(
