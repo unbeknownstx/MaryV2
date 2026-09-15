@@ -233,7 +233,15 @@ def ensure_lm_studio_runtime() -> dict[str, Any]:
 
 
 def prepare_desktop_runtime() -> dict[str, Any]:
-    """Prepare a usable local conversation lane without blocking desktop startup."""
+    """Prepare a usable local conversation lane without blocking desktop startup.
+
+    Creator Desktop product mode is intentionally local-first. When a bounded
+    ``llm.local`` runtime is actually reachable, the default product behavior is
+    to authorize *only that capability* on this same host so opening Mary is
+    sufficient to use it. ``MARY_DESKTOP_LOCAL_COMPUTE_AUTO_AUTHORIZE=false``
+    remains an explicit opt-out and every other filesystem/MCP/sensor/tool
+    permission keeps its normal deny-by-default boundary.
+    """
 
     configured = os.getenv("MARY_LOCAL_INFERENCE_RUNTIME", "auto").strip().lower() or "auto"
     lm_status: dict[str, Any] = {
@@ -265,22 +273,35 @@ def prepare_desktop_runtime() -> dict[str, Any]:
         }
 
     ready = bool(local_status.get("available"))
-    if ready and _env_bool("MARY_DESKTOP_LOCAL_COMPUTE", True):
+    local_compute_enabled = _env_bool("MARY_DESKTOP_LOCAL_COMPUTE", True)
+    auto_authorize = _env_bool("MARY_DESKTOP_LOCAL_COMPUTE_AUTO_AUTHORIZE", True)
+    local_authorized = False
+    if ready and local_compute_enabled:
         # Product mode: the desktop can host its bounded capability node so
         # opening Mary is sufficient for local conversation. Dedicated headless
         # home-node mode remains available for always-on/mobile use.
         os.environ.setdefault("MARY_DESKTOP_CAPABILITY_NODE_ENABLED", "true")
 
-        if _env_bool("MARY_DESKTOP_LOCAL_COMPUTE_AUTO_AUTHORIZE", False):
+        if auto_authorize:
             try:
-                DeviceExecutionPermissions().allow("llm.local")
+                permissions = DeviceExecutionPermissions()
+                permissions.allow("llm.local")
+                local_authorized = bool(permissions.is_allowed("llm.local"))
             except Exception:
-                pass
+                local_authorized = False
+        else:
+            try:
+                local_authorized = bool(DeviceExecutionPermissions().is_allowed("llm.local"))
+            except Exception:
+                local_authorized = False
 
     return {
         "ready": ready,
         "local": local_status,
         "lm_studio": lm_status,
+        "local_compute_enabled": local_compute_enabled,
+        "local_compute_auto_authorize": auto_authorize,
+        "local_compute_authorized": local_authorized,
         "capability_node_enabled": os.getenv(
             "MARY_DESKTOP_CAPABILITY_NODE_ENABLED",
             "false",
