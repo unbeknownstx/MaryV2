@@ -72,3 +72,13 @@ def test_launcher_matches_current_product_shell():
     assert "Local + cloud" in html
     assert "background:#0d1121" in css
     assert "backdrop-filter:none" in css
+
+
+def test_final_public_css_cascade_preserves_13_66_clarity():
+    polish = _text("desktop/public/polish-13-7.css")
+    relational = _text("desktop/public/relational-13-8.css")
+    assert "13.66 final-cascade convergence" in polish
+    assert "backdrop-filter: none !important" in polish
+    assert ".inspector-column { display:block; }" in polish
+    assert "background: #11162a" in relational
+    assert "backdrop-filter: none" in relational
