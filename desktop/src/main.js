@@ -10,6 +10,7 @@ import { formatMilliseconds, normalizeTurnTrace, providerAttemptSummary, timingV
 import { createHttpBridge, installMaryPwa } from './runtime/httpBridge.js';
 import './mobile.css';
 import './experience-v2.css';
+import './product-shell-13-66.css';
 import { installExperienceLayer } from './ui/experienceLayer.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -122,6 +123,120 @@ function clamp(value, min = 0, max = 1) {
 
 function percent(value) {
   return `${Math.round(clamp(value) * 100)}%`;
+}
+
+function providerDisplayName(value) {
+  const name = String(value || '').trim().toLowerCase();
+  const labels = {
+    local_device: 'Local Model',
+    groq: 'Groq',
+    gemini: 'Gemini',
+    openrouter: 'OpenRouter',
+    ollama: 'Ollama',
+    llama_cpp: 'llama.cpp',
+    openai: 'OpenAI',
+  };
+  return labels[name] || titleCase(name || 'runtime');
+}
+
+function connectedNodeCount(snapshot = {}) {
+  const rows = Array.isArray(snapshot?.nodes) ? snapshot.nodes : [];
+  return rows.filter((node) => node && node.connected !== false).length;
+}
+
+function projectProductShell() {
+  const setText = (selector, value) => {
+    const node = $(selector);
+    if (node) node.textContent = String(value ?? '');
+  };
+
+  const fabric = dashboardState?.compute_fabric || {};
+  const routing = fabric?.routing || {};
+  const routes = routing?.routes || {};
+  const configuredConversation = Array.isArray(routes.conversation)
+    ? routes.conversation
+    : [];
+  const dashboardRoute = Array.isArray(dashboardState?.providers?.effective_conversation_route)
+    ? dashboardState.providers.effective_conversation_route
+    : [];
+  const route = configuredConversation.length ? configuredConversation : dashboardRoute;
+  const capabilities = fabric?.capability_routes || {};
+  const local = capabilities['llm.local'] || {};
+  const lastGeneration = routing?.last_generation || {};
+  const localReady = Boolean(local?.available);
+  const coreConnected = Boolean(statusDot?.classList.contains('connected'));
+  const voice = runtimeStatus?.voice || {};
+  const nodes = dashboardState?.nodes || runtimeStatus?.nodes || {};
+  const nodeCount = connectedNodeCount(nodes);
+  const activeProvider = String(
+    lastGeneration.selected_provider
+    || lastTurnTrace.provider
+    || runtimeStatus.provider
+    || route[0]
+    || ''
+  ).trim();
+  const activeModel = String(
+    lastGeneration.selected_model
+    || lastTurnTrace.model
+    || runtimeStatus.model
+    || ''
+  ).trim();
+
+  const coreState = coreConnected ? 'Connected' : 'Connecting';
+  const coreDetail = coreConnected ? 'Canonical Mary Core' : 'Reconnecting to Mary';
+
+  let computeState = 'Fallback ready';
+  let computeDetail = route.length
+    ? route.map(providerDisplayName).join(' → ')
+    : 'Local + free-cloud fabric';
+  if (localReady) {
+    computeState = 'Local model ready';
+    const selectedNode = String(local.selected_node_id || '').trim();
+    computeDetail = selectedNode ? `Ready on ${selectedNode}` : 'Bounded local compute available';
+  } else if (activeProvider) {
+    computeState = providerDisplayName(activeProvider);
+    computeDetail = activeModel || computeDetail;
+  }
+
+  const voiceState = voice.enabled
+    ? providerDisplayName(voice.provider || 'voice')
+    : 'Text ready';
+  const voiceDetail = voice.enabled
+    ? (voice.local ? 'Local voice' : 'Fast voice + local fallback')
+    : 'Voice optional · chat remains available';
+
+  const presenceState = titleCase(conversationState || 'idle');
+  const presenceDetail = ({
+    idle: 'Ready to talk',
+    listening: 'Listening to you',
+    transcribing: 'Turning speech into text',
+    responding: 'Building a response',
+    thinking: 'Working through the turn',
+    speaking: 'Mary is speaking',
+    interrupted: 'Switching turns',
+  })[conversationState] || 'Ready';
+
+  setText('#shell-core-state', coreState);
+  setText('#shell-core-detail', coreDetail);
+  setText('#shell-compute-state', computeState);
+  setText('#shell-compute-detail', computeDetail);
+  setText('#shell-voice-state', voiceState);
+  setText('#shell-voice-detail', voiceDetail);
+  setText('#shell-presence-state', presenceState);
+  setText('#shell-presence-detail', presenceDetail);
+
+  setText('#system-core-value', coreState);
+  setText('#system-compute-value', localReady ? 'Local ready' : (activeProvider ? providerDisplayName(activeProvider) : 'Fallback'));
+  setText('#system-voice-value', voice.enabled ? providerDisplayName(voice.provider || 'voice') : 'Text');
+  setText('#system-nodes-value', nodeCount);
+
+  const overview = localReady
+    ? 'Canonical Mary Core is linked to replaceable local compute with cloud fallback.'
+    : 'Canonical Mary Core is linked; local compute can join without changing Mary identity.';
+  setText('#system-overview-copy', overview);
+
+  app.dataset.coreLink = coreConnected ? 'connected' : 'connecting';
+  app.dataset.localCompute = localReady ? 'ready' : 'fallback';
 }
 
 function syncAvatarPresentation() {
@@ -945,6 +1060,7 @@ messages?.addEventListener('click', (event) => {
 function setConnected(value, label = '') {
   statusDot.classList.toggle('connected', Boolean(value));
   statusText.textContent = label || (value ? 'Connection: Strong' : 'Disconnected');
+  projectProductShell();
 }
 
 function refreshConversationControls() {
@@ -1076,11 +1192,11 @@ function renderRecentActivities(items = []) {
 function renderProviderState(state = {}) {
   const route = state.effective_conversation_route || [];
   $('#provider-route').textContent = route.length
-    ? `Conversation: ${route.join(' → ')}`
-    : 'No effective conversation route reported yet.';
+    ? `Conversation: ${route.map(providerDisplayName).join(' → ')}`
+    : 'Conversation automatically uses the best ready route.';
   const badges = $('#provider-badges');
   badges.innerHTML = (state.providers || []).map((provider) => `
-    <span class="provider-badge ${provider.available ? 'ready' : ''}">${escapeHtml(provider.name)} · ${provider.available ? 'READY' : 'OFF'}</span>
+    <span class="provider-badge ${provider.available ? 'ready' : ''}">${escapeHtml(providerDisplayName(provider.name))} · ${provider.available ? 'READY' : 'OFF'}</span>
   `).join('');
 }
 
@@ -1110,6 +1226,7 @@ function applyTurnTrace(raw) {
   setText('#runtime-tts', formatMilliseconds(timings.tts_synthesis_ms));
   setText('#runtime-perceived', formatMilliseconds(timings.perceived_ms ?? timings.text_ready_ms));
   setText('#runtime-attempts', providerAttemptSummary(lastTurnTrace));
+  projectProductShell();
 }
 
 function applyCompanionPulse(ecosystem = ecosystemState) {
@@ -1196,6 +1313,7 @@ function applyDashboardState(raw) {
   if ($('#eco-inbox-count')) $('#eco-inbox-count').textContent = inbox.unread ?? 0;
   if ($('#eco-focus-state')) $('#eco-focus-state').textContent = focus.active ? 'Active' : 'Idle';
 
+  projectProductShell();
   if (currentScreen !== 'chat') renderWorkspace(currentScreen);
 }
 
@@ -2139,8 +2257,9 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
     residentHearingState = runtimeStatus.resident_hearing || residentHearingState;
     const voiceLabel = runtimeStatus.voice?.enabled ? ` · voice:${runtimeStatus.voice.provider}` : '';
     const sttLabel = runtimeStatus.speech_to_text?.enabled ? ` · mic:${runtimeStatus.speech_to_text.provider}` : '';
-    modelLabel.textContent = `${runtimeStatus.provider || 'runtime'} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
+    modelLabel.textContent = `${providerDisplayName(runtimeStatus.provider || 'runtime')} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
     if (runtimeStatus.conversation) setConversationState(runtimeStatus.conversation);
+    projectProductShell();
   });
   bridge.getLastTurnTrace?.((raw) => applyTurnTrace(parsePayload(raw)));
   bridge.getAvatarState((raw) => rememberAmbientAvatarState(parsePayload(raw)));
