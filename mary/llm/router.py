@@ -1620,7 +1620,11 @@ class LLMRouter:
                 available = bool(selected.is_available()) and remaining <= 0.0
                 model = self._safe_model_name(selected.model_name())
                 route_role = str(getattr(selected, "role", route_role))[:32]
-                if selected.__class__.__name__ == "DeviceOllamaProvider":
+                if selected.__class__.__name__ in {
+                    "DeviceLocalProvider",
+                    "DeviceOllamaProvider",
+                    "DeviceLlamaCppProvider",
+                }:
                     source = "capability_node"
             except Exception:
                 available = False
@@ -1702,6 +1706,8 @@ class LLMRouter:
     ) -> str:
         provider_name = self.provider_name(provider)
 
+        if provider_name == "local_device":
+            return self.get_provider("local_device").model_name()
         if provider_name == "groq":
             return self._groq_model_for_purpose()
         if provider_name == "gemini":
