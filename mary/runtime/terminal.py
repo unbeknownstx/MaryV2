@@ -92,11 +92,11 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
         return _pretty({
             "routing": routing,
             "local_capability": dict(
-                dict(fabric.get("capability_routes", {}) or {}).get(
-                    "llm.ollama",
-                    {},
+                (
+                    dict(fabric.get("capability_routes", {}) or {}).get("llm.local")
+                    or dict(fabric.get("capability_routes", {}) or {}).get("llm.ollama")
+                    or {}
                 )
-                or {}
             ),
             "private_route_ready": bool(fabric.get("private_route_ready", False)),
             "authority": str(fabric.get("authority") or "mary_core"),
