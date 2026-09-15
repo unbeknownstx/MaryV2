@@ -181,6 +181,7 @@ class LLMConfig:
     )
     conversation_provider_order: list[str] = field(
         default_factory=lambda: [
+            "local_device",
             "groq",
             "gemini",
             "openrouter",
