@@ -27,7 +27,15 @@ from mary.cognition.natural_input import normalize_for_matching
 
 
 class NaturalRelationshipLearner:
-    """Conservative detector for naturally volunteered creator facts."""
+    """Conservative detector for naturally volunteered creator facts.
+
+    The gate deliberately mirrors RelationshipManager's deterministic parser.
+    A previous version recognized several phrases the manager could not parse,
+    which made Mary appear to "notice" a fact without actually preserving it.
+    Keeping the two vocabularies aligned makes ordinary relationship learning
+    predictable and allows the Memory surface to fill from real creator-owned
+    evidence instead of only explicit ``remember this`` commands.
+    """
 
     MAX_CHARACTERS = 500
 
@@ -35,12 +43,7 @@ class NaturalRelationshipLearner:
         self,
         text: str,
     ) -> dict[str, Any] | None:
-        """
-        Return a relationship-learning candidate only for clear creator facts.
-
-        The returned text is still parsed by RelationshipManager.  This class
-        intentionally does not become a second relationship parser/database.
-        """
+        """Return a relationship-learning candidate only for clear creator facts."""
 
         content = " ".join(str(text or "").split()).strip()
         if not content or len(content) > self.MAX_CHARACTERS:
@@ -118,10 +121,11 @@ class NaturalRelationshipLearner:
     @staticmethod
     def _signal_type(text: str) -> str | None:
         # Communication preference must be checked before generic preference.
-        if re.match(r"^i prefer (?:that )?you\b", text):
+        # These forms intentionally match RelationshipManager's parser exactly.
+        if re.match(r"^i prefer you to\b", text):
             return "communication_preference"
 
-        if re.match(r"^i like it when you\b", text):
+        if re.match(r"^i prefer when you\b", text):
             return "communication_preference"
 
         preference_patterns = (
@@ -138,19 +142,25 @@ class NaturalRelationshipLearner:
             return "interest"
 
         goal_patterns = (
-            r"^my (?:main |primary |current |long[- ]term )?goal(?: right now)? is\b",
-            r"^one of my (?:main )?goals is\b",
-            r"^my goals (?:include|includes|are)\b",
+            r"^my goal is\b",
+            r"^my main goal is\b",
+            r"^one of my goals is\b",
         )
         if any(re.match(pattern, text) for pattern in goal_patterns):
             return "goal"
 
         value_patterns = (
             r"^i value\b",
-            r"^what matters (?:most )?to me is\b",
-            r"^.{2,160} is (?:very |really )?important to me[.!]?$",
         )
         if any(re.match(pattern, text) for pattern in value_patterns):
             return "value"
+
+        # RelationshipManager already has a deterministic generic-fact parser
+        # for ``my <subject> is <value>``. Let ordinary conversation use it.
+        # This captures concrete creator-owned facts such as job, city, device,
+        # pet/name, schedule, etc. without inferring anything the creator did not
+        # state. Favorites/goals above retain their more specific categories.
+        if re.match(r"^my [a-z0-9 _-]{1,80} is .+", text):
+            return "fact"
 
         return None
