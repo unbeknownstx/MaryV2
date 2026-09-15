@@ -263,7 +263,8 @@ def test_system_contract_reports_single_authoritative_router_and_configured_conv
 
     assert snapshot["single_llm_router"] is True
     assert snapshot["shared_emotion_state"] is True
-    assert snapshot["conversation_route"][0] == "groq"
+    assert snapshot["conversation_route"][0] == "local_device"
+    assert "groq" in snapshot["conversation_route"]
     assert "ollama" in snapshot["conversation_route"]
     assert snapshot["task_route"][0] == "groq"
     assert mary.system_contract.validate(mary) == []
