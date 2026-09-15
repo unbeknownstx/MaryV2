@@ -38,7 +38,7 @@ def test_desktop_build_keeps_13_7_base_polish_and_advances_current_product_layer
     assert "shared-life-action" in relational_css
     assert "prefers-reduced-motion" in relational_css
     assert "13.68" in current_css
-    assert ".app-shell::after" in current_css
+    assert '.app-shell:not([data-screen="chat"]) .chat-card' in current_css
     assert ".workspace-overlay" in current_css
 
 
