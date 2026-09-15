@@ -63,6 +63,13 @@ def test_stacked_slang_can_be_repaired_without_second_model_call():
     assert "i'm just here to work with you" in lowered
     assert "let's get it done" in lowered
 
+    softened = local_conversation_repair(
+        "I'm soft at heart, bucko. You're just getting the direct version today."
+    )
+    assert softened == (
+        "I'm soft at heart. You're just getting the direct version today."
+    )
+
 
 def test_ordinary_model_projection_does_not_dump_rare_slang_tokens():
     mind = _text("mary/cognition/mind_state.py")
