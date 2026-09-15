@@ -657,11 +657,27 @@ class MaryCoreService:
                 Path(data_root),
                 sourcebook=sourcebook,
             )
+            residual = build_recovery_plan(self.mary, normalized)
+            if int(residual.get("total_additions", 0) or 0) != 0:
+                raise RuntimeError(
+                    "Continuity recovery persisted but post-merge verification "
+                    "still reports unapplied additions."
+                )
             return _json_safe({
                 "ok": True,
                 "format": RECOVERY_FORMAT,
                 "mutated": True,
                 "merge": result,
+                "post_merge_verification": {
+                    "total_additions": 0,
+                    "total_duplicates": int(
+                        residual.get("total_duplicates", 0) or 0
+                    ),
+                    "total_id_collisions": int(
+                        residual.get("total_id_collisions", 0) or 0
+                    ),
+                    "conflicts": dict(residual.get("conflicts", {}) or {}),
+                },
                 "backup": backup,
                 "before_durable_state_fingerprint": expected,
                 "after_durable_state_fingerprint": post[
