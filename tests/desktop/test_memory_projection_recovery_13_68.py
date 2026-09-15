@@ -25,7 +25,6 @@ def test_memory_archive_reports_canonical_totals_not_only_visible_window(tmp_pat
         mary.relationship_history.record_shared_experience(
             description=f"Shared work continuity {index}",
             importance=0.6,
-            source="creator",
             metadata={"kind": "shared_work", "owner": "creator"},
         )
 
@@ -69,7 +68,6 @@ def test_broad_creator_recall_includes_relationship_history(tmp_path):
     mary.relationship_history.record_shared_experience(
         description="We spent time rebuilding Mary's desktop and local compute path.",
         importance=0.9,
-        source="creator",
         metadata={"kind": "shared_work", "owner": "creator"},
     )
 
