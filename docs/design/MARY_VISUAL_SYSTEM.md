@@ -54,7 +54,7 @@ Avoid permanent high-frequency glow, bouncing, spinning or particle motion. Resp
 
 ## Glass/HUD treatment
 
-Use translucent surfaces sparingly with readable solid fallbacks. Borders are hairlines, not bright boxes around every element. Blur is decorative; contrast must remain sufficient if blur/compositing is unavailable.
+Use translucent surfaces sparingly with readable solid fallbacks. Primary reading surfaces—conversation, workspace content, navigation and inspector context—should normally be opaque or near-opaque. Borders are hairlines, not bright boxes around every element. Blur is decorative; contrast must remain sufficient if blur/compositing is unavailable. The current Desktop application follows the concrete 13.66 rules in `DESKTOP_PRODUCT_SHELL_13_66.md`.
 
 Recommended interaction targets:
 
