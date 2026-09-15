@@ -2185,8 +2185,8 @@ class Mary:
             lowered = text.lower()
             if not any(marker in lowered for marker in work_markers):
                 return
-            if len(text) > 220:
-                text = text[:219].rstrip() + "…"
+            if len(text) > 160:
+                text = text[:159].rstrip() + "…"
             if text not in items:
                 items.append(text)
 
@@ -2949,7 +2949,12 @@ class Mary:
         for goal in creator_goals:
             normalized_goal = normalize_for_matching(str(goal or ""))
             if any(marker in normalized_goal for marker in project_goal_markers):
-                add(goal, source="creator_goal", score=108, creator_owned=True)
+                add(
+                    f"your durable goal is {goal}",
+                    source="creator_goal",
+                    score=108,
+                    creator_owned=False,
+                )
 
         # Durable shared-work history is the primary cross-restart source.
         for index, event in enumerate(self.relationship_history.get_recent(limit=32)):
