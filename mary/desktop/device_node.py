@@ -50,8 +50,13 @@ def _ollama_model_for_role(role: str) -> str:
     # but a constrained node can intentionally keep both on the same smaller
     # local model without changing Mary's canonical state or Core policy.
     conversation = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip() or general
-    fast = conversation
-    utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip() or fast
+    utility = os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip()
+    fast = (
+        os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip()
+        or utility
+        or conversation
+    )
+    utility = utility or fast
     return {
         "general": general,
         "conversation": conversation,
@@ -165,6 +170,18 @@ def _local_model_capability() -> CapabilityDescriptor | None:
         return None
     model = str(status.get("model") or provider.model_name())[:160]
     runtime = str(status.get("runtime") or provider.runtime_name())[:64]
+    fast_provider = LocalRuntimeProvider(role="fast")
+    fast_status = fast_provider.runtime_status()
+    fast_model = str(
+        fast_status.get("model")
+        or fast_provider.model_name()
+        or model
+    )[:160]
+    fast_runtime = str(
+        fast_status.get("runtime")
+        or fast_provider.runtime_name()
+        or runtime
+    )[:64]
     return CapabilityDescriptor(
         name="llm.local",
         available=True,
@@ -183,9 +200,14 @@ def _local_model_capability() -> CapabilityDescriptor | None:
             ),
             "general_model": model,
             "conversation_model": model,
-            "fast_model": model,
-            "utility_model": model,
+            "fast_model": fast_model,
+            "fast_runtime": fast_runtime,
+            "utility_model": (
+                os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip()
+                or fast_model
+            ),
             "runtime_order": list(status.get("order") or []),
+            "fast_runtime_order": list(fast_status.get("order") or []),
             "hardware_profile": os.getenv("MARY_NODE_HARDWARE_PROFILE", "").strip() or "default",
         },
     )
