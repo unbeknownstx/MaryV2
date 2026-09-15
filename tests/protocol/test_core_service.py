@@ -71,6 +71,7 @@ def test_core_owns_and_uses_one_application_turn_pipeline():
         "conversation_id": "c1",
         "device_id": "iphone",
         "requested_mode": "quick",
+        "client_local_time": "2026-09-15T02:21:00-07:00",
     }))
     assert core.application is app
     assert core.mary is app.mary
@@ -79,6 +80,7 @@ def test_core_owns_and_uses_one_application_turn_pipeline():
     assert result.effective_mode == "quick"
     assert app.calls[0][1]["device_id"] == "iphone"
     assert app.calls[0][1]["conversation_id"] == "c1"
+    assert app.calls[0][1]["client_local_time"] == "2026-09-15T02:21:00-07:00"
 
 
 def test_core_turn_projects_bounded_timing_and_lane_observability():
@@ -197,3 +199,16 @@ def test_explicit_offline_is_not_overridden_by_incoming_turn():
     else:
         raise AssertionError("explicit OFFLINE must remain a hard gate")
     assert app.calls == []
+
+
+
+def test_turn_request_rejects_naive_client_local_time():
+    try:
+        TurnRequest.from_dict({
+            "text": "time now",
+            "client_local_time": "2026-09-15T02:21:00",
+        })
+    except ValueError as exc:
+        assert "UTC offset" in str(exc)
+    else:
+        raise AssertionError("client_local_time without an offset must be rejected")
