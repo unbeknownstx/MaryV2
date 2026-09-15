@@ -1,0 +1,300 @@
+/* MaryV2 13.68 — integration/product convergence.
+   Loaded after 13.67. Presentation only; canonical state remains in Mary Core. */
+
+/* Non-Talk workspaces are real screens, not translucent cards over the chat. */
+.app-shell:not([data-screen="chat"]) .chat-card,
+.app-shell:not([data-screen="chat"]) .avatar-stage,
+.app-shell:not([data-screen="chat"]) .stage-header,
+.app-shell:not([data-screen="chat"]) .system-rail,
+.app-shell:not([data-screen="chat"]) .ambient-grid,
+.app-shell:not([data-screen="chat"]) .ambient-orb {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: none !important;
+}
+
+.app-shell:not([data-screen="chat"]) .main-stage::before,
+.app-shell:not([data-screen="chat"]) .main-stage::after {
+  display: none !important;
+}
+
+.app-shell:not([data-screen="chat"]) .main-stage {
+  background: #080b18 !important;
+  border-color: rgba(164, 177, 230, .11) !important;
+}
+
+.workspace-overlay {
+  z-index: 40 !important;
+  background: #090d1c !important;
+  border-color: rgba(168, 181, 232, .14) !important;
+  isolation: isolate !important;
+  opacity: 1 !important;
+}
+
+.workspace-header {
+  background: #0d1122 !important;
+}
+
+.workspace-body {
+  background: #090d1c !important;
+}
+
+.workspace-panel,
+.presence-panel,
+.presence-stat,
+.metric-card,
+.game-card,
+.mary-presence-card,
+.shared-activity-card,
+.relationship-context-card {
+  background: #11162a !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Mode controls must read as actual controls and expose selected state. */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0 12px;
+}
+
+.chip {
+  min-height: 34px !important;
+  padding: 7px 11px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(168, 181, 232, .12) !important;
+  background: #0d1122 !important;
+  color: #aaa7b8 !important;
+  font: inherit;
+  font-size: 10px !important;
+  cursor: pointer !important;
+  transition: background 130ms ease, border-color 130ms ease, color 130ms ease !important;
+}
+
+.chip:hover {
+  background: #171b31 !important;
+  color: #f6f3fb !important;
+  border-color: rgba(112, 221, 255, .20) !important;
+}
+
+.chip.active {
+  background: linear-gradient(135deg, rgba(255, 104, 177, .18), rgba(135, 102, 232, .20)) !important;
+  border-color: rgba(255, 104, 177, .48) !important;
+  color: #fff !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 104, 177, .08) !important;
+}
+
+.chip:focus-visible {
+  outline: 2px solid #8ee7ff !important;
+  outline-offset: 2px !important;
+}
+
+/* Memory archive */
+.memory-status-banner {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 13px 15px;
+  border: 1px solid rgba(168, 181, 232, .12);
+  border-radius: 13px;
+  background: #101427;
+}
+
+.memory-status-banner > div {
+  display: grid;
+  gap: 4px;
+}
+
+.memory-status-banner span {
+  color: #7d8195;
+  font-size: 8px;
+  letter-spacing: .14em;
+}
+
+.memory-status-banner strong {
+  color: #f4f1f8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.memory-status-banner small {
+  color: #9193a5;
+  line-height: 1.5;
+}
+
+.memory-status-banner.has-memory {
+  border-left: 3px solid rgba(108, 229, 174, .66);
+}
+
+.memory-status-banner.has-continuity {
+  border-left: 3px solid rgba(169, 141, 255, .70);
+}
+
+.memory-status-banner.empty {
+  border-left: 3px solid rgba(255, 210, 124, .60);
+}
+
+.workspace-grid.four {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.memory-count-card {
+  min-height: 92px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.memory-count-card > span {
+  color: #7d8195;
+  font-size: 8px;
+  letter-spacing: .12em;
+}
+
+.memory-count-card > strong {
+  color: #f6f3fc;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.memory-count-card > small {
+  color: #8d90a1;
+}
+
+.memory-highlight-panel {
+  margin-bottom: 6px;
+}
+
+.memory-archive-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.memory-column {
+  min-height: 210px;
+}
+
+.memory-column-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.memory-column-title h3 {
+  margin: 0 !important;
+}
+
+.memory-column-title span {
+  min-width: 27px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #0b0f1e;
+  border: 1px solid rgba(255,255,255,.05);
+  color: #aeb0c1;
+  text-align: center;
+  font-size: 9px;
+}
+
+.memory-record {
+  display: grid;
+  gap: 5px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255,255,255,.045);
+}
+
+.memory-record:first-of-type {
+  border-top: 0;
+}
+
+.memory-record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.memory-record strong {
+  color: #ece9f4;
+  font-size: 10.5px;
+  line-height: 1.48;
+  font-weight: 560;
+}
+
+.memory-record small {
+  color: #777b8f;
+  line-height: 1.45;
+}
+
+.memory-source {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.memory-source.episodic { color: #ff94c5; }
+.memory-source.semantic { color: #7fe4ff; }
+.memory-source.shared { color: #b7a3ff; }
+.memory-source.milestone { color: #ffd88b; }
+
+.memory-policy-panel {
+  margin-top: 12px;
+}
+
+/* Runtime/local-compute action surfaces */
+.compute-permission {
+  margin-top: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.compute-permission button {
+  min-height: 38px !important;
+}
+
+.compute-permission small {
+  color: #85899d;
+  line-height: 1.45;
+}
+
+.compute-state.authorized { color: #6ce5ae !important; }
+.compute-state.permission-required { color: #ffd27c !important; }
+.compute-state.offline { color: #9396a8 !important; }
+
+/* Avatar degraded state should be explicit rather than mysterious. */
+.avatar-runtime-note {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #0b0f1e;
+  border: 1px solid rgba(112, 221, 255, .10);
+  color: #9498aa;
+  line-height: 1.45;
+}
+
+@media (max-width: 1380px) {
+  .workspace-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .memory-archive-grid,
+  .workspace-grid.four {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    transition: none !important;
+  }
+}
