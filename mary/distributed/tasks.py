@@ -168,15 +168,19 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
         if capability == "llm.llama_cpp"
         else "ollama"
     )
-    return {
+    payload = {
         "content": content,
         "provider": provider,
-        "runtime": runtime,
         "model": str(values.get("model") or "unknown")[:160],
         "finish_reason": str(values.get("finish_reason") or "")[:80],
         "usage": safe_usage,
         "privacy": "generated on selected device; raw provider payload not retained by Core",
     }
+    # Preserve the long-standing llm.ollama/llm.llama_cpp wire contract.
+    # Runtime identity is new metadata only for the generic llm.local capability.
+    if capability == "llm.local":
+        payload["runtime"] = runtime
+    return payload
 
 
 @dataclass(frozen=True)
