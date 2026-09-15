@@ -1,25 +1,29 @@
-"""Task-aware model execution suitability for MaryV2.
+"""Task-aware provider/model execution suitability for MaryV2.
 
-This layer answers a different question from provider/node discovery:
+The canonical vocabulary is:
+    discovered != configured != authorized != reachable != feasible != suitable != preferred
 
-    reachable != executable != feasible != suitable != preferred
-
-It is deliberately advisory. It does not grant device permission, spend money,
-change Mary identity/state, or silently promote a model into a production route.
-Promotion remains evidence-driven.
-
-13.37 extends suitability with measured correctness/useful-throughput while
-remaining backward-compatible with latency/success-only node evidence.
+This projection is advisory. It does not grant device permission, spend money,
+change Mary identity/state, or silently promote a model. 13.60–13.64 provider
+health/quota/pressure/readiness evidence belongs to this same execution fabric,
+but remains subordinate to LLMRouter eligibility.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from .provider_catalog import FRONTIER_PROVIDER_NAMES, public_provider_catalog
+from .provider_catalog import (
+    CATALOG_AUTHORITY,
+    CATALOG_REVISION,
+    FRONTIER_PROVIDER_NAMES,
+    public_provider_catalog,
+)
 
 
-VERSION = "13.35"
+VERSION = "13.64"
+MODEL_SUITABILITY_REVISION = "13.35"
 RELIABILITY_REVISION = "13.37"
+PROVIDER_OPERATIONAL_REVISION = "13.64"
 
 TASK_LANES: dict[str, dict[str, Any]] = {
     "realtime_voice": {
@@ -170,12 +174,7 @@ def assess_local_capability_route(
 def _frontier_status(
     routing: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    """Project frontier readiness without constructing optional providers.
-
-    State/diagnostic reads must be observational. They may inspect the router's
-    already-published status, but they must not instantiate providers, touch
-    credentials, perform health checks, or mutate lazy provider caches.
-    """
+    """Project frontier readiness without constructing optional providers."""
 
     catalog = {str(item["name"]): dict(item) for item in public_provider_catalog()}
     published = {
@@ -236,7 +235,14 @@ def build_model_execution_fabric(
 
     return {
         "version": VERSION,
+        "model_suitability_revision": MODEL_SUITABILITY_REVISION,
         "reliability_revision": RELIABILITY_REVISION,
+        "provider_operational_revision": PROVIDER_OPERATIONAL_REVISION,
+        "provider_catalog": {
+            "revision": CATALOG_REVISION,
+            "authority": CATALOG_AUTHORITY,
+            "role": "approved_connection_metadata_not_execution_authority",
+        },
         "active_candidates": active,
         "frontier_catalog": _frontier_status(routing),
         "task_lanes": {
@@ -244,6 +250,15 @@ def build_model_execution_fabric(
             for name, values in TASK_LANES.items()
         },
         "local_ollama_suitability": local_suitability,
+        "provider_execution_policy": {
+            "ordering": "router_eligibility_then_resource_governor_then_bounded_attempts",
+            "health_quota_pressure": "operational_evidence_only",
+            "catalog_can_enable_provider": False,
+            "adaptive_can_add_ineligible_provider": False,
+            "gateway_is_replaceable": True,
+            "free_llm_api_required": False,
+            "embedding_failover_requires_same_space": True,
+        },
         "operating_policy": {
             "ordinary_budget": "zero_cost_and_free_only",
             "local_preference": "prefer_when_lane_suitable",
