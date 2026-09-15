@@ -36,6 +36,7 @@ def test_full_turn_context_keeps_simple_greeting_on_local_mind():
         intent=intent,
         context=context,
     )
+    assert result.metadata.get("escalation_reason") is None, result.metadata.get("escalation_reason")
     assert result.handled is True, result.metadata
 
 def test_local_mind_escalates_open_ended_language_instead_of_faking_intelligence():
