@@ -364,6 +364,7 @@ class MaryClient:
         conversation_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> TurnResponse:
         payload = TurnRequest.from_dict({
             "text": text,
@@ -373,6 +374,7 @@ class MaryClient:
             "surface": self.surface,
             "voice_input": bool(voice_input),
             "requested_mode": requested_mode,
+            "client_local_time": client_local_time,
         })
         raw = self._request("POST", "/v1/turn", payload.to_dict())
         return TurnResponse(**raw)
