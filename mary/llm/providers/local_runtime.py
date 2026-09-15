@@ -229,6 +229,12 @@ class LocalRuntimeProvider(LLMInterface):
     def provider_name(self) -> str:
         return "local_device"
 
+    def runtime_name(self) -> str:
+        if self._last_runtime:
+            return self._last_runtime
+        selected = self.selected()
+        return selected[0] if selected is not None else ""
+
     def model_name(self) -> str:
         if self._last_model:
             return self._last_model
