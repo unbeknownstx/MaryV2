@@ -1435,13 +1435,18 @@ function renderMemories() {
   const milestones = archive.milestones || [];
   const activities = dashboardState.recent_activities || [];
   const memory = dashboardState.live?.memory || {};
-  const durableCount = Number(memory.episodic || 0) + Number(memory.semantic || 0);
-  const continuityCount = shared.length + milestones.length;
-  const archiveStatus = durableCount
-    ? `${durableCount} canonical memory record${durableCount === 1 ? '' : 's'} available.`
-    : continuityCount
-      ? `The current Core memory store is empty, but ${continuityCount} grounded relationship-history item${continuityCount === 1 ? '' : 's'} remain available.`
-      : 'The current Core has no visible durable memory or shared-history records yet.';
+  const counts = archive.counts || {};
+  const episodicTotal = Number(counts.episodic_total ?? memory.episodic ?? episodes.length ?? 0);
+  const semanticTotal = Number(counts.semantic_total ?? memory.semantic ?? facts.length ?? 0);
+  const sharedHistoryTotal = Number(counts.shared_history_total ?? shared.length ?? 0);
+  const milestoneTotal = Number(counts.milestones_total ?? milestones.length ?? 0);
+  const profileTotal = Number(counts.creator_profile_total ?? dashboardState.relationship?.profile_records ?? 0);
+  const observationTotal = Number(counts.relationship_observation_total ?? 0);
+  const durableCount = episodicTotal + semanticTotal;
+  const continuityCount = sharedHistoryTotal + milestoneTotal + profileTotal + observationTotal;
+  const archiveStatus = durableCount || continuityCount
+    ? `${durableCount} memory record${durableCount === 1 ? '' : 's'} · ${sharedHistoryTotal} shared-history event${sharedHistoryTotal === 1 ? '' : 's'} · ${profileTotal} creator-profile record${profileTotal === 1 ? '' : 's'}.`
+    : 'The current Core has no visible durable memory or shared-history records yet.';
 
   const episodicRows = listOrEmpty(episodes, (item) => `
     <div class="memory-record">
@@ -1481,11 +1486,13 @@ function renderMemories() {
       <small>Memory and relationship history stay separate canonical owners; this screen is a read-only creator view across both.</small>
     </div>
 
-    <div class="workspace-grid four memory-count-grid">
-      <div class="workspace-panel memory-count-card"><span>EPISODIC</span><strong>${memory.episodic ?? 0}</strong><small>Stored experiences</small></div>
-      <div class="workspace-panel memory-count-card"><span>SEMANTIC</span><strong>${memory.semantic ?? 0}</strong><small>Established knowledge</small></div>
-      <div class="workspace-panel memory-count-card"><span>WORKING</span><strong>${memory.working ?? 0}</strong><small>Active context</small></div>
-      <div class="workspace-panel memory-count-card"><span>SHARED HISTORY</span><strong>${shared.length}</strong><small>Relationship-owned continuity</small></div>
+    <div class="workspace-grid three memory-count-grid">
+      <div class="workspace-panel memory-count-card"><span>EPISODIC</span><strong>${episodicTotal}</strong><small>Stored experiences</small></div>
+      <div class="workspace-panel memory-count-card"><span>SEMANTIC</span><strong>${semanticTotal}</strong><small>Established knowledge</small></div>
+      <div class="workspace-panel memory-count-card"><span>CREATOR PROFILE</span><strong>${profileTotal}</strong><small>Source-aware facts, preferences, goals & interests</small></div>
+      <div class="workspace-panel memory-count-card"><span>SHARED HISTORY</span><strong>${sharedHistoryTotal}</strong><small>Relationship-owned continuity</small></div>
+      <div class="workspace-panel memory-count-card"><span>RELATIONSHIP OBSERVATIONS</span><strong>${observationTotal}</strong><small>Grounded source-aware observations</small></div>
+      <div class="workspace-panel memory-count-card"><span>MILESTONES</span><strong>${milestoneTotal}</strong><small>High-significance continuity</small></div>
     </div>
 
     <div class="section-title">MEMORY HIGHLIGHTS</div>
@@ -1496,21 +1503,23 @@ function renderMemories() {
     </div>
 
     <div class="memory-archive-grid">
-      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Experiences</h3><span>${episodes.length}</span></div>${episodicRows}</section>
-      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Knowledge</h3><span>${facts.length}</span></div>${semanticRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Experiences</h3><span>${episodes.length} / ${episodicTotal}</span></div>${episodicRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Knowledge</h3><span>${facts.length} / ${semanticTotal}</span></div>${semanticRows}</section>
     </div>
 
     <div class="section-title">SHARED CONTINUITY</div>
     <div class="memory-archive-grid">
-      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Shared history</h3><span>${shared.length}</span></div>${sharedRows}</section>
-      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Milestones</h3><span>${milestones.length}</span></div>${milestoneRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Shared history</h3><span>${shared.length} / ${sharedHistoryTotal}</span></div>${sharedRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Milestones</h3><span>${milestones.length} / ${milestoneTotal}</span></div>${milestoneRows}</section>
     </div>
 
     <div class="workspace-panel memory-policy-panel">
       <h3>What this means</h3>
       <p>${escapeHtml(archive.policy || 'This is a bounded private projection over canonical memory and relationship continuity.')}</p>
+      <div class="data-row"><span>Working context</span><strong>${memory.working ?? 0}</strong></div>
       <div class="data-row"><span>Backup recovered</span><strong>${memory.recovered_from_backup ? 'Yes' : 'No'}</strong></div>
       <div class="data-row"><span>Recent activity</span><strong>${activities.length}</strong></div>
+      <small>Archive lists are intentionally bounded for readability; the totals above are the canonical Core counts.</small>
     </div>
   `;
 }
