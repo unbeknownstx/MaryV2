@@ -549,6 +549,14 @@ class LLMRouter:
             if name in _FREE_PROVIDER_NAMES and name not in order:
                 order.append(name)
 
+        if bool(getattr(self.config.llm, "conversation_local_first", True)):
+            # Railway/older .env profiles may carry a pre-13.65 cloud-only
+            # conversation order. Keep the connected local-device lane eligible
+            # first by default; provider availability still decides whether it
+            # actually executes, and the creator may explicitly opt out.
+            order = [name for name in order if name != "local_device"]
+            order.insert(0, "local_device")
+
         if "ollama" not in order:
             order.append("ollama")
 
