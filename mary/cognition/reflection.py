@@ -1349,10 +1349,19 @@ class ReflectionEngine:
         if not text or not context.conversation:
             return []
 
+        # The literal current input is creator-authored evidence too. CognitiveContext
+        # stores it separately from prior conversation history, so omitting it here
+        # causes a false provenance violation whenever Mary naturally paraphrases
+        # what Unbe just said in the same turn.
         user_text = " ".join(
-            str(item.get("content", ""))
-            for item in context.conversation
-            if isinstance(item, dict) and str(item.get("role", "")) == "user"
+            [
+                str(context.input_text or ""),
+                *[
+                    str(item.get("content", ""))
+                    for item in context.conversation
+                    if isinstance(item, dict) and str(item.get("role", "")) == "user"
+                ],
+            ]
         ).lower()
         assistant_text = " ".join(
             str(item.get("content", ""))
