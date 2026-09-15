@@ -2052,7 +2052,7 @@ function bindWorkspaceActions() {
   $('#research-create')?.addEventListener('click',()=>{const title=$('#research-title')?.value?.trim();if(!title||!bridge?.createResearchThread)return;bridge.createResearchThread(title,'',(raw)=>{const r=parsePayload(raw);if(r.ok)bridge.getDashboardState?.((x)=>applyDashboardState(x));});});
   $$('[data-arcade]').forEach((button)=>button.addEventListener('click',()=>bridge?.playArcade?.(button.dataset.arcade,'','',(raw)=>{const r=parsePayload(raw);const node=$('#arcade-result');if(node)node.textContent=r.message||r.result||r.error||'Done.';})));
   $('#presence-idle-test')?.addEventListener('click',()=>bridge?.getIdleAction?.((raw)=>applyIdleAction(raw,{preview:true})));
-  $('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
+  document.querySelectorAll('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
     bridge?.setPerformanceContext?.(button.dataset.performanceContext,(raw)=>{
       const r=parsePayload(raw);
       if(r.error){toast(r.error,'error');return;}
