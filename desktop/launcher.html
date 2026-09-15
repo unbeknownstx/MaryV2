@@ -17,13 +17,18 @@
       </header>
       <section class="launcher-copy">
         <div class="launcher-brand">Mary<span>♡</span></div>
-        <div class="launcher-kicker">AI COMPANION</div>
-        <p class="launcher-tagline">Your persistent companion, creative partner, and private workspace.</p>
+        <div class="launcher-kicker">PERSISTENT COMPANION · DESKTOP</div>
+        <p class="launcher-tagline">One Mary across Core, local compute, voice, creative work, and every connected surface.</p>
         <div class="launcher-status-row">
           <span class="launcher-dot"></span>
           <strong id="launcher-status">Ready to launch</strong>
         </div>
-        <button id="play-button" class="play-button"><span>▶</span> PLAY MARY</button>
+        <div class="launcher-capabilities" aria-label="Mary Desktop capabilities">
+          <div><span>CORE</span><strong>Persistent Mary</strong></div>
+          <div><span>COMPUTE</span><strong>Local + cloud</strong></div>
+          <div><span>PRESENCE</span><strong>Voice + avatar</strong></div>
+        </div>
+        <button id="play-button" class="play-button"><span>▶</span> OPEN MARY</button>
         <div class="launcher-actions">
           <button id="check-update-button">Check for Updates</button>
           <button id="stage-update-button" class="hidden">Stage Update</button>
@@ -35,7 +40,7 @@
         </section>
         <p id="update-notes" class="update-notes">Updates are optional until a manifest URL is configured.</p>
       </section>
-      <footer class="launcher-footer"><span>Mary's memories stay outside replaceable program versions.</span><span id="desktop-phase">presence-presentation</span></footer>
+      <footer class="launcher-footer"><span>Identity and memory stay with Mary Core, not a replaceable model.</span><span id="desktop-phase">desktop-runtime</span></footer>
       <div id="launcher-toast" class="launcher-toast hidden"></div>
     </main>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
