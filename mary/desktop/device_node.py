@@ -287,8 +287,21 @@ def headless_node_capabilities(
 ) -> list[CapabilityDescriptor]:
     """Return all configured bounded executors for a headless capability node."""
 
+    local_items = headless_local_llm_capabilities()
+    permission_names = {
+        "llm.local": "llm.local",
+        "llm.ollama": "llm.ollama",
+        "llm.llama_cpp": "llm.llama_cpp",
+    }
+    for item in local_items:
+        permission_name = permission_names.get(item.name)
+        if permission_name:
+            item.metadata["execution_authorized"] = bool(
+                permissions.is_allowed(permission_name)
+            )
+
     return [
-        *headless_local_llm_capabilities(),
+        *local_items,
         *MCPFabric(permissions).capability_descriptors(),
     ]
 
