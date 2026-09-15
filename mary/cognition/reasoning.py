@@ -1677,12 +1677,33 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
         )
 
     def _local_fast_context_enabled(self, routing_purpose: str | None) -> bool:
-        """Use a compact prompt only for an explicit local/private fast-chat route."""
+        """Use the compact conversation reservoir for a latency-sensitive local lane.
 
-        return bool(
-            str(routing_purpose or "").strip().lower() == "conversation_fast"
-            and self._explicit_local_fast_requested()
-        )
+        Historically this projection was enabled only after an explicit
+        private/Ollama override. 13.65 also enables it when the configured
+        ordinary conversation route intentionally prefers the logical
+        local_device provider. This keeps the resident 4B model inside its
+        bounded context without moving memory/relationship authority into the
+        model. If the local device is unavailable, the same compact,
+        provenance-safe prompt can fall through to Mary's free-cloud providers.
+        """
+
+        if str(routing_purpose or "").strip().lower() != "conversation_fast":
+            return False
+        if self._explicit_local_fast_requested():
+            return True
+        order = getattr(self.llm, "conversation_provider_order", None)
+        if not callable(order):
+            return False
+        try:
+            providers = [
+                str(item or "").strip().lower()
+                for item in list(order() or [])
+                if str(item or "").strip()
+            ]
+        except Exception:
+            return False
+        return bool(providers and providers[0] == "local_device")
 
     @staticmethod
     def _local_fast_render(value: Any, limit: int) -> str:
