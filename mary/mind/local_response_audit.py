@@ -345,7 +345,7 @@ def _authorized_realizations(plan: CanonicalResponsePlan) -> frozenset[str]:
 def _authorized_social(realization: Any) -> set[str]:
     act = realization.dialogue_act
     if act == DialogueAct.GREET:
-        greetings = ("Hey", "Hi", "Oh, hey")
+        greetings = ("Hey", "Hey, you", "Hi")
         if realization.question is None:
             return {_terminal(item, question=False) for item in greetings}
         questions = _authorized_questions(realization.question)
