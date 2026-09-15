@@ -34,21 +34,85 @@ run_isolated_python_stage() {
   return "$rc"
 }
 
+python_is_macos_desktop_compatible() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if (3, 10) <= sys.version_info[:2] < (3, 14) else 1)
+PY
+}
+
+select_bootstrap_python() {
+  local candidate
+  for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_is_macos_desktop_compatible "$candidate"; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 echo "============================================================"
 echo "MARYV2 MACOS SETUP + VERIFICATION"
 echo "============================================================"
 echo "Root: $ROOT"
 
-command -v python3 >/dev/null 2>&1 || { echo "python3 is required." >&2; exit 1; }
+command -v sw_vers >/dev/null 2>&1 || { echo "This setup script requires macOS." >&2; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "Node.js/npm is required for the desktop UI." >&2; exit 1; }
+command -v node >/dev/null 2>&1 || { echo "Node.js is required for the desktop UI." >&2; exit 1; }
+
+MACOS_VERSION="$(sw_vers -productVersion)"
+BOOTSTRAP_PYTHON="$(select_bootstrap_python || true)"
+if [[ -z "$BOOTSTRAP_PYTHON" ]]; then
+  cat >&2 <<'EOF'
+Mary Desktop on macOS requires Python 3.10 through 3.13.
+The physical Monterey-compatible Qt/PySide build does not support Python 3.14.
+Install Python 3.13 (recommended), then rerun this script.
+EOF
+  exit 1
+fi
+
+NODE_VERSION="$(node -p 'process.versions.node')"
+"$BOOTSTRAP_PYTHON" - "$MACOS_VERSION" "$NODE_VERSION" <<'PY'
+import sys
+
+mac = tuple(int(part) for part in sys.argv[1].split(".")[:2])
+node = tuple(int(part) for part in sys.argv[2].split(".")[:3])
+
+vite_ok = (node[0] == 20 and node >= (20, 19, 0)) or (node[0] >= 22 and node >= (22, 12, 0))
+if not vite_ok:
+    raise SystemExit(
+        f"Node {sys.argv[2]} is too old for the MaryV2 Vite 8 desktop. "
+        "Use Node 22.12+ (Node 22 LTS is recommended)."
+    )
+if mac < (13, 5) and node[0] >= 24:
+    raise SystemExit(
+        f"Node {sys.argv[2]} is not the supported binary line for macOS {sys.argv[1]}. "
+        "Use Node 22 LTS on Monterey/Ventura-era Macs."
+    )
+PY
+
+echo "Host: macOS $MACOS_VERSION"
+echo "Bootstrap Python: $($BOOTSTRAP_PYTHON -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
+echo "Node: $NODE_VERSION"
 
 step 1 "Python environment"
-if [[ ! -x .venv/bin/python ]]; then python3 -m venv .venv; fi
+if [[ ! -x .venv/bin/python ]]; then
+  "$BOOTSTRAP_PYTHON" -m venv .venv
+fi
 PYTHON="$ROOT/.venv/bin/python"
+if ! python_is_macos_desktop_compatible "$PYTHON"; then
+  cat >&2 <<EOF
+Existing $ROOT/.venv is not compatible with the Monterey-capable Mary Desktop runtime.
+It must use Python 3.10 through 3.13. The selected host interpreter is:
+  $BOOTSTRAP_PYTHON
+Rename or remove .venv, then rerun scripts/setup_macos.sh so it can be recreated safely.
+EOF
+  exit 2
+fi
 "$PYTHON" - <<'PY'
 import sys
-if sys.version_info < (3, 10):
-    raise SystemExit("Python 3.10+ is required.")
+print("  Python:", sys.version.split()[0])
 PY
 echo "  PASS: virtual environment"
 
@@ -56,6 +120,12 @@ step 2 "Python dependencies"
 "$PYTHON" -m pip install --upgrade pip
 "$PYTHON" -m pip install -r requirements.txt
 "$PYTHON" -m pip install -r requirements-desktop.txt
+"$PYTHON" - <<'PY'
+import PySide6
+from PySide6 import QtCore, QtGui, QtWidgets
+print(f"  Qt/PySide: {PySide6.__version__}")
+assert QtCore and QtGui and QtWidgets
+PY
 echo "  PASS: Python dependencies"
 
 step 3 "Private environment template"
