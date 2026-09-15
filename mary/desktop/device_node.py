@@ -175,6 +175,12 @@ def _local_model_capability() -> CapabilityDescriptor | None:
         metadata={
             "runtime": runtime,
             "configured_model": model,
+            "model_alias": model,
+            "backing_model": (
+                os.getenv("MARY_LM_STUDIO_BACKING_MODEL", "").strip()
+                if runtime == "lm_studio"
+                else model
+            ),
             "general_model": model,
             "conversation_model": model,
             "fast_model": model,
