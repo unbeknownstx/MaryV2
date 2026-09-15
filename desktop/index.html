@@ -17,33 +17,40 @@
       <section id="boot-screen" class="boot-screen" aria-live="polite">
         <div class="boot-sigil"><img src="./assets/ui/mary-sigil.svg" alt="" /></div>
         <div class="boot-logo">Mary<span>♡</span></div>
-        <div class="boot-subtitle">PERSONAL COMPANION SYSTEM · 12.12</div>
+        <div class="boot-subtitle">PERSISTENT COMPANION · CORE LINKED</div>
         <div class="boot-progress"><i id="boot-progress-bar"></i></div>
         <div class="boot-status" id="boot-status">Initializing Mary…</div>
       </section>
       <aside class="sidebar glass-edge" aria-label="Primary navigation">
         <section class="brand-block">
           <div class="brand-logo">Mary<span>♡</span></div>
-          <div class="brand-subtitle">AI COMPANION</div>
-          <div class="brand-version" id="app-version-label">V2 · 12.12</div>
+          <div class="brand-subtitle">PERSISTENT COMPANION</div>
+          <div class="brand-version" id="app-version-label">CORE LINKED · DESKTOP</div>
         </section>
 
         <nav class="nav-stack" id="primary-nav">
+          <div class="nav-section-label">COMPANION</div>
           <button class="nav-item" data-screen="home"><span class="nav-icon">⌂</span><span>Home</span><span class="nav-badge">LIVE</span></button>
-          <button class="nav-item active" data-screen="chat"><span class="nav-icon">▣</span><span>Chat</span></button>
+          <button class="nav-item active" data-screen="chat"><span class="nav-icon">▣</span><span>Talk</span></button>
           <button class="nav-item" data-screen="memories"><span class="nav-icon">◫</span><span>Memories</span></button>
           <button class="nav-item" data-screen="personality"><span class="nav-icon">✦</span><span>Personality</span></button>
-          <button class="nav-item" data-screen="growth"><span class="nav-icon">↟</span><span>Growth</span><span class="nav-badge">13</span></button>
-          <button class="nav-item" data-screen="mind"><span class="nav-icon">⌬</span><span>Mind</span><span class="nav-badge">LOCAL</span></button>
+          <button class="nav-item" data-screen="growth"><span class="nav-icon">↟</span><span>Growth</span></button>
+
+          <div class="nav-section-label">WORK & CREATE</div>
           <button class="nav-item" data-screen="studio"><span class="nav-icon">⌘</span><span>Studio</span></button>
-          <button class="nav-item" data-screen="study"><span class="nav-icon">◈</span><span>Study</span><span class="nav-badge">NEW</span></button>
+          <button class="nav-item" data-screen="study"><span class="nav-icon">◈</span><span>Study</span></button>
           <button class="nav-item" data-screen="command"><span class="nav-icon">✓</span><span>Command</span></button>
           <button class="nav-item" data-screen="focus"><span class="nav-icon">◎</span><span>Focus</span></button>
-          <button class="nav-item" data-screen="stream"><span class="nav-icon">◉</span><span>Stream</span></button>
+
+          <div class="nav-section-label">PRESENCE</div>
+          <button class="nav-item" data-screen="stream"><span class="nav-icon">◉</span><span>Stream</span><span class="nav-badge">COHOST</span></button>
           <button class="nav-item" data-screen="gallery"><span class="nav-icon">▧</span><span>Gallery</span></button>
           <button class="nav-item" data-screen="media"><span class="nav-icon">♫</span><span>Media</span></button>
           <button class="nav-item" data-screen="voice"><span class="nav-icon">◉</span><span>Voice & Avatar</span></button>
-          <button class="nav-item" data-screen="diagnostics"><span class="nav-icon">⌁</span><span>Runtime</span><span class="nav-badge">DEV</span></button>
+
+          <div class="nav-section-label">SYSTEM</div>
+          <button class="nav-item" data-screen="mind"><span class="nav-icon">⌬</span><span>Mind</span><span class="nav-badge">LOCAL</span></button>
+          <button class="nav-item" data-screen="diagnostics"><span class="nav-icon">⌁</span><span>Runtime</span><span class="nav-badge">FABRIC</span></button>
           <button class="nav-item" data-screen="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
         </nav>
 
@@ -103,11 +110,35 @@
 
           <div class="stage-header">
             <div>
+              <div class="stage-kicker">PERSISTENT PRESENCE</div>
               <div class="stage-name" id="state-name">MARY</div>
-              <div class="stage-subtitle">Your AI Companion</div>
+              <div class="stage-subtitle">Same Mary · every surface · every model</div>
             </div>
             <div class="online-badge"><i></i><span>Online</span></div>
           </div>
+
+          <section class="system-rail" aria-label="Mary system status">
+            <div class="system-rail-item core">
+              <span>CORE</span>
+              <strong id="shell-core-state">Connecting</strong>
+              <small id="shell-core-detail">Canonical Mary</small>
+            </div>
+            <div class="system-rail-item compute">
+              <span>COMPUTE</span>
+              <strong id="shell-compute-state">Checking route</strong>
+              <small id="shell-compute-detail">Local + cloud fabric</small>
+            </div>
+            <div class="system-rail-item voice">
+              <span>VOICE</span>
+              <strong id="shell-voice-state">Checking voice</strong>
+              <small id="shell-voice-detail">Fast voice + fallback</small>
+            </div>
+            <div class="system-rail-item presence">
+              <span>PRESENCE</span>
+              <strong id="shell-presence-state">Idle</strong>
+              <small id="shell-presence-detail">Ready to talk</small>
+            </div>
+          </section>
 
           <div class="avatar-stage" id="avatar-stage">
             <canvas id="avatar-canvas" aria-label="Mary live VRM avatar"></canvas>
@@ -172,6 +203,17 @@
 
       <aside class="inspector-column glass-edge">
         <section class="inspector-scroll">
+          <article class="neon-card inspector-card system-overview-card">
+            <header class="card-header"><span>MARY NOW</span><span class="live-pill"><i></i> LIVE</span></header>
+            <div class="system-overview-grid">
+              <div><span>Core</span><strong id="system-core-value">Connecting</strong></div>
+              <div><span>Compute</span><strong id="system-compute-value">Checking</strong></div>
+              <div><span>Voice</span><strong id="system-voice-value">Checking</strong></div>
+              <div><span>Nodes</span><strong id="system-nodes-value">0</strong></div>
+            </div>
+            <p id="system-overview-copy">One persistent Mary with replaceable local and cloud compute.</p>
+          </article>
+
           <article class="neon-card inspector-card" id="memory-highlights-card">
             <header class="card-header"><span>◉ MEMORY HIGHLIGHTS</span><span class="card-accent">LIVE</span></header>
             <div id="memory-highlights" class="memory-list empty-state">No structured highlights yet.</div>
@@ -216,7 +258,7 @@
           </article>
 
           <article class="neon-card inspector-card ecosystem-card">
-            <header class="card-header"><span>✦ ECOSYSTEM</span><span class="card-accent">12.12</span></header>
+            <header class="card-header"><span>✦ ECOSYSTEM</span><span class="card-accent">LIVE</span></header>
             <div class="ecosystem-mini-grid">
               <div><span>Study due</span><strong id="eco-study-due">0</strong></div>
               <div><span>Tasks</span><strong id="eco-task-count">0</strong></div>
@@ -255,7 +297,7 @@
           </article>
 
           <article class="neon-card inspector-card runtime-card">
-            <header class="card-header"><span>⌁ LIVE TURN</span><span class="card-accent">12.12</span></header>
+            <header class="card-header"><span>⌁ LIVE TURN</span><span class="card-accent">TRACE</span></header>
             <div class="runtime-mini-grid">
               <div><span>Provider</span><strong id="runtime-last-provider">Waiting</strong></div>
               <div><span>Pipeline</span><strong id="runtime-pipeline">—</strong></div>
