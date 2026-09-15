@@ -65,7 +65,7 @@ def _router(*, ollama_available: bool = True) -> tuple[LLMRouter, dict[str, Fake
     config.llm.provider = "groq"
     config.llm.routing_strategy = "free_first"
     config.llm.free_provider_order = ["groq", "gemini", "openrouter", "ollama"]
-    config.llm.conversation_provider_order = ["ollama", "groq", "gemini", "openrouter"]
+    config.llm.conversation_provider_order = ["local_device", "ollama", "groq", "gemini", "openrouter"]
     router = LLMRouter(config)
     providers = {
         "groq": FakeProvider("groq"),
