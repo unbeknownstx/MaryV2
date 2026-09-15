@@ -110,6 +110,20 @@ class MaryDesktopWindow(QMainWindow):
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
             True,
         )
+        # Mary VRM presentation is optional, but when Qt exposes the relevant
+        # Chromium settings make the intended 3D path explicit. Unsupported
+        # attributes are simply absent on older Qt builds.
+        for attribute_name in ("WebGLEnabled", "Accelerated2dCanvasEnabled"):
+            attribute = getattr(
+                QWebEngineSettings.WebAttribute,
+                attribute_name,
+                None,
+            )
+            if attribute is not None:
+                try:
+                    settings.setAttribute(attribute, True)
+                except Exception:
+                    pass
 
         self.channel = QWebChannel(self.web.page())
         self.channel.registerObject("maryBridge", self.bridge)
