@@ -1,5 +1,15 @@
 # Changelog
 
+## 13.66 — 2026-09-14 — Desktop Product Shell
+
+- Rebuilt the Desktop visual hierarchy around Mary + Talk first, with grouped navigation, a dedicated character/presence side, and a clear context inspector.
+- Replaced excessive transparent/glass surfaces with readable near-opaque navy panels, restrained accent edges, and stronger typography/spacing.
+- Added a human-facing Core / Compute / Voice / Presence rail backed by existing display-safe runtime and compute-fabric state.
+- Added a unified Model & Compute Fabric section to Runtime covering local-device readiness, selected node, conversation/task routes and execution portfolio without moving routing authority into the UI.
+- Humanized provider labels such as `local_device` -> `Local Model` on ordinary product surfaces while retaining exact backend detail in Runtime.
+- Updated the Mary launcher to the same cohesive visual language and clarified persistent-Core, local/cloud-compute and voice/avatar capabilities.
+- Added responsive/short-display behavior that hides secondary context before sacrificing conversation, plus deterministic 13.66 UI contract tests.
+
 ## 13.65 — 2026-09-14 — Stable Desktop Conversation Runtime
 
 - Added a logical `local_device` conversation provider so Mary can prefer a replaceable host-local runtime without making LM Studio, Ollama, llama.cpp or any model an identity/state authority.
