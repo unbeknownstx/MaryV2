@@ -34,3 +34,16 @@ def test_windows_freshness_guard_bootstraps_vite_only_when_missing():
         assert 'node_modules\\.bin\\vite.cmd' in script
         assert "& $Npm.Source ci" in script
         assert "Desktop source changed but npm is not available" in script
+
+
+def test_python_desktop_entrypoints_share_frontend_freshness_guard():
+    helper = _text("mary/desktop/frontend_build.py")
+    desktop_window = _text("mary/desktop/window.py")
+    launcher_window = _text("mary/launcher/window.py")
+
+    assert "def frontend_needs_build" in helper
+    assert "def ensure_desktop_frontend" in helper
+    assert 'subprocess.run([npm, "run", "check"]' in helper
+    assert 'subprocess.run([npm, "run", "build"]' in helper
+    assert 'ensure_desktop_frontend(project_root, page="index.html")' in desktop_window
+    assert 'ensure_desktop_frontend(root, page="launcher.html")' in launcher_window
