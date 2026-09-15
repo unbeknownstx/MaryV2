@@ -80,6 +80,7 @@ class MaryDesktopWindow(QMainWindow):
                 application=application,
                 bridge=self.bridge,
             )
+            self.bridge.attach_node_agent(self.node_agent)
             self.node_agent.start()
 
         self.setWindowTitle("MaryV2 — Mary Cosma")
