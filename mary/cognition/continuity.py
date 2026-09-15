@@ -30,6 +30,8 @@ _STOPWORDS = {
 }
 _REPAIR_MARKERS = (
     "that's not really what i meant", "that's not what i meant", "not what i meant",
+    "what are you on about", "what are u on about", "what is u on about",
+    "what the hell are you on about", "what the hell are u on about",
     "you misunderstood", "that's not it", "no that's not it", "not what i'm saying",
 )
 _DISAGREEMENT_MARKERS = (
