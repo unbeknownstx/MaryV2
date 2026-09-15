@@ -15,11 +15,10 @@
   position: relative;
   border-radius: var(--mary-presence-radius);
   border: 1px solid color-mix(in srgb, var(--accent, #ff4fa6) 24%, transparent);
-  background:
-    linear-gradient(145deg, rgba(26, 21, 43, .84), rgba(13, 16, 29, .82));
-  box-shadow: 0 16px 44px rgba(4, 7, 18, .22);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: #11162a;
+  box-shadow: 0 12px 34px rgba(4, 7, 18, .18);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: hidden;
 }
 
@@ -51,7 +50,7 @@
   padding: 9px 13px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, .10);
-  background: rgba(255, 255, 255, .045);
+  background: #151a31;
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -79,7 +78,7 @@
   padding: 5px 9px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, .09);
-  background: rgba(8, 11, 22, .44);
+  background: #0d1122;
   font-size: .78rem;
   letter-spacing: .01em;
 }
