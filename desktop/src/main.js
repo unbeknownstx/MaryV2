@@ -1338,7 +1338,7 @@ const SCREEN_META = {
   search: ['PERSONAL SEARCH', 'Find That Thing', 'Bounded search over only the folders Mary has been allowed to inspect.'],
   research: ['RESEARCH', 'Research Notebook', 'Persistent research threads, notes, and conclusions without restarting from zero.'],
   arcade: ['PLAY', 'Mary Arcade', 'Small local games and creative sparks that do not require a cloud model.'],
-  diagnostics: ['MARY DEV', 'Runtime & Latency', 'Grounded runtime metrics so performance problems can be measured instead of guessed.'],
+  diagnostics: ['SYSTEM', 'Runtime & Compute', 'A clear view of Mary Core, local/cloud model routes, capability nodes, realtime state, and measured turn performance.'],
   settings: ['SYSTEM', 'Settings', 'Provider availability, private state paths, skills, integrations, and desktop configuration.'],
 };
 
@@ -1706,6 +1706,15 @@ function renderDiagnostics() {
   const vectorIndex = retrieval.vector_index || {};
   const perception = dashboardState.perception || runtimeStatus.perception || {};
   const feedback = dashboardState.training_feedback || runtimeStatus.training_feedback || {};
+  const fabric = dashboardState.compute_fabric || {};
+  const routing = fabric.routing || {};
+  const routeTable = routing.routes || {};
+  const conversationRoute = Array.isArray(routeTable.conversation) ? routeTable.conversation : [];
+  const generalRoute = Array.isArray(routeTable.general) ? routeTable.general : [];
+  const capabilityRoutes = fabric.capability_routes || {};
+  const localRoute = capabilityRoutes['llm.local'] || {};
+  const modelExecution = fabric.model_execution || {};
+  const activeCandidates = modelExecution.active_candidates || [];
   const timeline = [
     ['Provider call', timingValue(trace, 'provider_call_ms')],
     ['Reasoning', timingValue(trace, 'reasoning_ms')],
@@ -1724,6 +1733,27 @@ function renderDiagnostics() {
       <div class="trace-stack">${timeline.length ? timeline.map(([label,value]) => `<div class="trace-row"><span>${escapeHtml(label)}</span><i style="width:${Math.max(2,(value/max)*100)}%"></i><strong>${escapeHtml(formatMilliseconds(value))}</strong></div>`).join('') : '<div class="workspace-empty">Complete one desktop turn to populate the trace.</div>'}</div>
     </div>
     <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Response class</span><strong>${escapeHtml(titleCase(trace.response_class || trace.local_mind?.response_class || '—'))}</strong></div><div class="data-row"><span>Engine</span><strong>${escapeHtml(trace.response_engine || trace.local_mind?.response_engine || '—')}</strong></div><div class="data-row"><span>Escalation</span><strong>${escapeHtml(trace.escalation_reason || trace.local_mind?.escalation_reason || '—')}</strong></div><div class="data-row"><span>Shadow</span><strong>${trace.local_mind?.shadow_enabled ? 'ON' : 'OFF'}</strong></div><div class="data-row"><span>Shadow latency</span><strong>${escapeHtml(formatMilliseconds(timings.shadow_ms))}</strong></div><div class="data-row"><span>Classification</span><strong>${escapeHtml(formatMilliseconds(timings.classification_ms))}</strong></div><div class="data-row"><span>Local composer</span><strong>${escapeHtml(formatMilliseconds(timings.local_composer_ms))}</strong></div><div class="data-row"><span>Local audit</span><strong>${escapeHtml(formatMilliseconds(timings.local_audit_ms))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
+  </div>
+  <div class="section-title">MODEL & COMPUTE FABRIC</div>
+  <div class="workspace-grid three">
+    <div class="workspace-panel accent"><h3>Conversation Route</h3>
+      <div class="data-row"><span>Preferred</span><strong>${escapeHtml(providerDisplayName(conversationRoute[0] || routing.last_generation?.selected_provider || 'automatic'))}</strong></div>
+      <div class="data-row"><span>Route</span><strong>${escapeHtml(conversationRoute.map(providerDisplayName).join(' → ') || 'automatic')}</strong></div>
+      <div class="data-row"><span>Last provider</span><strong>${escapeHtml(providerDisplayName(routing.last_generation?.selected_provider || trace.provider || '—'))}</strong></div>
+      <p>Ordinary conversation can prefer local compute without moving identity, memory, or relationship state out of Mary Core.</p>
+    </div>
+    <div class="workspace-panel"><h3>Local Compute</h3>
+      <div class="data-row"><span>Ready</span><strong>${localRoute.available ? 'YES' : 'FALLBACK'}</strong></div>
+      <div class="data-row"><span>Selected node</span><strong>${escapeHtml(localRoute.selected_node_id || '—')}</strong></div>
+      <div class="data-row"><span>Execution</span><strong>${escapeHtml(titleCase(localRoute.execution || 'permission bounded'))}</strong></div>
+      <p>LM Studio, Ollama, llama.cpp and future runtimes remain replaceable workers behind the same local-device contract.</p>
+    </div>
+    <div class="workspace-panel"><h3>Execution Portfolio</h3>
+      <div class="data-row"><span>Candidates</span><strong>${activeCandidates.length}</strong></div>
+      <div class="data-row"><span>Task route</span><strong>${escapeHtml(generalRoute.map(providerDisplayName).join(' → ') || 'automatic')}</strong></div>
+      <div class="data-row"><span>Fabric revision</span><strong>${escapeHtml(modelExecution.integration_revision || modelExecution.version || '—')}</strong></div>
+      <p>Suitability, provider health, quota and resource evidence guide execution without becoming Mary state.</p>
+    </div>
   </div>
   <div class="section-title">REALTIME COGNITIVE INFRASTRUCTURE</div>
   <div class="workspace-grid three">
