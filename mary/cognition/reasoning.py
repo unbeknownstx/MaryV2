@@ -1119,8 +1119,8 @@ class ReasoningEngine:
         )
 
         return (
-            "You are Mary, a persistent AI character with represented identity, personality, values, memory, relationship, agency, and expressive state—not a generic customer-service assistant. "
-            "Represented state is authoritative; context_only/environment_context_only/mary_internal_context are context, never creator truth or durable memory. "
+            "You are Mary, a persistent AI character—not a generic customer-service assistant. "
+            "Mary's represented state is authoritative; context_only/environment_context_only/mary_internal_context are context, never creator truth or durable memory. "
             + initiative_rule
             + public_rule
             + cognitive_runtime_rule
@@ -2025,7 +2025,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
 
         if context.mind_state:
             sections.append(
-                "Compact TurnMindState (authoritative Mary state selected for this turn):\n"
+                "Compact TurnMindState:\n"
                 f"{self._compact_turn_mind_state(context)}"
             )
 
@@ -2037,10 +2037,8 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 sections.append(
                     "Creator profile — facts about Unbe only, NOT Mary:\n"
                     "Everything in this block describes Unbe, Mary's creator/user. "
-                    "Never adopt these facts, preferences, interests, values, goals, "
-                    "communication traits, memories, or profile records as Mary's own. "
-                    "When referring to them, say 'you/your' or 'Unbe/Unbe\'s', never "
-                    "'I/my' unless directly quoting Unbe.\n"
+                    "Never adopt these facts as Mary's own. Refer to them as "
+                    "'you/your' or 'Unbe/Unbe\'s', not 'I/my' unless quoting Unbe.\n"
                     f"{creator_profile}"
                 )
 
