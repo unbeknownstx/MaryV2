@@ -477,12 +477,14 @@ class RemoteMaryApplicationView:
         conversation_id = str(values.get("conversation_id") or self.conversation_id)
         requested_mode = values.get("requested_mode")
         voice_input = bool(values.get("voice_input", False))
+        client_local_time = str(values.get("client_local_time") or "").strip() or None
         started = monotonic()
         response = self.gateway.turn(
             text,
             conversation_id=conversation_id,
             requested_mode=str(requested_mode) if requested_mode else None,
             voice_input=voice_input,
+            client_local_time=client_local_time,
         )
         elapsed = monotonic() - started
         hints = dict(response.display_hints or {})
