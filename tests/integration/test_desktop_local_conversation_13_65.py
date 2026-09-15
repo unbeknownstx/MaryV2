@@ -38,6 +38,29 @@ def test_lm_studio_role_is_selected_when_loaded(monkeypatch):
     assert provider.provider_name() == "local_device"
 
 
+def test_fast_local_role_prefers_small_worker_runtime_without_changing_normal_order(monkeypatch):
+    monkeypatch.setenv("MARY_LOCAL_INFERENCE_RUNTIME", "auto")
+    monkeypatch.setenv(
+        "MARY_LOCAL_FAST_RUNTIME_ORDER",
+        "ollama,lm_studio,llama_cpp",
+    )
+
+    fast = LocalRuntimeProvider(role="fast")
+    conversation = LocalRuntimeProvider(role="conversation")
+
+    assert fast._runtime_order()[0] == "ollama"
+    assert conversation._runtime_order()[0] == "lm_studio"
+
+
+def test_fast_ollama_role_supports_explicit_small_model(monkeypatch):
+    monkeypatch.setenv("MARY_OLLAMA_MODEL", "qwen3:4b")
+    monkeypatch.setenv("MARY_OLLAMA_CONVERSATION_MODEL", "qwen3:4b")
+    monkeypatch.setenv("MARY_OLLAMA_FAST_MODEL", "qwen3:1.7b")
+
+    assert local_runtime_module._ollama_model_for_role("conversation") == "qwen3:4b"
+    assert local_runtime_module._ollama_model_for_role("fast") == "qwen3:1.7b"
+
+
 def test_llm_local_task_uses_same_bounded_message_contract():
     payload = _sanitize_task_args(
         "llm.local",
