@@ -52,6 +52,7 @@ from .interface import (
 
 
 _FREE_PROVIDER_NAMES = (
+    "local_device",
     "groq",
     "gemini",
     "openrouter",
@@ -141,6 +142,11 @@ class LLMRouter:
     def _create_provider(self, name: str, *, purpose: str | None = None) -> LLMInterface:
         name = str(name).lower().strip()
         purpose_name = str(purpose or "").lower().strip()
+
+        if name == "local_device":
+            from .providers.local_runtime import LocalRuntimeProvider
+
+            return LocalRuntimeProvider().for_purpose(purpose_name)
 
         if name == "groq":
             from .providers.groq import GroqProvider
@@ -347,6 +353,16 @@ class LLMRouter:
                 return purpose_adapter(purpose)
             return registered
         purpose_name = str(purpose or "").lower().strip()
+        if (
+            provider_name == "local_device"
+            and purpose_name in _CONVERSATION_PURPOSES
+        ):
+            key = (provider_name, purpose_name)
+            provider = self._purpose_providers.get(key)
+            if provider is None:
+                provider = self._create_provider(provider_name, purpose=purpose_name)
+                self._purpose_providers[key] = provider
+            return provider
         if purpose_name not in {"conversation_fast", "social_instant"} or provider_name not in {"groq", "ollama"}:
             return self.get_provider(provider_name)
         key = (provider_name, "conversation_fast")
