@@ -1852,7 +1852,7 @@ function renderVoice() {
     <div class="section-title">PLAYBACK STARTUP</div>
     <div class="workspace-grid three">
       <div class="workspace-panel"><h3>Bridge transport</h3><div class="data-row"><span>Text → UI payload</span><strong>${transportMs === null ? '—' : escapeHtml(formatMilliseconds(transportMs))}</strong></div><p>Measures QWebChannel/message transport after text and TTS are ready.</p></div>
-      <div class="workspace-panel"><h3>Audio readiness</h3><div class="data-row"><span>Payload → canplay</span><strong>${decodeMs === null ? '—' : escapeHtml(formatMilliseconds(decodeMs))}</strong></div><p>12.12.2 prefers a bounded local file URL instead of moving a large base64 audio blob through the UI bridge.</p></div>
+      <div class="workspace-panel"><h3>Audio readiness</h3><div class="data-row"><span>Payload → canplay</span><strong>${decodeMs === null ? '—' : escapeHtml(formatMilliseconds(decodeMs))}</strong></div><p>Desktop playback prefers a bounded local file URL instead of moving a large base64 audio blob through the UI bridge.</p></div>
       <div class="workspace-panel"><h3>Browser start</h3><div class="data-row"><span>Canplay → speaking</span><strong>${schedulerMs === null ? '—' : escapeHtml(formatMilliseconds(schedulerMs))}</strong></div><p>Lip-sync graph setup now waits until playback has actually started.</p></div>
     </div>
     <div class="section-title">AVATAR PRESENTATION</div>
