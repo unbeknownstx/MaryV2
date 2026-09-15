@@ -22,6 +22,21 @@ def test_windows_and_macos_use_the_same_canonical_home_node() -> None:
     assert "node_benchmark_13_11.json" in windows
 
 
+def test_windows_scheduled_task_and_macos_launchagent_wrap_the_same_home_node() -> None:
+    mac_install = _text("scripts/install_macos_node_agent.sh")
+    mac_remove = _text("scripts/uninstall_macos_node_agent.sh")
+    windows_install = _text("scripts/install_windows_node_task.ps1")
+    windows_remove = _text("scripts/uninstall_windows_node_task.ps1")
+
+    assert "launch_home_node_macos.sh" in mac_install
+    assert "LaunchAgents" in mac_install
+    assert "launchctl" in mac_install
+    assert "launchctl" in mac_remove
+    assert "launch_home_node_windows.ps1" in windows_install
+    assert "ScheduledTask" in windows_install
+    assert "ScheduledTask" in windows_remove
+
+
 def test_windows_and_macos_profiles_share_the_same_bounded_role_contract() -> None:
     required = {
         "MARY_OLLAMA_MODEL",

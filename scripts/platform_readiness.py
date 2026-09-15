@@ -34,6 +34,8 @@ REQUIRED_REPO_PATHS = (
     "scripts/run_home_node.py",
     "scripts/launch_home_node_macos.sh",
     "scripts/launch_home_node_windows.ps1",
+    "scripts/install_macos_node_agent.sh",
+    "scripts/uninstall_macos_node_agent.sh",
     "docs/operations/MAC_NODE.md",
     "ios/MaryV2iOS/project.yml",
 )

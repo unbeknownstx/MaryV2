@@ -23,6 +23,22 @@ The launcher uses the same `scripts.run_home_node` implementation as Windows, th
 
 If Ollama is installed but not reachable, the launcher may start `ollama serve`. Disable that with `MARY_NODE_START_OLLAMA=false`. It never downloads models.
 
+## Start automatically at login
+
+Windows uses a Scheduled Task; macOS uses the equivalent user-level LaunchAgent. It runs as the logged-in user, never as root, and invokes the same canonical home-node launcher:
+
+```bash
+bash scripts/install_macos_node_agent.sh
+```
+
+Remove it with:
+
+```bash
+bash scripts/uninstall_macos_node_agent.sh
+```
+
+The generated plist contains only executable/log paths and the MaryV2 label. Credentials remain in Mary's normal private environment/config path and are not copied into launchd configuration.
+
 ## Desktop and voice parity
 
 Normal Mac Desktop startup uses the same `mary.desktop.runtime_supervisor` as Windows for LM Studio/Ollama/llama.cpp discovery and bounded `llm.local` hosting.

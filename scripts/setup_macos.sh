@@ -97,6 +97,7 @@ run_isolated_python_stage "step-9-standalone" -m scripts.verify_standalone_readi
 
 step 10 "Local capability node status"
 echo "  Canonical home node launcher: scripts/launch_home_node_macos.sh"
+echo "  Optional logon agent: scripts/install_macos_node_agent.sh"
 echo "  Readiness: .venv/bin/python -m scripts.platform_readiness --strict"
 
 echo "MARYV2 READY"
