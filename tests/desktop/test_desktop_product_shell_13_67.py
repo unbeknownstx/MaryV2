@@ -96,3 +96,9 @@ def test_13_67_launcher_matches_desktop_product_language():
     assert "PERSISTENT COMPANION · DESKTOP" in html
     assert "PLAY MARY" in html
     assert "presence-presentation" in html
+
+
+def test_13_67_safe_renderer_transform_is_windows_line_ending_invariant():
+    vite = _text("desktop/vite.config.js")
+    assert "code.replace(/\\r\\n?/g, '\\n')" in vite
+    assert "Mary safe-renderer marker missing: boot completion" not in vite
