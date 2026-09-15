@@ -2,9 +2,11 @@
 
 Remote Mary Core is canonical, but older standalone/Desktop builds may have left
 valid creator-owned state under a Windows/macOS application data root or the
-historical repository ``data`` directory.  This module never imports, merges,
-or rewrites that state.  It only reports content-free counts so the creator can
-see whether an older root is worth reviewing before an explicit recovery.
+historical repository ``data`` directory.  Discovery never imports, merges, or rewrites that state. It reports content-free
+counts so the creator can see whether an older root is worth reviewing. The
+explicit loader at the bottom is used only by the creator-invoked recovery
+command to read the two registered continuity owners (memory + relationship)
+for a reviewed Core preview/apply transaction.
 """
 
 from __future__ import annotations
@@ -159,3 +161,47 @@ def candidate_continuity_roots(project_root: str | Path) -> list[Path]:
 
 def discover_local_continuity(project_root: str | Path) -> list[dict[str, Any]]:
     return [inspect_continuity_root(path) for path in candidate_continuity_roots(project_root)]
+
+
+def load_continuity_payload(root: str | Path) -> dict[str, Any]:
+    """Load only the two registered continuity owners from an explicit root.
+
+    This function performs no writes and no network calls. It intentionally
+    excludes working memory, cognitive-reservoir indexes, runtime/provider
+    state, node state, credentials, caches, workspace files and traces.
+    """
+
+    path = Path(root).expanduser().resolve()
+    memory_path = path / "memory" / "memory.json"
+    relationship_path = path / "relationship" / "relationship.json"
+    memory = _load_json(memory_path)
+    relationship = _load_json(relationship_path)
+    if not memory and not relationship:
+        raise FileNotFoundError(
+            f"No recoverable memory/relationship state exists under {path}"
+        )
+    return {
+        "memory": memory,
+        "relationship": relationship,
+    }
+
+
+def best_continuity_candidate(project_root: str | Path) -> Path | None:
+    """Choose the highest-record bounded candidate for an explicit preview."""
+
+    reports = discover_local_continuity(project_root)
+    candidates = [
+        item
+        for item in reports
+        if bool(item.get("recoverable_candidate"))
+    ]
+    if not candidates:
+        return None
+    selected = max(
+        candidates,
+        key=lambda item: (
+            int(item.get("continuity_records") or 0),
+            int(item.get("state_files") or 0),
+        ),
+    )
+    return Path(str(selected["root"])).resolve()
