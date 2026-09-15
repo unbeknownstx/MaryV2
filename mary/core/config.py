@@ -188,6 +188,7 @@ class LLMConfig:
             "ollama",
         ]
     )
+    conversation_local_first: bool = True
     frontier_provider_order: list[str] = field(
         default_factory=lambda: [
             "deepseek",
@@ -355,6 +356,14 @@ class Config:
                 for item in conversation_order_value.split(",")
                 if item.strip()
             ]
+
+        local_first_value = os.getenv(
+            "MARY_LLM_CONVERSATION_LOCAL_FIRST",
+            "true",
+        ).strip().lower()
+        config.llm.conversation_local_first = local_first_value in {
+            "1", "true", "yes", "on", "enabled",
+        }
 
         frontier_order_value = os.getenv(
             "MARY_LLM_FRONTIER_ORDER",
