@@ -19,59 +19,68 @@ def _app(tmp_path):
 
 def test_memory_archive_reports_canonical_totals_not_only_visible_window(tmp_path):
     app = _app(tmp_path)
-    mary = app.mary
+    try:
+        mary = app.mary
 
-    for index in range(15):
-        mary.relationship_history.record_shared_experience(
-            description=f"Shared work continuity {index}",
-            importance=0.6,
-            metadata={"kind": "shared_work", "owner": "creator"},
-        )
+        for index in range(15):
+            mary.relationship_history.record_shared_experience(
+                description=f"Shared work continuity {index}",
+                importance=0.6,
+                metadata={"kind": "shared_work", "owner": "creator"},
+            )
 
-    state = build_desktop_dashboard_state(mary)
-    archive = state["memory_archive"]
+        state = build_desktop_dashboard_state(mary)
+        archive = state["memory_archive"]
 
-    assert archive["counts"]["shared_history_total"] == 15
-    assert archive["counts"]["shared_history_visible"] == 12
-    assert len(archive["shared_history"]) == 12
+        assert archive["counts"]["shared_history_total"] == 15
+        assert archive["counts"]["shared_history_visible"] == 12
+        assert len(archive["shared_history"]) == 12
+    finally:
+        app.close()
 
 
 def test_memory_archive_reports_profile_and_relationship_observation_totals(tmp_path):
     app = _app(tmp_path)
-    mary = app.mary
+    try:
+        mary = app.mary
 
-    mary.user_model.record_profile(
-        category="interest",
-        key="interest",
-        value="local AI",
-        source="creator_natural",
-        explicitly_shared=True,
-    )
-    mary.relationship_understanding.observations.append(
-        {
-            "id": "observation_projection_test",
-            "content": "Creator enjoys local AI work.",
-            "source": "creator",
-        }
-    )
+        mary.user_model.record_profile(
+            category="interest",
+            key="interest",
+            value="local AI",
+            source="creator_natural",
+            explicitly_shared=True,
+        )
+        mary.relationship_understanding.observations.append(
+            {
+                "id": "observation_projection_test",
+                "content": "Creator enjoys local AI work.",
+                "source": "creator",
+            }
+        )
 
-    state = build_desktop_dashboard_state(mary)
-    counts = state["memory_archive"]["counts"]
+        state = build_desktop_dashboard_state(mary)
+        counts = state["memory_archive"]["counts"]
 
-    assert counts["creator_profile_total"] == 1
-    assert counts["relationship_observation_total"] == 1
+        assert counts["creator_profile_total"] == 1
+        assert counts["relationship_observation_total"] == 1
+    finally:
+        app.close()
 
 
 def test_broad_creator_recall_includes_relationship_history(tmp_path):
     app = _app(tmp_path)
-    mary = app.mary
-    mary.relationship_history.record_shared_experience(
-        description="We spent time rebuilding Mary's desktop and local compute path.",
-        importance=0.9,
-        metadata={"kind": "shared_work", "owner": "creator"},
-    )
+    try:
+        mary = app.mary
+        mary.relationship_history.record_shared_experience(
+            description="We spent time rebuilding Mary's desktop and local compute path.",
+            importance=0.9,
+            metadata={"kind": "shared_work", "owner": "creator"},
+        )
 
-    response = mary._creator_memory_overview(recent_conversation=[]).lower()
+        response = mary._creator_memory_overview(recent_conversation=[]).lower()
 
-    assert "relationship history" in response
-    assert "desktop and local compute" in response
+        assert "relationship history" in response
+        assert "desktop and local compute" in response
+    finally:
+        app.close()
