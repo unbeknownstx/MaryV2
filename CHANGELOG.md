@@ -1,5 +1,17 @@
 # Changelog
 
+## 13.64 — 2026-09-14 — Unified Provider & Model Execution Fabric
+
+- Reconciled 13.60–13.64 provider/gateway hardening into the existing 13.15 provider catalog, `LLMRouter`, `ResourceGovernor`, and 13.35+ Model Execution Fabric instead of treating it as a parallel routing stack.
+- Added content-free provider pressure, health/readiness, quota headroom and hysteresis below hard privacy/cost/operation/fallback eligibility.
+- Added bounded failover budgets, request budgeting, session affinity, context-fidelity guards, endpoint policy and provider analytics without retaining prompt/response content.
+- Added provider/model substitution detection and qualified route identity for exact-model work.
+- Added signed catalog trust policy with pinning, freshness, expiry and rollback/replay protection; catalog metadata cannot enable providers, credentials or permissions.
+- Added compatible-space embedding failover; embedding routes may switch providers only when family, dimensions and vector-space identity match.
+- Added transport capability prefiltering for vision and preserved endpoint/SSRF policy as a separate authorization boundary.
+- Kept FreeLLMAPI as an optional replaceable OpenAI-compatible gateway/research source rather than a Core dependency or Mary authority.
+- Preserved deterministic cold-start routing and exact router eligibility while allowing adaptive operational evidence to filter/demote already-authorized providers.
+
 ## 13.10 — 2026-09-11 — Live Stream Cohost
 
 - Added a bounded Twitch-to-canonical-Core cohost loop on top of the existing stream chat governor, audience ranking and creator-floor scheduler.
