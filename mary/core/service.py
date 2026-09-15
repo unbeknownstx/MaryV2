@@ -354,6 +354,7 @@ class MaryCoreService:
                         "device_id": turn.device_id,
                         "requested_mode": turn.requested_mode,
                         "voice_input": bool(turn.voice_input),
+                        "client_local_time": turn.client_local_time,
                 }
                 application_run = self.application.run
                 manager = getattr(self.mary, "performance_context", None)
