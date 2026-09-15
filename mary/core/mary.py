@@ -2187,65 +2187,12 @@ class Mary:
         latest_mary = mary_messages[-1] if mary_messages else None
 
         if str(recall_scope).strip().lower() == "shared_work":
-            work_markers = (
-                "working on", "work on", "building", "build ", "project",
-                "developing", "fixing", "testing", "debugging", "implementing",
-                "finish ", "finishing ",
-            )
-            grounded_work = [
-                text
-                for text in user_messages
-                if any(marker in text.lower() for marker in work_markers)
-            ]
-            if grounded_work:
-                latest = grounded_work[-1]
-                if len(latest) > 220:
-                    latest = latest[:219].rstrip() + "…"
-                return (
-                    "From what you've actually said in this session, the clearest "
-                    f"shared-work thread is ‘{latest}’."
-                )
-
-            # Session dialogue is not the only legitimate continuity source.
-            # Durable creator goals and creator-owned episodic/semantic memories may
-            # identify an ongoing project, but Mary's own assistant-role dialogue is
-            # never used as evidence here.
-            durable_work: list[str] = []
-            try:
-                profile = self._creator_profile_for_conversation()
-            except Exception:
-                profile = {}
-            for goal in profile.get("goals", []) if isinstance(profile, dict) else []:
-                value = " ".join(str(goal).split())
-                if value and value not in durable_work:
-                    durable_work.append(value)
-
-            for memory in reversed(self._all_available_memories()):
-                if not self._memory_is_creator_owned(memory):
-                    continue
-                text = self._memory_to_text(memory)
-                if text_has_test_probe_marker(text):
-                    continue
-                lowered_text = text.lower()
-                if text and any(marker in lowered_text for marker in work_markers):
-                    compact_text = text if len(text) <= 220 else text[:219].rstrip() + "…"
-                    if compact_text not in durable_work:
-                        durable_work.append(compact_text)
-                if len(durable_work) >= 3:
-                    break
-
-            if durable_work:
-                lead = durable_work[0]
-                return (
-                    "The clearest ongoing thing I have grounded in your durable creator "
-                    f"state is {lead}. I can use that as our project continuity without "
-                    "pretending one of my own improvised replies was something you told me."
-                )
-
-            return (
-                "I don't have a grounded shared-work item in this session or your durable "
-                "creator/project state yet. I shouldn't turn something from one of my own "
-                "earlier replies into a project we supposedly worked on together."
+            # Shared-work questions need continuity across restarts, not only the
+            # current dialogue window. Reuse the canonical grounded aggregator,
+            # which ranks creator-authored session evidence, durable relationship
+            # shared-work history, project milestones and explicitly tagged memory.
+            return self._creator_shared_work_overview(
+                recent_conversation=recent_conversation,
             )
 
         def compact(text: str | None, limit: int = 180) -> str:
