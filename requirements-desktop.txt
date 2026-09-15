@@ -1,6 +1,11 @@
 # MaryV2 Desktop Alpha dependencies
 # Kept separate from requirements.txt so the headless/core runtime stays lean.
-PySide6==6.11.1
+#
+# macOS intentionally stays on the final Qt/PySide line that ships a
+# macOS 12 universal2 wheel.  This keeps the physical M1 Monterey 12.x host
+# supported while Windows/Linux can use the current Qt line with Python 3.14.
+PySide6==6.9.3; sys_platform == "darwin"
+PySide6==6.11.1; sys_platform != "darwin"
 
 # Optional local loopback presence transport used by the desktop when enabled.
 websockets>=16,<17
