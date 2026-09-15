@@ -103,3 +103,10 @@ def test_13_67_safe_renderer_transform_is_windows_line_ending_invariant():
     vite = _text("desktop/vite.config.js")
     assert "code.replace(/\\r\\n?/g, '\\n')" in vite
     assert "Mary safe-renderer marker missing" in vite
+
+
+
+def test_performance_context_binding_uses_collection_selector():
+    main = _text("desktop/src/main.js")
+    assert "document.querySelectorAll('[data-performance-context]').forEach" in main
+    assert "$('[data-performance-context]').forEach" not in main
