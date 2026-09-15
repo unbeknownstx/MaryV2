@@ -110,7 +110,7 @@ def test_replit_effective_conversation_route_skips_unavailable_ollama(monkeypatc
     router, _ = _router(ollama=False)
     env = RuntimeEnvironment(config=Config(), router=router)
     snap = env.snapshot()
-    assert snap["conversation_policy"][0] == "ollama"
+    assert snap["conversation_policy"][0] == "local_device"
     assert snap["effective_conversation_route"] == ["groq", "gemini", "openrouter"]
 
 
