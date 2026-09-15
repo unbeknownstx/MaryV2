@@ -66,3 +66,56 @@ A recoverable Mary consists of:
 - rebuildable caches/indexes.
 
 Use `mary.runtime.recovery` and the recovery scripts for secret-free manifests/snapshots. Keep off-device backups for any future continuity state that becomes meaningful.
+
+
+## Selective local-continuity reconciliation
+
+When Desktop has moved to a remote canonical Mary Core, older creator-owned
+Windows/macOS application data may contain valid continuity that was never
+migrated to Core. Do **not** copy that old data directory over the live Core
+root.
+
+First run the content-free audit:
+
+\`\`\`text
+python -m scripts.audit_local_continuity
+\`\`\`
+
+If a recoverable candidate exists, preview the deterministic merge:
+
+\`\`\`text
+python -m scripts.recover_local_continuity
+\`\`\`
+
+Preview is authenticated but non-mutating. It sends only the registered
+MemoryManager and RelationshipManager durable owners to Core and returns counts
+for additions, duplicates, ID collisions and creator-profile conflicts. It
+never imports working memory, cognitive-reservoir indexes, provider/runtime
+state, node leases, credentials, traces or workspace caches.
+
+The canonical merge policy is:
+
+- current Core state wins conflicting current scalar creator facts/preferences;
+- older conflicting values may survive only as historical source-aware profile
+  evidence;
+- exact duplicates are skipped;
+- unique episodic, semantic, relationship-history, profile, milestone and
+  relationship-understanding records can be added;
+- IDs are preserved when unique and deterministically renamed only for a real
+  ID collision;
+- the local source root remains unchanged.
+
+Apply is deliberately two-step. Core returns the current durable-state
+fingerprint during preview. Mutation is accepted only when that same
+fingerprint is still current, the exact creator confirmation is supplied, and
+Core can create/verify a normal protected durable backup first.
+
+After reviewing the preview:
+
+\`\`\`text
+python -m scripts.recover_local_continuity --apply --confirm MERGE_LOCAL_CONTINUITY
+\`\`\`
+
+If \`MARY_BACKUP_DIR\` is not configured on canonical Core, apply is refused.
+Configure the protected Core backup destination, redeploy, and preview again.
+A changed Core fingerprint also refuses apply and requires a fresh preview.

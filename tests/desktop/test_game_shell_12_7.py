@@ -37,6 +37,11 @@ def test_dashboard_is_a_view_over_canonical_mary_state(tmp_path, monkeypatch) ->
     assert state["live"]["character"]["name"] == "Mary"
     assert any(item["title"] == "blue" for item in state["memory_highlights"])
     assert state["relationship"]["score"] > 0
+    assert any(
+        item["description"] == "We finished a MaryV2 hardening pass together"
+        for item in state["memory_archive"]["shared_history"]
+    )
+    assert state["memory_archive"]["authority"]["shared_history"] == "RelationshipManager"
     assert state["relationship"]["semantics"].startswith("derived relationship-continuity")
     assert state["paths"]["data_root"] == str(mary.config.paths.data)
 
@@ -136,5 +141,5 @@ def test_game_shell_and_launcher_are_local_build_surfaces() -> None:
     assert "https://fonts.googleapis.com" not in main_html + launcher_html
     assert "cdn.jsdelivr.net" not in main_html + launcher_html
     assert "launcher: resolve(import.meta.dirname, 'launcher.html')" in vite
-    assert package["version"] in {"12.7.0", "12.8.0", "12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1"}
+    assert package["version"] in {"12.7.0", "12.8.0", "12.9.0", "12.10.0", "12.11.0", "12.12.0", "12.12.2", "13.0.0", "13.1.1", "13.68.0"}
     assert package["dependencies"]["@pixiv/three-vrm"] == "3.5.5"

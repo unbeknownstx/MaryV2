@@ -30,6 +30,8 @@ _STOPWORDS = {
 }
 _REPAIR_MARKERS = (
     "that's not really what i meant", "that's not what i meant", "not what i meant",
+    "what are you on about", "what is you on about",
+    "what the hell are you on about", "what the hell is you on about",
     "you misunderstood", "that's not it", "no that's not it", "not what i'm saying",
 )
 _DISAGREEMENT_MARKERS = (
@@ -480,6 +482,13 @@ CONVERSATION_RECALL_PATTERNS = (
     "what have we been working on",
     "what have we worked on together",
     "what are we working on together",
+    "what are we working on",
+    "what were we working on",
+    "what were we working on together",
+    "do you know what we are working on",
+    "do you know what we're working on",
+    "do you know what we were working on",
+    "do you know what were working on",
 )
 
 

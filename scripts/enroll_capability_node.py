@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     child_env["MARY_NODE_ENROLLMENT_GRANT"] = grant
     try:
         completed = subprocess.run(
-            [sys.executable, "-m", "scripts.run_capability_node", "--enroll-only"],
+            [sys.executable, "-m", "scripts.run_home_node", "--enroll-only"],
             env=child_env,
             check=False,
         )

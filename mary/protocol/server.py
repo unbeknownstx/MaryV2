@@ -41,6 +41,7 @@ from mary.runtime.turn_observability import (
 
 MAX_WORKSPACE_ACTION_BYTES = 16_384
 MAX_VOICE_SYNTHESIS_BYTES = 32_768
+MAX_CONTINUITY_RECOVERY_BYTES = 2_000_000
 
 
 def _token() -> str:
@@ -335,6 +336,63 @@ def create_app(service: MaryCoreService | None = None):
             raise HTTPException(
                 status_code=409,
                 detail="Durable-state backup failed safely.",
+            ) from exc
+
+    @app.post("/v1/admin/continuity-recovery/preview")
+    async def preview_continuity_recovery(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            body = await bounded_json(
+                request,
+                limit=MAX_CONTINUITY_RECOVERY_BYTES,
+            )
+            if not isinstance(body, dict):
+                raise ValueError("Continuity recovery request must be a JSON object.")
+            continuity = body.get("continuity")
+            if not isinstance(continuity, dict):
+                raise ValueError("continuity must be a JSON object.")
+            return await asyncio.to_thread(
+                core.preview_continuity_recovery,
+                continuity,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Continuity recovery preview is unavailable.",
+            ) from exc
+
+    @app.post("/v1/admin/continuity-recovery/apply")
+    async def apply_continuity_recovery(request: Request) -> dict[str, Any]:
+        await require_creator(request)
+        try:
+            body = await bounded_json(
+                request,
+                limit=MAX_CONTINUITY_RECOVERY_BYTES,
+            )
+            if not isinstance(body, dict):
+                raise ValueError("Continuity recovery request must be a JSON object.")
+            continuity = body.get("continuity")
+            if not isinstance(continuity, dict):
+                raise ValueError("continuity must be a JSON object.")
+            return await asyncio.to_thread(
+                core.apply_continuity_recovery,
+                continuity,
+                expected_fingerprint=str(body.get("expected_fingerprint") or ""),
+                confirmation=str(body.get("confirmation") or ""),
+            )
+        except PermissionError as exc:
+            raise HTTPException(
+                status_code=403,
+                detail="Explicit creator confirmation is required.",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Continuity recovery was refused safely.",
             ) from exc
 
     @app.get("/v1/admin/durable-state")

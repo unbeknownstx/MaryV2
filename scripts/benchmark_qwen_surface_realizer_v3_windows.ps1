@@ -1,8 +1,9 @@
 param(
     [int]$WarmRuns = 2,
-    [string[]]$Models = @("qwen3:1.7b", "qwen3:4b-instruct"),
+    [string[]]$Models = @("qwen3:1.7b"),
     [string]$Report = "",
     [string]$BaseUrl = "http://127.0.0.1:11434",
+    [switch]$IncludeInstructControl,
     [switch]$Overwrite
 )
 
@@ -18,6 +19,13 @@ try {
     if (-not $Report) {
         $Stamp = Get-Date -Format "yyyyMMdd-HHmmss"
         $Report = Join-Path $ReportDirectory "qwen-surface-realizer-v3-$Stamp.json"
+    }
+
+    # Historical V3 comparison pair: "qwen3:1.7b", "qwen3:4b-instruct".
+    # On this Windows/RX580 profile the 4B control is never automatic; request
+    # -IncludeInstructControl explicitly when intentionally running that experiment.
+    if ($IncludeInstructControl -and $Models -notcontains "qwen3:4b-instruct") {
+        $Models = @($Models) + "qwen3:4b-instruct"
     }
 
     $PreviousDataDirectory = $env:MARY_DATA_DIR
@@ -43,6 +51,9 @@ try {
     Write-Host "Cases: core 10 plus 8 adversarial; warm runs per case: $WarmRuns"
     Write-Host "Ollama endpoint: $EndpointDisplay"
     Write-Host "Thinking: disabled; streaming: enabled; context: 1024; output ceiling: 48 tokens"
+    if ($Models | Where-Object { $_ -match '^qwen3:4b' }) {
+        Write-Warning "A 4B control was explicitly requested. On the RX580 4 GB display GPU this is experimental and may exhaust safe VRAM headroom."
+    }
     Write-Host "The model receives only speaker-relative semantic units and surface constraints." -ForegroundColor DarkGray
     Write-Host "Cold measurement temporarily unloads only requested tags; initial residency is restored best-effort." -ForegroundColor DarkGray
     Write-Host "No model will be selected, promoted, or connected to production routing." -ForegroundColor DarkGray
@@ -75,7 +86,7 @@ try {
             if (-not $ResolvedIsolatedParent.Equals($ResolvedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
                 throw "Refusing to remove an isolated data path outside the system temp root."
             }
-            Remove-Item -LiteralPath $ResolvedIsolatedDataDirectory -Recurse -Force
+            Remove-Item -LiteralPath $IsolatedDataDirectory -Recurse -Force
         }
     }
 } finally {

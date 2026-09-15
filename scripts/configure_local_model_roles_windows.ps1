@@ -1,6 +1,6 @@
 param(
-    [string]$GeneralModel = "qwen3:4b-instruct",
-    [string]$FastModel = "qwen3:4b-instruct",
+    [string]$GeneralModel = "qwen3:1.7b",
+    [string]$FastModel = "qwen3:1.7b",
     [string]$UtilityModel = "qwen3:1.7b"
 )
 
@@ -35,6 +35,10 @@ $updates = [ordered]@{
     "MARY_OLLAMA_MODEL" = $GeneralModel
     "MARY_OLLAMA_CONVERSATION_MODEL" = $FastModel
     "MARY_OLLAMA_UTILITY_MODEL" = $UtilityModel
+    "MARY_OLLAMA_NUM_CTX" = "4096"
+    "MARY_DEVICE_OLLAMA_MAX_CTX" = "4096"
+    "MARY_OLLAMA_KEEP_ALIVE" = "10m"
+    "MARY_OLLAMA_THINK" = "false"
 }
 
 $current = Get-Content $EnvPath
@@ -61,4 +65,4 @@ Write-Host "  general/conversation : $GeneralModel"
 Write-Host "  fast                 : $FastModel"
 Write-Host "  utility              : $UtilityModel"
 Write-Host "Backup: $backup" -ForegroundColor DarkGray
-Write-Host "Restart Mary Desktop so the capability node re-advertises the new role mapping." -ForegroundColor Yellow
+Write-Host "Restart the canonical home node so it re-advertises the new role mapping." -ForegroundColor Yellow

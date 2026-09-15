@@ -1,0 +1,12 @@
+# Optional MaryV2 capability-node dependencies.
+#
+# This file is intentionally NOT included by requirements.txt. Mary Core,
+# desktop/mobile surfaces, Ollama, and llama.cpp routing must start without it.
+#
+# Install only on a node that will connect to configured Streamable HTTP(S)
+# MCP servers:
+#   python -m pip install -r requirements-node-mcp.txt
+#
+# OpenDesign and Langflow can be remote services. Scrapling can be hosted
+# separately on the same node or elsewhere; Mary does not spawn MCP servers.
+mcp>=2,<3

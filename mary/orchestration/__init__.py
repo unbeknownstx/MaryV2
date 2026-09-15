@@ -21,6 +21,12 @@ from mary.orchestration.orchestrator import (
     PrivacyMode,
     TaskOrchestrator,
 )
+from mary.orchestration.workers import (
+    SpecialistWorkerPool,
+    SpecialistWorkerSession,
+    SpecialistWorkerSpec,
+    WorkerBudget,
+)
 
 __all__ = [
     "ProvenanceSource",
@@ -39,6 +45,12 @@ __all__ = [
     "OrchestrationRoute",
     "PrivacyMode",
     "TaskOrchestrator",
+    "SpecialistWorkerPool",
+    "SpecialistWorkerSession",
+    "SpecialistWorkerSpec",
+    "WorkerBudget",
 ]
 
 from .execution import ExecutionResult, ExecutionStatus, OrchestrationExecutor
+
+__all__ += ["ExecutionResult", "ExecutionStatus", "OrchestrationExecutor"]

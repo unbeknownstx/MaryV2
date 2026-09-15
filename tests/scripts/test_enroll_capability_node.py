@@ -71,7 +71,7 @@ def test_main_passes_grant_but_not_creator_token_to_node_child(monkeypatch, caps
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
     assert module.main([]) == 0
-    assert observed["command"][-3:] == ["-m", "scripts.run_capability_node", "--enroll-only"]
+    assert observed["command"][-3:] == ["-m", "scripts.run_home_node", "--enroll-only"]
     assert observed["grant"] == "secret-test-one-time"
     assert observed["creator"] == ""
     assert observed["llama"] == "true"

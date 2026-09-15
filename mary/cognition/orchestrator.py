@@ -322,6 +322,13 @@ class CognitiveOrchestrator:
                     "what have we been working on",
                     "what have we worked on together",
                     "what are we working on together",
+                    "what are we working on",
+                    "what were we working on",
+                    "what were we working on together",
+                    "do you know what we are working on",
+                    "do you know what we're working on",
+                    "do you know what we were working on",
+                    "do you know what were working on",
                 ))
                 else "recent_dialogue"
             )
@@ -650,6 +657,10 @@ class CognitiveOrchestrator:
             "what are my goals": "goals",
             "what do you know about my values": "values",
             "what values do you know i have": "values",
+            "what are my values": "values",
+            "what are my most important values": "values",
+            "what do i value most": "values",
+            "what would you say my values are": "values",
             "what do you know about my preferences": "preferences",
             "what preferences do you know i have": "preferences",
             "what is your structured relationship history with me": "history",
@@ -717,6 +728,10 @@ class CognitiveOrchestrator:
             # heuristics.  Keep this ownership-specific: "about me" here means
             # Unbe, not Mary's own self-memory.
             creator_memory_patterns = (
+                # A bare broad recall question is about Mary's overall creator/session
+                # continuity, not only the episodic/semantic stores.
+                r"^what do you remember$",
+                r"^tell me what you remember$",
                 r"\bwhat(?: are)?(?: some)?(?: of the)? things (?:do )?you remember about me\b",
                 r"\bwhat(?: are)?(?: some)? memories (?:do )?you have about me\b",
                 r"\btell me(?: some)? things you remember about me\b",
@@ -1096,6 +1111,42 @@ class CognitiveOrchestrator:
         if is_personal_runtime_reaction(text):
             return None
 
+        # Questions about what a concrete host/node does for Mary are runtime
+        # introspection, not an invitation for a provider to improvise Mary's
+        # architecture. Keep the detection semantic rather than tied to one
+        # exact Windows sentence.
+        runtime_device_terms = (
+            "windows", "pc", "computer", "machine", "node", "mac", "macbook",
+            "linux", "device",
+        )
+        runtime_role_terms = (
+            "what role", "which role", "role does", "role this", "role the",
+            "what does this", "what does my", "what does the", "purpose of",
+            "job of",
+        )
+        runtime_scope_terms = (
+            "architecture", "system", "runtime", "for you", "for u",
+            "your setup", "your stack",
+        )
+        if (
+            any(term in normalized for term in runtime_device_terms)
+            and any(term in normalized for term in runtime_role_terms)
+            and any(term in normalized for term in runtime_scope_terms)
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description=(
+                    "Creator asks what role a concrete machine/node plays in Mary's "
+                    "actual runtime architecture."
+                ),
+                parameters={
+                    "query": text,
+                    "self_query_type": "runtime_architecture",
+                },
+                source="runtime_node_role_detector",
+            )
+
         patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
             ("runtime_architecture", (
                 "what is your underlying architecture running on",
@@ -1361,6 +1412,8 @@ class CognitiveOrchestrator:
             runtime_tokens.intersection({
                 "model", "models", "provider", "providers", "api", "apis",
                 "ollama", "groq", "gemini", "openrouter", "openai",
+                "llama", "deepseek", "glm", "zai", "qwen", "kimi", "minimax",
+                "cerebras", "together", "fireworks",
             })
         )
         provider_availability_context = (

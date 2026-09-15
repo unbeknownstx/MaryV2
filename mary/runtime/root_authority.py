@@ -72,7 +72,9 @@ class MaryRootAuthority:
         "Capability and permission are separate. Paid, external, destructive, publishing, and privacy-sensitive actions remain governed.",
         "Cloud, PC, Mac, phone, and future servers are habitats/capability locations, not different Mary identities.",
         "Derived indexes/caches are rebuildable and must never become the only copy of Mary's authoritative state.",
-        "A failed optional capability must degrade functionality, not erase Mary's identity or continuity.",
+        "A failed optional capability must degrade functionality, not erase Mary's identity or continuity.",        "Private chain-of-thought and raw latent activations are not canonical memory, identity, or routine telemetry; only bounded structural reasoning evidence may be retained.",
+        "Training and optimization are offline proposal paths; no reward, experiment, or worker may automatically self-modify production Mary.",
+
     )
 
     def snapshot(self, mary: Any | None = None) -> dict[str, Any]:

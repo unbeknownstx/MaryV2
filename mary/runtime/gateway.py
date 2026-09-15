@@ -51,6 +51,7 @@ class MaryRuntimeGateway(Protocol):
         turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> GatewayTurnResult: ...
 
     def state(self) -> dict[str, Any]: ...
@@ -123,8 +124,10 @@ class LocalMaryGateway:
         text: str,
         *,
         conversation_id: str,
+        turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> GatewayTurnResult:
         if requested_mode:
             self.mary.engagement.set_mode(requested_mode)
@@ -139,6 +142,7 @@ class LocalMaryGateway:
                 "device_id": self.device_id,
                 "requested_mode": requested_mode,
                 "voice_input": bool(voice_input),
+                "client_local_time": client_local_time,
             },
         )
 
@@ -492,6 +496,7 @@ class RemoteMaryGateway:
         turn_id: str | None = None,
         requested_mode: str | None = None,
         voice_input: bool = False,
+        client_local_time: str | None = None,
     ) -> GatewayTurnResult:
         with self._surface_lock:
             if self._closed:
@@ -506,6 +511,7 @@ class RemoteMaryGateway:
                 "conversation_id": conversation_id,
                 "requested_mode": requested_mode,
                 "voice_input": bool(voice_input),
+                "client_local_time": client_local_time,
             }
             if turn_id is not None:
                 turn_kwargs["turn_id"] = turn_id
@@ -646,6 +652,14 @@ def gateway_from_environment(
                 "MARY_CORE_TOKEN or MARY_NODE_ENROLLMENT_GRANT is required when "
                 "MARY_CORE_URL is configured."
             )
+        try:
+            client_timeout = float(os.getenv(
+                "MARY_CORE_CLIENT_TIMEOUT",
+                "120" if node_only else "600",
+            ))
+        except (TypeError, ValueError):
+            client_timeout = 120.0 if node_only else 600.0
+        client_timeout = max(10.0, min(900.0, client_timeout))
         return RemoteMaryGateway(
             MaryClient(
                 core_url,
@@ -655,6 +669,7 @@ def gateway_from_environment(
                 credential_store=credential_store,
                 device_id=device_id,
                 surface=surface,
+                timeout=client_timeout,
             ),
             surface=surface,
             creator_surface=not node_only,

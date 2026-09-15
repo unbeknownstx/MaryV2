@@ -98,6 +98,7 @@ class RuntimeLimits:
     provider_attempts_per_generation: int = 4
     paid_calls_per_task: int = 1
     expert_max_output_tokens: int = 1_200
+    frontier_max_output_tokens: int = 8_192
 
     # Persistence / recovery.
     backup_generations: int = 3
@@ -157,6 +158,7 @@ class RuntimeLimits:
             provider_attempts_per_generation=_env_int("MARY_PROVIDER_ATTEMPTS_PER_GENERATION", defaults.provider_attempts_per_generation, maximum=16),
             paid_calls_per_task=_env_int("MARY_PAID_CALLS_PER_TASK", defaults.paid_calls_per_task, maximum=16),
             expert_max_output_tokens=_env_int("MARY_EXPERT_MAX_OUTPUT_TOKENS", defaults.expert_max_output_tokens, minimum=64, maximum=16_384),
+            frontier_max_output_tokens=_env_int("MARY_FRONTIER_MAX_OUTPUT_TOKENS", defaults.frontier_max_output_tokens, minimum=256, maximum=32_768),
             backup_generations=_env_int("MARY_STATE_BACKUP_GENERATIONS", defaults.backup_generations, minimum=1, maximum=10),
             state_file_soft_limit_bytes=_env_int("MARY_STATE_FILE_SOFT_LIMIT_BYTES", defaults.state_file_soft_limit_bytes, minimum=1024 * 1024, maximum=1024 * 1024 * 1024),
             dialogue_history_capacity=_env_int("MARY_DIALOGUE_HISTORY_CAPACITY", defaults.dialogue_history_capacity, maximum=2_000),

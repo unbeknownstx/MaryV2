@@ -8,6 +8,11 @@ MemoryManager remains the source of truth for durable episodic/semantic memory.
 The lifecycle simply chooses a bounded recent window plus a few tiny, temporary
 anchors from older user turns so long conversations do not grow every prompt
 without bound.
+
+13.38 tightens creator-instruction preservation: clipped user material uses a
+deterministic head+tail projection so conditions and exceptions at the end of a
+long turn are not silently discarded. The full dialogue remains canonical; the
+projection is disposable prompt context only.
 """
 
 from __future__ import annotations
@@ -18,6 +23,8 @@ from typing import Any, Iterable
 
 
 _SPACE_RE = re.compile(r"\s+")
+_CLIP_MARKER = " ...[older turn clipped]... "
+_ANCHOR_CLIP_MARKER = " …[older user turn clipped]… "
 
 
 @dataclass(frozen=True)
@@ -33,6 +40,7 @@ class ConversationContextWindow:
     max_turns: int = 0
     policy: str = "recent_turns_plus_ephemeral_anchors"
     promotion_policy: str = "explicit_or_existing_development_paths_only"
+    anchor_policy: str = "user_authored_head_tail_projection"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -46,6 +54,7 @@ class ConversationContextWindow:
             "max_turns": self.max_turns,
             "policy": self.policy,
             "promotion_policy": self.promotion_policy,
+            "anchor_policy": self.anchor_policy,
         }
 
 
@@ -86,7 +95,8 @@ class ConversationContextLifecycle:
 
         The input is expected to be completed dialogue *before* the current user
         message. The newest complete turns are preserved first. Older content is
-        not summarized by an LLM; only short user-authored anchors are retained.
+        not summarized by an LLM; only short user-authored head+tail projections
+        are retained so trailing constraints survive clipping.
         """
 
         normalized = self._normalize(history or [])
@@ -175,14 +185,11 @@ class ConversationContextLifecycle:
         return turns
 
     def _truncate_message(self, content: str) -> str:
-        if len(content) <= self.max_message_characters:
-            return content
-
-        marker = " ...[older turn clipped]... "
-        available = max(0, self.max_message_characters - len(marker))
-        head = available // 2
-        tail = available - head
-        return content[:head].rstrip() + marker + content[-tail:].lstrip()
+        return self._head_tail_clip(
+            content,
+            self.max_message_characters,
+            marker=_CLIP_MARKER,
+        )
 
     def _build_anchors(self, dropped: list[dict[str, str]]) -> list[str]:
         if self.max_anchors <= 0:
@@ -205,6 +212,25 @@ class ConversationContextLifecycle:
         text = _SPACE_RE.sub(" ", str(content)).strip()
         if not text:
             return ""
-        if len(text) <= self.anchor_characters:
+        return self._head_tail_clip(
+            text,
+            self.anchor_characters,
+            marker=_ANCHOR_CLIP_MARKER,
+        )
+
+    @staticmethod
+    def _head_tail_clip(content: str, limit: int, *, marker: str) -> str:
+        """Bound text while retaining both its premise and trailing constraints.
+
+        This is deliberately mechanical rather than model-generated. Exact full
+        text stays in the dialogue owner; only the prompt projection is clipped.
+        """
+        text = str(content)
+        if len(text) <= limit:
             return text
-        return text[: self.anchor_characters - 1].rstrip() + "…"
+        available = max(0, int(limit) - len(marker))
+        if available <= 1:
+            return text[: max(0, int(limit))]
+        head = available // 2
+        tail = available - head
+        return text[:head].rstrip() + marker + text[-tail:].lstrip()

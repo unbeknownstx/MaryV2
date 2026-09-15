@@ -34,6 +34,34 @@ def _project_label(texts: list[str]) -> str:
     return "Shared work"
 
 
+def milestone_is_shared_work(item: Mapping[str, Any] | None) -> bool:
+    """Return True only for milestones that actually describe shared/project work.
+
+    Relationship milestones also contain Mary-development and preference events.
+    Those are valid relationship evidence, but they are not project history and
+    must not leak into "what are we working on?" projections.
+    """
+
+    value = dict(item or {})
+    metadata = value.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    category = str(value.get("category") or "").strip().casefold()
+    kind = str(metadata.get("kind") or "").strip().casefold()
+    if metadata.get("shared_work") is True or kind in {
+        "shared_work",
+        "project",
+        "project_milestone",
+        "shared_achievement",
+    }:
+        return True
+    return category in {
+        "shared_work",
+        "project",
+        "project_milestone",
+        "shared_achievement",
+    }
+
+
 def _workspace_candidates(workspace: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     source = dict(workspace or {})
     values: list[dict[str, Any]] = []
@@ -174,8 +202,12 @@ def build_current_work_projection(
     except Exception:
         milestones = []
     for item in milestones:
-        if isinstance(item, dict):
-            add(item.get("description") or item.get("title"), source="relationship.milestone", kind="milestone")
+        if isinstance(item, dict) and milestone_is_shared_work(item):
+            add(
+                item.get("description") or item.get("title"),
+                source="relationship.milestone",
+                kind="milestone",
+            )
 
     recent = recent[: max(1, int(limit))]
     summaries = [str(item.get("summary") or "") for item in recent if item.get("summary")]

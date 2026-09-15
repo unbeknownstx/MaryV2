@@ -1,0 +1,74 @@
+# MaryV2 Documentation Map
+
+The repository contains years of iterative design notes. This file defines where **current authority** lives so active engineering is not driven by an old patch note or release package.
+
+## Start here
+
+- [`../README.md`](../README.md) — current product overview and run/verification entry points.
+- [`../MARY_ROOT.md`](../MARY_ROOT.md) — one-Mary authority and persistence contract.
+- [`architecture/SYSTEM_REGISTRY.md`](architecture/SYSTEM_REGISTRY.md) — canonical subsystem ownership/status map.
+- [`architecture/RESEARCH_CONVERGENCE_13_29_13_32.md`](architecture/RESEARCH_CONVERGENCE_13_29_13_32.md) — adaptive deliberation, memory-action policy, trajectory telemetry, duplex policy and experimental-runtime boundary.
+- [`architecture/COGNITIVE_EXECUTION_13_33.md`](architecture/COGNITIVE_EXECUTION_13_33.md) — bounded pass/verify/branch execution and proposal-only experience-informed strategy selection.
+- [`architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md`](architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md) — canonical/rebuildable/warm/ephemeral state contract for recovery and future KV/cache infrastructure.
+- [`architecture/MODEL_EXECUTION_FABRIC_13_35.md`](architecture/MODEL_EXECUTION_FABRIC_13_35.md) — task-aware distinction between reachable, feasible and preferred local/cloud engines.
+- [`architecture/MARYOS_LINUX_SUBSTRATE_13_36.md`](architecture/MARYOS_LINUX_SUBSTRATE_13_36.md) — Linux/systemd host substrate, security boundary and MaryOS evolution path.
+- [`certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md`](certification/MARYV2_13_33_WINDOWS_VALIDATION_2026-09-13.md) — current Windows deterministic validation evidence.
+- [`../AGENTS.md`](../AGENTS.md) — contributor/coding-agent constraints.
+- [`architecture/HOME_COMPUTE_FABRIC_13_11.md`](architecture/HOME_COMPUTE_FABRIC_13_11.md) — benchmark-aware Mac/Windows home compute fabric and bring-up.
+- [`architecture/STREAM_COHOST_13_10.md`](architecture/STREAM_COHOST_13_10.md) — live Twitch/OBS cohost architecture.
+- [`architecture/PRODUCT_EXPERIENCE_13_7.md`](architecture/PRODUCT_EXPERIENCE_13_7.md) — current product experience/research convergence.
+- [`design/MARY_VISUAL_SYSTEM.md`](design/MARY_VISUAL_SYSTEM.md) — cross-platform visual/presentation language.
+- [`design/DESKTOP_PRODUCT_SHELL_13_66.md`](design/DESKTOP_PRODUCT_SHELL_13_66.md) — Desktop shell hierarchy and backend-state projection baseline.
+- [`design/DESKTOP_PRODUCT_SHELL_13_67.md`](design/DESKTOP_PRODUCT_SHELL_13_67.md) — current Desktop polish/final-cascade contract, workspace unification, responsive priority, and launcher consistency.
+
+## Architecture
+
+`docs/architecture/` contains active ownership, data-flow, capability, runtime and security-boundary documentation. When an architecture note conflicts with executable code/tests or `MARY_ROOT.md`, fix the note rather than treating documentation as a second runtime authority.
+
+Important maps include:
+
+- `SYSTEM_REGISTRY.md` — system owners and current status.
+- `data_flow.md` — high-level flow between Mary, capabilities and surfaces.
+- `RUNTIME_AUTHORITY.md` — Core/surface lifecycle and authority.
+- `MCP_CAPABILITY_FABRIC_13_4.md` — optional MCP capability-node boundary.
+- `OPEN_MODEL_FABRIC_13_15.md` — opt-in frontier/open-model provider fabric and spending boundary.
+- `MODEL_INTELLIGENCE_13_16.md` — policy-safe adaptive model ranking.
+- `COGNITIVE_CHARACTER_RUNTIME_13_17.md` — provider-independent cognitive need and delivery planning.
+- `CHARACTER_RUNTIME_CONVERGENCE_13_18_13_23.md` — realtime, temporal memory, knowledge, compute and embodiment convergence.
+- `INFERENCE_ACCELERATION_13_24.md` — measured local inference acceleration.
+- `ECOSYSTEM_MINING_13_25_13_28.md` — local runtimes, ephemeral context, creative workers and rebuildable document evidence.
+- `RESEARCH_CONVERGENCE_13_29_13_32.md` — bounded research-to-production cognition/learning substrate.
+- `COGNITIVE_EXECUTION_13_33.md` — bounded execution substrate and proposal-only strategy learning from structural trajectories.
+- `COMPUTATIONAL_STATE_FABRIC_13_34.md` — next-step durability, cache hierarchy and recovery contract; design status until implemented and tested.
+- `MARYOS_LINUX_SUBSTRATE_13_36.md` — first-class Linux host integration without moving Core authority into the OS.
+- `OPENHANDS_WORKER_BOUNDARY_13_4.md` — separate software-engineering worker boundary.
+- `NEURO_PATTERN_ADOPTION_13_6.md` — realtime/performer architecture convergence.
+- `STREAM_COHOST_13_10.md` — bounded Twitch/OBS cohost host and public-performance boundary.
+- `HOME_COMPUTE_FABRIC_13_11.md` — heterogeneous node benchmarking, routing hints and cross-platform node operation.
+
+## Operations
+
+`docs/operations/` is for current setup, lifecycle, enrollment, platform-readiness and host-operation material. Operational notes should describe the current source tree, not require users to copy old overlay ZIPs into it.
+
+## Design and product experience
+
+`docs/design/` describes shared presentation language across Desktop, SwiftUI and PWA. UI is a projection of Mary state; it does not become an identity or memory owner.
+
+## Research
+
+Current research that materially affects architecture should be summarized into an active architecture/design decision document with explicit adoption/defer/reject status. Raw experiments and dated source surveys belong under research/history instead of remaining as competing instructions.
+
+## History
+
+`docs/history/` preserves superseded implementation plans, prompts, package notes, release reports and project archaeology. Keep it for provenance, but do not use it as current instructions unless the active registry explicitly points back to it.
+
+## Documentation hygiene rule
+
+A current document should answer at least one of these questions:
+
+1. What is MaryV2 now?
+2. Who owns this state/capability?
+3. How do I operate or test it now?
+4. What product/design contract must current surfaces follow?
+
+If it only explains how to apply an old patch, reports an obsolete test count, or describes a replaced architecture, archive it under history or remove it from the active root. Git history already preserves the original text.

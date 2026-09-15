@@ -1,0 +1,3 @@
+# Optional creator-microphone support for the public stream cohost.
+# Mary Core does not require this dependency to boot.
+sounddevice>=0.5,<1

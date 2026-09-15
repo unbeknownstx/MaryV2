@@ -18,6 +18,7 @@ from mary.runtime.live_state import build_live_character_state
 
 _MAX_TEXT = 180
 _MAX_HIGHLIGHTS = 6
+_MAX_MEMORY_ARCHIVE = 12
 _MAX_ACTIVITIES = 8
 _MAX_CURIOSITIES = 6
 _MAX_TRAITS = 8
@@ -145,8 +146,215 @@ def _memory_highlights(mary) -> list[dict[str, Any]]:
         if len(results) >= _MAX_HIGHLIGHTS:
             break
 
+    if results:
+        return results
+
+    # A sparse structured creator profile must not make the Memory surface look
+    # empty when canonical MemoryManager already contains real records.
+    archive = _memory_archive(mary)
+    for item in list(archive.get("episodic", []) or [])[:_MAX_HIGHLIGHTS]:
+        results.append({
+            "id": str(item.get("id") or ""),
+            "category": "episodic",
+            "label": "Memory",
+            "title": _clip(item.get("content"), 180),
+            "key": _clip(item.get("event_type") or "episodic", 72),
+            "confidence": 1.0,
+            "explicitly_shared": str(item.get("owner") or "").lower() == "creator",
+            "updated_at": item.get("timestamp"),
+        })
+    if len(results) < _MAX_HIGHLIGHTS:
+        for item in list(archive.get("semantic", []) or [])[: _MAX_HIGHLIGHTS - len(results)]:
+            results.append({
+                "id": str(item.get("id") or ""),
+                "category": "semantic",
+                "label": "Knowledge",
+                "title": _clip(item.get("value"), 180),
+                "key": _clip(
+                    " ".join(
+                        x for x in (str(item.get("subject") or ""), str(item.get("predicate") or ""))
+                        if x
+                    ),
+                    72,
+                ),
+                "confidence": round(_safe_number(item.get("confidence"), 1.0), 3),
+                "explicitly_shared": False,
+                "updated_at": item.get("updated_at"),
+            })
     return results
 
+
+
+def _memory_archive(mary) -> dict[str, Any]:
+    """Return a bounded creator-facing archive projection over canonical stores.
+
+    This is display-only. It does not merge relationship history into MemoryManager
+    or promote one source into another; it simply lets the private Desktop show
+    the continuity Mary actually has across those owners.
+    """
+
+    episodic: list[dict[str, Any]] = []
+    semantic: list[dict[str, Any]] = []
+    shared_history: list[dict[str, Any]] = []
+    milestones: list[dict[str, Any]] = []
+
+    try:
+        episodes = list(mary.memory.episodic.all())
+    except Exception:
+        episodes = []
+    episodes.sort(
+        key=lambda item: str(getattr(item, "timestamp", "") or ""),
+        reverse=True,
+    )
+    for item in episodes:
+        raw = item.to_dict() if hasattr(item, "to_dict") else {}
+        content = _clip(raw.get("content"), 280)
+        if not content or text_has_test_probe_marker(content):
+            continue
+        metadata = raw.get("metadata", {})
+        metadata = metadata if isinstance(metadata, dict) else {}
+        episodic.append({
+            "id": str(raw.get("id") or ""),
+            "content": content,
+            "timestamp": _iso_or_none(raw.get("timestamp")),
+            "when": _relative_label(raw.get("timestamp")),
+            "importance": round(_safe_number(raw.get("importance"), .5), 3),
+            "source": _clip(raw.get("source") or "interaction", 64),
+            "event_type": _clip(raw.get("event_type") or "general", 64),
+            "owner": _clip(metadata.get("owner") or "", 48),
+        })
+        if len(episodic) >= _MAX_MEMORY_ARCHIVE:
+            break
+
+    try:
+        facts = list(mary.memory.semantic.all())
+    except Exception:
+        facts = []
+    facts.sort(
+        key=lambda item: str(item.get("updated_at") or item.get("created_at") or "")
+        if isinstance(item, dict) else "",
+        reverse=True,
+    )
+    for item in facts:
+        if not isinstance(item, dict):
+            continue
+        value = _clip(item.get("value"), 220)
+        subject = _clip(item.get("subject"), 100)
+        predicate = _clip(item.get("predicate"), 80)
+        searchable = " ".join(part for part in (subject, predicate, value) if part)
+        if not searchable or text_has_test_probe_marker(searchable):
+            continue
+        semantic.append({
+            "id": str(item.get("id") or ""),
+            "subject": subject,
+            "predicate": predicate,
+            "value": value,
+            "confidence": round(_safe_number(item.get("confidence"), 1.0), 3),
+            "source": _clip(item.get("source") or "memory", 64),
+            "updated_at": _iso_or_none(item.get("updated_at") or item.get("created_at")),
+            "when": _relative_label(item.get("updated_at") or item.get("created_at")),
+        })
+        if len(semantic) >= _MAX_MEMORY_ARCHIVE:
+            break
+
+    try:
+        events = list(mary.relationship_history.get_recent(limit=_MAX_MEMORY_ARCHIVE * 2))
+    except Exception:
+        events = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        description = _clip(event.get("description"), 280)
+        if not description or text_has_test_probe_marker(description):
+            continue
+        metadata = event.get("metadata", {})
+        metadata = metadata if isinstance(metadata, dict) else {}
+        shared_history.append({
+            "id": str(event.get("id") or ""),
+            "type": _clip(event.get("type") or "relationship", 64),
+            "kind": _clip(metadata.get("kind") or "", 64),
+            "description": description,
+            "timestamp": _iso_or_none(event.get("created_at")),
+            "when": _relative_label(event.get("created_at")),
+            "owner": _clip(metadata.get("owner") or "", 48),
+        })
+        if len(shared_history) >= _MAX_MEMORY_ARCHIVE:
+            break
+
+    try:
+        rows = list(mary.relationship_milestones.get_recent(limit=_MAX_MEMORY_ARCHIVE))
+    except Exception:
+        rows = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        title = _clip(item.get("title") or item.get("description"), 180)
+        description = _clip(item.get("description"), 240)
+        if not title or text_has_test_probe_marker(title + " " + description):
+            continue
+        milestones.append({
+            "id": str(item.get("id") or ""),
+            "title": title,
+            "description": description,
+            "timestamp": _iso_or_none(item.get("created_at")),
+            "when": _relative_label(item.get("created_at")),
+        })
+
+    try:
+        episodic_total = int(mary.memory.episodic.count())
+    except Exception:
+        episodic_total = len(episodic)
+    try:
+        semantic_total = int(mary.memory.semantic.count())
+    except Exception:
+        semantic_total = len(semantic)
+    try:
+        shared_history_total = int(mary.relationship_history.count())
+    except Exception:
+        shared_history_total = len(shared_history)
+    try:
+        milestone_total = int(mary.relationship_milestones.count())
+    except Exception:
+        milestone_total = len(milestones)
+    try:
+        profile_total = len(mary.user_model.profile_records)
+    except Exception:
+        profile_total = 0
+    try:
+        relationship_observation_total = len(
+            mary.relationship_understanding.observations
+        )
+    except Exception:
+        relationship_observation_total = 0
+
+    return {
+        "episodic": episodic,
+        "semantic": semantic,
+        "shared_history": shared_history,
+        "milestones": milestones,
+        "counts": {
+            "episodic_total": episodic_total,
+            "semantic_total": semantic_total,
+            "shared_history_total": shared_history_total,
+            "milestones_total": milestone_total,
+            "creator_profile_total": profile_total,
+            "relationship_observation_total": relationship_observation_total,
+            "episodic_visible": len(episodic),
+            "semantic_visible": len(semantic),
+            "shared_history_visible": len(shared_history),
+            "milestones_visible": len(milestones),
+        },
+        "authority": {
+            "episodic": "MemoryManager",
+            "semantic": "MemoryManager",
+            "shared_history": "RelationshipManager",
+            "milestones": "RelationshipManager",
+        },
+        "policy": (
+            "Private creator-facing bounded projection only; relationship history "
+            "remains relationship authority and is not promoted into memory."
+        ),
+    }
 
 def _recent_activities(mary) -> list[dict[str, Any]]:
     candidates: list[tuple[str, dict[str, Any]]] = []
@@ -395,6 +603,7 @@ def build_desktop_dashboard_state(
         },
         "relationship": _connection_index(mary),
         "memory_highlights": _memory_highlights(mary),
+        "memory_archive": _memory_archive(mary),
         "recent_activities": _recent_activities(mary),
         "curiosities": _curiosities(mary),
         "personality": _personality(mary),

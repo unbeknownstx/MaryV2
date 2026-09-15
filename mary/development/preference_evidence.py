@@ -65,7 +65,12 @@ _CORRECTIVE_PATTERNS: tuple[tuple[str, float, str], ...] = (
     (
         r"\b(?:(?:that|this)(?: (?:answer|response|reply))?|"
         r"your (?:answer|response|reply)) (?:was|is) "
-        r"(?:too|way too) (?:blunt|harsh|direct)\b|"
+        r"(?:too|way too) (?:blunt|harsh|direct|abrasive)\b|"
+        r"\bi (?:hate|don'?t like|do not like) how "
+        r"(?:hard|harsh|blunt|abrasive) you (?:are|sound)\b|"
+        r"\b(?:stop|don'?t|do not) (?:being|sound(?:ing)?) so "
+        r"(?:hard|harsh|blunt|abrasive)\b|"
+        r"\byou(?:'re| are) (?:too|way too) (?:hard|harsh|blunt|abrasive)\b|"
         r"\b(?:be|make (?:it|your (?:answers?|responses?|replies))) "
         r"(?:more )?(?:gentle|tactful)\b",
         -1.0,
@@ -181,7 +186,7 @@ _CANDIDATE_NAMES = {
 
 _DIRECT_OPENING_RE = re.compile(
     r"^(?:"
-    r"i prefer\b|i want you to\b|please\b|from now on\b|"
+    r"i prefer\b|i want you to\b|i hate how\b|i don'?t like how\b|i do not like how\b|please\b|from now on\b|"
     r"keep (?:your )?(?:answers?|responses?|replies)\b|"
     r"(?:that|this)(?: (?:answer|response|reply))? (?:was|is)\b|"
     r"your (?:answer|response|reply) (?:was|is)\b|"

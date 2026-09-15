@@ -33,6 +33,7 @@ Mary does not replace:
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import re
 from typing import Any
@@ -58,6 +59,8 @@ from mary.expression.performance_packet import build_performance_packet
 from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
+from mary.runtime.performance_hardening import install_performance_hardening
+from mary.runtime.performance_profiles import RuntimePerformanceProfiles
 
 from mary.audio import (
     AudioManager,
@@ -113,6 +116,7 @@ from mary.cognition.orchestrator import (
     CognitiveCycleResult,
     CognitiveOrchestrator,
 )
+from mary.cognition.runtime_coordination import CharacterRuntimeCoordinator
 from mary.cognition.reasoning import ReasoningEngine, ReasoningResult
 from mary.cognition.reflection import (
     ReflectionDecision,
@@ -128,7 +132,7 @@ from mary.cognition.intent import Intent, IntentType
 from mary.cognition.natural_input import normalize_for_matching
 from mary.runtime.turn_policy import TurnPolicyEngine
 from mary.runtime.turn_envelope import attach_turn_envelope
-from mary.runtime.current_work import build_current_work_projection
+from mary.runtime.current_work import build_current_work_projection, milestone_is_shared_work
 from mary.runtime.turn_observability import (
     causal_operation_id,
     current_turn_trace,
@@ -139,10 +143,12 @@ from mary.runtime.system_contract import MarySystemContract
 from mary.runtime.root_authority import MaryRootAuthority
 from mary.runtime.environment import RuntimeEnvironment
 from mary.realtime import RealtimeInteractionCoordinator
-from mary.distributed import NodeRegistry
-from mary.perception import PerceptionDirector
+from mary.distributed import NodeRegistry, CapabilityInvocationLedger
+from mary.perception import PerceptionDirector, BrowserContextSensor
+from mary.game_control import GameActionRouter
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
 from mary.mind import CharacterMind
+from mary.continuity import ExperientialContinuityRuntime
 from mary.mind.production_bridge import (
     apply_local_cycle_metadata,
     merge_escalated_cycle_metadata,
@@ -334,6 +340,13 @@ class Mary:
         # node transport without moving Mary's identity into a machine record.
         self.node_registry = NodeRegistry.with_local_runtime(self.runtime_environment)
 
+        # Process-local capability orchestration helpers. They coordinate typed
+        # capability retries and semantic game intent but never authorize device
+        # execution or own Mary state.
+        self.capability_invocations = CapabilityInvocationLedger()
+        self.game_action_router = GameActionRouter(self.node_registry)
+        self.performance_profiles = RuntimePerformanceProfiles()
+
         # External image/video/audio generation services are described through
         # a secret-free registry. It can quote/advertise capabilities but never
         # executes or authorizes spending by itself.
@@ -343,6 +356,7 @@ class Mary:
         # are never stored by this boundary and observations enter the same
         # bounded attention bus as other realtime context.
         self.perception_director = PerceptionDirector(self.realtime.attention)
+        self.browser_context_sensor = BrowserContextSensor(self.perception_director)
 
         # Ephemeral runtime metadata only. This is intentionally not persisted:
         # it records which provider/model generated the most recent successful
@@ -375,6 +389,31 @@ class Mary:
             workspace=self.task_workspace,
             expert=self.expert_consultant,
         )
+
+        # ============================================================
+        # EXPERIENTIAL CONTINUITY / RESUMABLE WORK
+        # ============================================================
+
+        # This is a durable evidence/coordination layer around Mary's existing
+        # canonical owners. It is intentionally named separately from
+        # TurnMind's conversation continuity below: it cannot own identity,
+        # relationship, memory truth, tool permission, or autonomy authority.
+        self.experiential_continuity = ExperientialContinuityRuntime(
+            self.config.paths.data / "continuity"
+        )
+        self.experience = self.experiential_continuity.experience
+        self.temporal_knowledge = self.experiential_continuity.temporal
+        self.procedural_skills = self.experiential_continuity.skills
+        self.workflow_checkpoints = self.experiential_continuity.workflows
+        self.action_verification = self.experiential_continuity.verification
+        self.compute_resources = self.experiential_continuity.resources
+        self.action_affordances = self.experiential_continuity.affordances
+        self.prosody_turn_taking = self.experiential_continuity.prosody
+        self.cognition_lanes = self.experiential_continuity.cognition_lanes
+        self.generation_cancellation = self.experiential_continuity.cancellation
+        self.node_recovery = self.experiential_continuity.node_recovery
+        self.memory_lab = self.experiential_continuity.memory_lab
+        self.causal_trace = self.experiential_continuity.traces
 
         # ============================================================
         # TOOLS
@@ -454,6 +493,11 @@ class Mary:
                 NullAudioOutputProvider(),
             ),
         )
+
+        # Derived/ephemeral performance hardening. This attaches standing affect
+        # and stream capability descriptors without creating another Core,
+        # memory authority, relationship owner, or execution permission layer.
+        self.performance_hardening = install_performance_hardening(self)
 
         # ============================================================
         # LEARNING
@@ -547,14 +591,17 @@ class Mary:
         # ============================================================
 
         # One authoritative turn-routing policy sits above provider routing.
-        # It decides whether a model-backed turn is personal Mary conversation
-        # (local-first) or detached task/general work (free cloud first).
+        # Ordinary cognition stays inside the zero-cost/free operating boundary.
+        # Local engines are preferred only when the model-execution fabric has
+        # evidence that they fit the task lane; otherwise configured free-cloud
+        # routes remain valid. Paid/frontier work stays explicitly authorized.
         self.turn_policy = TurnPolicyEngine()
 
         self.reasoning = ReasoningEngine(
             llm=self.llm,
             evidence_validator=self.evidence_validator,
             turn_policy=self.turn_policy,
+            deliberation_executor=self.deliberation_executor,
         )
 
         self.reflection = ReflectionEngine(
@@ -642,6 +689,10 @@ class Mary:
             emotion=self.emotion,
             dialogue=self.dialogue,
         )
+
+        # Provider-independent cognition/compute/knowledge/presentation policy is
+        # derived from TurnMind and remains a projection, never a second state owner.
+        self.character_runtime = CharacterRuntimeCoordinator()
 
         # Active dialogue history remains owned by DialogueManager. The context
         # lifecycle chooses only the bounded slice that cognition should send to
@@ -1204,6 +1255,7 @@ class Mary:
             system_response = self._handle_conversation_recall(
                 recent_conversation,
                 recall_scope=str(intent.parameters.get("recall_scope", "recent_dialogue")),
+                workspace_context=workspace_context,
             )
             skip_cognition = True
 
@@ -1307,6 +1359,14 @@ class Mary:
                     False,
                 )
             )
+
+        elif (
+            intent.intent_type == IntentType.INFORMATION
+            and str(intent.parameters.get("system_action") or "").strip().lower()
+            == "current_time"
+        ):
+            system_response = self._surface_time_response(turn_values)
+            skip_cognition = True
 
         else:
             system_response = self._handle_intent(
@@ -1752,8 +1812,14 @@ class Mary:
             self.emotion,
             appraisal,
         )
+        state = self.performance_hardening.observe_emotional_state(
+            state,
+            source="conversation_emotion",
+            cause="conversation_appraisal",
+        )
         result.metadata["emotion_appraisal"] = appraisal.to_dict()
         result.metadata["emotional_state"] = state.to_dict()
+        result.metadata["standing_affect"] = self.standing_affect.snapshot()
         return result
 
     # ================================================================
@@ -1856,6 +1922,16 @@ class Mary:
             incoming_emotion_appraisal=incoming_emotion_appraisal,
             workspace_context=workspace_context,
         )
+        try:
+            runtime_coordination = self.character_runtime.plan_from_turn_state(
+                mind_state
+            ).to_dict()
+        except Exception as exc:
+            runtime_coordination = {
+                "authority": "coordination_projection_only",
+                "available": False,
+                "error_type": type(exc).__name__,
+            }
         developed_preference_ids = [
             str(item.get("developed_preference_id") or "")
             for item in self.growth.status().get("developed_preferences", [])[:8]
@@ -1888,6 +1964,7 @@ class Mary:
             },
         )
         prompt_mind_state = mind_state.prompt_view()
+        prompt_mind_state["runtime_coordination"] = runtime_coordination
         relationship_view = prompt_mind_state.get("relationship")
         if not isinstance(relationship_view, dict):
             relationship_view = {}
@@ -1977,6 +2054,30 @@ class Mary:
             else {"provider": None, "route": None}
         )
         normalized = normalize_for_matching(input_text)
+
+        if normalized in {
+            "time now",
+            "current time",
+            "what time is it",
+            "what time is it now",
+            "what time is it right now",
+            "what is the time",
+            "whats the time",
+            "what's the time",
+            "tell me the time",
+        }:
+            return Intent(
+                intent_type=IntentType.INFORMATION,
+                confidence=0.99,
+                description="Creator asks for the current local time on this surface.",
+                parameters={
+                    "action": "current_time",
+                    "system_action": "current_time",
+                    "query": input_text,
+                },
+                source="surface_clock_detector",
+            )
+
         if (override.get("provider") or override.get("route")) and any(
             phrase in normalized
             for phrase in (
@@ -1996,6 +2097,37 @@ class Mary:
             )
 
         return intent
+
+    @staticmethod
+    def _surface_time_response(
+        turn_context: dict[str, Any] | None,
+    ) -> str:
+        """Answer from the creator surface clock, never from Railway/server time."""
+
+        values = dict(turn_context or {})
+        raw = str(values.get("client_local_time") or "").strip()
+        if not raw:
+            return (
+                "I don't have this surface's local clock in the turn yet, so I "
+                "shouldn't guess the time."
+            )
+
+        try:
+            moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return (
+                "I couldn't read this surface's local clock cleanly, so I "
+                "shouldn't guess the time."
+            )
+
+        if moment.tzinfo is None or moment.utcoffset() is None:
+            return (
+                "I don't have a timezone-aware surface clock for this turn, so I "
+                "shouldn't guess the time."
+            )
+
+        hour = moment.strftime("%I").lstrip("0") or "12"
+        return f"It's {hour}:{moment.strftime('%M')} {moment.strftime('%p')}."
 
     def _handle_intent(
         self,
@@ -2096,6 +2228,7 @@ class Mary:
         recent_conversation: list[dict[str, str]],
         *,
         recall_scope: str = "recent_dialogue",
+        workspace_context: dict[str, Any] | None = None,
     ) -> str:
         """Recall recent dialogue concisely without dumping whole prior replies."""
 
@@ -2120,65 +2253,13 @@ class Mary:
         latest_mary = mary_messages[-1] if mary_messages else None
 
         if str(recall_scope).strip().lower() == "shared_work":
-            work_markers = (
-                "working on", "work on", "building", "build ", "project",
-                "developing", "fixing", "testing", "debugging", "implementing",
-                "finish ", "finishing ",
-            )
-            grounded_work = [
-                text
-                for text in user_messages
-                if any(marker in text.lower() for marker in work_markers)
-            ]
-            if grounded_work:
-                latest = grounded_work[-1]
-                if len(latest) > 220:
-                    latest = latest[:219].rstrip() + "…"
-                return (
-                    "From what you've actually said in this session, the clearest "
-                    f"shared-work thread is ‘{latest}’."
-                )
-
-            # Session dialogue is not the only legitimate continuity source.
-            # Durable creator goals and creator-owned episodic/semantic memories may
-            # identify an ongoing project, but Mary's own assistant-role dialogue is
-            # never used as evidence here.
-            durable_work: list[str] = []
-            try:
-                profile = self._creator_profile_for_conversation()
-            except Exception:
-                profile = {}
-            for goal in profile.get("goals", []) if isinstance(profile, dict) else []:
-                value = " ".join(str(goal).split())
-                if value and value not in durable_work:
-                    durable_work.append(value)
-
-            for memory in reversed(self._all_available_memories()):
-                if not self._memory_is_creator_owned(memory):
-                    continue
-                text = self._memory_to_text(memory)
-                if text_has_test_probe_marker(text):
-                    continue
-                lowered_text = text.lower()
-                if text and any(marker in lowered_text for marker in work_markers):
-                    compact_text = text if len(text) <= 220 else text[:219].rstrip() + "…"
-                    if compact_text not in durable_work:
-                        durable_work.append(compact_text)
-                if len(durable_work) >= 3:
-                    break
-
-            if durable_work:
-                lead = durable_work[0]
-                return (
-                    "The clearest ongoing thing I have grounded in your durable creator "
-                    f"state is {lead}. I can use that as our project continuity without "
-                    "pretending one of my own improvised replies was something you told me."
-                )
-
-            return (
-                "I don't have a grounded shared-work item in this session or your durable "
-                "creator/project state yet. I shouldn't turn something from one of my own "
-                "earlier replies into a project we supposedly worked on together."
+            # Shared-work questions need continuity across restarts, not only the
+            # current dialogue window. Reuse the canonical grounded aggregator,
+            # which ranks creator-authored session evidence, durable relationship
+            # shared-work history, project milestones and explicitly tagged memory.
+            return self._creator_shared_work_overview(
+                recent_conversation=recent_conversation,
+                workspace_context=workspace_context,
             )
 
         def compact(text: str | None, limit: int = 180) -> str:
@@ -2656,6 +2737,28 @@ class Mary:
             response = self._creator_shared_work_overview(
                 recent_conversation=recent_conversation or [],
             )
+            query = str(intent.parameters.get("query") or "").strip()
+            normalized_query = normalize_for_matching(query)
+            compound_runtime = any(
+                marker in normalized_query
+                for marker in (
+                    "architecture",
+                    "where are you running",
+                    "where are u running",
+                    "how are you running",
+                    "how are u running",
+                    "what models",
+                    "what providers",
+                    "capability node",
+                    "nodes",
+                    "current core",
+                )
+            )
+            if compound_runtime:
+                response += (
+                    " Current runtime architecture: "
+                    + self._runtime_architecture_response(query=query)
+                )
         elif query_type == "relationship_overview":
             creator_view = self._natural_creator_profile_overview()
             relationship_evidence = self.self_introspection.build("relationship")
@@ -2770,6 +2873,7 @@ class Mary:
         self,
         *,
         recent_conversation: list[dict[str, str]],
+        workspace_context: dict[str, Any] | None = None,
     ) -> str:
         """Recall grounded shared project/work continuity across durable layers."""
 
@@ -2795,45 +2899,80 @@ class Mary:
             seen.add(key)
             items.append((score, value, source))
 
-        # Explicit durable relationship milestones are strongest shared-history
-        # evidence because they were intentionally represented as relationship
-        # continuity rather than generic creator preferences.
-        for milestone in self.relationship_milestones.get_recent(limit=12):
+        # Live canonical workspace/current-work evidence outranks historical
+        # continuity for a question phrased in the present tense. This remains a
+        # derived projection and is never promoted into memory by this read path.
+        try:
+            current_work = build_current_work_projection(
+                self,
+                workspace_context,
+                limit=6,
+            )
+        except Exception:
+            current_work = {}
+        for index, item in enumerate(list(current_work.get("recent") or [])[:6]):
+            if not isinstance(item, dict):
+                continue
             add(
-                milestone.get("description") or milestone.get("title"),
-                source="relationship_milestone",
-                score=100 + int(float(milestone.get("importance", 0.0) or 0.0) * 10),
+                item.get("summary"),
+                source=str(item.get("source") or "current_work"),
+                score=max(122, 132 - index),
+                creator_owned=False,
             )
 
-        for event in self.relationship_history.get_recent(limit=32):
-            event_type = str(event.get("type", "")).strip().lower()
-            metadata = event.get("metadata", {})
-            metadata = metadata if isinstance(metadata, dict) else {}
-            if event_type == "milestone":
-                add(event.get("description"), source="relationship_history", score=96)
-            elif event_type == "shared_experience" and metadata.get("kind") == "shared_work":
-                add(
-                    event.get("description"),
-                    source="shared_work_history",
-                    score=94,
-                    creator_owned=metadata.get("owner") == "creator",
-                    allow_test_probe=metadata.get("source") == "production_benchmark_fixture",
-                )
-
-        # Current-session evidence keeps a brand-new milestone available before
-        # the user restarts Mary.  Only declarative shared-work statements pass.
+        # Current-session evidence is strongest for a question about current or
+        # recent work. Only declarative shared-work statements pass the existing
+        # conservative evidence gate.
         for message in recent_conversation:
             if not isinstance(message, dict) or str(message.get("role", "")) != "user":
                 continue
             evidence = self._shared_work_evidence(str(message.get("content", "")))
             if evidence:
-                add(evidence, source="current_session", score=90, creator_owned=True)
+                add(evidence, source="current_session", score=120, creator_owned=True)
+
+        # Durable shared-work history is the primary cross-restart source.
+        for index, event in enumerate(self.relationship_history.get_recent(limit=32)):
+            event_type = str(event.get("type", "")).strip().lower()
+            metadata = event.get("metadata", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
+            if event_type == "shared_experience" and metadata.get("kind") == "shared_work":
+                add(
+                    event.get("description"),
+                    source="shared_work_history",
+                    score=max(100, 114 - min(index, 14)),
+                    creator_owned=metadata.get("owner") == "creator",
+                    allow_test_probe=metadata.get("source") == "production_benchmark_fixture",
+                )
+            elif event_type == "milestone" and (
+                metadata.get("shared_work") is True
+                or str(metadata.get("kind") or "").strip().lower()
+                in {"shared_work", "project", "project_milestone", "shared_achievement"}
+            ):
+                add(
+                    event.get("description"),
+                    source="relationship_history",
+                    score=max(96, 106 - min(index, 10)),
+                )
+
+        # MilestoneManager also contains Mary-development/preference milestones.
+        # Only explicitly project/shared-work categories may enter a work recap.
+        for index, milestone in enumerate(self.relationship_milestones.get_recent(limit=12)):
+            if not milestone_is_shared_work(milestone):
+                continue
+            add(
+                milestone.get("description") or milestone.get("title"),
+                source="relationship_milestone",
+                score=max(
+                    92,
+                    102
+                    - min(index, 10)
+                    + int(float(milestone.get("importance", 0.0) or 0.0) * 4),
+                ),
+            )
 
         # Episodic/semantic layers contribute only when explicitly tagged as
-        # shared work/project continuity.  This prevents unrelated preferences
-        # (for example a preference mentioning "working on projects") from
-        # masquerading as shared project history.
-        for memory in self._all_available_memories():
+        # shared work/project continuity.
+        for memory in reversed(self._all_available_memories()):
             if isinstance(memory, dict):
                 metadata = memory.get("metadata", {})
                 event_type = str(memory.get("event_type", "")).strip().lower()
@@ -2928,6 +3067,41 @@ class Mary:
             if len(creator_memories) >= 4:
                 break
 
+        relationship_memories: list[str] = []
+        try:
+            recent_relationship = list(
+                self.relationship_history.get_recent(limit=24)
+            )
+        except Exception:
+            recent_relationship = []
+        for event in recent_relationship:
+            if not isinstance(event, dict):
+                continue
+            description = " ".join(
+                str(event.get("description") or "").split()
+            ).strip()
+            if not description or text_has_test_probe_marker(description):
+                continue
+            metadata = event.get("metadata", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
+            # Relationship history is canonical shared continuity, but broad
+            # creator recall should avoid system-only bookkeeping entries.
+            event_type = str(event.get("type") or "").strip().lower()
+            if event_type in {
+                "runtime",
+                "system",
+                "presence_lease",
+                "provider",
+                "telemetry",
+            }:
+                continue
+            if len(description) > 200:
+                description = description[:199].rstrip() + "…"
+            if description not in relationship_memories:
+                relationship_memories.append(description)
+            if len(relationship_memories) >= 5:
+                break
+
         session_shares: list[str] = []
         for item in reversed(recent_conversation):
             if not isinstance(item, dict) or str(item.get("role", "")) != "user":
@@ -2963,6 +3137,12 @@ class Mary:
 
         if creator_memories:
             pieces.append("A few durable memories I can actually retrieve are " + "; ".join(creator_memories) + ".")
+        if relationship_memories:
+            pieces.append(
+                "And our relationship history still contains shared continuity such as "
+                + "; ".join(relationship_memories)
+                + "."
+            )
         if session_shares:
             pieces.append("And from this current session I remember you saying " + "; ".join(session_shares) + ".")
 
@@ -3460,6 +3640,12 @@ class Mary:
             else {"provider": None, "route": None}
         )
 
+        nodes = (
+            self.node_registry.snapshot()
+            if callable(getattr(self.node_registry, "snapshot", None))
+            else {}
+        )
+
         return self.runtime_introspection.render(
             query=query,
             environment=environment,
@@ -3468,6 +3654,7 @@ class Mary:
             configured_conversation_route=conversation_order,
             session_override=override,
             last_generation=dict(self._last_generation_metadata or {}),
+            nodes=nodes,
         )
 
     # ================================================================
@@ -3707,6 +3894,24 @@ class Mary:
         }
         if (
             intent is not None
+            and intent.intent_type == IntentType.INFORMATION
+            and str(intent.parameters.get("system_action", "")).strip().lower()
+            == "current_time"
+        ):
+            reasoning_metadata.update({
+                "provider": "local/system",
+                "model": "n/a",
+                "generation_purpose": "surface_clock",
+                "turn_policy": {
+                    "category": "local_surface_context",
+                    "generation_purpose": "surface_clock",
+                    "local_first": False,
+                    "rationale": "current time comes from the authenticated creator surface clock",
+                },
+            })
+
+        if (
+            intent is not None
             and intent.intent_type == IntentType.SELF_QUERY
             and str(intent.parameters.get("self_query_type", "")).strip().lower()
             == "runtime_architecture"
@@ -3769,16 +3974,16 @@ class Mary:
             status = self.llm.clear_session_override()
             return {
                 "system_response": (
-                    "Okay. I cleared the temporary model override. My normal routing policy is active again: "
-                    "ordinary personal conversation is local-first ("
+                    "Okay. I cleared the temporary model override. My normal routing policy is active again, using the zero-cost/free boundary. "
+                    "Personal conversation currently follows the configured free-cost order ("
                     + " -> ".join(
                         self.llm.conversation_provider_order()
                         if callable(getattr(self.llm, "conversation_provider_order", None))
                         else self.llm._provider_order(None)
                     )
-                    + "), while task/general generation uses free-first ("
+                    + "), while task/general generation follows free-first ("
                     + " -> ".join(self.llm._provider_order(None))
-                    + ")."
+                    + "). Local engines are preferred only when they are suitable for the task; paid/frontier routes remain explicit-only."
                 ),
                 "skip_cognition": True,
                 "llm_control": status,

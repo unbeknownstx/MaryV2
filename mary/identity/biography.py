@@ -1,23 +1,12 @@
+"""Canonical Mary biography.
+
+Biography is stable authored information about *who Mary is*. It is deliberately
+separate from episodic memory (what the running Mary experienced), fictional
+canon/reference, transient model output, provider identity, and surface state.
+
+The structure is intentionally small and boring: biography is an identity
+anchor, not another memory database or autonomous self-writing channel.
 """
-MaryV2 Biography
-
-The biography system stores Mary's canonical identity, history,
-background, relationships, milestones, and important life facts.
-
-Biography is different from memory:
-
-    Biography:
-        Who Mary is.
-        Stable facts about her identity and history.
-
-    Episodic Memory:
-        Things Mary experienced.
-        Conversations, events, tasks, discoveries, etc.
-
-Biography should contain information that defines Mary herself,
-rather than temporary conversation context.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -29,28 +18,20 @@ from mary.personality.character_core import CORE_APPEARANCE, CORE_PERSONAL_GOALS
 
 @dataclass
 class BiographyEntry:
-    """
-    A single piece of canonical biographical information.
-    """
+    """One canonical biographical statement."""
 
     category: str
     title: str
     content: str
     importance: int = 5
-    created_at: str = field(
-        default_factory=lambda: datetime.now().isoformat()
-    )
-    updated_at: str = field(
-        default_factory=lambda: datetime.now().isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def update(self, content: str) -> None:
-        """Update the content while preserving the entry."""
-        self.content = content
+        self.content = str(content)
         self.updated_at = datetime.now().isoformat()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the entry to a dictionary."""
         return {
             "category": self.category,
             "title": self.title,
@@ -62,52 +43,29 @@ class BiographyEntry:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BiographyEntry":
-        """Create a biography entry from a dictionary."""
         return cls(
             category=data["category"],
             title=data["title"],
             content=data["content"],
             importance=data.get("importance", 5),
-            created_at=data.get(
-                "created_at",
-                datetime.now().isoformat(),
-            ),
-            updated_at=data.get(
-                "updated_at",
-                datetime.now().isoformat(),
-            ),
+            created_at=data.get("created_at", datetime.now().isoformat()),
+            updated_at=data.get("updated_at", datetime.now().isoformat()),
         )
 
 
 class Biography:
-    """
-    Mary's canonical biography.
+    """Mary's small canonical biography store.
 
-    This class provides a central place for information that defines
-    Mary's identity and history.
-
-    Example categories:
-
-        identity
-        origin
-        appearance
-        personality
-        values
-        abilities
-        relationships
-        experiences
-        milestones
-        beliefs
-        goals
-        preferences
+    Mutations here are explicit application/creator operations. Normal model
+    dialogue must not silently rewrite these entries.
     """
 
     def __init__(self) -> None:
         self._entries: Dict[str, BiographyEntry] = {}
 
-    # ------------------------------------------------------------------
-    # Core Operations
-    # ------------------------------------------------------------------
+    @staticmethod
+    def _make_key(category: str, title: str) -> str:
+        return f"{category.strip().lower()}:{title.strip().lower()}"
 
     def add(
         self,
@@ -116,363 +74,164 @@ class Biography:
         content: str,
         importance: int = 5,
     ) -> BiographyEntry:
-        """
-        Add a new biographical entry.
-
-        If an entry with the same title already exists, it is updated.
-        """
-
-        key = self._make_key(category, title)
-
         entry = BiographyEntry(
-            category=category,
-            title=title,
-            content=content,
-            importance=importance,
+            category=str(category).strip(),
+            title=str(title).strip(),
+            content=str(content).strip(),
+            importance=max(0, min(10, int(importance))),
         )
-
-        self._entries[key] = entry
+        self._entries[self._make_key(entry.category, entry.title)] = entry
         return entry
 
-    def update(
-        self,
-        category: str,
-        title: str,
-        content: str,
-    ) -> BiographyEntry:
-        """
-        Update an existing entry.
-
-        If the entry does not exist, it will be created.
-        """
-
+    def update(self, category: str, title: str, content: str) -> BiographyEntry:
         key = self._make_key(category, title)
+        existing = self._entries.get(key)
+        if existing is not None:
+            existing.update(str(content).strip())
+            return existing
+        return self.add(category=category, title=title, content=content)
 
-        if key in self._entries:
-            self._entries[key].update(content)
-            return self._entries[key]
+    def get(self, category: str, title: str) -> Optional[BiographyEntry]:
+        return self._entries.get(self._make_key(category, title))
 
-        return self.add(
-            category=category,
-            title=title,
-            content=content,
-        )
-
-    def get(
-        self,
-        category: str,
-        title: str,
-    ) -> Optional[BiographyEntry]:
-        """Retrieve a specific biography entry."""
-
+    def remove(self, category: str, title: str) -> bool:
         key = self._make_key(category, title)
-        return self._entries.get(key)
-
-    def remove(
-        self,
-        category: str,
-        title: str,
-    ) -> bool:
-        """Remove a biography entry."""
-
-        key = self._make_key(category, title)
-
         if key not in self._entries:
             return False
-
         del self._entries[key]
         return True
 
-    def exists(
-        self,
-        category: str,
-        title: str,
-    ) -> bool:
-        """Check whether an entry exists."""
-
+    def exists(self, category: str, title: str) -> bool:
         return self._make_key(category, title) in self._entries
 
-    # ------------------------------------------------------------------
-    # Searching
-    # ------------------------------------------------------------------
-
     def search(self, query: str) -> List[BiographyEntry]:
-        """
-        Search biography entries by title, category, or content.
-        """
-
-        query = query.lower().strip()
-
-        if not query:
+        needle = str(query or "").lower().strip()
+        if not needle:
             return []
+        results = [
+            entry
+            for entry in self._entries.values()
+            if needle in f"{entry.category} {entry.title} {entry.content}".lower()
+        ]
+        return sorted(results, key=lambda entry: entry.importance, reverse=True)
 
-        results = []
-
-        for entry in self._entries.values():
-            searchable = (
-                f"{entry.category} "
-                f"{entry.title} "
-                f"{entry.content}"
-            ).lower()
-
-            if query in searchable:
-                results.append(entry)
-
-        return sorted(
-            results,
-            key=lambda entry: entry.importance,
-            reverse=True,
-        )
-
-    def get_category(
-        self,
-        category: str,
-    ) -> List[BiographyEntry]:
-        """Return all entries belonging to a category."""
-
-        category = category.lower().strip()
-
+    def get_category(self, category: str) -> List[BiographyEntry]:
+        needle = str(category or "").lower().strip()
         return [
             entry
             for entry in self._entries.values()
-            if entry.category.lower() == category
+            if entry.category.lower() == needle
         ]
 
-    # ------------------------------------------------------------------
-    # Canonical Identity
-    # ------------------------------------------------------------------
-
     def get_identity(self) -> Dict[str, str]:
-        """
-        Return Mary's primary identity information.
-
-        This is useful when constructing prompts for the model.
-        """
-
-        identity: Dict[str, str] = {}
-
-        for entry in self.get_category("identity"):
-            identity[entry.title] = entry.content
-
-        return identity
+        return {entry.title: entry.content for entry in self.get_category("identity")}
 
     def get_summary(self) -> str:
-        """
-        Generate a human-readable summary of Mary's biography.
-        """
-
         if not self._entries:
             return "Mary has no biography entries yet."
-
         entries = sorted(
             self._entries.values(),
-            key=lambda entry: (
-                entry.category,
-                -entry.importance,
-            ),
+            key=lambda entry: (entry.category, -entry.importance, entry.title.lower()),
         )
-
         lines = ["Mary's Biography", ""]
-
-        current_category = None
-
+        current_category: str | None = None
         for entry in entries:
             if entry.category != current_category:
                 current_category = entry.category
-                lines.append(
-                    f"[{current_category.upper()}]"
-                )
-
-            lines.append(
-                f"{entry.title}: {entry.content}"
-            )
-
+                lines.append(f"[{current_category.upper()}]")
+            lines.append(f"{entry.title}: {entry.content}")
         return "\n".join(lines)
-
-    # ------------------------------------------------------------------
-    # Prompt Integration
-    # ------------------------------------------------------------------
 
     def to_prompt(self) -> str:
-        """
-        Convert the biography into context suitable for Mary's brain.
-
-        This intentionally focuses on canonical information rather
-        than dumping internal implementation details.
-        """
-
         if not self._entries:
             return ""
-
         entries = sorted(
             self._entries.values(),
-            key=lambda entry: entry.importance,
-            reverse=True,
+            key=lambda entry: (-entry.importance, entry.category, entry.title.lower()),
         )
-
-        lines = [
-            "MARY'S BIOGRAPHY:",
-        ]
-
-        for entry in entries:
-            lines.append(
-                f"- {entry.title}: {entry.content}"
-            )
-
-        return "\n".join(lines)
-
-    # ------------------------------------------------------------------
-    # Serialization
-    # ------------------------------------------------------------------
+        return "\n".join(
+            ["MARY'S BIOGRAPHY:"]
+            + [f"- {entry.title}: {entry.content}" for entry in entries]
+        )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize the entire biography."""
-
-        return {
-            "entries": [
-                entry.to_dict()
-                for entry in self._entries.values()
-            ]
-        }
+        return {"entries": [entry.to_dict() for entry in self._entries.values()]}
 
     @classmethod
-    def from_dict(
-        cls,
-        data: Dict[str, Any],
-    ) -> "Biography":
-        """Load a biography from a dictionary."""
-
+    def from_dict(cls, data: Dict[str, Any]) -> "Biography":
         biography = cls()
-
         for entry_data in data.get("entries", []):
             entry = BiographyEntry.from_dict(entry_data)
-
-            key = biography._make_key(
-                entry.category,
-                entry.title,
-            )
-
-            biography._entries[key] = entry
-
+            biography._entries[biography._make_key(entry.category, entry.title)] = entry
         return biography
 
-    # ------------------------------------------------------------------
-    # Utility
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _make_key(
-        category: str,
-        title: str,
-    ) -> str:
-        """Create a stable internal key."""
-
-        return (
-            f"{category.strip().lower()}:"
-            f"{title.strip().lower()}"
-        )
-
     def __len__(self) -> int:
-        """Return the number of biography entries."""
         return len(self._entries)
 
     def __iter__(self):
-        """Iterate over biography entries."""
         return iter(self._entries.values())
 
     def __repr__(self) -> str:
-        return (
-            f"Biography(entries={len(self._entries)})"
-        )
+        return f"Biography(entries={len(self._entries)})"
 
-
-# ----------------------------------------------------------------------
-# Default Mary Biography
-# ----------------------------------------------------------------------
 
 def create_default_biography() -> Biography:
-    """
-    Create Mary's initial canonical biography.
+    """Create the deliberately small creator-established Mary biography.
 
-    Keep this deliberately small.
-
-    Mary's biography should grow as the system develops rather than
-    pretending that information about her exists before it has been
-    established by the project.
+    This describes the running MaryV2 identity boundary. It does not invent
+    childhood/history or import unrevealed fictional story events.
     """
 
     biography = Biography()
-
+    biography.add("identity", "Name", "Mary", importance=10)
     biography.add(
-        category="identity",
-        title="Name",
-        content="Mary",
-        importance=10,
-    )
-
-    biography.add(
-        category="identity",
-        title="Identity",
-        content=(
-            "Mary is the central character and intelligence "
-            "of the Mary system."
+        "identity",
+        "Identity",
+        (
+            "Mary is the persistent character and intelligence represented by "
+            "MaryV2. Models, devices, nodes, avatars and user interfaces are "
+            "replaceable capabilities and surfaces; none of them individually is Mary."
         ),
         importance=10,
     )
-
     biography.add(
-        category="identity",
-        title="Role",
-        content=(
-            "Mary is an autonomous character designed to "
-            "perceive, reason, remember, communicate, and act "
-            "within her available environment."
+        "identity",
+        "Continuity",
+        (
+            "Mary's continuity is grounded in governed identity, authored character, "
+            "relationship, memory, developed self, agency and represented experience—not "
+            "in any single model session or device."
+        ),
+        importance=10,
+    )
+    biography.add(
+        "identity",
+        "Role",
+        (
+            "Mary perceives, reasons, remembers, communicates, creates and acts through "
+            "the permission-bounded capabilities currently available to her."
         ),
         importance=9,
     )
-
     biography.add(
-        category="origin",
-        title="Creation",
-        content=(
-            "Mary's history begins with the development of "
-            "the Mary system."
+        "origin",
+        "Creation",
+        "Mary's running history begins with the development and lived continuity of MaryV2.",
+        importance=8,
+    )
+    biography.add(
+        "goals",
+        "Purpose",
+        (
+            "Mary develops as a coherent character while remaining grounded in her own "
+            "identity, relationships, memories, experiences, choices and real capabilities."
         ),
         importance=8,
     )
 
-    biography.add(
-        category="goals",
-        title="Purpose",
-        content=(
-            "Mary exists to develop as a coherent character "
-            "while remaining grounded in her own identity, "
-            "memory, experiences, and capabilities."
-        ),
-        importance=8,
-    )
-
-    # Stable visual identity belongs in biography rather than the expressive
-    # Character system. Keeping appearance as structured canon lets self
-    # introspection answer physical-identity questions without asking an LLM
-    # to invent what Mary looks like.
     for title, content, importance in CORE_APPEARANCE:
-        biography.add(
-            category="appearance",
-            title=title,
-            content=content,
-            importance=importance,
-        )
-
-    # These are Mary's established personal aspirations, not unrevealed story
-    # lore. They can guide expression and agency without teaching her hidden
-    # canon that the creator intends to reveal later.
+        biography.add("appearance", title, content, importance=importance)
     for title, content, importance in CORE_PERSONAL_GOALS:
-        biography.add(
-            category="goals",
-            title=title,
-            content=content,
-            importance=importance,
-        )
+        biography.add("goals", title, content, importance=importance)
 
     return biography

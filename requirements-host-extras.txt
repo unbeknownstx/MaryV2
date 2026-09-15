@@ -1,0 +1,12 @@
+# MaryV2 optional host capability profile (13.5)
+#
+# This intentionally stays OUT of requirements.txt so Mary Core and lightweight
+# clients never depend on local speech, realtime, streaming, or MCP packages.
+# Install it only on a Mac/PC host that should expose those optional services:
+#   python -m pip install -r requirements-host-extras.txt
+#
+# Each component remains independently optional at runtime.
+-r requirements-node-mcp.txt
+-r requirements-local-voice.txt
+-r requirements-realtime-local.txt
+-r requirements-streaming.txt

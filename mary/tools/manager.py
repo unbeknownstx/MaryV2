@@ -25,6 +25,8 @@ from typing import Any
 
 from .code import CodeClient, register_code_tools
 from .filesystem import FilesystemClient, register_filesystem_tools
+from .knowledge import KnowledgeToolClient, register_knowledge_tools
+from .repository_map import RepositoryMapClient, register_repository_map_tool
 from .registry import (
     ApprovalToken,
     ToolRegistry,
@@ -70,10 +72,23 @@ class ToolManager:
             )
         )
 
+        self.repository_map: RepositoryMapClient = (
+            register_repository_map_tool(
+                self.registry,
+                filesystem=self.filesystem,
+            )
+        )
+
         self.web: WebClient = (
             register_web_tools(
                 self.registry,
                 config=web_config,
+            )
+        )
+
+        self.knowledge: KnowledgeToolClient = (
+            register_knowledge_tools(
+                self.registry,
             )
         )
 
@@ -227,6 +242,12 @@ class ToolManager:
                     False,
                 )
             ),
+            "knowledge_gateway": self.knowledge.status(),
+            "repository_map": {
+                "registered": self.registry.has("code_repository_map"),
+                "execution": False,
+                "mutation": False,
+            },
             "workspace_root": str(
                 self.workspace_root
             ),

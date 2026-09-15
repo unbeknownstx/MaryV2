@@ -57,6 +57,12 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "creator_directives",
     ),
     DurableStateFile(
+        "relationship/standing_affect.json",
+        "expressive_continuity",
+        "StandingAffectStore",
+        "standing_affect",
+    ),
+    DurableStateFile(
         "knowledge/knowledge.json",
         "knowledge",
         "KnowledgeStateStore",
@@ -146,6 +152,36 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "durable_autonomy",
         "PendingThoughtStore",
         "pending_thoughts",
+    ),
+    DurableStateFile(
+        "continuity/experience.json",
+        "experiential_continuity",
+        "ExperienceLedger",
+        "experience_ledger",
+    ),
+    DurableStateFile(
+        "continuity/temporal_knowledge.json",
+        "experiential_continuity",
+        "TemporalKnowledgeGraph",
+        "temporal_knowledge",
+    ),
+    DurableStateFile(
+        "continuity/skills.json",
+        "experiential_continuity",
+        "SkillLibrary",
+        "procedural_skills",
+    ),
+    DurableStateFile(
+        "continuity/workflows.json",
+        "experiential_continuity",
+        "DurableWorkflowStore",
+        "workflow_checkpoints",
+    ),
+    DurableStateFile(
+        "continuity/verification.json",
+        "experiential_continuity",
+        "ActionVerificationManager",
+        "action_verification",
     ),
 )
 

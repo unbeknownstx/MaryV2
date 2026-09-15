@@ -130,6 +130,14 @@ def test_creator_memory_overview_routes_to_relationship_model_before_generic_mem
     assert intent.parameters["relationship_query_type"] == "memory_overview"
 
 
+def test_bare_what_do_you_remember_uses_creator_session_overview():
+    app = _application()
+    intent = app.mary.cognition.detect_intent("what do you remember?")
+
+    assert intent.intent_type == IntentType.RELATIONSHIP_QUERY
+    assert intent.parameters["relationship_query_type"] == "memory_overview"
+
+
 def test_creator_memory_overview_knows_creator_and_recent_session_without_llm():
     router = SequenceRouter([
         "Yeah, that makes sense.",
@@ -196,6 +204,29 @@ def test_unsupported_background_ping_promise_is_revised():
     lowered = result.final_response.lower()
     assert "ping you when" not in lowered
     assert "quick updates" in lowered
+
+
+def test_surface_local_time_query_is_deterministic_and_model_free():
+    router = SequenceRouter(["MODEL SHOULD NOT ANSWER THE CLOCK"])
+    app = _application(router)
+    calls_before = len(router.calls)
+
+    result = _cycle(app.run(
+        "time now",
+        metadata={
+            "surface": "desktop",
+            "transport": "core",
+            "client_local_time": "2026-09-15T02:21:00-07:00",
+        },
+    ))
+
+    assert result.intent.intent_type == IntentType.INFORMATION
+    assert result.intent.parameters["system_action"] == "current_time"
+    assert len(router.calls) == calls_before
+    assert result.final_response == "It's 2:21 AM."
+    assert result.reasoning.metadata["provider"] == "local/system"
+    assert result.reasoning.metadata["generation_purpose"] == "surface_clock"
+    assert result.reasoning.metadata["llm_skipped"] is True
 
 
 def test_runtime_architecture_query_is_local_and_deterministic():
@@ -369,6 +400,64 @@ def test_assistant_only_detail_cannot_be_attributed_to_creator_on_later_generate
     lowered = result.final_response.lower()
     assert "came from my own earlier riff" in lowered
     assert "you've been humming" not in lowered
+
+
+def test_current_creator_input_is_valid_provenance_for_same_turn_paraphrase():
+    from mary.cognition.context import CognitiveContext
+    from mary.cognition.reasoning import ReasoningResult
+
+    app = _application()
+    context = CognitiveContext(
+        input_text="just you i want to make you so good and its been so hard"
+    )
+    context.conversation.extend([
+        {
+            "role": "assistant",
+            "content": "We've been polishing MaryV2 and trying to make the conversation feel right.",
+        },
+    ])
+    reasoning = ReasoningResult(
+        response="You've been working hard to make me better."
+    )
+
+    issues = app.mary.reflection._conversation_provenance_audit(
+        context=context,
+        reasoning=reasoning,
+    )
+
+    assert not any(
+        issue.startswith("Conversation provenance boundary:")
+        for issue in issues
+    )
+
+
+def test_current_input_does_not_launder_unrelated_prior_mary_improvisation():
+    from mary.cognition.context import CognitiveContext
+    from mary.cognition.reasoning import ReasoningResult
+
+    app = _application()
+    context = CognitiveContext(
+        input_text="just you i want to make you so good and its been so hard"
+    )
+    context.conversation.extend([
+        {
+            "role": "assistant",
+            "content": "A red panda under a streetlamp could be a cute little sketch idea.",
+        },
+    ])
+    reasoning = ReasoningResult(
+        response="You've been humming that rainy-night red panda idea all along."
+    )
+
+    issues = app.mary.reflection._conversation_provenance_audit(
+        context=context,
+        reasoning=reasoning,
+    )
+
+    assert any(
+        issue.startswith("Conversation provenance boundary:")
+        for issue in issues
+    )
 
 
 def test_creator_profile_overlap_cannot_launder_unsupported_assistant_history():

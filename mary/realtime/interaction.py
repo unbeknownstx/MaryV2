@@ -19,6 +19,8 @@ from .decision_trace import RealtimeDecisionTrace
 from .speaker_scheduler import SpeakerScheduler
 from .data_plane import RealtimeDataPlane, RealtimeDatum
 from .speech_arbiter import SpeechOutputArbiter, SpeechRequest
+from .presentation_session import PresentationSessionManager
+from .brain_activity import BrainActivityProjection
 
 
 class InteractionPhase(str, Enum):
@@ -63,7 +65,9 @@ class RealtimeInteractionCoordinator:
                 pass
         self.data_plane = RealtimeDataPlane()
         self.speech_arbiter = SpeechOutputArbiter()
+        self.presentation_sessions = PresentationSessionManager()
         self.speaker_scheduler = SpeakerScheduler(trace=self.decision_trace)
+        self.brain_activity = BrainActivityProjection(self)
         self.anti_echo = bool(anti_echo)
         self._lock = RLock()
         self._phase = InteractionPhase.IDLE
@@ -212,6 +216,8 @@ class RealtimeInteractionCoordinator:
 
     def speech_started(self, *, turn_id: str | None = None, source: str = "client") -> None:
         with self._lock:
+            if self.presentation_sessions.active is None:
+                self.presentation_sessions.start(turn_id=turn_id, source=source)
             self._speech_turn_id = str(turn_id or "") or None
             self._stats["speech_starts"] += 1
             self.data_plane.publish(
@@ -228,6 +234,7 @@ class RealtimeInteractionCoordinator:
 
     def speech_ended(self, *, reason: str = "speech_finished") -> None:
         with self._lock:
+            self.presentation_sessions.finish(reason=reason)
             self._speech_turn_id = None
             self.speech_arbiter.finish_active()
             self.data_plane.publish(
@@ -329,6 +336,7 @@ class RealtimeInteractionCoordinator:
 
     def interrupt(self, *, reason: str = "barge_in", by_source: str = "creator") -> int:
         with self._lock:
+            self.presentation_sessions.interrupt(reason=reason)
             self._interrupt_generation += 1
             self._stats["interruptions"] += 1
             if self._active_turn is not None:
@@ -413,8 +421,10 @@ class RealtimeInteractionCoordinator:
                 "attention": self.attention.snapshot(),
                 "data_plane": self.data_plane.snapshot(),
                 "speech_arbiter": self.speech_arbiter.status(),
+                "presentation_session": self.presentation_sessions.status(),
                 "speaker_scheduler": self.speaker_scheduler.status(),
                 "decision_trace": self.decision_trace.snapshot(),
+                "brain_activity": self.brain_activity.snapshot(),
                 "voice_activity": dict(self._voice_activity),
                 "semantics": "coordination state only; no identity or memory authority",
             }

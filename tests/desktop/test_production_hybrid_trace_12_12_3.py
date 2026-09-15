@@ -109,6 +109,8 @@ def test_escalated_open_conversation_trace_keeps_provider_and_decision_metadata(
     )
 
     assert trace["provider"] == "groq"
+    assert trace["generation_purpose"] == "conversation"
+    assert trace["routing_purpose"] == "conversation_fast"
     assert trace["response_class"] == "open_conversation"
     assert trace["response_engine"] == "conversation_generation"
     assert trace["escalation_reason"].startswith("open-ended")
@@ -196,6 +198,7 @@ def test_runtime_diagnostics_labels_hybrid_route_and_local_timing_fields():
         "Classification",
         "Local composer",
         "Local audit",
+        "Routing role",
     ):
         assert label in source
     for timing_key in (
@@ -205,3 +208,9 @@ def test_runtime_diagnostics_labels_hybrid_route_and_local_timing_fields():
         "shadow_ms",
     ):
         assert timing_key in source
+
+
+
+def test_runtime_prefers_live_trace_for_last_provider_label():
+    source = (ROOT / "desktop" / "src" / "main.js").read_text(encoding="utf-8")
+    assert "trace.provider || routing.last_generation?.selected_provider" in source

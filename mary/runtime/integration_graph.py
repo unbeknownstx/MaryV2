@@ -34,6 +34,10 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
     tools = getattr(mary, "tools", None)
     autonomy = getattr(mary, "autonomy", None)
     node_registry = getattr(mary, "node_registry", None)
+    browser_sensor = getattr(mary, "browser_context_sensor", None)
+    game_router = getattr(mary, "game_action_router", None)
+    performance_profiles = getattr(mary, "performance_profiles", None)
+    invocation_ledger = getattr(mary, "capability_invocations", None)
 
     contract = {}
     if callable(getattr(system_contract, "snapshot", None)):
@@ -180,6 +184,41 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
             and callable(getattr(node_registry, "update_capability_readiness", None))
             and callable(getattr(node_registry, "route_preview", None)),
             owner="NodeRegistry",
+        ),
+        _edge(
+            "realtime -> read-only brain activity projection",
+            realtime is not None
+            and getattr(getattr(realtime, "brain_activity", None), "realtime", None) is realtime,
+            required=False,
+            owner="BrainActivityProjection/RealtimeInteractionCoordinator",
+        ),
+        _edge(
+            "browser context -> canonical perception boundary",
+            browser_sensor is not None
+            and getattr(browser_sensor, "perception", None) is getattr(mary, "perception_director", None),
+            required=False,
+            owner="BrowserContextSensor/PerceptionDirector",
+        ),
+        _edge(
+            "game semantic intent -> canonical node routing",
+            game_router is not None
+            and getattr(game_router, "node_registry", None) is node_registry,
+            required=False,
+            owner="GameActionRouter/NodeRegistry",
+        ),
+        _edge(
+            "runtime performance profile -> Core resource policy",
+            performance_profiles is not None
+            and callable(getattr(performance_profiles, "status", None)),
+            required=False,
+            owner="RuntimePerformanceProfiles",
+        ),
+        _edge(
+            "capability orchestration -> bounded invocation ledger",
+            invocation_ledger is not None
+            and callable(getattr(invocation_ledger, "begin", None)),
+            required=False,
+            owner="CapabilityInvocationLedger",
         ),
         _edge("performance director -> TurnMind", turn_mind is not None and getattr(mary, "performance", None) is getattr(turn_mind, "performance", None), owner="PerformanceDirector"),
         _edge("training feedback -> canonical Mary", getattr(mary, "training_feedback", None) is not None, owner="ResponseFeedbackStore"),

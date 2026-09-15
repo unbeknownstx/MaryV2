@@ -1,0 +1,117 @@
+/* Shared MaryV2 13.7 compatibility-mobile polish. */
+
+:root {
+  --mary-safe-bottom: max(10px, env(safe-area-inset-bottom));
+  --mary-safe-top: max(8px, env(safe-area-inset-top));
+  --mary-touch: 44px;
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(143,92,255,.14), transparent 36%),
+    radial-gradient(circle at 14% 82%, rgba(255,79,166,.08), transparent 30%),
+    #050611;
+}
+
+.topbar {
+  padding-top: var(--mary-safe-top);
+  backdrop-filter: blur(22px) saturate(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(1.08);
+}
+
+.top-button,
+.connection-pill,
+.bottom-nav button,
+.circle,
+.sheet button,
+.workspace-grid button {
+  min-width: var(--mary-touch);
+  min-height: var(--mary-touch);
+}
+
+.chat-stage {
+  background:
+    radial-gradient(circle at 50% 28%, rgba(126,76,238,.20), transparent 44%),
+    linear-gradient(180deg,#09091b,#050611 76%);
+}
+
+.portrait-zone::before {
+  opacity: .17 !important;
+  filter: blur(34px) saturate(1.12) !important;
+}
+
+.mary-stage-art {
+  transition: opacity .7s ease, transform 6s ease;
+}
+
+.chat-glass,
+.sheet,
+.glass {
+  border-color: rgba(255,255,255,.08) !important;
+  box-shadow: 0 18px 60px rgba(0,0,0,.30);
+}
+
+.messages {
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+.message p {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.composer-deck {
+  padding-bottom: var(--mary-safe-bottom);
+}
+
+.composer textarea {
+  min-height: var(--mary-touch);
+  caret-color: #57d8ff;
+}
+
+.bottom-nav {
+  padding-bottom: var(--mary-safe-bottom);
+}
+
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(87,216,255,.94) !important;
+  outline-offset: 2px;
+}
+
+/* Short phones keep conversation reachable instead of sacrificing message area
+   to decorative presentation height. */
+@media (max-height: 700px) {
+  .portrait-zone { inset: 38px 0 41% !important; }
+  .chat-glass { height: 41% !important; }
+  .stage-header { top: 11px !important; }
+}
+
+@media (min-width: 720px) {
+  #app {
+    max-width: 720px;
+    margin-inline: auto;
+    border-inline: 1px solid rgba(255,255,255,.06);
+    box-shadow: 0 0 80px rgba(0,0,0,.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .mary-stage-art { transform: none !important; }
+}
+
+@media (prefers-contrast: more) {
+  .glass,
+  .chat-glass,
+  .sheet,
+  .panel,
+  .card { border-color: rgba(255,255,255,.30) !important; }
+}

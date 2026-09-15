@@ -1139,6 +1139,22 @@ class TurnMindStateBuilder:
         verbosity = _clamp(style.get("verbosity", 0.5))
         directness = _clamp(style.get("directness", 0.7))
 
+        normalized_input = " ".join(str(input_text or "").casefold().split())
+        softening_feedback = bool(
+            re.search(
+                r"\b(?:"
+                r"i hate how (?:hard|harsh|blunt|abrasive) you (?:are|sound)|"
+                r"i (?:don'?t|do not) like how (?:hard|harsh|blunt|abrasive) you (?:are|sound)|"
+                r"(?:stop|don'?t|do not) (?:being|sound(?:ing)?) so (?:hard|harsh|blunt|abrasive)|"
+                r"you(?:'re| are) (?:too|way too) (?:hard|harsh|blunt|abrasive)"
+                r")\b",
+                normalized_input,
+                flags=re.IGNORECASE,
+            )
+        )
+        if softening_feedback:
+            directness = min(directness, 0.45)
+
         creator_profile = _safe_dict(relationship.get("current_profile"))
         creator_communication = _safe_dict(creator_profile.get("communication_style"))
         creator_style = str(creator_communication.get("preferred_style", "")).lower()
@@ -1161,6 +1177,12 @@ class TurnMindStateBuilder:
             == "experience_promotion"
         }
         learned_instructions: list[str] = []
+        if softening_feedback:
+            learned_instructions.append(
+                "Unbe is explicitly asking Mary to soften this interaction. "
+                "Respond warmly and plainly; no teasing nickname, streamer slang, "
+                "performative toughness, or defensive pushback on this turn."
+            )
 
         length_preference = interaction_preferences.get(
             "creator interaction response length"
@@ -1282,7 +1304,6 @@ class TurnMindStateBuilder:
             "let it color delivery subtly, not dominate content. The incoming appraisal is temporary turn evidence until the completed turn is applied to Mary's bounded emotion state."
         )
 
-        slang = list(speech.get("vocabulary", []))[:7]
         slang_rule = str(speech.get("rule", "")).strip()
         familiar_mode = str(social_modes.get("close_people", "")).strip()
         anger_mode = str(reactions.get("anger", "")).strip()
@@ -1294,9 +1315,17 @@ class TurnMindStateBuilder:
             "Do not end ordinary conversation with canned service offers such as 'anything else?', 'how can I help?', or 'let me know if you'd like'.",
             "Mary is a persistent character, not support copy. Do not write stage directions into ordinary dialogue; the performer layer handles voice/body. Her spoken language may still be witty, sarcastic, flirty, bubbly, sharp, soft, or deadpan when the active character pattern supports it.",
             (
-                f"Mary's available casual slang includes {slang}. {slang_rule}"
-                if slang
-                else "Use Mary's established casual voice naturally; do not manufacture catchphrases."
+                "Distinctive slang and teasing nicknames are rare vocabulary evidence, "
+                "not signature tokens. Never insert them merely to sound like Mary. "
+                "Use one only when Unbe's own register or an explicitly playful/teasing "
+                "turn naturally supports it; otherwise prefer plain conversational language. "
+                + slang_rule
+            ),
+            (
+                "Straightforward work/task turns should sound grounded and collaborative, "
+                "not like streamer banter or performative bravado."
+                if mode == "task_collaboration"
+                else "Keep Mary's register proportional to the current turn instead of performing every trait at once."
             ),
             (
                 f"When relationship familiarity supports it, remember this close-person mode: {familiar_mode}"
@@ -1348,7 +1377,10 @@ class TurnMindStateBuilder:
             familiarity=str(relationship.get("familiarity", "developing")),
             preferred_length=preferred_length,
             follow_up_urge=follow_up_urge,
-            allow_teasing=float(behavior.get("sassiness", 0.0)) >= 0.5,
+            allow_teasing=(
+                float(behavior.get("sassiness", 0.0)) >= 0.5
+                and not softening_feedback
+            ),
             allow_opinion=float(traits.get("independence", 0.0)) >= 0.5,
             avoid_assistant_closers=True,
             instructions=instructions,

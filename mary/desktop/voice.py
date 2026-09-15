@@ -129,6 +129,7 @@ class DesktopVoiceEngine:
         piper_executable: Path | None = None,
         piper_model: Path | None = None,
         cloud_fallback: "DesktopVoiceEngine | None" = None,
+        failure_fallback: "DesktopVoiceEngine | None" = None,
     ) -> None:
         self.service = service
         self.status = status or DesktopVoiceStatus(enabled=False)
@@ -138,6 +139,7 @@ class DesktopVoiceEngine:
         self.piper_executable = piper_executable
         self.piper_model = piper_model
         self.cloud_fallback = cloud_fallback
+        self.failure_fallback = failure_fallback
 
     @classmethod
     def _elevenlabs_from_environment(cls) -> "DesktopVoiceEngine":
@@ -160,6 +162,37 @@ class DesktopVoiceEngine:
                    status=DesktopVoiceStatus(True, "elevenlabs", voice_id, model_id, False, True))
 
     @classmethod
+    def _local_only_from_environment(cls) -> "DesktopVoiceEngine":
+        """Resolve Piper/SAPI without constructing a cloud fallback loop."""
+
+        piper_exe, piper_model = _piper_paths()
+        if piper_exe and piper_model:
+            return cls(
+                status=DesktopVoiceStatus(
+                    True,
+                    "piper",
+                    model=str(piper_model),
+                    local=True,
+                ),
+                local_engine="piper",
+                piper_executable=piper_exe,
+                piper_model=piper_model,
+            )
+        if sys.platform == "win32":
+            voice_name = os.getenv("MARY_WINDOWS_TTS_VOICE", "").strip() or None
+            return cls(
+                status=DesktopVoiceStatus(
+                    True,
+                    "windows_sapi",
+                    voice_id=voice_name,
+                    model="System.Speech",
+                    local=True,
+                ),
+                local_engine="windows_sapi",
+            )
+        return cls(status=DesktopVoiceStatus(False, "local_first", local=True))
+
+    @classmethod
     def from_environment(cls) -> "DesktopVoiceEngine":
         # Keep this exact default for offline/backward-compatible tests.  The
         # shipped .env.example opts into local_first for the real PC install.
@@ -176,6 +209,9 @@ class DesktopVoiceEngine:
         if provider_name in {"auto_fast", "fast_voice"}:
             cloud = cls._elevenlabs_from_environment()
             if cloud.status.enabled:
+                local_fallback = cls._local_only_from_environment()
+                if local_fallback.status.enabled:
+                    cloud.failure_fallback = local_fallback
                 return cloud
             provider_name = "local_first"
 
@@ -325,8 +361,31 @@ class DesktopVoiceEngine:
         if _env_bool("MARY_TTS_PERFORMANCE_DELIVERY", True):
             active_settings = _apply_delivery_plan(active_settings, delivery_plan)
         synth_started = monotonic()
-        speech = self.service.synthesize(spoken_text, settings=active_settings)
+        try:
+            speech = self.service.synthesize(spoken_text, settings=active_settings)
+        except Exception as exc:
+            if self.failure_fallback and self.failure_fallback.status.enabled:
+                payload = self.failure_fallback.synthesize(
+                    text,
+                    user_text=user_text,
+                    emotional_state=emotional_state,
+                    delivery_plan=delivery_plan,
+                )
+                payload["fallback_from"] = self.status.provider
+                payload["primary_error"] = f"{type(exc).__name__}: {exc}"[:500]
+                return finish(payload, synth_started)
+            raise
         if not speech.is_successful:
+            if self.failure_fallback and self.failure_fallback.status.enabled:
+                payload = self.failure_fallback.synthesize(
+                    text,
+                    user_text=user_text,
+                    emotional_state=emotional_state,
+                    delivery_plan=delivery_plan,
+                )
+                payload["fallback_from"] = self.status.provider
+                payload["primary_status"] = speech.status.value
+                return finish(payload, synth_started)
             return finish(
                 {**self.status.to_dict(), "status": speech.status.value, "spoken_text": spoken_text},
                 synth_started,

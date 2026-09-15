@@ -11,6 +11,7 @@ Desktop machine.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
@@ -167,6 +168,7 @@ class _RemoteMaryView:
         project_root: Path,
     ) -> None:
         self.gateway = gateway
+        self._last_live_state: dict[str, Any] = {}
         self.emotion = _RemoteEmotionView()
         self.avatar = AvatarBridge(emotion_manager=self.emotion)
         self.avatar.ready()
@@ -200,12 +202,41 @@ class _RemoteMaryView:
         }
 
     def live_state(self, *, runtime_status: str | None = None) -> dict[str, Any]:
-        # runtime_status is presentation-local and does not mutate canonical Core state.
-        state = dict(self.gateway.state().get("mary", {}) or {})
+        # runtime_status is presentation-local and does not mutate canonical Core
+        # state. A transient read failure must not abort a Desktop turn: use the
+        # last successful projection, clearly marked stale, until Core is reachable.
+        try:
+            state = dict(self.gateway.state().get("mary", {}) or {})
+            if state:
+                self._last_live_state = deepcopy(state)
+            core_reachable = True
+        except Exception:
+            state = deepcopy(self._last_live_state)
+            core_reachable = False
+
+        if not state:
+            state = {
+                "character": {
+                    "name": "Mary",
+                    "status": "disconnected",
+                },
+                "model": {
+                    "provider": "remote/core",
+                    "model": "unavailable",
+                },
+            }
+
         if runtime_status:
             character = dict(state.get("character", {}) or {})
+            character.setdefault("name", "Mary")
             character["status"] = str(runtime_status)
             state["character"] = character
+
+        state["_presentation"] = {
+            "core_reachable": core_reachable,
+            "stale": not core_reachable,
+            "authority": "remote_mary_core",
+        }
         return state
 
     def update_from_display_hints(self, hints: dict[str, Any] | None, text: str) -> None:
@@ -435,6 +466,7 @@ class RemoteMaryApplicationView:
         self.device_id = gateway.device_id
         self.project_root = Path(project_root).resolve()
         self.conversation_id = str(conversation_id or "creator-primary")
+        self._last_dashboard_state: dict[str, Any] = {}
         self.mary = _RemoteMaryView(gateway, project_root=self.project_root)
         self.ecosystem = _RemoteEcosystemView(gateway, project_root=self.project_root)
         self.pipeline = _RemotePipelineView(gateway)
@@ -445,12 +477,14 @@ class RemoteMaryApplicationView:
         conversation_id = str(values.get("conversation_id") or self.conversation_id)
         requested_mode = values.get("requested_mode")
         voice_input = bool(values.get("voice_input", False))
+        client_local_time = str(values.get("client_local_time") or "").strip() or None
         started = monotonic()
         response = self.gateway.turn(
             text,
             conversation_id=conversation_id,
             requested_mode=str(requested_mode) if requested_mode else None,
             voice_input=voice_input,
+            client_local_time=client_local_time,
         )
         elapsed = monotonic() - started
         hints = dict(response.display_hints or {})
@@ -486,31 +520,67 @@ class RemoteMaryApplicationView:
         )
 
     def dashboard_state(self, *, runtime_status: str = "idle") -> dict[str, Any]:
+        core_reachable = True
         try:
             payload = dict(self.gateway.dashboard() or {})
         except Exception:
-            state = self.gateway.state()
+            try:
+                state = self.gateway.state()
+                payload = {
+                    "live": dict(state.get("mary", {}) or {}),
+                    "mind": dict(state.get("mind", {}) or {}),
+                    "nodes": dict(state.get("nodes", {}) or {}),
+                    "retrieval": dict(state.get("retrieval", {}) or {}),
+                    "perception": dict(state.get("perception", {}) or {}),
+                }
+                try:
+                    payload["realtime"] = dict(
+                        self.gateway.conversation().get("realtime", {}) or {}
+                    )
+                except Exception:
+                    payload["realtime"] = {}
+            except Exception:
+                payload = deepcopy(self._last_dashboard_state)
+                core_reachable = False
+
+        if not payload:
             payload = {
-                "live": dict(state.get("mary", {}) or {}),
-                "mind": dict(state.get("mind", {}) or {}),
-                "nodes": dict(state.get("nodes", {}) or {}),
-                "retrieval": dict(state.get("retrieval", {}) or {}),
-                "perception": dict(state.get("perception", {}) or {}),
-                "realtime": dict(self.gateway.conversation().get("realtime", {}) or {}),
+                "live": self.mary.live_state(runtime_status=runtime_status),
+                "mind": {},
+                "nodes": {},
+                "retrieval": {},
+                "perception": {},
+                "realtime": {},
             }
 
         live = dict(payload.get("live", {}) or {})
         if live:
             character = dict(live.get("character", {}) or {})
+            character.setdefault("name", "Mary")
             character["status"] = str(runtime_status)
             live["character"] = character
             payload["live"] = live
-        payload["ecosystem"] = self.ecosystem.snapshot()
+
+        try:
+            payload["ecosystem"] = self.ecosystem.snapshot()
+        except Exception:
+            payload["ecosystem"] = deepcopy(
+                self._last_dashboard_state.get("ecosystem", {}) or {}
+            )
+            core_reachable = False
+
         payload["authority"] = {
             "mode": "remote_mary_core",
             "device_id": self.gateway.device_id,
             "surface": "desktop",
         }
+        payload["connection"] = {
+            "core_reachable": core_reachable,
+            "stale": not core_reachable,
+        }
+
+        if core_reachable:
+            self._last_dashboard_state = deepcopy(payload)
         return payload
 
     def save(self) -> None:

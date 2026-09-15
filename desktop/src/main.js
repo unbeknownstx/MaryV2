@@ -10,6 +10,7 @@ import { formatMilliseconds, normalizeTurnTrace, providerAttemptSummary, timingV
 import { createHttpBridge, installMaryPwa } from './runtime/httpBridge.js';
 import './mobile.css';
 import './experience-v2.css';
+import './product-shell-13-66.css';
 import { installExperienceLayer } from './ui/experienceLayer.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -78,6 +79,7 @@ let activeMouthExpression = null;
 let lipSyncWeight = 0;
 let activeSpeechAlignment = [];
 let currentVrm = null;
+let avatarLoadError = '';
 const BASE_DELIVERY_PLAN = { profile: 'neutral', energy: .4, gesture_energy: .3, avatar_expression: 'neutral', gesture_style: 'natural', gaze_style: 'engaged', head_style: 'natural', performance_beats: [] };
 let currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
 let currentPerformanceBeatIndex = -1;
@@ -124,6 +126,120 @@ function percent(value) {
   return `${Math.round(clamp(value) * 100)}%`;
 }
 
+function providerDisplayName(value) {
+  const name = String(value || '').trim().toLowerCase();
+  const labels = {
+    local_device: 'Local Model',
+    groq: 'Groq',
+    gemini: 'Gemini',
+    openrouter: 'OpenRouter',
+    ollama: 'Ollama',
+    llama_cpp: 'llama.cpp',
+    openai: 'OpenAI',
+  };
+  return labels[name] || titleCase(name || 'runtime');
+}
+
+function connectedNodeCount(snapshot = {}) {
+  const rows = Array.isArray(snapshot?.nodes) ? snapshot.nodes : [];
+  return rows.filter((node) => node && node.connected !== false).length;
+}
+
+function projectProductShell() {
+  const setText = (selector, value) => {
+    const node = $(selector);
+    if (node) node.textContent = String(value ?? '');
+  };
+
+  const fabric = dashboardState?.compute_fabric || {};
+  const routing = fabric?.routing || {};
+  const routes = routing?.routes || {};
+  const configuredConversation = Array.isArray(routes.conversation)
+    ? routes.conversation
+    : [];
+  const dashboardRoute = Array.isArray(dashboardState?.providers?.effective_conversation_route)
+    ? dashboardState.providers.effective_conversation_route
+    : [];
+  const route = configuredConversation.length ? configuredConversation : dashboardRoute;
+  const capabilities = fabric?.capability_routes || {};
+  const local = capabilities['llm.local'] || {};
+  const lastGeneration = routing?.last_generation || {};
+  const localReady = Boolean(local?.available);
+  const coreConnected = Boolean(statusDot?.classList.contains('connected'));
+  const voice = runtimeStatus?.voice || {};
+  const nodes = dashboardState?.nodes || runtimeStatus?.nodes || {};
+  const nodeCount = connectedNodeCount(nodes);
+  const activeProvider = String(
+    lastGeneration.selected_provider
+    || lastTurnTrace.provider
+    || runtimeStatus.provider
+    || route[0]
+    || ''
+  ).trim();
+  const activeModel = String(
+    lastGeneration.selected_model
+    || lastTurnTrace.model
+    || runtimeStatus.model
+    || ''
+  ).trim();
+
+  const coreState = coreConnected ? 'Connected' : 'Connecting';
+  const coreDetail = coreConnected ? 'Canonical Mary Core' : 'Reconnecting to Mary';
+
+  let computeState = 'Fallback ready';
+  let computeDetail = route.length
+    ? route.map(providerDisplayName).join(' → ')
+    : 'Local + free-cloud fabric';
+  if (localReady) {
+    computeState = 'Local model ready';
+    const selectedNode = String(local.selected_node_id || '').trim();
+    computeDetail = selectedNode ? `Ready on ${selectedNode}` : 'Bounded local compute available';
+  } else if (activeProvider) {
+    computeState = providerDisplayName(activeProvider);
+    computeDetail = activeModel || computeDetail;
+  }
+
+  const voiceState = voice.enabled
+    ? providerDisplayName(voice.provider || 'voice')
+    : 'Text ready';
+  const voiceDetail = voice.enabled
+    ? (voice.local ? 'Local voice' : 'Fast voice + local fallback')
+    : 'Voice optional · chat remains available';
+
+  const presenceState = titleCase(conversationState || 'idle');
+  const presenceDetail = ({
+    idle: 'Ready to talk',
+    listening: 'Listening to you',
+    transcribing: 'Turning speech into text',
+    responding: 'Building a response',
+    thinking: 'Working through the turn',
+    speaking: 'Mary is speaking',
+    interrupted: 'Switching turns',
+  })[conversationState] || 'Ready';
+
+  setText('#shell-core-state', coreState);
+  setText('#shell-core-detail', coreDetail);
+  setText('#shell-compute-state', computeState);
+  setText('#shell-compute-detail', computeDetail);
+  setText('#shell-voice-state', voiceState);
+  setText('#shell-voice-detail', voiceDetail);
+  setText('#shell-presence-state', presenceState);
+  setText('#shell-presence-detail', presenceDetail);
+
+  setText('#system-core-value', coreState);
+  setText('#system-compute-value', localReady ? 'Local ready' : (activeProvider ? providerDisplayName(activeProvider) : 'Fallback'));
+  setText('#system-voice-value', voice.enabled ? providerDisplayName(voice.provider || 'voice') : 'Text');
+  setText('#system-nodes-value', nodeCount);
+
+  const overview = localReady
+    ? 'Canonical Mary Core is linked to replaceable local compute with cloud fallback.'
+    : 'Canonical Mary Core is linked; local compute can join without changing Mary identity.';
+  setText('#system-overview-copy', overview);
+
+  app.dataset.coreLink = coreConnected ? 'connected' : 'connecting';
+  app.dataset.localCompute = localReady ? 'ready' : 'fallback';
+}
+
 function syncAvatarPresentation() {
   const stage = $('#avatar-stage');
   if (!stage || !fallback) return;
@@ -134,7 +250,11 @@ function syncAvatarPresentation() {
   const caption = $('#avatar-fallback-caption');
   if (caption) caption.textContent = avatarPresentation === 'art'
     ? 'Portrait presentation · local reference art'
-    : (currentVrm ? 'Live VRM active' : 'VRM unavailable · local reference art');
+    : (currentVrm
+      ? 'Live VRM active'
+      : avatarLoadError
+        ? 'Portrait mode · 3D avatar unavailable'
+        : 'VRM unavailable · local reference art');
   $$('[data-avatar-presentation]').forEach((button) => {
     button.classList.toggle('active', button.dataset.avatarPresentation === avatarPresentation);
   });
@@ -289,6 +409,7 @@ async function loadMaryVrm() {
     }
     modelBounds = { box, size, center };
     modelBaseY = vrm.scene.position.y;
+    avatarLoadError = '';
     setAvatarFraming(avatarFraming);
     // Qt may settle the stage geometry one frame after the model finishes loading.
     window.requestAnimationFrame(() => setAvatarFraming(avatarFraming));
@@ -296,6 +417,7 @@ async function loadMaryVrm() {
     applyAvatarState({ expression: 'neutral', emotion_intensity: 0 });
   } catch (error) {
     console.warn('MaryCosma.vrm was not loaded:', error);
+    avatarLoadError = String(error?.message || error || 'VRM load failed');
     currentVrm = null;
     syncAvatarPresentation();
   }
@@ -945,6 +1067,7 @@ messages?.addEventListener('click', (event) => {
 function setConnected(value, label = '') {
   statusDot.classList.toggle('connected', Boolean(value));
   statusText.textContent = label || (value ? 'Connection: Strong' : 'Disconnected');
+  projectProductShell();
 }
 
 function refreshConversationControls() {
@@ -1076,11 +1199,11 @@ function renderRecentActivities(items = []) {
 function renderProviderState(state = {}) {
   const route = state.effective_conversation_route || [];
   $('#provider-route').textContent = route.length
-    ? `Conversation: ${route.join(' → ')}`
-    : 'No effective conversation route reported yet.';
+    ? `Conversation: ${route.map(providerDisplayName).join(' → ')}`
+    : 'Conversation automatically uses the best ready route.';
   const badges = $('#provider-badges');
   badges.innerHTML = (state.providers || []).map((provider) => `
-    <span class="provider-badge ${provider.available ? 'ready' : ''}">${escapeHtml(provider.name)} · ${provider.available ? 'READY' : 'OFF'}</span>
+    <span class="provider-badge ${provider.available ? 'ready' : ''}">${escapeHtml(providerDisplayName(provider.name))} · ${provider.available ? 'READY' : 'OFF'}</span>
   `).join('');
 }
 
@@ -1110,6 +1233,7 @@ function applyTurnTrace(raw) {
   setText('#runtime-tts', formatMilliseconds(timings.tts_synthesis_ms));
   setText('#runtime-perceived', formatMilliseconds(timings.perceived_ms ?? timings.text_ready_ms));
   setText('#runtime-attempts', providerAttemptSummary(lastTurnTrace));
+  projectProductShell();
 }
 
 function applyCompanionPulse(ecosystem = ecosystemState) {
@@ -1196,6 +1320,7 @@ function applyDashboardState(raw) {
   if ($('#eco-inbox-count')) $('#eco-inbox-count').textContent = inbox.unread ?? 0;
   if ($('#eco-focus-state')) $('#eco-focus-state').textContent = focus.active ? 'Active' : 'Idle';
 
+  projectProductShell();
   if (currentScreen !== 'chat') renderWorkspace(currentScreen);
 }
 
@@ -1220,7 +1345,7 @@ const SCREEN_META = {
   search: ['PERSONAL SEARCH', 'Find That Thing', 'Bounded search over only the folders Mary has been allowed to inspect.'],
   research: ['RESEARCH', 'Research Notebook', 'Persistent research threads, notes, and conclusions without restarting from zero.'],
   arcade: ['PLAY', 'Mary Arcade', 'Small local games and creative sparks that do not require a cloud model.'],
-  diagnostics: ['MARY DEV', 'Runtime & Latency', 'Grounded runtime metrics so performance problems can be measured instead of guessed.'],
+  diagnostics: ['SYSTEM', 'Runtime & Compute', 'A clear view of Mary Core, local/cloud model routes, capability nodes, realtime state, and measured turn performance.'],
   settings: ['SYSTEM', 'Settings', 'Provider availability, private state paths, skills, integrations, and desktop configuration.'],
 };
 
@@ -1303,27 +1428,98 @@ function renderMind() {
 
 function renderMemories() {
   const highlights = dashboardState.memory_highlights || [];
+  const archive = dashboardState.memory_archive || {};
+  const episodes = archive.episodic || [];
+  const facts = archive.semantic || [];
+  const shared = archive.shared_history || [];
+  const milestones = archive.milestones || [];
   const activities = dashboardState.recent_activities || [];
   const memory = dashboardState.live?.memory || {};
-  return `
-    <div class="workspace-grid three">
-      <div class="workspace-panel accent"><h3>Episodic</h3><div class="data-row"><span>Stored experiences</span><strong>${memory.episodic ?? 0}</strong></div></div>
-      <div class="workspace-panel accent"><h3>Semantic</h3><div class="data-row"><span>Established knowledge</span><strong>${memory.semantic ?? 0}</strong></div></div>
-      <div class="workspace-panel accent"><h3>Working</h3><div class="data-row"><span>Active context</span><strong>${memory.working ?? 0}</strong></div></div>
+  const counts = archive.counts || {};
+  const episodicTotal = Number(counts.episodic_total ?? memory.episodic ?? episodes.length ?? 0);
+  const semanticTotal = Number(counts.semantic_total ?? memory.semantic ?? facts.length ?? 0);
+  const sharedHistoryTotal = Number(counts.shared_history_total ?? shared.length ?? 0);
+  const milestoneTotal = Number(counts.milestones_total ?? milestones.length ?? 0);
+  const profileTotal = Number(counts.creator_profile_total ?? dashboardState.relationship?.profile_records ?? 0);
+  const observationTotal = Number(counts.relationship_observation_total ?? 0);
+  const durableCount = episodicTotal + semanticTotal;
+  const continuityCount = sharedHistoryTotal + milestoneTotal + profileTotal + observationTotal;
+  const archiveStatus = durableCount || continuityCount
+    ? `${durableCount} memory record${durableCount === 1 ? '' : 's'} · ${sharedHistoryTotal} shared-history event${sharedHistoryTotal === 1 ? '' : 's'} · ${profileTotal} creator-profile record${profileTotal === 1 ? '' : 's'}.`
+    : 'The current Core has no visible durable memory or shared-history records yet.';
+
+  const episodicRows = listOrEmpty(episodes, (item) => `
+    <div class="memory-record">
+      <div class="memory-record-head"><span class="memory-source episodic">EPISODIC</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.content || 'Memory')}</strong>
+      <small>${escapeHtml(titleCase(item.event_type || item.source || 'interaction'))}</small>
     </div>
-    <div class="section-title">CURRENT CREATOR PROFILE HIGHLIGHTS</div>
-    <div class="memory-browser">
-      <div class="workspace-panel timeline">
-        ${listOrEmpty(highlights, (item) => `
-          <div class="data-row"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.title)}</strong></div>
-        `, 'Mary does not have structured creator highlights to show yet.')}
-      </div>
-      <div class="workspace-panel memory-detail">
-        <h3>Memory policy</h3>
-        <p>This screen intentionally starts with source-aware creator profile items and counts instead of dumping raw episodic files. Raw-memory browsing can be added as an explicit advanced view without changing Mary's memory architecture.</p>
-        <div class="data-row"><span>Backup recovered</span><strong>${memory.recovered_from_backup ? 'Yes' : 'No'}</strong></div>
-        <div class="data-row"><span>Recent activity</span><strong>${activities.length}</strong></div>
-      </div>
+  `, 'No episodic memories are stored in the current canonical Core memory file.');
+
+  const semanticRows = listOrEmpty(facts, (item) => `
+    <div class="memory-record">
+      <div class="memory-record-head"><span class="memory-source semantic">KNOWLEDGE</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.value || 'Knowledge')}</strong>
+      <small>${escapeHtml([item.subject, item.predicate].filter(Boolean).map(titleCase).join(' · ') || 'Semantic memory')}</small>
+    </div>
+  `, 'No semantic memories have been promoted in the current canonical Core.');
+
+  const sharedRows = listOrEmpty(shared, (item) => `
+    <div class="memory-record shared-history">
+      <div class="memory-record-head"><span class="memory-source shared">SHARED HISTORY</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.description || 'Shared event')}</strong>
+      <small>${escapeHtml(titleCase(item.kind || item.type || 'relationship'))}</small>
+    </div>
+  `, 'No bounded relationship-history entries are available.');
+
+  const milestoneRows = listOrEmpty(milestones, (item) => `
+    <div class="memory-record milestone">
+      <div class="memory-record-head"><span class="memory-source milestone">MILESTONE</span><small>${escapeHtml(item.when || 'recently')}</small></div>
+      <strong>${escapeHtml(item.title || 'Milestone')}</strong>
+      ${item.description && item.description !== item.title ? `<small>${escapeHtml(item.description)}</small>` : ''}
+    </div>
+  `, 'No relationship milestones are available.');
+
+  return `
+    <div class="memory-status-banner ${durableCount ? 'has-memory' : continuityCount ? 'has-continuity' : 'empty'}">
+      <div><span>CONTINUITY ARCHIVE</span><strong>${escapeHtml(archiveStatus)}</strong></div>
+      <small>Memory and relationship history stay separate canonical owners; this screen is a read-only creator view across both.</small>
+    </div>
+
+    <div class="workspace-grid three memory-count-grid">
+      <div class="workspace-panel memory-count-card"><span>EPISODIC</span><strong>${episodicTotal}</strong><small>Stored experiences</small></div>
+      <div class="workspace-panel memory-count-card"><span>SEMANTIC</span><strong>${semanticTotal}</strong><small>Established knowledge</small></div>
+      <div class="workspace-panel memory-count-card"><span>CREATOR PROFILE</span><strong>${profileTotal}</strong><small>Source-aware facts, preferences, goals & interests</small></div>
+      <div class="workspace-panel memory-count-card"><span>SHARED HISTORY</span><strong>${sharedHistoryTotal}</strong><small>Relationship-owned continuity</small></div>
+      <div class="workspace-panel memory-count-card"><span>RELATIONSHIP OBSERVATIONS</span><strong>${observationTotal}</strong><small>Grounded source-aware observations</small></div>
+      <div class="workspace-panel memory-count-card"><span>MILESTONES</span><strong>${milestoneTotal}</strong><small>High-significance continuity</small></div>
+    </div>
+
+    <div class="section-title">MEMORY HIGHLIGHTS</div>
+    <div class="workspace-panel memory-highlight-panel">
+      ${listOrEmpty(highlights, (item) => `
+        <div class="data-row"><span>${escapeHtml(item.label || 'Memory')}</span><strong>${escapeHtml(item.title || '—')}</strong></div>
+      `, 'No structured highlights yet. The archive below still shows any canonical records that exist.')}
+    </div>
+
+    <div class="memory-archive-grid">
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Experiences</h3><span>${episodes.length} / ${episodicTotal}</span></div>${episodicRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Knowledge</h3><span>${facts.length} / ${semanticTotal}</span></div>${semanticRows}</section>
+    </div>
+
+    <div class="section-title">SHARED CONTINUITY</div>
+    <div class="memory-archive-grid">
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Shared history</h3><span>${shared.length} / ${sharedHistoryTotal}</span></div>${sharedRows}</section>
+      <section class="workspace-panel memory-column"><div class="memory-column-title"><h3>Milestones</h3><span>${milestones.length} / ${milestoneTotal}</span></div>${milestoneRows}</section>
+    </div>
+
+    <div class="workspace-panel memory-policy-panel">
+      <h3>What this means</h3>
+      <p>${escapeHtml(archive.policy || 'This is a bounded private projection over canonical memory and relationship continuity.')}</p>
+      <div class="data-row"><span>Working context</span><strong>${memory.working ?? 0}</strong></div>
+      <div class="data-row"><span>Backup recovered</span><strong>${memory.recovered_from_backup ? 'Yes' : 'No'}</strong></div>
+      <div class="data-row"><span>Recent activity</span><strong>${activities.length}</strong></div>
+      <small>Archive lists are intentionally bounded for readability; the totals above are the canonical Core counts.</small>
     </div>
   `;
 }
@@ -1512,6 +1708,7 @@ function renderStream() {
   const stage = dashboardState.performance_context || runtimeStatus.performance_context || {};
   const mode = stage.mode || 'private';
   const modes = ['private','casual','focus','stream','performance'];
+  const modeLabels = { private: 'Private', casual: 'Casual', focus: 'Focus', stream: 'Streamer', performance: 'Performance' };
   const runtime = ecosystemState.character_runtime?.realtime || dashboardState.realtime || runtimeStatus.realtime || {};
   const scene = ecosystemState.character_runtime?.live_scene || presence.scene || {};
   const streaming = ecosystemState.streaming || {};
@@ -1541,7 +1738,7 @@ function renderStream() {
   </div>
   <div class="workspace-grid three" style="margin-top:12px">
     <div class="workspace-panel hero-panel live-scene-panel"><h3>Live Scene</h3><p>This is Mary's short-lived awareness of now—not memory and not identity.</p><div class="data-row"><span>Mode</span><strong>${escapeHtml(titleCase(scene.mode || 'conversation'))}</strong></div><div class="data-row"><span>Activity</span><strong>${escapeHtml(scene.activity || '—')}</strong></div><div class="data-row"><span>Project</span><strong>${escapeHtml(scene.project || '—')}</strong></div><div class="data-row"><span>Target</span><strong>${escapeHtml(scene.mary_target || 'creator')}</strong></div><small>${escapeHtml(environmentText || 'No live environment observation yet.')}</small></div>
-    <div class="workspace-panel accent"><h3>Social Stage</h3><p>Performance contexts are projections of the same Mary. Public mode gets stronger privacy boundaries, not a different personality.</p><div class="chip-row">${modes.map((x)=>`<button class="chip ${x===mode?'active':''}" data-performance-context="${x}">${escapeHtml(titleCase(x))}</button>`).join('')}</div><div class="data-row"><span>Audience</span><strong>${escapeHtml(titleCase(stage.audience||'creator'))}</strong></div><div class="data-row"><span>Privacy</span><strong>${stage.public?'PUBLIC GUARD':'PRIVATE'}</strong></div></div>
+    <div class="workspace-panel accent"><h3>Social Stage</h3><p>Choose how the same Mary is presented on this device. Public/streamer modes strengthen privacy boundaries; they do not create another personality.</p><div class="chip-row">${modes.map((x)=>`<button class="chip ${x===mode?'active':''}" data-performance-context="${x}" aria-pressed="${x===mode?'true':'false'}">${escapeHtml(modeLabels[x] || titleCase(x))}</button>`).join('')}</div><div class="data-row"><span>Current mode</span><strong>${escapeHtml(modeLabels[mode] || titleCase(mode))}</strong></div><div class="data-row"><span>Audience</span><strong>${escapeHtml(titleCase(stage.audience||'creator'))}</strong></div><div class="data-row"><span>Privacy</span><strong>${stage.public?'PUBLIC GUARD':'PRIVATE'}</strong></div></div>
     <div class="workspace-panel"><h3>Speech Arbiter</h3><div class="data-row"><span>Active</span><strong>${escapeHtml(speech.active?.target || 'OPEN')}</strong></div><div class="data-row"><span>Queued</span><strong>${speech.queue_depth ?? 0}</strong></div><div class="data-row"><span>Played / dropped</span><strong>${speech.stats?.played ?? 0} / ${speech.stats?.dropped ?? 0}</strong></div><div class="data-row"><span>Interrupts</span><strong>${speech.stats?.interrupts ?? 0}</strong></div><p>One Mary voice owns the floor. Realtime output decides play, queue, drop or interrupt before TTS.</p></div>
   </div>
   <div class="workspace-grid" style="margin-top:12px">
@@ -1588,6 +1785,15 @@ function renderDiagnostics() {
   const vectorIndex = retrieval.vector_index || {};
   const perception = dashboardState.perception || runtimeStatus.perception || {};
   const feedback = dashboardState.training_feedback || runtimeStatus.training_feedback || {};
+  const fabric = dashboardState.compute_fabric || {};
+  const routing = fabric.routing || {};
+  const routeTable = routing.routes || {};
+  const conversationRoute = Array.isArray(routeTable.conversation) ? routeTable.conversation : [];
+  const generalRoute = Array.isArray(routeTable.general) ? routeTable.general : [];
+  const capabilityRoutes = fabric.capability_routes || {};
+  const localRoute = capabilityRoutes['llm.local'] || {};
+  const modelExecution = fabric.model_execution || {};
+  const activeCandidates = modelExecution.active_candidates || [];
   const timeline = [
     ['Provider call', timingValue(trace, 'provider_call_ms')],
     ['Reasoning', timingValue(trace, 'reasoning_ms')],
@@ -1605,7 +1811,37 @@ function renderDiagnostics() {
     <div class="workspace-panel hero-panel"><h3>Last Turn Trace</h3><p>Measured from the real runtime: provider, cognition, reflection, speech, and perceived response timing. This telemetry is ephemeral and never becomes Mary memory.</p>
       <div class="trace-stack">${timeline.length ? timeline.map(([label,value]) => `<div class="trace-row"><span>${escapeHtml(label)}</span><i style="width:${Math.max(2,(value/max)*100)}%"></i><strong>${escapeHtml(formatMilliseconds(value))}</strong></div>`).join('') : '<div class="workspace-empty">Complete one desktop turn to populate the trace.</div>'}</div>
     </div>
-    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Response class</span><strong>${escapeHtml(titleCase(trace.response_class || trace.local_mind?.response_class || '—'))}</strong></div><div class="data-row"><span>Engine</span><strong>${escapeHtml(trace.response_engine || trace.local_mind?.response_engine || '—')}</strong></div><div class="data-row"><span>Escalation</span><strong>${escapeHtml(trace.escalation_reason || trace.local_mind?.escalation_reason || '—')}</strong></div><div class="data-row"><span>Shadow</span><strong>${trace.local_mind?.shadow_enabled ? 'ON' : 'OFF'}</strong></div><div class="data-row"><span>Shadow latency</span><strong>${escapeHtml(formatMilliseconds(timings.shadow_ms))}</strong></div><div class="data-row"><span>Classification</span><strong>${escapeHtml(formatMilliseconds(timings.classification_ms))}</strong></div><div class="data-row"><span>Local composer</span><strong>${escapeHtml(formatMilliseconds(timings.local_composer_ms))}</strong></div><div class="data-row"><span>Local audit</span><strong>${escapeHtml(formatMilliseconds(timings.local_audit_ms))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
+    <div class="workspace-panel accent"><h3>Route</h3><div class="data-row"><span>Provider</span><strong>${escapeHtml(trace.provider || '—')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(trace.model || '—')}</strong></div><div class="data-row"><span>Purpose</span><strong>${escapeHtml(trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Routing role</span><strong>${escapeHtml(trace.routing_purpose || trace.generation_purpose || '—')}</strong></div><div class="data-row"><span>Lane</span><strong>${escapeHtml(titleCase(trace.conversation_lane || '—'))}</strong></div><div class="data-row"><span>Response class</span><strong>${escapeHtml(titleCase(trace.response_class || trace.local_mind?.response_class || '—'))}</strong></div><div class="data-row"><span>Engine</span><strong>${escapeHtml(trace.response_engine || trace.local_mind?.response_engine || '—')}</strong></div><div class="data-row"><span>Escalation</span><strong>${escapeHtml(trace.escalation_reason || trace.local_mind?.escalation_reason || '—')}</strong></div><div class="data-row"><span>Shadow</span><strong>${trace.local_mind?.shadow_enabled ? 'ON' : 'OFF'}</strong></div><div class="data-row"><span>Shadow latency</span><strong>${escapeHtml(formatMilliseconds(timings.shadow_ms))}</strong></div><div class="data-row"><span>Classification</span><strong>${escapeHtml(formatMilliseconds(timings.classification_ms))}</strong></div><div class="data-row"><span>Local composer</span><strong>${escapeHtml(formatMilliseconds(timings.local_composer_ms))}</strong></div><div class="data-row"><span>Local audit</span><strong>${escapeHtml(formatMilliseconds(timings.local_audit_ms))}</strong></div><div class="data-row"><span>Reflection</span><strong>${escapeHtml(trace.reflection_mode || '—')}</strong></div><div class="data-row"><span>Voice delivery</span><strong>${escapeHtml(titleCase(trace.delivery_plan?.profile || '—'))}</strong></div><div class="data-row"><span>Local act</span><strong>${escapeHtml(titleCase(trace.local_mind?.plan?.act || '—'))}</strong></div><p>${escapeHtml(providerAttemptSummary(trace))}</p></div>
+  </div>
+  <div class="section-title">MODEL & COMPUTE FABRIC</div>
+  <div class="workspace-grid three">
+    <div class="workspace-panel accent"><h3>Conversation Route</h3>
+      <div class="data-row"><span>Preferred</span><strong>${escapeHtml(providerDisplayName(conversationRoute[0] || routing.last_generation?.selected_provider || 'automatic'))}</strong></div>
+      <div class="data-row"><span>Route</span><strong>${escapeHtml(conversationRoute.map(providerDisplayName).join(' → ') || 'automatic')}</strong></div>
+      <div class="data-row"><span>Last provider</span><strong>${escapeHtml(providerDisplayName(trace.provider || routing.last_generation?.selected_provider || '—'))}</strong></div>
+      <p>Ordinary conversation can prefer local compute without moving identity, memory, or relationship state out of Mary Core.</p>
+    </div>
+    <div class="workspace-panel"><h3>Local Compute</h3>
+      <div class="data-row"><span>Ready</span><strong>${localRoute.available ? 'YES' : 'FALLBACK'}</strong></div>
+      <div class="data-row"><span>Selected node</span><strong>${escapeHtml(localRoute.selected_node_id || '—')}</strong></div>
+      <div class="data-row"><span>Engine</span><strong>${escapeHtml(titleCase(localRoute.selected_runtime || '—'))}</strong></div>
+      <div class="data-row"><span>Model</span><strong>${escapeHtml(localRoute.selected_model || '—')}</strong></div>
+      <div class="data-row"><span>Execution</span><strong class="compute-state ${localRoute.execution === 'authorized' ? 'authorized' : localRoute.available ? 'permission-required' : 'offline'}">${escapeHtml(titleCase(localRoute.execution || 'permission required'))}</strong></div>
+      <div class="compute-permission">
+        <button id="local-compute-toggle" data-enable-local-compute="${localRoute.execution === 'authorized' ? 'false' : 'true'}" ${localRoute.available ? '' : 'disabled'}>${localRoute.execution === 'authorized' ? 'Disable local compute on this PC' : 'Enable local compute on this PC'}</button>
+        <small>${localRoute.available
+          ? (localRoute.execution === 'authorized'
+            ? 'This device may execute bounded llm.local tasks. Core still owns Mary and cloud remains fallback.'
+            : 'The runtime is ready, but device execution is intentionally permission-gated until you enable it.')
+          : 'Start or install an approved local runtime first. Mary will keep using cloud fallback meanwhile.'}</small>
+      </div>
+    </div>
+    <div class="workspace-panel"><h3>Execution Portfolio</h3>
+      <div class="data-row"><span>Candidates</span><strong>${activeCandidates.length}</strong></div>
+      <div class="data-row"><span>Task route</span><strong>${escapeHtml(generalRoute.map(providerDisplayName).join(' → ') || 'automatic')}</strong></div>
+      <div class="data-row"><span>Fabric revision</span><strong>${escapeHtml(modelExecution.integration_revision || modelExecution.version || '—')}</strong></div>
+      <p>Suitability, provider health, quota and resource evidence guide execution without becoming Mary state.</p>
+    </div>
   </div>
   <div class="section-title">REALTIME COGNITIVE INFRASTRUCTURE</div>
   <div class="workspace-grid three">
@@ -1704,7 +1940,7 @@ function renderVoice() {
     <div class="section-title">PLAYBACK STARTUP</div>
     <div class="workspace-grid three">
       <div class="workspace-panel"><h3>Bridge transport</h3><div class="data-row"><span>Text → UI payload</span><strong>${transportMs === null ? '—' : escapeHtml(formatMilliseconds(transportMs))}</strong></div><p>Measures QWebChannel/message transport after text and TTS are ready.</p></div>
-      <div class="workspace-panel"><h3>Audio readiness</h3><div class="data-row"><span>Payload → canplay</span><strong>${decodeMs === null ? '—' : escapeHtml(formatMilliseconds(decodeMs))}</strong></div><p>12.12.2 prefers a bounded local file URL instead of moving a large base64 audio blob through the UI bridge.</p></div>
+      <div class="workspace-panel"><h3>Audio readiness</h3><div class="data-row"><span>Payload → canplay</span><strong>${decodeMs === null ? '—' : escapeHtml(formatMilliseconds(decodeMs))}</strong></div><p>Desktop playback prefers a bounded local file URL instead of moving a large base64 audio blob through the UI bridge.</p></div>
       <div class="workspace-panel"><h3>Browser start</h3><div class="data-row"><span>Canplay → speaking</span><strong>${schedulerMs === null ? '—' : escapeHtml(formatMilliseconds(schedulerMs))}</strong></div><p>Lip-sync graph setup now waits until playback has actually started.</p></div>
     </div>
     <div class="section-title">AVATAR PRESENTATION</div>
@@ -1712,6 +1948,11 @@ function renderVoice() {
       <div class="presentation-mode-row">
         <button class="action-button ${avatarPresentation === 'live' ? 'active' : ''}" data-avatar-presentation="live"><strong>Live 3D</strong><small>MaryCosma VRM · expressions + lip sync</small></button>
         <button class="action-button ${avatarPresentation === 'art' ? 'active' : ''}" data-avatar-presentation="art"><strong>Portrait Art</strong><small>Local Mary artwork · zero renderer dependency</small></button>
+      </div>
+      <div class="avatar-runtime-note">
+        <strong>${currentVrm ? 'Live VRM ready' : 'Live VRM is in fallback mode'}</strong><br/>
+        ${escapeHtml(currentVrm ? 'Three.js + VRM renderer is active.' : (avatarLoadError || 'The renderer or model is not ready yet. Mary remains fully usable with portrait art.'))}
+        ${currentVrm ? '' : '<br/><button class="ghost-button" id="avatar-retry" style="margin-top:8px">Retry live VRM</button>'}
       </div>
       <div class="section-title" style="margin-top:14px">CAMERA</div>
       <div class="action-grid"><button class="action-button" data-avatar-frame="full"><strong>Full</strong><small>Whole-character framing</small></button><button class="action-button" data-avatar-frame="portrait"><strong>Portrait</strong><small>Default companion framing</small></button><button class="action-button" data-avatar-frame="close"><strong>Close</strong><small>Face / upper body</small></button></div>
@@ -1811,7 +2052,7 @@ function bindWorkspaceActions() {
   $('#research-create')?.addEventListener('click',()=>{const title=$('#research-title')?.value?.trim();if(!title||!bridge?.createResearchThread)return;bridge.createResearchThread(title,'',(raw)=>{const r=parsePayload(raw);if(r.ok)bridge.getDashboardState?.((x)=>applyDashboardState(x));});});
   $$('[data-arcade]').forEach((button)=>button.addEventListener('click',()=>bridge?.playArcade?.(button.dataset.arcade,'','',(raw)=>{const r=parsePayload(raw);const node=$('#arcade-result');if(node)node.textContent=r.message||r.result||r.error||'Done.';})));
   $('#presence-idle-test')?.addEventListener('click',()=>bridge?.getIdleAction?.((raw)=>applyIdleAction(raw,{preview:true})));
-  $$('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
+  document.querySelectorAll('[data-performance-context]').forEach((button)=>button.addEventListener('click',()=>{
     bridge?.setPerformanceContext?.(button.dataset.performanceContext,(raw)=>{
       const r=parsePayload(raw);
       if(r.error){toast(r.error,'error');return;}
@@ -1820,6 +2061,21 @@ function bindWorkspaceActions() {
       renderWorkspace('stream');
     });
   }));
+  $('#local-compute-toggle')?.addEventListener('click',()=>{
+    const button=$('#local-compute-toggle');
+    const enable=button?.dataset.enableLocalCompute === 'true';
+    if(!bridge?.setLocalComputePermission){toast('Local compute permission control is unavailable on this surface.','error');return;}
+    button.disabled=true;
+    bridge.setLocalComputePermission(enable,(raw)=>{
+      const r=parsePayload(raw);
+      if(!r.ok){toast(r.error||'Could not change local compute permission.','error');button.disabled=false;return;}
+      toast(enable ? 'Local compute enabled on this PC.' : 'Local compute disabled on this PC.');
+      bridge.getDashboardState?.((stateRaw)=>{
+        applyDashboardState(stateRaw);
+        if(currentScreen === 'diagnostics') renderWorkspace('diagnostics');
+      });
+    });
+  });
   $$('#workspace-body [data-project-file]').forEach((button) => button.addEventListener('click', () => {
     const path = button.dataset.projectFile || '';
     if (button.dataset.referenceOnly === 'true') {
@@ -1864,6 +2120,26 @@ function bindWorkspaceActions() {
     toast(button.dataset.avatarPresentation === 'art' ? 'Portrait Art presentation enabled.' : 'Live 3D presentation enabled.');
     if (currentScreen === 'voice') renderWorkspace('voice');
   }));
+  $('#avatar-retry')?.addEventListener('click', async () => {
+    avatarLoadError = '';
+    try {
+      const rendererReady = typeof initializeRenderer === 'function' ? initializeRenderer() : true;
+      if (!rendererReady) {
+        avatarLoadError = String(
+          typeof rendererFailure !== 'undefined' && rendererFailure
+            ? rendererFailure.message || rendererFailure
+            : 'WebGL renderer is unavailable on this host.'
+        );
+        syncAvatarPresentation();
+      } else {
+        await loadMaryVrm();
+      }
+    } catch (error) {
+      avatarLoadError = String(error?.message || error || 'Avatar retry failed');
+      syncAvatarPresentation();
+    }
+    if (currentScreen === 'voice') renderWorkspace('voice');
+  });
   $$('#workspace-body [data-prompt]').forEach((button) => button.addEventListener('click', () => {
     setScreen('chat');
     submitPrompt(button.dataset.prompt);
@@ -2139,8 +2415,9 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
     residentHearingState = runtimeStatus.resident_hearing || residentHearingState;
     const voiceLabel = runtimeStatus.voice?.enabled ? ` · voice:${runtimeStatus.voice.provider}` : '';
     const sttLabel = runtimeStatus.speech_to_text?.enabled ? ` · mic:${runtimeStatus.speech_to_text.provider}` : '';
-    modelLabel.textContent = `${runtimeStatus.provider || 'runtime'} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
+    modelLabel.textContent = `${providerDisplayName(runtimeStatus.provider || 'runtime')} · ${runtimeStatus.model || 'MaryV2'}${voiceLabel}${sttLabel}`;
     if (runtimeStatus.conversation) setConversationState(runtimeStatus.conversation);
+    projectProductShell();
   });
   bridge.getLastTurnTrace?.((raw) => applyTurnTrace(parsePayload(raw)));
   bridge.getAvatarState((raw) => rememberAmbientAvatarState(parsePayload(raw)));

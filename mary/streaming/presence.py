@@ -16,6 +16,7 @@ from mary.realtime import SpeakerOpportunity, SpeakerScheduler, FloorDisposition
 from .chat import ChatAggregator, ChatMessage, ChatSelection
 from .social import AudienceRoster
 from .output import plan_stream_response
+from .input_governor import StreamInputGovernor
 
 
 _ACTION_WEIGHT = {"ignore": 0.15, "notice": 0.52, "respond": 0.84}
@@ -32,12 +33,14 @@ class StreamingPresenceCoordinator:
         fast_brain: FastBrainProvider | None = None,
         speaker_scheduler: SpeakerScheduler | None = None,
         self_author_ids: set[str] | None = None,
+        governor: StreamInputGovernor | None = None,
     ) -> None:
         self.presence = presence
         self.chat = aggregator or ChatAggregator()
         self.fast_brain: FastBrainProvider = fast_brain or DeterministicFastBrain()
         self.speaker_scheduler = speaker_scheduler or SpeakerScheduler()
         self.audience = AudienceRoster()
+        self.governor = governor or StreamInputGovernor()
         self._self_authors = {str(x).strip() for x in (self_author_ids or set()) if str(x).strip()}
         self._last_fast_brain: dict[str, Any] | None = None
         self._stats = {
@@ -121,6 +124,13 @@ class StreamingPresenceCoordinator:
             self._self_authors.add(value)
 
     def ingest_chat(self, message: ChatMessage, *, creator_speaking: bool = False) -> dict[str, Any]:
+        governed = self.governor.evaluate(message)
+        if governed.action == "drop":
+            return {
+                "accepted": False,
+                "reason": "stream_input_governor",
+                "governor": governed.to_dict(),
+            }
         if str(message.author_id or "").strip() in self._self_authors:
             self._stats["self_echo_ignored"] += 1
             return {"accepted": False, "reason": "self_echo"}
@@ -133,6 +143,15 @@ class StreamingPresenceCoordinator:
             baseline,
             creator_speaking=creator_speaking,
         )
+        if governed.action == "note":
+            self.governor.note_ignored(message.text)
+            adjusted_score = max(0.0, min(1.0, selection.score + governed.score_delta))
+            selection = ChatSelection(
+                selection.message,
+                adjusted_score,
+                self._action_for_score(adjusted_score),
+                tuple(selection.reasons) + tuple(f"governor:{reason}" for reason in governed.reasons),
+            )
         member = self.audience.observe(message, selection)
 
         # Ranking and floor ownership are separate concerns.  A tiny model may
@@ -256,5 +275,6 @@ class StreamingPresenceCoordinator:
             },
             "speaker_scheduler": self.speaker_scheduler.status(),
             "self_author_count": len(self._self_authors),
+            "input_governor": self.governor.status(),
             "policy": "stream input enters Presence as environment_context_only; it cannot authorize tools",
         }

@@ -29,7 +29,7 @@ The reconciled architecture is **one canonical Mary composition with replaceable
 | Active bounded coordinator | Autonomy | `AutonomyRuntime` | Proposals/initiative and bounded execution path; no authority bypass. |
 | Active turn layer | Context/cognition | `TurnMind`, continuity, reasoning, reflection | Selects smallest sufficient context and shares owners. |
 | Active policy owner | LLM routing | `LLMRouter` | Single shared router; normal free routes and explicit expert route. |
-| Optional capability | Providers | Groq, Gemini, OpenRouter, Ollama; OpenAI expert | Availability/configuration-dependent; never identity authority. |
+| Optional capability | Providers | Groq, Gemini, OpenRouter, Ollama/llama.cpp; 13.15 frontier/open-model presets; OpenAI expert | Availability/configuration-dependent; direct paid-capable frontier routes are opt-in and never identity authority. |
 | Active ephemeral layer | Emotion/expression/realtime | `EmotionManager`, expression, realtime/attention | Shared emotion where connected; attention is ephemeral. |
 | Active bounded evidence | Research, perception | learning/web tools, `PerceptionDirector` | Provenance-bearing candidate context; no automatic memory truth. |
 | Derived support | Retrieval/reservoir | `mary.mind`, hybrid/vector index/cache | Rebuildable candidate retrieval, not truth authority. |
@@ -99,7 +99,7 @@ In intentional standalone development, the same `MaryApplication` topology runs 
 4. Environment-configured policy/order applies (`MARY_LLM_ROUTING_STRATEGY`, `MARY_LLM_FREE_ORDER`, `MARY_LLM_CONVERSATION_ORDER`, primary/fallback settings).
 5. Defaults apply if unset.
 
-Default task/general `free_first`: **Groq → Gemini → OpenRouter → Ollama**. Default conversation: **Ollama → Groq → Gemini → OpenRouter**. The private/local/offline route forces Ollama. Expert/paid/OpenAI route uses the configured expert provider only for explicitly authorized work. Availability, provider errors, and cooldowns determine the effective subset and next attempt; policy order alone is not evidence a provider was used.
+Default task/general `free_first`: **Groq → Gemini → OpenRouter → Ollama**. Default conversation: **Groq → Gemini → OpenRouter → Ollama**. A host may explicitly choose local-first when measured hardware suitability justifies it. The private/local/offline route forces Ollama. Expert/paid/OpenAI route uses the configured expert provider only for explicitly authorized work. Availability, provider errors, and cooldowns determine the effective subset and next attempt; policy order alone is not evidence a provider was used.
 
 ## Intentionally disconnected or non-authoritative systems
 

@@ -578,7 +578,7 @@ def _render_social(
     act = plan.dialogue_act
     components: list[str] = []
     if act == DialogueAct.GREET:
-        greeting = rng.choice(("Hey", "Hi", "Oh, hey"))
+        greeting = rng.choice(("Hey", "Hey, you", "Hi"))
         components.append(f"greet:{greeting.lower()}")
         if plan.question:
             question, component = _render_question(plan.question, rng)
@@ -700,7 +700,12 @@ def _render_clause(
         prefix = rng.choice(("I don't know whether", "I do not know whether"))
         return f"{prefix} {clause.object_text}", "clause:unknown"
     if clause.frame == ClauseFrame.EVENT:
-        parts = [subject, clause.predicate]
+        # Mary's first-person conversational activity lines should use the
+        # natural contraction instead of the status-report cadence "I am ...".
+        if subject == "I" and clause.predicate.startswith("am "):
+            parts = ["I'm", clause.predicate[3:]]
+        else:
+            parts = [subject, clause.predicate]
         if clause.recipient is not None:
             parts.append(_object_pronoun(clause.recipient))
         if clause.object_text:

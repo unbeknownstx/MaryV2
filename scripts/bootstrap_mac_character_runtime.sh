@@ -75,6 +75,6 @@ For local llama.cpp experiments:
 
 To expose the Mac model to canonical remote Mary Core:
   python -m scripts.node_permissions allow llm.llama_cpp
-  python -m scripts.run_capability_node --enroll-only
-  python -m scripts.run_capability_node
+  python -m scripts.run_home_node --enroll-only
+  python -m scripts.run_home_node
 EOF

@@ -100,9 +100,15 @@ class RuntimeEnvironment:
 
     def provider_snapshot(self) -> dict[str, dict[str, Any]]:
         names: list[str] = []
+        frontier_order = (
+            list(self.router.frontier_provider_order())
+            if hasattr(self.router, "frontier_provider_order")
+            else []
+        )
         for name in (
             *list(self.router.conversation_provider_order()),
             *list(self.router._provider_order(None)),
+            *frontier_order,
             "openai",
         ):
             normalized = str(name).strip().lower()

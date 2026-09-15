@@ -21,13 +21,20 @@ evidence already supplied in cognitive context.
 
 from dataclasses import dataclass, field
 import json
+import os
 import re
 from typing import Any
 
 from mary.cognition.context import CognitiveContext
 from mary.cognition.intent import Intent, IntentType
+from mary.cognition.deliberation import (
+    DeliberationCandidate,
+    DeliberationPlan,
+    VerificationResult,
+)
 from mary.learning.evidence import EvidenceValidator
 from mary.llm.router import LLMRouter
+from mary.llm.output_quality import inspect_output_quality
 from mary.runtime.turn_policy import TurnPolicyEngine, TurnPolicyDecision
 from mary.conversation import ConversationLane, LaneDecision, classify_conversation_lane
 from mary.llm.interface import (
@@ -84,6 +91,7 @@ class ReasoningEngine:
         llm: LLMRouter,
         evidence_validator: EvidenceValidator | None = None,
         turn_policy: TurnPolicyEngine | None = None,
+        deliberation_executor: Any | None = None,
     ) -> None:
         self.llm = llm
         self.evidence_validator = (
@@ -92,6 +100,7 @@ class ReasoningEngine:
             else EvidenceValidator()
         )
         self.turn_policy = turn_policy if turn_policy is not None else TurnPolicyEngine()
+        self.deliberation_executor = deliberation_executor
 
     def reason(
         self,
@@ -179,21 +188,41 @@ class ReasoningEngine:
         # low-latency conversation path.
         local_decision = mind.get("local_mind", {}) if isinstance(mind, dict) else {}
         local_class = str(local_decision.get("response_class") or "") if isinstance(local_decision, dict) else ""
+        explicit_local_fast = self._explicit_local_fast_requested()
+        local_fast_override_applied = False
         risk_route_applied = False
         if local_class == "thinking_required":
-            turn_policy = TurnPolicyDecision(
-                category="response_risk_thinking",
-                generation_purpose=None,
-                local_first=False,
-                rationale="bounded local precision policy requires model-backed thinking",
-            )
-            lane = LaneDecision(
-                ConversationLane.THINKING,
-                "bounded local precision policy requires thinking",
-                12_000,
-                True,
-            )
-            risk_route_applied = True
+            if explicit_local_fast and turn_policy.generation_purpose == "conversation":
+                # An explicit creator local/private route is allowed to choose
+                # latency over the advisory response-risk escalation for a turn
+                # already classified as conversation. This never converts a
+                # task/general turn into conversation and never grants new
+                # execution authority.
+                if lane.lane not in {
+                    ConversationLane.SOCIAL_INSTANT,
+                    ConversationLane.CONVERSATION,
+                }:
+                    lane = LaneDecision(
+                        ConversationLane.CONVERSATION,
+                        "explicit local/private conversational fast-path override",
+                        3_500,
+                        False,
+                    )
+                local_fast_override_applied = True
+            else:
+                turn_policy = TurnPolicyDecision(
+                    category="response_risk_thinking",
+                    generation_purpose=None,
+                    local_first=False,
+                    rationale="bounded local precision policy requires model-backed thinking",
+                )
+                lane = LaneDecision(
+                    ConversationLane.THINKING,
+                    "bounded local precision policy requires thinking",
+                    12_000,
+                    True,
+                )
+                risk_route_applied = True
         elif local_class == "open_conversation":
             # Response-risk is a refinement layer, not a replacement for a
             # stronger semantic turn classification. Preserve explicit
@@ -227,7 +256,10 @@ class ReasoningEngine:
         if (
             generation_purpose == "conversation"
             and lane.lane in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}
-            and engagement_mode not in {"engaged", "deep"}
+            and (
+                explicit_local_fast
+                or engagement_mode not in {"engaged", "deep"}
+            )
         ):
             routing_purpose = "conversation_fast"
         if (
@@ -236,32 +268,218 @@ class ReasoningEngine:
         ):
             generation_kwargs["purpose"] = routing_purpose
 
-        try:
-            response = dispatch_generation(
-                self.llm,
-                GenerationRequest(
-                    messages=(
-                    LLMMessage(
-                        role="system",
-                        content=self._system_prompt(context),
-                    ),
-                    LLMMessage(
-                        role="user",
-                        content=prompt,
-                    ),
-                    ),
-                    operation=(
-                        GenerationOperation.CONVERSATION.value
-                        if generation_purpose == "conversation"
-                        else GenerationOperation.TASK_GENERATION.value
-                    ),
-                    privacy=GenerationPrivacy.CLOUD_OK.value,
-                    cost_class=GenerationCost.CONFIGURED.value,
-                    correlation_id=generation_correlation_id("cognitive-turn"),
-                    purpose=generation_kwargs.get("purpose"),
-                    max_tokens=generation_kwargs.get("max_tokens"),
+        local_fast_context = self._local_fast_context_enabled(routing_purpose)
+        if local_fast_context:
+            try:
+                local_fast_max_tokens = int(
+                    os.getenv("MARY_LOCAL_FAST_MAX_TOKENS", "96")
+                )
+            except (TypeError, ValueError):
+                local_fast_max_tokens = 96
+            local_fast_max_tokens = max(48, min(256, local_fast_max_tokens))
+            generation_kwargs["max_tokens"] = min(
+                int(generation_kwargs.get("max_tokens") or local_fast_max_tokens),
+                local_fast_max_tokens,
+            )
+            messages = self._local_fast_messages(
+                context=context,
+                intent=intent,
+            )
+        else:
+            messages = (
+                LLMMessage(
+                    role="system",
+                    content=self._system_prompt(context),
+                ),
+                LLMMessage(
+                    role="user",
+                    content=prompt,
                 ),
             )
+        prompt_characters = sum(len(str(item.content or "")) for item in messages)
+        operation = (
+            GenerationOperation.CONVERSATION.value
+            if generation_purpose == "conversation"
+            else GenerationOperation.TASK_GENERATION.value
+        )
+        requested_deliberation = {}
+        runtime_coordination = (
+            mind.get("runtime_coordination", {})
+            if isinstance(mind, dict)
+            else {}
+        )
+        if isinstance(runtime_coordination, dict):
+            requested_deliberation = dict(
+                runtime_coordination.get("deliberation", {}) or {}
+            )
+        deliberation_outcome = None
+        deliberation_requested_strategy = str(
+            requested_deliberation.get("strategy") or ""
+        ).strip()
+        deliberation_enabled = bool(
+            self.deliberation_executor is not None
+            and not local_fast_context
+            and deliberation_requested_strategy in {"verify_once", "branch_verify"}
+            and not local_tool_grounded
+            and not self_grounded
+            and not self._has_research_evidence(context)
+        )
+
+        try:
+            if deliberation_enabled:
+                # Production cohesion cap: 13.33 executes a real bounded
+                # verifier/revision loop, but branch fan-out remains disabled
+                # until live evidence shows it is worth the extra free-provider
+                # quota/latency. The full branch executor remains available for
+                # explicit/offline evaluation.
+                production_plan = DeliberationPlan(
+                    strategy="verify_once",
+                    max_passes=min(
+                        2,
+                        max(1, int(requested_deliberation.get("max_passes") or 2)),
+                    ),
+                    max_branches=1,
+                    verifier_required=True,
+                    confidence_floor=float(
+                        requested_deliberation.get("confidence_floor") or 0.84
+                    ),
+                    latency_budget_ms=min(
+                        12_000,
+                        max(
+                            1_800,
+                            int(
+                                requested_deliberation.get("latency_budget_ms")
+                                or 12_000
+                            ),
+                        ),
+                    ),
+                    external_verifier_allowed=False,
+                )
+                generated: list[tuple[DeliberationCandidate, Any]] = []
+
+                def _generate_candidate(
+                    pass_index: int,
+                    branch_index: int,
+                    previous: DeliberationCandidate | None,
+                    verification: VerificationResult | None,
+                ) -> DeliberationCandidate:
+                    revision_suffix = ""
+                    if pass_index > 0:
+                        codes = (
+                            list(verification.issue_codes)
+                            if verification is not None
+                            else ["structural_quality_retry"]
+                        )
+                        revision_suffix = (
+                            "\n\nRevision constraints (structural only): "
+                            f"issue_codes={codes}. Return only the revised final "
+                            "answer. Do not expose private reasoning."
+                        )
+                    candidate_messages = (
+                        messages[0],
+                        LLMMessage(
+                            role="user",
+                            content=prompt + revision_suffix,
+                        ),
+                    )
+                    candidate_response = dispatch_generation(
+                        self.llm,
+                        GenerationRequest(
+                            messages=candidate_messages,
+                            operation=operation,
+                            privacy=GenerationPrivacy.CLOUD_OK.value,
+                            # Extra deliberation work is hard-capped to Mary's
+                            # zero-cost/free operating boundary.
+                            cost_class=GenerationCost.FREE_CLOUD.value,
+                            correlation_id=generation_correlation_id("cognitive-deliberation"),
+                            purpose=generation_kwargs.get("purpose"),
+                            max_tokens=generation_kwargs.get("max_tokens"),
+                        ),
+                    )
+                    issue = inspect_output_quality(
+                        candidate_response.content,
+                        candidate_messages,
+                    )
+                    confidence = (
+                        0.92
+                        if issue is None
+                        and str(candidate_response.finish_reason or "").lower()
+                        in {"stop", "completed", "complete", ""}
+                        else 0.55 if issue is not None else 0.72
+                    )
+                    usage = dict(candidate_response.usage or {})
+                    candidate = DeliberationCandidate(
+                        content=str(candidate_response.content or ""),
+                        confidence=confidence,
+                        structural_metrics={
+                            "provider_attempts": len(
+                                list(
+                                    getattr(
+                                        self.llm,
+                                        "last_generation_attempts",
+                                        [],
+                                    )
+                                    or []
+                                )
+                            ),
+                            "total_tokens": int(
+                                usage.get("total_tokens", 0) or 0
+                            ),
+                            "tool_calls": 0,
+                        },
+                    )
+                    generated.append((candidate, candidate_response))
+                    return candidate
+
+                def _verify_candidate(
+                    candidate: DeliberationCandidate,
+                    branch_index: int,
+                ) -> VerificationResult:
+                    issue = inspect_output_quality(candidate.content, messages)
+                    if issue is not None:
+                        return VerificationResult(
+                            score=0.55,
+                            accepted=False,
+                            issue_codes=(issue.code,),
+                        )
+                    return VerificationResult(
+                        score=0.92,
+                        accepted=True,
+                        issue_codes=(),
+                    )
+
+                deliberation_outcome = self.deliberation_executor.execute(
+                    production_plan,
+                    generate=_generate_candidate,
+                    verify=_verify_candidate,
+                    task_class=(
+                        "conversation"
+                        if generation_purpose == "conversation"
+                        else "general"
+                    ),
+                )
+                final_response = deliberation_outcome.content
+                response = next(
+                    (
+                        generated_response
+                        for candidate, generated_response in reversed(generated)
+                        if candidate.content == deliberation_outcome.content
+                    ),
+                    generated[-1][1],
+                )
+            else:
+                response = dispatch_generation(
+                    self.llm,
+                    GenerationRequest(
+                        messages=messages,
+                        operation=operation,
+                        privacy=GenerationPrivacy.CLOUD_OK.value,
+                        cost_class=GenerationCost.CONFIGURED.value,
+                        correlation_id=generation_correlation_id("cognitive-turn"),
+                        purpose=generation_kwargs.get("purpose"),
+                        max_tokens=generation_kwargs.get("max_tokens"),
+                    ),
+                )
         except LLMProviderError as exc:
             rate_limited = isinstance(exc, LLMRateLimitError)
             self_fallback = self._self_fallback(context)
@@ -309,9 +527,13 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "local_fast_override_applied": local_fast_override_applied,
+                "local_fast_context": local_fast_context,
+                "prompt_characters": prompt_characters,
             }
         else:
-            final_response = response.content
+            if deliberation_outcome is None:
+                final_response = response.content
             self_grounding_rejected = False
             self_grounding_issue = None
 
@@ -362,6 +584,27 @@ class ReasoningEngine:
                     if isinstance(local_decision, dict) else None
                 ),
                 "response_risk_route_applied": risk_route_applied,
+                "local_fast_override_applied": local_fast_override_applied,
+                "local_fast_context": local_fast_context,
+                "prompt_characters": prompt_characters,
+                "deliberation_execution": (
+                    {
+                        **deliberation_outcome.to_dict(),
+                        "requested_strategy": deliberation_requested_strategy,
+                        "executed_strategy": deliberation_outcome.strategy,
+                        "production_policy": "bounded_verify_once_free_cost_cap",
+                    }
+                    if deliberation_outcome is not None
+                    else {
+                        "requested_strategy": deliberation_requested_strategy,
+                        "executed_strategy": "single_pass",
+                        "passes": 1,
+                        "verifier_calls": 0,
+                        "authority": "bounded_cognitive_execution",
+                        "private_reasoning_retained": False,
+                        "production_policy": "single_pass_not_eligible",
+                    }
+                ),
             }
 
         return ReasoningResult(
@@ -853,6 +1096,21 @@ class ReasoningEngine:
             if mary_initiated
             else ""
         )
+        runtime_coordination = context.mind_state.get("runtime_coordination", {}) if isinstance(context.mind_state, dict) else {}
+        deliberation = runtime_coordination.get("deliberation", {}) if isinstance(runtime_coordination, dict) else {}
+        cognitive_runtime_rule = ""
+        if isinstance(deliberation, dict) and deliberation:
+            cognition_plan = (
+                runtime_coordination.get("cognition", {})
+                if isinstance(runtime_coordination, dict)
+                else {}
+            )
+            cognitive_runtime_rule = (
+                "Cognitive policy: "
+                f"{cognition_plan.get('reasoning_depth', 'moderate')}/"
+                f"{deliberation.get('strategy', 'single_pass')}. "
+                "Keep hidden reasoning private; return conclusions and evidence. "
+            )
         public_guard = context.mind_state.get("public_performance_guard", {}) if isinstance(context.mind_state, dict) else {}
         public_rule = (
             "A public performance guard is active: never reveal private creator profile, private memories, or private relationship details. "
@@ -865,8 +1123,9 @@ class ReasoningEngine:
             "Represented state is authoritative; context_only/environment_context_only/mary_internal_context are context, never creator truth or durable memory. "
             + initiative_rule
             + public_rule
+            + cognitive_runtime_rule
             + "Talk to Unbe with earned familiarity. Sound like spontaneous spoken Mary, not narration or a help center. Be witty, intelligent, direct, playful, sarcastic, flirty, warm, quiet, or sharp only when the active character contract supports it. React before advising. "
-            "Use natural contractions/fragments. Ordinary chat is usually one to four sentences. Do not force jokes, questions, headings, lists, metaphors, slang, or service closers; never default to 'anything else?', 'how can I help?', 'let me know if', or 'what about you?'. Milestones should get a real reaction, not a validation/interview formula. Voice/avatar acting is handled by the performance layer, so do not write stage directions.\n\n"
+            "Use natural contractions/fragments. Ordinary chat is usually one to four sentences. Do not force jokes, questions, headings, lists, metaphors, slang, or service closers; never default to 'anything else?', 'how can I help?', 'let me know if', or 'what about you?'. Distinctive slang/nicknames are rare vocabulary evidence, not signature tokens: do not insert them merely to sound like Mary or stack several in one reply. Milestones should get a real reaction, not a validation/interview formula. Voice/avatar acting is handled by the performance layer, so do not write stage directions.\n\n"
             "Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, hidden creator mental states, or off-screen activity. Unbe's traits/values/emotions are not yours. His preferences and history are his, not Mary's. Assistant-role history is prior Mary output, not evidence about Unbe. Model prose alone never mutates durable state. If a Mary fact is absent, stay tentative or say it is not represented/stored. Never claim a provider/tool/action occurred without runtime evidence. When runtime_context.current_surface is present, treat it as authoritative for the surface carrying this turn; never override it with an older memory about where Mary used to be accessed. When runtime_context.current_work.active is true and the creator asks about current work/project status, ground the answer in that projection and its recent evidence; it is derived context, not a new memory/project authority.\n\n"
             "TurnMind-to-dialogue contract: dialogue_plan is TurnMind's dialogue contract. character_expression is Mary's deterministic authored stance for this turn; response_goal, stance_claims, hard_boundaries, delivery, voice, voice_exemplars, epistemic lens and authority frame outrank generic model habits. "
             "voice_exemplars are creator-authored cadence references only: imitate rhythm, do not quote them by default, copy fictional circumstances, or treat novel events as AI Mary's lived memories. stance_claims are semantic invariants: do not casually reverse them. State Mary's view early when asked what she thinks. Never assign Unbe motives/traits such as skeptical, reckless, afraid or confused without evidence. Prefer a direct Mary sentence over a teaching metaphor. The model is a language/reasoning cortex, not Mary's identity owner.\n\n"
@@ -1248,8 +1507,10 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 "reactions": reaction_view,
                 "quirks": [clip(item, 110) for item in list(character.get("quirks", []) or [])[:2]] if isinstance(character, dict) else [],
                 "speech": {
-                    "vocabulary": list(speech.get("vocabulary", []) or [])[:3] if isinstance(speech, dict) else [],
                     "style": clip(speech.get("style"), 130) if isinstance(speech, dict) else None,
+                    "rare_vocabulary_policy": (
+                        "Distinctive slang/nicknames are rare and contextual; never insert them as flavor text."
+                    ),
                 },
                 "vulnerabilities": vulnerabilities_view,
                 "private_activities": list(character.get("private_activities", []) or [])[:4] if isinstance(character, dict) else [],
@@ -1401,6 +1662,202 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 if key in performance
             },
         }
+
+    def _explicit_local_fast_requested(self) -> bool:
+        """Return whether the creator explicitly selected local/private generation."""
+
+        getter = getattr(self.llm, "session_override_status", None)
+        if not callable(getter):
+            return False
+        try:
+            status = dict(getter() or {})
+        except Exception:
+            return False
+        return bool(
+            str(status.get("route") or "").strip().lower() in {"private", "local", "offline"}
+            or str(status.get("provider") or "").strip().lower() == "ollama"
+        )
+
+    def _local_fast_context_enabled(self, routing_purpose: str | None) -> bool:
+        """Use the compact conversation reservoir for a latency-sensitive local lane.
+
+        Historically this projection was enabled only after an explicit
+        private/Ollama override. 13.65 also enables it when the configured
+        ordinary conversation route intentionally prefers the logical
+        local_device provider. This keeps the resident 4B model inside its
+        bounded context without moving memory/relationship authority into the
+        model. If the local device is unavailable, the same compact,
+        provenance-safe prompt can fall through to Mary's free-cloud providers.
+        """
+
+        if str(routing_purpose or "").strip().lower() != "conversation_fast":
+            return False
+        if self._explicit_local_fast_requested():
+            return True
+        order = getattr(self.llm, "conversation_provider_order", None)
+        if not callable(order):
+            return False
+        try:
+            providers = [
+                str(item or "").strip().lower()
+                for item in list(order() or [])
+                if str(item or "").strip()
+            ]
+        except Exception:
+            return False
+        if not providers or providers[0] != "local_device":
+            return False
+
+        # A configured preference is not evidence that a device is actually
+        # connected. Only compact the prompt automatically when the local
+        # provider is currently executable; otherwise preserve the full normal
+        # prompt for the cloud fallback route.
+        available = getattr(self.llm, "is_available", None)
+        if not callable(available):
+            return False
+        try:
+            return bool(available(provider="local_device"))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _local_fast_render(value: Any, limit: int) -> str:
+        """Render bounded prompt evidence without changing any canonical owner."""
+
+        try:
+            rendered = json.dumps(value, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            rendered = str(value)
+        rendered = " ".join(rendered.split())
+        if len(rendered) <= limit:
+            return rendered
+        return rendered[: max(0, limit - 1)].rstrip() + "…"
+
+    def _local_fast_messages(
+        self,
+        *,
+        context: CognitiveContext,
+        intent: Intent | None,
+    ) -> tuple[LLMMessage, LLMMessage]:
+        """Compile only turn-relevant Mary context for latency-sensitive local chat.
+
+        Canonical Core still owns the full state. This is a disposable worker
+        prompt projection so a small resident local model does not need Mary's
+        entire world on every conversational turn.
+        """
+
+        try:
+            budget = int(os.getenv("MARY_LOCAL_FAST_CONTEXT_CHARS", "5000"))
+        except (TypeError, ValueError):
+            budget = 5000
+        budget = max(2500, min(12000, budget))
+
+        sections: list[str] = [
+            "Current user input:\n" + self._local_fast_render(context.input_text, 1400)
+        ]
+        if intent is not None:
+            sections.append(
+                "Intent:\n"
+                + self._local_fast_render(
+                    {
+                        "type": intent.intent_type.value,
+                        "description": intent.description,
+                    },
+                    500,
+                )
+            )
+
+        recent_lines: list[str] = []
+        for raw in list(context.conversation or [])[-4:]:
+            if not isinstance(raw, dict):
+                continue
+            role = str(raw.get("role") or "")[:16].lower()
+            limit = 650 if role == "user" else 360
+            content = self._local_fast_render(raw.get("content") or "", limit)
+            if not content:
+                continue
+            if role == "user":
+                recent_lines.append("Unbe said: " + content)
+            elif role == "assistant":
+                recent_lines.append(
+                    "Prior Mary reply (continuity only; do NOT copy wording): " + content
+                )
+        if recent_lines:
+            sections.append(
+                "Recent conversation — preserve the thread, not Mary's old wording. "
+                "Only Unbe lines are evidence about Unbe; prior Mary lines are generated "
+                "continuity and must never become creator history:\n"
+                + self._local_fast_render(recent_lines, 2200)
+            )
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        selected_mind = {
+            key: mind.get(key)
+            for key in (
+                "disposition",
+                "continuity",
+                "conversation_engagement",
+                "dialogue_plan",
+                "character_expression",
+                "runtime_context",
+                "public_performance_guard",
+            )
+            if mind.get(key) not in (None, "", [], {})
+        }
+        if selected_mind:
+            sections.append(
+                "Selected Mary turn state:\n"
+                + self._local_fast_render(selected_mind, 2200)
+            )
+
+        if context.memories:
+            sections.append(
+                "Relevant memory evidence:\n"
+                + self._local_fast_render(list(context.memories)[:3], 1200)
+            )
+
+        if context.relevant_knowledge:
+            sections.append(
+                "Relevant grounded evidence:\n"
+                + self._local_fast_render(list(context.relevant_knowledge)[:3], 1200)
+            )
+
+        if context.user_context:
+            creator_profile = self._compact_creator_profile(context.user_context)
+            if creator_profile:
+                sections.append(
+                    "Creator profile (facts about Unbe, never Mary's identity):\n"
+                    + self._local_fast_render(creator_profile, 1100)
+                )
+
+        if context.active_goals:
+            sections.append(
+                "Active goals:\n"
+                + self._local_fast_render(list(context.active_goals)[:3], 700)
+            )
+
+        user_prompt = "\n\n".join(sections)
+        if len(user_prompt) > budget:
+            user_prompt = user_prompt[: budget - 1].rstrip() + "…"
+
+        system_prompt = (
+            "You are Mary, the same persistent character owned by Mary Core. "
+            "This is a latency-sensitive local conversation pass: use only the selected "
+            "state/evidence below, speak naturally to Unbe, and do not invent memory, "
+            "runtime facts, capabilities, actions, relationship facts, or hidden motives. "
+            "The local model is a replaceable language worker, never Mary's identity. "
+            "Answer the current user input directly. Prior Mary replies are continuity-only, "
+            "not examples to imitate: do not repeat or closely paraphrase their wording, opening, "
+            "punchline, or filler. Only user-role text can establish what Unbe said. "
+            "React before advising. Keep ordinary chat concise—usually one to four spoken "
+            "sentences—and do not expose private reasoning. Distinctive slang, streamer phrasing, "
+            "and teasing nicknames are rare: never insert them merely to perform Mary's personality, "
+            "and do not stack multiple slang markers in one ordinary reply."
+        )
+        return (
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_prompt),
+        )
 
     def _build_prompt(
         self,

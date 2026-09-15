@@ -32,16 +32,76 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
         return (
             "MARYV2 REMOTE TERMINAL COMMANDS\n"
             "/state /resources /memory-status /route /conversation /growth "
-            "/realtime /nodes /retrieval /environment /contract /pending /last /dashboard /help"
+            "/realtime /nodes /retrieval /environment /contract /model-fabric /cognition-evidence /probe-ollama /pending /last /dashboard /help"
         )
     if command == "/state":
         return _pretty(state().get("mary", {}))
     if command == "/resources":
         return _pretty(dict(state().get("mary", {}) or {}).get("resources", {}))
     if command == "/memory-status":
-        return _pretty(dict(state().get("mary", {}) or {}).get("memory", {}))
+        payload = dict(state() or {})
+        mary = dict(payload.get("mary", {}) or {})
+        memory = dict(mary.get("memory", {}) or {})
+        mind = dict(payload.get("mind", {}) or {})
+        reservoir = dict(mind.get("reservoir", {}) or {})
+        current_work = dict(mary.get("current_work", {}) or {})
+        continuity = dict(mary.get("continuity", {}) or {})
+        recent_work = [
+            item for item in list(current_work.get("recent") or [])
+            if isinstance(item, dict)
+        ]
+        return _pretty({
+            "canonical_memory_store": memory,
+            "continuity": {
+                "relationship": {
+                    "events": max(0, int(continuity.get("relationship_events", 0) or 0)),
+                    "durable_shared_work_events": max(
+                        0,
+                        int(continuity.get("durable_shared_work_events", 0) or 0),
+                    ),
+                    "authority": str(
+                        continuity.get("shared_work_authority")
+                        or "relationship_history"
+                    ),
+                },
+                "shared_work_projection": {
+                    "active": bool(current_work.get("active", False)),
+                    "project": str(current_work.get("project") or ""),
+                    "recent_count": len(recent_work),
+                    "sources": list(current_work.get("sources") or []),
+                    "authority": str(current_work.get("authority") or ""),
+                    "persistence": str(current_work.get("persistence") or ""),
+                },
+                "reservoir": {
+                    "persistent": bool(reservoir.get("persistent", False)),
+                    "records": max(0, int(reservoir.get("records", 0) or 0)),
+                    "fts5": bool(reservoir.get("fts5", False)),
+                    "authority": "rebuildable retrieval support; not canonical memory truth",
+                },
+            },
+            "semantics": (
+                "Canonical MemoryManager counts are only one continuity owner. "
+                "Relationship/shared-work continuity and rebuildable reservoir "
+                "records are reported separately and do not become memory truth."
+            ),
+        })
     if command == "/route":
-        return _pretty(dict(state().get("mary", {}) or {}).get("cognition", {}))
+        payload = dict(state() or {})
+        fabric = dict(payload.get("compute_fabric", {}) or {})
+        routing = dict(fabric.get("routing", {}) or {})
+        return _pretty({
+            "routing": routing,
+            "local_capability": dict(
+                (
+                    dict(fabric.get("capability_routes", {}) or {}).get("llm.local")
+                    or dict(fabric.get("capability_routes", {}) or {}).get("llm.ollama")
+                    or {}
+                )
+            ),
+            "private_route_ready": bool(fabric.get("private_route_ready", False)),
+            "authority": str(fabric.get("authority") or "mary_core"),
+            "policy": str(fabric.get("policy") or ""),
+        })
     if command == "/conversation":
         return _pretty(conversation())
     if command == "/growth":
@@ -55,12 +115,58 @@ def _remote_command(gateway: MaryRuntimeGateway, command: str, last: dict[str, A
     if command == "/environment":
         return _pretty(dict(state() or {}).get("environment", {}))
     if command == "/contract":
-        payload = state()
+        payload = dict(state() or {})
+        core = dict(payload.get("core", {}) or {})
+        lifecycle = dict(
+            payload.get("creator_lifecycle")
+            or payload.get("mary_lifecycle")
+            or {}
+        )
+        runtime = dict(payload.get("runtime", {}) or {})
+        hardening = dict(payload.get("performance_hardening", {}) or {})
         return _pretty({
             "authority": "remote_mary_core",
-            "core": payload.get("core", {}),
-            "runtime": payload.get("runtime", {}),
+            "core": core,
+            "serving": {
+                "core_available": bool(core.get("ok", False)),
+                "creator_lifecycle": lifecycle.get("state"),
+                "surface_count": lifecycle.get("surface_count", 0),
+                "deliberation_execution_version": dict(
+                    hardening.get("deliberation_execution", {}) or {}
+                ).get("version"),
+                "strategy_advisor_version": dict(
+                    hardening.get("strategy_advisor", {}) or {}
+                ).get("version"),
+            },
+            "application_runtime": runtime,
+            "semantics": (
+                "core.architecture is the unified Core/service boundary version, "
+                "not the whole MaryV2 feature version. application_runtime is "
+                "passive lifecycle bookkeeping and may remain 'created' while "
+                "the remote Core is actively serving canonical turns."
+            ),
         })
+    if command == "/model-fabric":
+        payload = dict(state() or {})
+        fabric = dict(payload.get("compute_fabric", {}) or {})
+        return _pretty(dict(fabric.get("model_execution", {}) or {}))
+    if command == "/cognition-evidence":
+        payload = dict(dashboard() or {})
+        hardening = dict(payload.get("performance_hardening", {}) or {})
+        evidence = dict(hardening.get("cognition_evidence", {}) or {})
+        return _pretty(evidence or {
+            "status": "unavailable",
+            "authority": "evaluation_and_proposal_only",
+        })
+    if command == "/probe-ollama":
+        return _pretty(gateway.runtime_action(
+            "llm.probe",
+            {
+                "provider": "ollama",
+                "purpose": "conversation",
+                "profile": "latency",
+            },
+        ))
     if command == "/pending":
         return _pretty(dict(workspace() or {}).get("command", {}))
     if command == "/last":
@@ -108,7 +214,11 @@ def run_remote_interactive(gateway: MaryRuntimeGateway) -> None:
             if text.lower() in {"exit", "quit"}:
                 break
             if text.startswith("/"):
-                rendered = _remote_command(gateway, text.lower(), last)
+                try:
+                    rendered = _remote_command(gateway, text.lower(), last)
+                except Exception as exc:
+                    print(f"[Mary Diagnostic Error] {type(exc).__name__}: {exc}")
+                    continue
                 print(rendered if rendered is not None else "Unknown remote command. Type /help.")
                 continue
             try:

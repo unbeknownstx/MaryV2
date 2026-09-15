@@ -1,0 +1,8 @@
+# Optional MaryV2 home-node extras.
+# Core does not require these packages to start.
+#
+# Bounded cross-platform screenshot capture for sensor.screen_capture.
+Pillow>=11,<13
+#
+# Local STT remains independently configurable through requirements-local-voice.txt
+# or a system whisper.cpp install. Do not duplicate large speech runtimes here.

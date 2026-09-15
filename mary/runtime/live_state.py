@@ -68,6 +68,40 @@ def build_live_character_state(mary, *, runtime_status: str | None = None) -> di
         else {"provider": None, "route": None}
     )
 
+    try:
+        current_work = dict(mary.current_work_projection() or {})
+    except Exception:
+        current_work = {
+            "active": False,
+            "project": "",
+            "stage": "unavailable",
+            "summary": "",
+            "recent": [],
+            "sources": [],
+            "authority": "derived_current_work_projection",
+            "persistence": "projection_only",
+        }
+
+    shared_work_events = 0
+    try:
+        for event in mary.relationship_history.get_all():
+            if not isinstance(event, dict):
+                continue
+            metadata = event.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            if (
+                str(event.get("type") or "").strip().casefold() == "shared_experience"
+                and metadata.get("kind") == "shared_work"
+            ):
+                shared_work_events += 1
+    except Exception:
+        shared_work_events = 0
+
+    try:
+        relationship_events = int(mary.relationship_history.count())
+    except Exception:
+        relationship_events = 0
+
     return {
         "character": {
             "name": str(getattr(mary.personality, "name", "Mary")),
@@ -87,6 +121,15 @@ def build_live_character_state(mary, *, runtime_status: str | None = None) -> di
             "capacities": dict(memory.get("capacities", {}) or {}),
             "recovered_from_backup": bool(
                 memory.get("persistence", {}).get("recovered_from_backup", False)
+            ),
+        },
+        "current_work": current_work,
+        "continuity": {
+            "relationship_events": relationship_events,
+            "durable_shared_work_events": shared_work_events,
+            "shared_work_authority": "relationship_history",
+            "current_work_authority": str(
+                current_work.get("authority") or "derived_current_work_projection"
             ),
         },
         "model": {

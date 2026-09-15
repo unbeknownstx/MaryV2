@@ -463,7 +463,7 @@ def test_production_routing_provider_defaults_and_sources_are_unchanged(tmp_path
     after = {path: _sha256(path) for path in production_paths}
     assert after == before
     assert default_model == OllamaProvider().model_name()
-    assert '"qwen3:4b"' in (
+    assert '"qwen3:1.7b"' in (
         project_root / "mary" / "llm" / "providers" / "ollama.py"
     ).read_text(encoding="utf-8")
     assert all(

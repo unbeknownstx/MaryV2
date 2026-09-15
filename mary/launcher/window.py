@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
 from mary.core.config import PathConfig
 from mary.launcher.bridge import MaryLauncherBridge
 from mary.desktop.static_server import DesktopStaticServer
+from mary.desktop.frontend_build import ensure_desktop_frontend
 
 
 class MaryLauncherWindow(QMainWindow):
@@ -79,11 +80,7 @@ class MaryLauncherWindow(QMainWindow):
 
 def run_launcher() -> int:
     root = PathConfig().root
-    frontend_path = root / "desktop" / "dist" / "launcher.html"
-    if not frontend_path.exists():
-        raise FileNotFoundError(
-            "Launcher frontend has not been built yet. Run `cd desktop`, `npm ci`, then `npm run build`."
-        )
+    frontend_path = ensure_desktop_frontend(root, page="launcher.html")
 
     qt_app = QApplication.instance() or QApplication(sys.argv)
     qt_app.setApplicationName("Mary Launcher")

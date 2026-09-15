@@ -8,3 +8,6 @@ __all__ += ["TwitchEventSubConfig","normalize_chat_notification","session_from_w
 
 from .twitch_runtime import EventSubSessionPhase, EventSubControlAction, TwitchEventSubSession, TwitchChatSend, TwitchChatOutbox
 __all__ += ["EventSubSessionPhase","EventSubControlAction","TwitchEventSubSession","TwitchChatSend","TwitchChatOutbox"]
+
+from .twitch_chat import SEND_CHAT_URL, TwitchChatSendConfig, parse_send_chat_response
+__all__ += ["SEND_CHAT_URL", "TwitchChatSendConfig", "parse_send_chat_response"]

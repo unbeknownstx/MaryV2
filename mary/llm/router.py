@@ -35,6 +35,7 @@ from mary.runtime.turn_observability import (
 )
 
 from .output_quality import inspect_output_quality
+from .provider_catalog import FRONTIER_PROVIDER_NAMES, get_provider_preset
 
 from .interface import (
     GenerationCost,
@@ -51,6 +52,7 @@ from .interface import (
 
 
 _FREE_PROVIDER_NAMES = (
+    "local_device",
     "groq",
     "gemini",
     "openrouter",
@@ -64,11 +66,21 @@ _PRIVATE_ROUTES = {
     "offline",
 }
 
+_FRONTIER_ROUTES = {
+    "frontier",
+    "reasoning",
+    "specialist",
+}
+
 _EXPERT_ROUTES = {
     "expert",
     "paid",
     "openai",
 }
+
+_BUILTIN_PROVIDER_NAMES = frozenset(
+    (*_FREE_PROVIDER_NAMES, *FRONTIER_PROVIDER_NAMES, "openai", "openai_compatible")
+)
 
 _CONVERSATION_PURPOSES = {
     "conversation",
@@ -131,6 +143,11 @@ class LLMRouter:
         name = str(name).lower().strip()
         purpose_name = str(purpose or "").lower().strip()
 
+        if name == "local_device":
+            from .providers.local_runtime import LocalRuntimeProvider
+
+            return LocalRuntimeProvider().for_purpose(purpose_name)
+
         if name == "groq":
             from .providers.groq import GroqProvider
 
@@ -168,7 +185,11 @@ class LLMRouter:
             from .providers.ollama import OllamaProvider
 
             if purpose_name in {"conversation_fast", "social_instant"}:
-                fast_model = os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip()
+                fast_model = (
+                    os.getenv("MARY_OLLAMA_FAST_MODEL", "").strip()
+                    or os.getenv("MARY_OLLAMA_UTILITY_MODEL", "").strip()
+                    or os.getenv("MARY_OLLAMA_CONVERSATION_MODEL", "").strip()
+                )
                 return OllamaProvider(model=fast_model or None)
             return OllamaProvider()
 
@@ -176,6 +197,20 @@ class LLMRouter:
             from .providers.llama_cpp import LlamaCppProvider
 
             return LlamaCppProvider()
+
+        preset = get_provider_preset(name)
+        if preset is not None:
+            from .providers.openai_compatible import OpenAICompatibleProvider
+
+            return OpenAICompatibleProvider(
+                provider_name=name,
+                preset=preset,
+            )
+
+        if name == "openai_compatible":
+            from .providers.openai_compatible import OpenAICompatibleProvider
+
+            return OpenAICompatibleProvider()
 
         if name == "openai":
             from .providers.openai import OpenAIProvider
@@ -322,6 +357,16 @@ class LLMRouter:
                 return purpose_adapter(purpose)
             return registered
         purpose_name = str(purpose or "").lower().strip()
+        if (
+            provider_name == "local_device"
+            and purpose_name in _CONVERSATION_PURPOSES
+        ):
+            key = (provider_name, purpose_name)
+            provider = self._purpose_providers.get(key)
+            if provider is None:
+                provider = self._create_provider(provider_name, purpose=purpose_name)
+                self._purpose_providers[key] = provider
+            return provider
         if purpose_name not in {"conversation_fast", "social_instant"} or provider_name not in {"groq", "ollama"}:
             return self.get_provider(provider_name)
         key = (provider_name, "conversation_fast")
@@ -361,7 +406,7 @@ class LLMRouter:
                     "Paid OpenAI cannot be enabled as a sticky session override; "
                     "use explicit expert authorization for an individual task."
                 )
-            if normalized_provider not in {"groq", "gemini", "openrouter", "ollama", "llama_cpp"}:
+            if normalized_provider not in _FREE_PROVIDER_NAMES:
                 raise ValueError(f"Unsupported session provider override: {normalized_provider}")
 
         self._session_provider_override = normalized_provider
@@ -463,6 +508,29 @@ class LLMRouter:
         return order
 
 
+    def _frontier_provider_order(self) -> list[str]:
+        """Return Mary's explicitly configured frontier/specialist provider order."""
+
+        configured = list(
+            getattr(
+                self.config.llm,
+                "frontier_provider_order",
+                [*FRONTIER_PROVIDER_NAMES, "openai"],
+            )
+        )
+        allowed = frozenset((*FRONTIER_PROVIDER_NAMES, "openai", "openrouter", "openai_compatible"))
+        order: list[str] = []
+        for item in configured:
+            name = str(item).lower().strip()
+            if name in allowed and name not in order:
+                order.append(name)
+        return order
+
+    def frontier_provider_order(self) -> list[str]:
+        """Return the configured opt-in frontier provider order."""
+
+        return self._frontier_provider_order()
+
     def _conversation_provider_order(self) -> list[str]:
         """Return Mary's configured free-provider order for character conversation.
 
@@ -475,7 +543,7 @@ class LLMRouter:
             getattr(
                 self.config.llm,
                 "conversation_provider_order",
-                ["ollama", "groq", "gemini", "openrouter"],
+                ["local_device", "groq", "gemini", "openrouter", "ollama"],
             )
         )
 
@@ -485,8 +553,16 @@ class LLMRouter:
             if name in _FREE_PROVIDER_NAMES and name not in order:
                 order.append(name)
 
+        if bool(getattr(self.config.llm, "conversation_local_first", True)):
+            # Railway/older .env profiles may carry a pre-13.65 cloud-only
+            # conversation order. Keep the connected local-device lane eligible
+            # first by default; provider availability still decides whether it
+            # actually executes, and the creator may explicitly opt out.
+            order = [name for name in order if name != "local_device"]
+            order.insert(0, "local_device")
+
         if "ollama" not in order:
-            order.insert(0, "ollama")
+            order.append("ollama")
 
         # Conversation may fall back to Mary's normal free pool, but paid OpenAI
         # is never introduced by this purpose route.
@@ -507,6 +583,9 @@ class LLMRouter:
 
         if route_name in _PRIVATE_ROUTES:
             return ["ollama"]
+
+        if route_name in _FRONTIER_ROUTES:
+            return self._frontier_provider_order()
 
         if route_name in _EXPERT_ROUTES:
             expert_provider = str(
@@ -534,19 +613,12 @@ class LLMRouter:
         purpose_name = str(purpose or "").lower().strip()
         if (
             purpose_name in _CONVERSATION_PURPOSES
-            and primary in {"groq", "gemini", "openrouter", "ollama", "llama_cpp", "openai"}
+            and primary in _BUILTIN_PROVIDER_NAMES
         ):
             return self._conversation_provider_order()
         if (
             strategy == "free_first"
-            and primary in {
-                "groq",
-                "gemini",
-                "openrouter",
-                "ollama",
-                "llama_cpp",
-                "openai",
-            }
+            and primary in _BUILTIN_PROVIDER_NAMES
         ):
             return self._free_provider_order()
 
@@ -612,6 +684,41 @@ class LLMRouter:
     # ============================================================
     # RATE-LIMIT COOLDOWN
     # ============================================================
+
+    def _generation_max_tokens(
+        self,
+        requested: int | None,
+        *,
+        route: str | None,
+    ) -> int:
+        """Resolve a bounded output budget without changing ordinary chat defaults."""
+
+        route_name = str(route or "").lower().strip()
+        default_tokens = max(1, int(self.config.llm.max_tokens))
+        if route_name not in _FRONTIER_ROUTES:
+            if requested is None:
+                return default_tokens
+            try:
+                return max(1, int(requested))
+            except (TypeError, ValueError):
+                return default_tokens
+
+        frontier_limit = max(
+            256,
+            int(
+                getattr(
+                    self.resource_governor.limits,
+                    "frontier_max_output_tokens",
+                    8192,
+                )
+            ),
+        )
+        if requested is None:
+            return frontier_limit
+        try:
+            return min(frontier_limit, max(1, int(requested)))
+        except (TypeError, ValueError):
+            return frontier_limit
 
     def _default_rate_limit_cooldown(self) -> float:
         try:
@@ -930,8 +1037,16 @@ class LLMRouter:
             if self._session_provider_override is not None or self._session_route_override is not None:
                 effective_provider = self._session_provider_override
                 effective_route = self._session_route_override
-                effective_purpose = None
+                # Session overrides constrain provider/route selection; they do
+                # not erase the semantic generation purpose. Purpose-specific
+                # adapters (for example Ollama's conversation_fast -> fast
+                # device role) still need this value to select the right worker.
+                effective_purpose = purpose
 
+        resolved_max_tokens = self._generation_max_tokens(
+            max_tokens,
+            route=effective_route,
+        )
         order = self.resource_governor.provider_order(self.route_order(
             request,
             provider=effective_provider,
@@ -951,6 +1066,7 @@ class LLMRouter:
             "redaction_applied": request.redaction_receipt is not None,
             "deadline_seconds": request.deadline_seconds,
             "correlation_id_present": request.correlation_id is not None,
+            "max_output_tokens": resolved_max_tokens,
             "strategy": self.routing_strategy(),
             "order": list(order),
             "selected_provider": None,
@@ -1118,11 +1234,7 @@ class LLMRouter:
                             if temperature is not None
                             else self.config.llm.temperature
                         ),
-                        max_tokens=(
-                            max_tokens
-                            if max_tokens is not None
-                            else self.config.llm.max_tokens
-                        ),
+                        max_tokens=resolved_max_tokens,
                     )
                     remaining_deadline = None
                     if request.deadline_seconds is not None:
@@ -1520,7 +1632,11 @@ class LLMRouter:
                 available = bool(selected.is_available()) and remaining <= 0.0
                 model = self._safe_model_name(selected.model_name())
                 route_role = str(getattr(selected, "role", route_role))[:32]
-                if selected.__class__.__name__ == "DeviceOllamaProvider":
+                if selected.__class__.__name__ in {
+                    "DeviceLocalProvider",
+                    "DeviceOllamaProvider",
+                    "DeviceLlamaCppProvider",
+                }:
                     source = "capability_node"
             except Exception:
                 available = False
@@ -1602,6 +1718,8 @@ class LLMRouter:
     ) -> str:
         provider_name = self.provider_name(provider)
 
+        if provider_name == "local_device":
+            return self.get_provider("local_device").model_name()
         if provider_name == "groq":
             return self._groq_model_for_purpose()
         if provider_name == "gemini":

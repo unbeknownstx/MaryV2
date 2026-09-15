@@ -181,10 +181,25 @@ class LLMConfig:
     )
     conversation_provider_order: list[str] = field(
         default_factory=lambda: [
-            "ollama",
+            "local_device",
             "groq",
             "gemini",
             "openrouter",
+            "ollama",
+        ]
+    )
+    conversation_local_first: bool = True
+    frontier_provider_order: list[str] = field(
+        default_factory=lambda: [
+            "deepseek",
+            "zai",
+            "qwen_cloud",
+            "kimi",
+            "minimax",
+            "cerebras",
+            "together",
+            "fireworks",
+            "openai",
         ]
     )
     rate_limit_cooldown_seconds: float = 300.0
@@ -339,6 +354,25 @@ class Config:
             config.llm.conversation_provider_order = [
                 item.strip().lower()
                 for item in conversation_order_value.split(",")
+                if item.strip()
+            ]
+
+        local_first_value = os.getenv(
+            "MARY_LLM_CONVERSATION_LOCAL_FIRST",
+            "true",
+        ).strip().lower()
+        config.llm.conversation_local_first = local_first_value in {
+            "1", "true", "yes", "on", "enabled",
+        }
+
+        frontier_order_value = os.getenv(
+            "MARY_LLM_FRONTIER_ORDER",
+            "",
+        )
+        if frontier_order_value.strip():
+            config.llm.frontier_provider_order = [
+                item.strip().lower()
+                for item in frontier_order_value.split(",")
                 if item.strip()
             ]
 

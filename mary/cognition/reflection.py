@@ -215,6 +215,16 @@ class ReflectionEngine:
             lane = ConversationLane(lane_name)
         except ValueError:
             lane = ConversationLane.THINKING
+        local_retry = self._local_fresh_retry(
+            context=context,
+            reasoning=reasoning,
+            intent=intent,
+            lane=lane,
+            issues=issues,
+        )
+        if local_retry is not None:
+            return local_retry
+
         reflection_policy = choose_reflection_action(lane, issues)
         if reflection_policy.action == "local_repair":
             repaired = local_conversation_repair(
@@ -443,6 +453,144 @@ class ReflectionEngine:
             },
         )
 
+    def _local_fresh_retry(
+        self,
+        *,
+        context: CognitiveContext,
+        reasoning: ReasoningResult,
+        intent: Intent | None,
+        lane: ConversationLane,
+        issues: list[str],
+    ) -> ReflectionResult | None:
+        """Retry a stuck local conversational turn without feeding its bad prose back.
+
+        Small local models can copy their own recent output when that output is
+        present in the compact continuity window. For repetition/provenance
+        failures, one small from-scratch retry is safer than a large editor prompt
+        that includes the failed answer verbatim.
+        """
+
+        if lane not in {ConversationLane.SOCIAL_INSTANT, ConversationLane.CONVERSATION}:
+            return None
+        if str(reasoning.metadata.get("provider") or "").strip().lower() != "ollama":
+            return None
+
+        retry_markers = (
+            "continuity boundary:",
+            "continuity/style boundary:",
+            "repeats mary's recent opening",
+            "conversation provenance boundary:",
+        )
+        if not any(any(marker in str(issue).lower() for marker in retry_markers) for issue in issues):
+            return None
+
+        mind = context.mind_state if isinstance(context.mind_state, dict) else {}
+        continuity = mind.get("continuity", {}) if isinstance(mind, dict) else {}
+        openings = [
+            str(item).strip()
+            for item in list(continuity.get("recent_openings", []) or [])[-3:]
+            if str(item).strip()
+        ]
+        recent_user = [
+            " ".join(str(item.get("content") or "").split())[:500]
+            for item in list(context.conversation or [])[-6:]
+            if isinstance(item, dict)
+            and str(item.get("role") or "").lower() == "user"
+            and str(item.get("content") or "").strip()
+        ][-2:]
+
+        user_parts = [
+            "CURRENT INPUT:\n" + str(context.input_text or "").strip()[:1200],
+        ]
+        if recent_user:
+            user_parts.append(
+                "RECENT UNBE CONTEXT (facts/continuity only):\n"
+                + "\n".join("- " + item for item in recent_user)
+            )
+        if openings:
+            user_parts.append(
+                "RECENT MARY OPENINGS TO AVOID:\n"
+                + "\n".join("- " + item for item in openings)
+            )
+        user_parts.append(
+            "Write a fresh reply from scratch. Answer CURRENT INPUT directly. "
+            "Do not mention correction, auditing, provenance, or the fact that a retry happened."
+        )
+
+        try:
+            response = dispatch_generation(
+                self.llm,
+                GenerationRequest(
+                    messages=(
+                        LLMMessage(
+                            role="system",
+                            content=(
+                                "You are Mary. This is a compact local retry after a conversational "
+                                "loop or attribution mistake. Use only the current input and user-role "
+                                "context below. Do not copy prior Mary wording or invent what Unbe said. "
+                                "Keep it natural and concise; return only the reply."
+                            ),
+                        ),
+                        LLMMessage(role="user", content="\n\n".join(user_parts)),
+                    ),
+                    operation=GenerationOperation.CONVERSATION.value,
+                    privacy=GenerationPrivacy.LOCAL_ONLY.value,
+                    cost_class=GenerationCost.ZERO_LOCAL.value,
+                    correlation_id=generation_correlation_id("reflection-local-fresh-retry"),
+                    purpose="conversation_fast",
+                    max_tokens=96,
+                ),
+            )
+        except LLMProviderError:
+            return None
+
+        revised = str(response.content or "").strip()
+        if not revised:
+            return None
+
+        retry_reasoning = ReasoningResult(
+            response=revised,
+            metadata={
+                "provider": str(response.provider or "ollama"),
+                "model": str(response.model or ""),
+            },
+        )
+        retry_issues: list[str] = []
+        retry_issues.extend(
+            self._conversation_provenance_audit(
+                context=context,
+                reasoning=retry_reasoning,
+            )
+        )
+        recent_mary = [
+            str(item).strip()
+            for item in list(continuity.get("recent_mary_responses", []) or [])
+            if str(item).strip()
+        ]
+        retry_issues.extend(self._near_duplicate_response_audit(revised, recent_mary))
+        retry_issues.extend(
+            self._semantic_style_repetition_audit(context, revised, recent_mary)
+        )
+        if retry_issues:
+            return None
+
+        return ReflectionResult(
+            decision=ReflectionDecision.REVISE,
+            confidence=0.90,
+            assessment="Local conversation loop/provenance issue was regenerated from fresh user-grounded context.",
+            issues=issues,
+            revised_response=revised,
+            metadata={
+                "mode": "local_fresh_retry",
+                "provider": response.provider,
+                "model": response.model,
+                "finish_reason": response.finish_reason,
+                "usage": response.usage,
+                "llm_calls": 1,
+                "conversation_lane": lane.value,
+            },
+        )
+
     def _character_audit(
         self,
         *,
@@ -582,6 +730,7 @@ class ReflectionEngine:
         if current_opening and current_opening in recent_openings:
             issues.append("Repeats Mary's recent opening/response pattern.")
 
+        issues.extend(self._forced_register_audit(context, text))
         issues.extend(self._generic_handoff_audit(context, text))
         issues.extend(self._dialogue_plan_audit(context, text))
         issues.extend(self._character_contract_audit(context, text))
@@ -613,6 +762,51 @@ class ReflectionEngine:
         )
 
         return issues
+
+    @staticmethod
+    def _forced_register_audit(
+        context: CognitiveContext,
+        text: str,
+    ) -> list[str]:
+        """Catch small-model drift into stacked slang/performative filler.
+
+        Mary's authored speech vocabulary remains valid character evidence. The
+        boundary here is frequency/context: distinctive tokens are rare and may
+        not become a generic style preset merely because a language worker saw
+        them in character state.
+        """
+
+        value = str(text or "").casefold().replace("’", "'")
+        creator = str(context.input_text or "").casefold().replace("’", "'")
+        rare_markers = (
+            "bucko",
+            "nah fam",
+            "feller",
+            "what up gang",
+            "twinnn",
+            "hit me with the deets",
+            "no drama, no fluff",
+            "no drama no fluff",
+            "get that beat cooked",
+            "what's the vibe",
+            "whats the vibe",
+        )
+        hits = sum(1 for marker in rare_markers if marker in value)
+        softening_feedback = bool(re.search(
+            r"\b(?:i hate how (?:hard|harsh|blunt|abrasive) you (?:are|sound)|"
+            r"i (?:don't|do not) like how (?:hard|harsh|blunt|abrasive) you (?:are|sound)|"
+            r"(?:stop|don't|do not) (?:being|sound(?:ing)?) so (?:hard|harsh|blunt|abrasive)|"
+            r"you(?:'re| are) (?:too|way too) (?:hard|harsh|blunt|abrasive))\b",
+            creator,
+            flags=re.IGNORECASE,
+        ))
+
+        if hits >= 2 or (softening_feedback and hits >= 1):
+            return [
+                "Conversation register boundary: over-forces rare slang/register "
+                "instead of matching the current turn."
+            ]
+        return []
 
     @staticmethod
     def _character_contract_audit(
@@ -1155,10 +1349,19 @@ class ReflectionEngine:
         if not text or not context.conversation:
             return []
 
+        # The literal current input is creator-authored evidence too. CognitiveContext
+        # stores it separately from prior conversation history, so omitting it here
+        # causes a false provenance violation whenever Mary naturally paraphrases
+        # what Unbe just said in the same turn.
         user_text = " ".join(
-            str(item.get("content", ""))
-            for item in context.conversation
-            if isinstance(item, dict) and str(item.get("role", "")) == "user"
+            [
+                str(context.input_text or ""),
+                *[
+                    str(item.get("content", ""))
+                    for item in context.conversation
+                    if isinstance(item, dict) and str(item.get("role", "")) == "user"
+                ],
+            ]
         ).lower()
         assistant_text = " ".join(
             str(item.get("content", ""))

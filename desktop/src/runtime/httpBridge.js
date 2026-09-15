@@ -228,6 +228,8 @@ export async function createHttpBridge() {
   bridge.playArcade = (key, payload, unused, callback) => bridgeCall('playArcade', [key, payload, unused], callback);
   bridge.getIdleAction = (callback) => bridgeCall('getIdleAction', [], callback);
   bridge.setPerformanceContext = (mode, callback) => bridgeCall('setPerformanceContext', [mode], callback);
+  bridge.getLocalComputePermission = (callback) => bridgeCall('getLocalComputePermission', [], callback);
+  bridge.setLocalComputePermission = (enabled, callback) => bridgeCall('setLocalComputePermission', [Boolean(enabled)], callback);
   bridge.pulsePresence = async () => {
     if (speaking || document.hidden) return null;
     try {

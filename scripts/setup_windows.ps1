@@ -126,7 +126,7 @@ Step 9 "Standalone/build readiness"
 Invoke-IsolatedPythonStage -StageName "step-9-standalone" -Arguments @("-m","scripts.verify_standalone_readiness")
 
 Step 10 "Local capability node status"
-Write-Host "  Headless node launcher: scripts\launch_windows_node.ps1"
+Write-Host "  Canonical home node launcher: scripts\launch_home_node_windows.ps1"
 Write-Host "  Optional logon task: scripts\install_windows_node_task.ps1"
 
 Write-Host "MARYV2 READY" -ForegroundColor Green

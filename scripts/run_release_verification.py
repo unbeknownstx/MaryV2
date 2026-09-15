@@ -138,6 +138,8 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("release_hygiene", "scripts.verify_release_hygiene"),
     ("standalone_readiness", "scripts.verify_standalone_readiness"),
     ("maryv2_convergence", "scripts.verify_maryv2_convergence"),
+    ("experiential_continuity_13_4", "scripts.verify_experiential_continuity_install"),
+    ("performance_hardening_13_4_1", "scripts.verify_performance_hardening_13_4_1"),
     ("repository_structure", "scripts.verify_repository_structure"),
 )
 

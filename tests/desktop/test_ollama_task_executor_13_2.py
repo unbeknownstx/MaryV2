@@ -42,6 +42,8 @@ class FakeOllamaProvider:
 
     def __init__(self, model=None):
         self.model = model or "qwen3:4b"
+        self.num_ctx = 4096
+        self.timeout = 30.0
 
     def is_available(self):
         return True
@@ -54,6 +56,8 @@ class FakeOllamaProvider:
             "messages": [(item.role, item.content) for item in messages],
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "num_ctx": self.num_ctx,
+            "timeout": self.timeout,
         })
         return LLMResponse(
             content="Local Mary node response",
@@ -124,6 +128,8 @@ def test_authorized_ollama_task_uses_local_provider_and_returns_bounded_result(t
         "messages": [("system", "Stay grounded."), ("user", "Say hello.")],
         "temperature": 0.55,
         "max_tokens": 96,
+        "num_ctx": 4096,
+        "timeout": 420.0,
     }]
     payload = gateway.completions[-1]["result"]
     assert payload["content"] == "Local Mary node response"
@@ -132,3 +138,30 @@ def test_authorized_ollama_task_uses_local_provider_and_returns_bounded_result(t
     assert payload["usage"]["total_tokens"] == 16
     assert "raw" not in payload
     assert "must-not-cross-node-boundary" not in repr(payload)
+
+
+def test_authorized_ollama_task_expands_context_for_large_grounded_prompt(tmp_path, monkeypatch):
+    FakeOllamaProvider.calls = []
+    monkeypatch.setenv("MARY_OLLAMA_MODEL", "qwen3:4b")
+    monkeypatch.setenv("MARY_DEVICE_OLLAMA_MAX_CTX", "32768")
+    monkeypatch.setattr(device_module, "OllamaProvider", FakeOllamaProvider)
+    gateway = FakeGateway()
+    permissions = DeviceExecutionPermissions(tmp_path / "permissions.json")
+    permissions.allow("llm.ollama")
+    agent = DesktopCapabilityNodeAgent(
+        gateway,
+        application=FakeApplication(),
+        bridge=FakeBridge(),
+        permissions=permissions,
+    )
+    task = _task()
+    task["args"]["messages"][0]["content"] = "grounded " * 5000
+
+    result = agent._handle_task(task)
+
+    assert result["task"]["status"] == "completed"
+    assert FakeOllamaProvider.calls[-1]["num_ctx"] in {16384, 32768}
+    status = agent.status()["last_task"]
+    assert status["prompt_characters"] > 12000
+    assert status["estimated_prompt_tokens"] > 4000
+    assert status["elapsed_ms"] >= 0

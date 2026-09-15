@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 import re
 from typing import Any
 from uuid import uuid4
@@ -94,6 +95,7 @@ class TurnRequest:
     surface: str = "client"
     voice_input: bool = False
     requested_mode: str | None = None
+    client_local_time: str | None = None
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "TurnRequest":
@@ -116,6 +118,21 @@ class TurnRequest:
         mode = str(mode_raw).strip().lower() if mode_raw is not None else None
         if mode and mode not in _ALLOWED_MODES:
             raise ValueError(f"requested_mode must be one of: {', '.join(sorted(_ALLOWED_MODES))}.")
+
+        local_time_raw = payload.get("client_local_time")
+        client_local_time = None
+        if local_time_raw not in (None, ""):
+            candidate = str(local_time_raw).strip()
+            if len(candidate) > 64:
+                raise ValueError("client_local_time exceeds the protocol limit.")
+            try:
+                parsed_local_time = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("client_local_time must be an ISO 8601 timestamp.") from exc
+            if parsed_local_time.tzinfo is None or parsed_local_time.utcoffset() is None:
+                raise ValueError("client_local_time must include a UTC offset.")
+            client_local_time = parsed_local_time.isoformat(timespec="seconds")
+
         return cls(
             text=text,
             turn_id=turn_id,
@@ -124,6 +141,7 @@ class TurnRequest:
             surface=surface or "client",
             voice_input=voice_input,
             requested_mode=mode,
+            client_local_time=client_local_time,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -233,13 +251,16 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "realtime.speech_started",
     "realtime.speech_ended",
     "realtime.interrupt",
+    "realtime.voice_activity",
     "realtime.listening",
     "realtime.transcribing",
     "realtime.speech_request",
+    "realtime.brain_activity.status",
     "presence.scene.status",
     "presence.observe",
     "perception.status",
     "perception.observe",
+    "perception.browser.observe",
     "stream.chat.ingest",
     "stream.status",
     "world.status",
@@ -248,11 +269,17 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "model.adapter.status",
     "mind.rebuild_reservoir",
     "mind.maintenance",
+    "continuity.status",
+    "continuity.maintenance",
     "llm.probe",
     "presence.idle_tick",
     "presence.pulse",
     "performance.context.status",
     "performance.context.set",
+    "runtime.performance.status",
+    "runtime.performance.set",
+    "game.action.preview",
+    "capability.invocations.status",
     "training.feedback.status",
     "training.dataset.preview",
     "production.jobs.preview",

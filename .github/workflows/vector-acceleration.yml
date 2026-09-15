@@ -1,0 +1,39 @@
+name: MaryV2 vector acceleration
+
+on:
+  pull_request:
+    paths:
+      - "mary/mind/vector_index.py"
+      - "mary/mind/hybrid_retrieval.py"
+      - "tests/mind/test_vector_acceleration.py"
+      - "scripts/benchmark_semantic_retrieval.py"
+      - "requirements-vector-accel.txt"
+      - ".github/workflows/vector-acceleration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-vec-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install -r requirements-vector-accel.txt
+      - name: Compile affected modules
+        run: |
+          python -m py_compile mary/mind/vector_index.py scripts/benchmark_semantic_retrieval.py
+      - name: Vector fallback and native parity tests
+        run: |
+          python -m pytest tests/mind/test_vector_acceleration.py tests/mind/test_hybrid_retrieval_13_1.py -q
+      - name: Small synthetic production-path smoke benchmark
+        run: |
+          python -m scripts.benchmark_semantic_retrieval --sizes 250 --dimensions 32 --queries 5 --limit 5 --json

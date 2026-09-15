@@ -2,8 +2,34 @@
 
 This registry is the current architectural index for MaryV2. Historical stage/release documents live under `docs/history/` and do not override this map.
 
-Companion architecture maps: [data and authority flows](data_flow.md) and
-[13.2 reconciliation inventory](RECONCILIATION_13_2.md).
+Companion architecture maps: [data and authority flows](data_flow.md),
+[13.2 reconciliation inventory](RECONCILIATION_13_2.md),
+[13.4 MCP capability fabric](MCP_CAPABILITY_FABRIC_13_4.md),
+[13.5 platform readiness](../operations/PLATFORM_READINESS_13_5.md),
+[13.6 AI-VTuber / Neuro-pattern adoption](NEURO_PATTERN_ADOPTION_13_6.md),
+[13.7 product experience convergence](PRODUCT_EXPERIENCE_13_7.md),
+[13.8 relational presence/shared life](RELATIONAL_PRESENCE_13_8.md),
+[13.9 native iPhone product](../design/NATIVE_IPHONE_PRODUCT_13_9.md),
+[13.10 live stream cohost](STREAM_COHOST_13_10.md),
+[13.11 home compute fabric](HOME_COMPUTE_FABRIC_13_11.md),
+[13.12 bounded home sensor workers](HOME_SENSOR_WORKERS_13_12.md),
+[13.13 public creator voice stream bridge](STREAM_SENSES_13_13.md),
+[13.14 character intelligence / learning interop](CHARACTER_INTELLIGENCE_LEARNING_13_14.md),
+[13.15 frontier / open model fabric](OPEN_MODEL_FABRIC_13_15.md),
+[13.16 model intelligence](MODEL_INTELLIGENCE_13_16.md),
+[13.17 cognitive character runtime](COGNITIVE_CHARACTER_RUNTIME_13_17.md),
+[13.18–13.23 character runtime convergence](CHARACTER_RUNTIME_CONVERGENCE_13_18_13_23.md),
+[13.24 inference acceleration](INFERENCE_ACCELERATION_13_24.md),
+[13.25–13.28 ecosystem mining](ECOSYSTEM_MINING_13_25_13_28.md),
+[13.29–13.32 cognitive research convergence](RESEARCH_CONVERGENCE_13_29_13_32.md),
+[13.33 bounded cognitive execution](COGNITIVE_EXECUTION_13_33.md),
+[13.34 computational state fabric](COMPUTATIONAL_STATE_FABRIC_13_34.md),
+[13.35 model execution fabric](MODEL_EXECUTION_FABRIC_13_35.md),
+[13.36 MaryOS Linux substrate](MARYOS_LINUX_SUBSTRATE_13_36.md), and
+[13.60–13.64 unified provider/model execution fabric](FREELLMAPI_INTEGRATION_13_64.md), and
+[13.65 stable Desktop conversation runtime](DESKTOP_STABLE_CONVERSATION_13_65.md), and
+[13.66 Desktop product shell baseline](../design/DESKTOP_PRODUCT_SHELL_13_66.md), and
+[13.67 Desktop product polish](../design/DESKTOP_PRODUCT_SHELL_13_67.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -12,43 +38,103 @@ Companion architecture maps: [data and authority flows](data_flow.md) and
 | Surface authority resolution | `mary.runtime.terminal`, `mary.desktop.authority`, mobile remote runtime | ACTIVE | `MARY_CORE_URL` means remote Core; no duplicate Mary. |
 | Root invariants | `mary.runtime.root_authority` | CANONICAL | Executable one-Mary/context/capability rules. |
 | Character bootstrap | `mary.character` / Character Core | CANONICAL | Compact fallback when no external authored source is active. |
-| Authored character sources | `mary.character.sourcebook` | ACTIVE | Loads approved sources from `character_sources/active/` or explicit env paths. |
+| Authored character sources | `mary.character.sourcebook`, canonical `mary.character.CharacterSourcebook` | ACTIVE ENRICHED 13.14 | Loads approved sources from `character_sources/active/` or explicit env paths; canonical import adds typed provenance/authority projection without changing the authored source owner. |
+| Character intelligence projection | `mary.character.intelligence` | ACTIVE READ-ONLY 13.14 | Typed claims, authority tiers, provenance edges and bounded evidence-collision diagnostics over already-selected sourcebook records. Projection only; no graph database, model output or external framework owns Mary. |
 | Character evaluation | `mary.character.evaluation` | ACTIVE | Evaluation/training evidence only; not lived memory. |
-| Relationship | `mary.relationship` | CANONICAL OWNER | Shared-history/creator relationship state. |
-| Memory | `mary.memory` | CANONICAL OWNER | Episodic/semantic/working memory. |
+| MaryBench / optimization interop | `mary.learning.interop`, `scripts.export_marybench` | ACTIVE LAB 13.14 | Exports existing evaluation cases as generic/DSPy/Promptfoo/Phoenix-compatible experiment records. Optimizer output is proposal-only and cannot mutate prompts, identity, memory or relationship automatically. |
+| Relationship | `mary.relationship` | CANONICAL OWNER | Shared-history/creator relationship state. 13.8 relationship mode is represented through this same owner/history, not a second companion database. |
+| Relational presence | `mary.relationship.relational_presence` | ACTIVE COMPOSITION 13.8 | `friend/close/romantic/partner`, bounded active shared activity, proposal-only presence impulses; durable changes delegate to canonical `RelationshipManager`. |
+| Derived social graph | `RelationalPresenceRuntime.social_graph` | ACTIVE READ-ONLY 13.8 | Projection over canonical creator profile/history/shared experiences; no graph database or truth authority. |
+| Social delivery projection | `mary.expression.social_delivery` | ACTIVE PRESENTATION 13.8 | Relationship/emotion-aware warmth/playfulness/intimacy/pace/energy hints; public scope suppresses private intimacy; providers cannot define relationship truth. |
+| Memory | `mary.memory` | CANONICAL OWNER | Episodic and semantic memory are durable through the canonical memory store; working memory is bounded process/session state unless explicitly promoted into a durable owner. |
+| Memory action policy | `mary.memory.action_policy`, `MemoryManager.propose_action` | ACTIVE POLICY 13.30 | Proposes ignore/working/episodic/semantic/temporal/delegate operations only; cannot write or promote memory itself. |
+| Temporal memory projection | `mary.memory.temporal_projection` | ACTIVE DERIVED 13.19 | Rebuildable validity/supersession/contradiction/provenance view over canonical records; never truth authority. |
 | Developed self / personality | `mary.personality`, growth paths | CANONICAL OWNER | Grounded development, not raw provider output. |
 | Agency | `mary.agency` | CANONICAL OWNER | Goals, intentions, curiosities, priorities, decisions. |
 | Autonomy | `mary.autonomy` | ACTIVE | Bounded execution/initiative; capability != permission. |
 | Emotion/expression | `mary.expression` | ACTIVE | Baseline + state + momentum/decay; does not own personality. |
-| Turn context | `mary.cognition.mind_state`, continuity/context modules | CANONICAL TURN LAYER | Bounded current/recent/retrieved/authored context. |
+| Turn context | `mary.cognition.mind_state`, continuity/context modules | CANONICAL TURN LAYER | Bounded current/recent/retrieved/authored context; canonical relationship-history summary includes explicit 13.8 relationship mode. 13.14 structured sourcebook evidence enters through the same existing authored-character context field. |
 | Reasoning/cognition | `mary.cognition` | ACTIVE | Provider-independent Mary reasoning orchestration. |
-| Provider routing | `mary.llm.router` | ACTIVE | Free/cheap/private/expert routes; models never own identity. |
+| Cognitive character runtime | `mary.cognition.cognitive_character`, `mary.cognition.runtime_coordination` | ACTIVE 13.17/13.23/13.32 | Selects provider-independent cognitive need, compute/knowledge/presentation hints and now bounded deliberation/realtime policy; projection only. |
+| Adaptive deliberation | `mary.cognition.deliberation` | ACTIVE POLICY 13.29 | Bounded single/verify/branch strategies, confidence/latency budgets and ephemeral structural workspace; private chain-of-thought is not exposed or persisted. |
+| Bounded cognitive execution | `mary.cognition.deliberation.DeliberationExecutor` | ACTIVE 13.33 | Executes caller-supplied single/verify/branch candidate workflows under pass/branch/latency bounds; intermediate candidates remain ephemeral and only structural outcome evidence may be recorded. |
+| Experience-informed strategy advisor | `mary.learning.strategy_advisor` | ACTIVE PROPOSAL 13.33 | Compares content-free trajectory outcomes and proposes an existing reasoning strategy; cannot mutate runtime policy, prompts, identity, memory, providers or weights. |
+| Provider routing | `mary.llm.router`, `mary.governance.resource.ResourceGovernor` | ACTIVE UNIFIED 13.64 | Hard privacy/cost/operation/structured-output/fallback eligibility is applied first. Health, quota, pressure, hysteresis and adaptive evidence may only filter/demote/reorder that eligible set; they cannot introduce a provider. |
+| Provider catalog / frontier routes | `mary.llm.provider_catalog`, `mary.llm.providers.openai_compatible` | ACTIVE OPTIONAL 13.15/13.64 | Creator/configuration-approved secret-free metadata for DeepSeek/Z.AI-Qwen/Kimi/MiniMax/Cerebras/Together/Fireworks plus compatible endpoints. Catalogs cannot enable credentials, widen permissions, bypass routing policy or auto-promote a model. |
+| Provider operational evidence | `mary.llm.provider_health`, `provider_pressure`, `quota_guard`, `quota_hysteresis`, `readiness`, `adaptive_provider_routing`, `provider_analytics` | ACTIVE EPHEMERAL 13.60–13.64 | Content-free health/quota/latency/readiness evidence below router authorization. Deterministic cold-start order remains valid; adaptive evidence is bounded and non-authoritative. |
+| Provider/gateway trust boundary | `mary.llm.catalog_trust`, `provider_identity`, `endpoint_policy`, `transport_normalization`, `freellmapi` | ACTIVE OPTIONAL 13.64 | Signed-catalog freshness/replay protection, served-model substitution checks, endpoint/SSRF policy and capability-aware transport. FreeLLMAPI is a replaceable optional gateway, never a Core startup dependency or identity authority. |
+| Embedding provider routing | `mary.llm.embedding_router`, existing embedding/vector identity owners | ACTIVE BOUNDED 13.64 | Provider failover only across identical family/dimensions/vector-space identity; stored-vector identity remains authoritative above the route. |
 | OpenAI expert | `mary.llm.providers.openai`, orchestration consultation | ACTIVE, EXPLICIT | Paid specialist route only with authorization. |
-| Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional local capability; headless Windows node supported. |
+| Unified local conversation | `mary.llm.providers.local_runtime`, `device_local`, `llm.local` node executor | ACTIVE PRODUCT 13.65 | Ordinary conversation may prefer a permission-bounded replaceable host runtime (LM Studio/Ollama/llama.cpp); Core retains identity/state/routing authority and cloud fallback. |
+| Desktop runtime supervisor | `mary.desktop.runtime_supervisor` | ACTIVE BEST-EFFORT 13.65 | Starts/loads an already-installed qualified LM Studio model when available, enables bounded Desktop local compute, never downloads weights or blocks Mary startup. |
+| Ollama local/private | Ollama provider + device-node executor | ACTIVE | Optional explicit/private local capability; headless Windows node supported. |
 | Research/evidence | `mary.learning`, `mary.tools.web` | ACTIVE | External evidence remains provenance-bearing and temporary until accepted. |
 | Retrieval/reservoir | `mary.mind` | ACTIVE SUPPORT | FTS/vector/cache layers are derived, not truth authority. |
-| Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated. |
+| Tool permissions | `mary.tools`, `mary.distributed.permissions` | CANONICAL BOUNDARY | Consequential actions remain gated; MCP requires capability + exact tool allowlists. Sensor capabilities are default-deny local permissions. |
 | Compute nodes | `mary.distributed`, `mary.desktop.device_node` | ACTIVE | Nodes advertise/execute capabilities; never own Mary. |
-| Windows headless node | `scripts.run_windows_node` | ACTIVE | Can expose Ollama without Desktop UI. |
-| Desktop | `mary.desktop`, `desktop/` | ACTIVE | Presentation/capability surface. |
-| Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE | Remote surface over Core. |
-| Native mobile | `mobile_native/` | PARTIAL | Native client work; same Core authority rule. |
-| Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. |
-| Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling. |
-| Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. |
+| MaryOS Linux substrate | `mary.distributed.os_environment`, `scripts.maryos_status`, `maryos/` | ACTIVE FOUNDATION 13.36 | Read-only host/environment projection plus optional systemd user-service boot path for the existing bounded home node. No shell/root executor; Omarchy/Arch packaging remains optional/future. |
+| Home compute fabric | `mary.distributed.compute_fabric`, `mary.distributed.benchmarking`, `scripts.run_home_node` | ACTIVE OPTIONAL 13.11/13.59 | Benchmark/load/resource-aware Mac/Windows/Linux worker selection; qualified model identities, resource-fit calibration/provenance and explainable decisions are disposable operational evidence only and never grant execution authority. |
+| Model execution fabric | `mary.llm.model_fabric`, Core compute-fabric projection | ACTIVE ADVISORY 13.35–13.64 | Canonical portfolio projection across provider catalog, local/node suitability and provider operational revision. Separates discovered/configured/authorized/reachable/feasible/capable/suitable/preferred by task lane; local/frontier/gateway candidates remain benchmark-before-promotion. No spend, identity, memory or permission authority. |
+| Runtime resource profiling | `mary.distributed.resource_profile` | ACTIVE HINT 13.11 | CPU/memory/Metal/Vulkan/local-runtime visibility and optional GPU labels/VRAM hints guide empirical testing only; hardware presence is not permission or proof of useful acceleration. |
+| Home sensor workers | `mary.distributed.sensors`, `mary.distributed.sensor_node` | ACTIVE OPTIONAL 13.12/13.14 | Default-deny typed `sensor.audio_transcribe`, `sensor.screen_capture`, and 13.14 `sensor.screen_describe`. Audio/screens/visual descriptions are ephemeral evidence, never memory truth or action authority. |
+| Specialist STT bridge | `mary.desktop.stt` | ACTIVE OPTIONAL 13.14 | Existing Groq/faster-whisper/whisper.cpp plus device-configured Qwen3-ASR/FluidAudio/specialist HTTP. Only loopback HTTP or HTTPS; task payloads cannot choose provider URL/model path/executable. |
+| Semantic screen perception | `sensor.screen_describe` in `mary.distributed.sensors` | ACTIVE OPTIONAL 13.14 | Bounded local screenshot -> preconfigured llama.cpp-mtmd or OmniParser semantic description. No mouse/keyboard/click/action authority and no automatic memory write. |
+| Specialist backend catalog | `mary.distributed.specialist_catalog`, `scripts.check_specialist_backends`, platform readiness | ACTIVE DISCOVERY 13.14 | Read-only readiness vocabulary for FluidAudio, Qwen3-ASR, TEN VAD, Chatterbox, llama.cpp mtmd, OmniParser, Graphiti, DSPy/GEPA, Phoenix, Promptfoo, Unsloth and Axolotl. External specialists never become Core startup or identity/memory authority. |
+| MCP capability fabric | `mary.distributed.mcp_fabric`, `mary.desktop.device_node` | ACTIVE OPTIONAL 13.4 | OpenDesign/Scrapling/Langflow over preconfigured Streamable HTTP(S); node-local credentials, lazy discovery, exact tool allowlists, sanitized results; no shell/stdio launcher. |
+| Incremental response / sentence TTS | `mary.realtime.streaming`, `mary.voice.streaming_tts` | ACTIVE PRIMITIVES 13.6 | Provider-neutral deltas, sentence assembly, cooperative cancellation, bounded ordered synthesis-ahead; one-shot providers remain valid. |
+| Performer integrations | `mary.streaming.bridge`, `mary.streaming.config` | ACTIVE CONTRACT 13.6 | Twitch input is untrusted audience context; outbound chat/OBS writes require explicit bounded permissions. |
+| Stream chat coordination | `mary.streaming.presence`, `mary.streaming.chat`, `mary.streaming.input_governor`, `mary.streaming.output` | ACTIVE 13.6/13.10 | Core-owned dedupe, hostile/injection filtering, audience scoring, creator-floor arbitration and drop/react/wait/chat/speak/both planning. Chat never gains creator/tool authority. |
+| Live stream cohost | `mary.streaming.cohost`, `scripts.run_stream_cohost` | ACTIVE OPTIONAL 13.10 | Selected Twitch messages become bounded public-safe canonical Core turns; runner registers one creator surface and scopes only that device to `stream` performance context. No second Mary/chatbot loop. |
+| Public creator stream voice | `mary.streaming.creator_audio`, `scripts.run_stream_creator_voice` | ACTIVE OPTIONAL 13.13 | Explicitly armed VAD microphone -> bounded `sensor.audio_transcribe` -> same canonical `stream-public` conversation -> Core TTS / loopback OBS relay. Private Desktop conversation is never mirrored into public stream context. |
+| OBS audio/caption relay | `mary.streaming.relay` | ACTIVE PRESENTATION 13.10 | Loopback-only Browser Source transport for latest bounded Core TTS audio + caption; contains no Core/Twitch credentials or canonical state. |
+| Twitch EventSub transport | `mary.integrations.twitch_eventsub`, `mary.integrations.twitch_runtime` | ACTIVE OPTIONAL | Current chat EventSub normalization/session continuity, self-echo and outbound rate/dedupe contracts; transport-only. |
+| Twitch typed chat send | `mary.integrations.twitch_chat`, `TwitchChatOutbox` | ACTIVE OPTIONAL 13.10 | Current bounded Send Chat Message request shape + existing rate/dedupe planner; write path requires explicit configuration/token scope and never authorizes tools. |
+| Capability invocation coordination | `mary.distributed.invocations` | ACTIVE SUPPORT 13.6 | Process-local idempotency/retry primitive only; no authorization and no canonical-result authority. |
+| Capability simulator | `mary.distributed.simulator` | TEST/DEVELOPMENT 13.6 | Deterministic fake adapter only; never registers as Mary. |
+| Semantic game control | `mary.game_control` | ACTIVE ROUTING CONTRACT 13.6 | High-level intent routes through NodeRegistry; raw key/mouse execution excluded and device permission still required. |
+| OpenHands engineering worker | `docs/architecture/OPENHANDS_WORKER_BOUNDARY_13_4.md` | DESIGNED SEPARATE | Sandboxed software-engineering worker boundary; proposal/patch output only, no Mary identity/Core authority, no automatic merge. |
+| Platform readiness | `scripts.platform_readiness`, `requirements-host-extras.txt` | ACTIVE OPTIONAL 13.5/13.14 | Read-only Mac/Windows/Linux capability/config presence plus specialist readiness; optional packages/services never gate Core startup; no shell execution. |
+| Experience quality telemetry | `mary.runtime.experience_quality`, `mary.runtime.performance_hardening` | ACTIVE READ-ONLY 13.7 | Content-free rolling latency/outcome classification; explicitly no identity, memory, routing, lifecycle or permission authority. |
+| Trajectory telemetry | `mary.learning.trajectory`, runtime `trajectory_telemetry` | ACTIVE EVALUATION 13.31 | Bounded strategy/pass/branch/verifier/outcome/token/latency evidence only; no prompt/response retention and no automatic training. |
+| Duplex interaction policy | `mary.realtime.duplex_policy` | ACTIVE POLICY 13.32 | Transport-neutral backchannel/barge-in/retrieval-overlap policy; existing realtime lifecycle remains authoritative. |
+| Research runtime catalog | `mary.distributed.research_runtime_catalog`, `scripts.check_research_convergence` | ACTIVE DISCOVERY 13.32 | Optional Coconut/recurrent/latent-verifier, vLLM/SGLang, ExecuTorch/MLC, exo, Pipecat/LiveKit, A2A, AReaL/verl and OpenTelemetry candidates; discovery is not permission or promotion. |
+| Experience projector | `mary.experience.projector` | ACTIVE PRESENTATION 13.8 | Whitelisted `/api/experience` projection surfaces explicit close/romantic/partner mode from Core while keeping provider/secrets/non-authoritative fields out. |
+| Visual/product design contract | `docs/design/MARY_VISUAL_SYSTEM.md`, `docs/design/DESKTOP_PRODUCT_SHELL_13_66.md`, `docs/design/DESKTOP_PRODUCT_SHELL_13_67.md` | ACTIVE CONTRACT 13.7/13.66/13.67 | Shared semantic color/motion/degraded-state language plus current Desktop hierarchy, final-cascade, workspace-unification and responsive-priority rules; presentation only. |
+| Relational UI contract | `docs/architecture/RELATIONAL_PRESENCE_UI_13_8.md`, `desktop/public/relational-13-8.css` | ACTIVE CONTRACT 13.8 | Shared-life cards/actions, privacy projection and anti-attention-trap styling; normal product surfaces remain creator-facing rather than backend dashboards. |
+| Native iPhone product contract | `docs/design/NATIVE_IPHONE_PRODUCT_13_9.md` | ACTIVE CONTRACT 13.9 | Home/Talk/Together/Work/More prioritize companion presence and shared context; approved bundled Mary art + SF Symbols; no copied competitor assets or mobile-owned relationship authority. |
+| Windows legacy node entrypoint | `scripts.run_windows_node`, `scripts/launch_windows_node.ps1` | COMPATIBILITY | Delegates to the canonical `scripts.run_home_node`; must not register a separate `windows_node` session. |
+| Cross-platform home node | `scripts.run_home_node` | CANONICAL CAPABILITY HOST 13.11/13.12 | Single preferred Mac/Windows/Linux worker host; reuses durable enrollment, local device permissions, bounded task executors, optional sensor workers and runtime-fingerprinted benchmark metadata. |
+| Desktop | `mary.desktop`, `desktop/` | ACTIVE PRODUCT 13.67 | Presentation/creator surface by default. 13.67 is the current final-cascade/workspace/launcher presentation contract; dedicated capability hosting belongs to `scripts.run_home_node`, and legacy Desktop capability registration is explicit opt-in only. |
+| Mobile/PWA | `mary.mobile`, `mobile_web/` | ACTIVE POLISHED 13.8 | Remote Core surface; existing presence rail receives relationship mode through the shared experience projector without owning state. |
+| Native iPhone | `ios/MaryV2iOS/` | ACTIVE PRODUCT 13.9 | SwiftUI surface over canonical Core with Keychain auth, local push-to-talk transcription, Core voice playback, relational projection, conversation-first Talk, Together shared-life UX, native haptics/accessibility and preserved Work/Focus. |
+| Legacy native mobile | `mobile_native/` | PARTIAL / COMPATIBILITY | Retained wrapper kept byte-aligned with the compatibility PWA where tests require it; does not override SwiftUI or Core authority. |
+| Voice/STT/TTS | `mary.voice`, `mary.desktop.voice`, audio modules | ACTIVE | Provider/local voice capability + performance direction. Stream cohost reuses authenticated Core voice synthesis rather than owning a TTS provider. 13.14 catalogs Chatterbox but does not promote it ahead of existing ElevenLabs/Piper/SAPI without local benchmark evidence. |
+| Avatar/embodiment | `mary.avatar`, desktop presentation | ACTIVE BASELINE | Current VRM/stage is baseline, not final expressive ceiling; stream cohost is renderer-neutral so future Live2D/2.5D/3D bodies can consume the same speech/attention/performance state. |
+| Perception | `mary.perception` | ACTIVE BOUNDED | Describe observation before Mary interprets; no automatic memory truth. Stream responses may read a small secret-filtered current summary. 13.14 semantic screen evidence should publish through this same perception boundary when used by a surface. |
+| Browser context sensor | `mary.perception.browser` | ACTIVE BOUNDED 13.6 | Page/media summaries enter PerceptionDirector after URL/metadata sanitization; no browser-owned memory/personality. |
+| Runtime performance profiles | `mary.runtime.performance_profiles` | ACTIVE POLICY 13.6 | Light/balanced/performance resource targets only; explicitly cannot switch identity. |
+| Realtime activity projection | `mary.realtime.brain_activity` | ACTIVE READ-ONLY 13.6 | Bounded floor/attention/decision labels for UI/debugging; no chain-of-thought or write authority. |
+| Turn latency evidence | `mary.runtime.turn_timing` | ACTIVE DIAGNOSTIC 13.6 | Secret-free named stage timings; diagnostic only. |
+| Retrieval evaluation | `mary.mind.retrieval_evaluation` | ACTIVE EVALUATION 13.6 | Ranking quality metrics over derived retrieval; cannot promote memory truth. |
 | Creative Studio | `mary.creative`, `mary.desktop.projects` | ACTIVE BASELINE | Cross-media planning/workspace with creator provenance and approvals. |
 | Creative services | `mary.creative.services` | ACTIVE CONTRACT | Capability/cost discovery; real vendor execution adapters remain service-specific. |
 | Unbeknownst workspace | `projects/unbeknownst/` | CANONICAL PROJECT HOME | Book/manga/animation/audio/assets/production organization. |
 | Recovery | `mary.runtime.recovery`, recovery scripts | ACTIVE BASELINE | Secret-free manifests/snapshots; derived state rebuildable. |
+| Computational state durability model | `MARY_ROOT.md`, `docs/architecture/COMPUTATIONAL_STATE_FABRIC_13_34.md` | DESIGNED NEXT 13.34 | Defines canonical durable, rebuildable derived, warm computational and ephemeral state tiers. Future KV/prefix-cache or NVMe cache services remain acceleration only and never become memory/identity authority. |
 | State reconciliation | `mary.runtime.state_reconciliation` | ACTIVE READ-ONLY | Single root = inventory only; two+ roots required for comparison. |
 | Repository structure | `scripts.verify_repository_structure` | CANONICAL HYGIENE GATE | Prevents payload/data/node_modules/history drift into active root. |
 | Historical development | `docs/history/` + Git history | ARCHIVE | Provenance only; never current runtime authority. |
 
 ## Release blockers still intentionally open
 
-- Finish and approve the Character Bible/corpus; move approved material into `character_sources/active/`.
-- Expand Mary-specific character evaluation substantially from authored examples.
+- Continue approving/expanding the Character Bible/corpus and move approved material into `character_sources/active/`; 13.14 now projects richer typed provenance from whatever source material is approved.
+- Expand Mary-specific character evaluation substantially from authored examples; `scripts.export_marybench` now makes those cases portable to external experiment/optimizer tooling without granting it write authority.
 - Add real authorized adapters for selected image/video/audio generation services.
-- Mature avatar/3D expression beyond the current baseline model.
-- Continue live cross-device/Core/node testing under real provider/network failures.
+- Mature avatar/3D expression beyond the current baseline model; Live2D/2.5D/3D stream bodies should attach to the existing cohost/voice/performance state rather than creating another runtime.
+- Benchmark FluidAudio/Qwen3-ASR/Whisper variants, llama.cpp-mtmd/OmniParser perception and Chatterbox versus existing routes on representative creator hardware. Presence in the 13.14 specialist catalog is not promotion.
+- Add authenticated creator-facing mutation controls for relationship mode/shared activities through the existing bounded Core action path; do not bypass the single-writer Core for UI convenience.
+- Feed the social-delivery envelope into the winning real TTS/avatar adapters only after provider-specific behavior is tested.
+- Replace the bounded stream speech-duration estimate with explicit renderer/browser playback completion acknowledgement if stream-floor timing proves materially inaccurate in live testing.
+- Continue live cross-device/Core/node/Twitch/OBS testing under real provider/network failures and collect operational latency/readiness evidence.
 - Establish an intentional production continuity dataset after development/test state is discarded.
+- Continue measured resource-fit/provider calibration and exact-head cross-platform validation before promoting new models or gateways into preferred routes.

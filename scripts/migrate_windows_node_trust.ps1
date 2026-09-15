@@ -13,7 +13,7 @@ try {
     # command line, user environment, or Mary credential store.
     $env:MARY_NODE_ENROLLMENT_GRANT = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($GrantPointer)
     Set-Location $Root
-    & $Python -m scripts.run_windows_node --enroll-only
+    & $Python -m scripts.run_home_node --hardware-profile windows-rx580-4gb --enroll-only
     if ($LASTEXITCODE -ne 0) {
         throw "MaryV2 durable node enrollment failed."
     }

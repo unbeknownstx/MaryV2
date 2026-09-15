@@ -18,7 +18,9 @@ from mary.desktop.device_node import DesktopCapabilityNodeAgent
 from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.desktop.static_server import DesktopStaticServer
 from mary.desktop.authority import resolve_desktop_application
+from mary.desktop.frontend_build import ensure_desktop_frontend
 from mary.runtime.application import MaryApplication, create_application
+from mary.runtime.resource_reporting_gateway import ResourceReportingGateway
 
 
 class MaryWebEnginePage(QWebEnginePage):
@@ -39,6 +41,20 @@ class MaryWebEnginePage(QWebEnginePage):
 
 
 
+def _desktop_capability_node_enabled() -> bool:
+    """Remote Desktop is a presentation surface unless explicitly opted in.
+
+    A dedicated scripts.run_home_node process is the canonical capability host.
+    Silent Desktop registration with the same physical-device ID can replace
+    that home-node lease, so compatibility hosting is disabled by default.
+    """
+
+    return os.getenv(
+        "MARY_DESKTOP_CAPABILITY_NODE_ENABLED",
+        "false",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
+
 class MaryDesktopWindow(QMainWindow):
     def __init__(
         self,
@@ -55,12 +71,16 @@ class MaryDesktopWindow(QMainWindow):
         ).start()
         self.bridge.audio_cache.set_public_url_builder(self._static_server.voice_url)
         self.node_agent: DesktopCapabilityNodeAgent | None = None
-        if isinstance(application, RemoteMaryApplicationView):
+        if (
+            isinstance(application, RemoteMaryApplicationView)
+            and _desktop_capability_node_enabled()
+        ):
             self.node_agent = DesktopCapabilityNodeAgent(
-                application.gateway,
+                ResourceReportingGateway(application.gateway),
                 application=application,
                 bridge=self.bridge,
             )
+            self.bridge.attach_node_agent(self.node_agent)
             self.node_agent.start()
 
         self.setWindowTitle("MaryV2 — Mary Cosma")
@@ -90,6 +110,20 @@ class MaryDesktopWindow(QMainWindow):
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
             True,
         )
+        # Mary VRM presentation is optional, but when Qt exposes the relevant
+        # Chromium settings make the intended 3D path explicit. Unsupported
+        # attributes are simply absent on older Qt builds.
+        for attribute_name in ("WebGLEnabled", "Accelerated2dCanvasEnabled"):
+            attribute = getattr(
+                QWebEngineSettings.WebAttribute,
+                attribute_name,
+                None,
+            )
+            if attribute is not None:
+                try:
+                    settings.setAttribute(attribute, True)
+                except Exception:
+                    pass
 
         self.channel = QWebChannel(self.web.page())
         self.channel.registerObject("maryBridge", self.bridge)
@@ -199,13 +233,7 @@ def _default_frontend_path(root: Path) -> Path:
 
 def run_desktop(application: MaryApplication | None = None) -> int:
     mary_app, project_root = resolve_desktop_application(application)
-    frontend_path = _default_frontend_path(project_root)
-
-    if not frontend_path.exists():
-        raise FileNotFoundError(
-            "Desktop frontend has not been built yet. Run `cd desktop`, "
-            "`npm install`, then `npm run build`."
-        )
+    frontend_path = ensure_desktop_frontend(project_root, page="index.html")
 
     qt_app = QApplication.instance() or QApplication(sys.argv)
     qt_app.setApplicationName("MaryV2")

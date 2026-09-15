@@ -19,19 +19,128 @@ class _FakeRemoteGateway(RemoteMaryGateway):
         self.close_count = 0
 
     def state(self):
-        return {"core": {"service": "mary-core", "architecture": "13.2"}, "mary": {"name": "Mary"}}
+        return {
+            "core": {"ok": True, "service": "mary-core", "architecture": "13.3"},
+            "mary": {
+                "name": "Mary",
+                "memory": {
+                    "episodic": 0,
+                    "semantic": 0,
+                    "working": 0,
+                },
+                "continuity": {
+                    "relationship_events": 8,
+                    "durable_shared_work_events": 3,
+                    "shared_work_authority": "relationship_history",
+                    "current_work_authority": "derived_current_work_projection",
+                },
+                "current_work": {
+                    "active": True,
+                    "project": "MaryV2",
+                    "recent": [
+                        {"source": "relationship.shared_work"},
+                        {"source": "relationship.milestone"},
+                    ],
+                    "sources": [
+                        "relationship.shared_work",
+                        "relationship.milestone",
+                    ],
+                    "authority": "derived_current_work_projection",
+                    "persistence": "projection_only",
+                },
+            },
+            "runtime": {
+                "status": "created",
+                "initialized": False,
+                "running": False,
+            },
+            "creator_lifecycle": {
+                "state": "ACTIVE",
+                "surface_count": 1,
+            },
+            "mind": {
+                "reservoir": {
+                    "persistent": True,
+                    "records": 33,
+                    "fts5": True,
+                },
+            },
+            "performance_hardening": {
+                "deliberation_execution": {"version": "13.33"},
+                "strategy_advisor": {"version": "13.33"},
+            },
+            "compute_fabric": {
+                "routing": {
+                    "strategy": "free_first",
+                    "session_override": {"provider": None, "route": "private"},
+                    "routes": {"private": ["ollama"]},
+                },
+                "capability_routes": {
+                    "llm.ollama": {
+                        "available": True,
+                        "selected_node_id": "terminal-test",
+                    },
+                },
+                "private_route_ready": True,
+                "authority": "mary_core",
+                "policy": "nodes compute; Core owns Mary state",
+            },
+        }
 
     def conversation(self):
         return {"realtime": {"phase": "idle"}}
 
     def dashboard(self):
-        return {}
+        return {
+            "performance_hardening": {
+                "cognition_evidence": {
+                    "trajectory": {
+                        "sample_count": 5,
+                        "content_retained": False,
+                    },
+                    "recent_samples": [
+                        {
+                            "trajectory_id": "traj_test",
+                            "task_class": "general",
+                            "strategy": "verify_once",
+                            "passes": 1,
+                            "verifier_score": 0.92,
+                            "outcome": "success",
+                            "latency_ms": 1200.0,
+                            "total_tokens": 100,
+                        },
+                    ],
+                    "strategy_proposals": {
+                        "general": {
+                            "task_class": "general",
+                            "strategy": "verify_once",
+                            "sample_count": 5,
+                            "authority": "proposal_only_no_runtime_mutation",
+                        },
+                    },
+                    "content_retained": False,
+                    "prompt_or_response_text_retained": False,
+                    "persistence": "process_local_evaluation_evidence",
+                    "authority": "evaluation_and_proposal_only",
+                },
+            },
+        }
 
     def workspace(self):
         return {}
 
     def nodes(self):
         return {"nodes": []}
+
+    def runtime_action(self, action, args=None):
+        assert action == "llm.probe"
+        return {
+            "ok": True,
+            "status": "ok",
+            "provider": "ollama",
+            "model": "qwen3:4b-instruct",
+            "canonical_state_changed": False,
+        }
 
     def turn(self, text, *, conversation_id, requested_mode=None, voice_input=False):
         return SimpleNamespace(
@@ -87,3 +196,66 @@ def test_terminal_remote_session_connects_and_disconnects_surface(monkeypatch):
 
     assert gateway.connect_count == 1
     assert gateway.close_count == 1
+
+
+def test_remote_contract_distinguishes_core_service_from_passive_application_runtime():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/contract", None)
+
+    assert rendered is not None
+    assert '"core_available": true' in rendered
+    assert '"deliberation_execution_version": "13.33"' in rendered
+    assert '"strategy_advisor_version": "13.33"' in rendered
+    assert '"status": "created"' in rendered
+    assert "unified Core/service boundary version" in rendered
+
+
+def test_remote_memory_status_reports_continuity_beyond_memorymanager_counts():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/memory-status", None)
+
+    assert rendered is not None
+    assert '"canonical_memory_store"' in rendered
+    assert '"recent_count": 2' in rendered
+    assert '"durable_shared_work_events": 3' in rendered
+    assert '"authority": "relationship_history"' in rendered
+    assert '"records": 33' in rendered
+    assert '"persistent": true' in rendered
+    assert "only one continuity owner" in rendered
+
+
+def test_remote_route_reports_core_routing_and_local_capability():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/route", None)
+
+    assert rendered is not None
+    assert '"strategy": "free_first"' in rendered
+    assert '"route": "private"' in rendered
+    assert '"selected_node_id": "terminal-test"' in rendered
+    assert '"private_route_ready": true' in rendered
+
+
+def test_remote_probe_ollama_uses_non_mutating_core_diagnostic():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/probe-ollama", None)
+
+    assert rendered is not None
+    assert '"provider": "ollama"' in rendered
+    assert '"status": "ok"' in rendered
+    assert '"canonical_state_changed": false' in rendered
+
+
+def test_remote_cognition_evidence_is_bounded_and_content_free():
+    gateway = _FakeRemoteGateway()
+
+    rendered = terminal._remote_command(gateway, "/cognition-evidence", None)
+
+    assert rendered is not None
+    assert '"sample_count": 5' in rendered
+    assert '"strategy": "verify_once"' in rendered
+    assert '"prompt_or_response_text_retained": false' in rendered
+    assert "proposal_only_no_runtime_mutation" in rendered

@@ -74,7 +74,7 @@ class NodeDescriptor:
 
 
 class NodeRegistry:
-    VERSION = "13.3"
+    VERSION = "13.37"
 
     def __init__(self, *, stale_after: float = 90.0) -> None:
         self.stale_after = max(10.0, float(stale_after))
@@ -115,12 +115,7 @@ class NodeRegistry:
         *,
         available: bool | None = None,
     ) -> bool:
-        """Update one advertised capability health without changing ownership.
-
-        Nodes can advertise a runtime that exists but is still starting or is
-        temporarily degraded.  Routing consumes this readiness rather than
-        assuming registration means executable-now.
-        """
+        """Update one advertised capability health without changing ownership."""
         normalized = str(capability or "").strip().lower()
         state = str(readiness or "").strip().lower()
         if state not in {"ready", "degraded", "starting", "unavailable"}:
@@ -149,7 +144,6 @@ class NodeRegistry:
             return True
 
     def is_live(self, node_id: str) -> bool:
-        """Return whether a node is presently connected and within its lease."""
         with self._lock:
             node = self._nodes.get(str(node_id))
             return bool(
@@ -174,19 +168,52 @@ class NodeRegistry:
         normalized = str(capability).strip().lower()
         return [node for node in self.available() if node.supports(normalized)]
 
+    @staticmethod
+    def _benchmark_score(cap: CapabilityDescriptor) -> tuple[int, int, float, float]:
+        """Return a stable preference tuple from sanitized operational hints.
+
+        Correctness joins latency as routing evidence in 13.37. Missing quality
+        data stays neutral so legacy nodes remain routable. Benchmarks only rank
+        already-authorized capabilities; they never create authority.
+        """
+        metadata = dict(cap.metadata or {})
+        try:
+            success = float(metadata.get("benchmark_success_rate"))
+        except (TypeError, ValueError):
+            success = -1.0
+        try:
+            accuracy = float(metadata.get("benchmark_accuracy"))
+        except (TypeError, ValueError):
+            accuracy = -1.0
+        try:
+            latency = float(metadata.get("benchmark_latency_ms"))
+        except (TypeError, ValueError):
+            latency = -1.0
+        has_measurement = 0 if (success >= 0.0 or accuracy >= 0.0 or latency >= 0.0) else 1
+        reliability = min([v for v in (success, accuracy) if v >= 0.0], default=-1.0)
+        failure_penalty = 0 if reliability < 0.0 or reliability >= 0.75 else 1
+        quality_sort = -accuracy if accuracy >= 0.0 else 0.0
+        latency_value = latency if latency >= 0.0 else float("inf")
+        return (failure_penalty, has_measurement, quality_sort, latency_value)
+
     def choose(self, capability: str, *, prefer_private: bool = True, prefer_local: bool = True) -> NodeDescriptor | None:
         normalized = str(capability).strip().lower()
         candidates = self.candidates(normalized)
         if not candidates:
             return None
 
-        def score(node: NodeDescriptor) -> tuple[int, int, int, int, str]:
+        def score(node: NodeDescriptor) -> tuple[int, int, int, int, int, int, float, float, str]:
             cap = node.capabilities[normalized]
+            benchmark = self._benchmark_score(cap)
             return (
                 0 if str(cap.readiness).strip().lower() == "ready" else 1,
                 0 if (prefer_private and cap.private) else 1,
                 0 if (prefer_local and cap.local) else 1,
                 0 if cap.cost in {"free", "local"} else 1,
+                benchmark[0],
+                benchmark[1],
+                benchmark[2],
+                benchmark[3],
                 node.node_id,
             )
 
@@ -206,18 +233,79 @@ class NodeRegistry:
             prefer_private=prefer_private,
             prefer_local=prefer_local,
         )
+        benchmark_keys = {
+            "benchmark_latency_ms",
+            "benchmark_success_rate",
+            "benchmark_throughput",
+            "benchmark_accuracy",
+            "benchmark_useful_throughput",
+            "benchmark_output_tokens",
+            "benchmark_truncated_runs",
+            "benchmark_profile_version",
+            "benchmark_reliability_revision",
+        }
+        selected_capability = (
+            selected.capabilities.get(normalized)
+            if selected is not None
+            else None
+        )
+        selected_metadata = dict(
+            getattr(selected_capability, "metadata", {}) or {}
+        )
+        permission_known = bool(
+            selected is not None
+            and "execution_authorized" in selected_metadata
+        )
+        execution_authorized = bool(
+            permission_known
+            and selected_metadata.get("execution_authorized", False)
+        )
         return {
             "capability": normalized,
             "available": selected is not None,
             "selected_node_id": selected.node_id if selected is not None else None,
+            "selected_runtime": str(selected_metadata.get("runtime") or "")[:64],
+            "selected_model": str(
+                selected_metadata.get("backing_model")
+                or selected_metadata.get("conversation_model")
+                or selected_metadata.get("configured_model")
+                or selected_metadata.get("model")
+                or ""
+            )[:160],
+            "selected_model_alias": str(
+                selected_metadata.get("model_alias")
+                or selected_metadata.get("configured_model")
+                or ""
+            )[:160],
             "candidate_node_ids": [node.node_id for node in candidates],
             "candidate_readiness": {
                 node.node_id: str(node.capabilities[normalized].readiness)
                 for node in candidates
             },
+            "candidate_benchmarks": {
+                node.node_id: {
+                    key: value
+                    for key, value in dict(node.capabilities[normalized].metadata or {}).items()
+                    if key in benchmark_keys
+                }
+                for node in candidates
+            },
             "candidate_count": len(candidates),
-            "execution": "not_authorized",
-            "policy": "routing selects a capable node only; execution requires a separate authorized device task channel",
+            "execution": (
+                "authorized"
+                if execution_authorized
+                else (
+                    "permission_required"
+                    if permission_known
+                    else ("not_authorized" if selected is not None else "unavailable")
+                )
+            ),
+            "execution_authorized": execution_authorized,
+            "execution_permission_known": permission_known,
+            "policy": (
+                "routing selects a capable node; device-local execution remains "
+                "separately permission-gated"
+            ),
         }
 
     def snapshot(self) -> dict[str, Any]:
@@ -236,10 +324,6 @@ class NodeRegistry:
     def with_local_runtime(cls, environment: Any) -> "NodeRegistry":
         registry = cls()
         snapshot = dict(environment.snapshot() or {})
-
-        # The authoritative Mary Core owns state and orchestration; it is not a
-        # replaceable capability node. Windows/macOS/Linux workers register
-        # separately through Mary Protocol.
         if str(snapshot.get("runtime_role") or "").strip().lower() == "core":
             return registry
 

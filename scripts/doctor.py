@@ -103,6 +103,17 @@ def main() -> int:
         "GEMINI_API_KEY",
         "OPENROUTER_API_KEY",
         "OPENAI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "ZAI_API_KEY",
+        "QWEN_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "MOONSHOT_API_KEY",
+        "KIMI_API_KEY",
+        "MINIMAX_API_KEY",
+        "CEREBRAS_API_KEY",
+        "TOGETHER_API_KEY",
+        "FIREWORKS_API_KEY",
+        "MARY_OPENAI_COMPAT_API_KEY",
     ):
         print(f"      {name}: {_present_env(name)}")
     print(f"      Ollama enabled: {os.getenv('MARY_OLLAMA_ENABLED', 'default/auto')}")

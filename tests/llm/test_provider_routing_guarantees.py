@@ -166,6 +166,30 @@ def test_private_routes_are_ollama_only(route):
     ]
 
 
+def test_private_session_override_preserves_fast_generation_purpose(monkeypatch):
+    router, providers = _free_first_router()
+    observed: list[tuple[str, str | None]] = []
+    original = router._get_provider_for_purpose
+
+    def capture(name: str, purpose: str | None):
+        observed.append((name, purpose))
+        return original(name, purpose)
+
+    monkeypatch.setattr(router, "_get_provider_for_purpose", capture)
+    router.set_session_override(route="private")
+
+    response = router.generate(
+        _message(),
+        purpose="conversation_fast",
+    )
+
+    assert response.provider == "ollama"
+    assert providers["ollama"].calls == 1
+    assert ("ollama", "conversation_fast") in observed
+    assert router.last_generation_route["route"] == "private"
+    assert router.last_generation_route["route_purpose"] == "conversation_fast"
+
+
 def test_paid_openai_never_silently_enters_free_first():
     router, providers = _free_first_router()
     router.config.llm.provider = "openai"

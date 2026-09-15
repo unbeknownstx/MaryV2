@@ -14,10 +14,12 @@ from __future__ import annotations
 
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import os
 from pathlib import Path
+import sys
 from threading import Thread
 from typing import Final
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 
 _VOICE_PREFIX: Final[str] = "/__mary_voice__/"
@@ -29,13 +31,9 @@ class _MaryStaticHandler(SimpleHTTPRequestHandler):
     server_version = "MaryDesktopStatic/1.0"
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002
-        # Keep normal Mary startup quiet. WebEngine/JS diagnostics remain
-        # available through MaryWebEnginePage and DevTools when requested.
         return
 
     def end_headers(self) -> None:
-        # Desktop builds are local development artifacts. Avoid stale Vite
-        # chunks after a rebuild while keeping all traffic on loopback.
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
@@ -60,9 +58,7 @@ class DesktopStaticServer:
 
     def __init__(self, root: str | Path, *, voice_root: str | Path | None = None) -> None:
         self.root = Path(root).expanduser().resolve()
-        self.voice_root = (
-            Path(voice_root).expanduser().resolve() if voice_root is not None else None
-        )
+        self.voice_root = Path(voice_root).expanduser().resolve() if voice_root is not None else None
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: Thread | None = None
 
@@ -83,11 +79,7 @@ class DesktopStaticServer:
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         httpd.daemon_threads = True
         setattr(httpd, "mary_voice_root", self.voice_root)
-        thread = Thread(
-            target=httpd.serve_forever,
-            name="MaryDesktopStaticServer",
-            daemon=True,
-        )
+        thread = Thread(target=httpd.serve_forever, name="MaryDesktopStaticServer", daemon=True)
         self._httpd = httpd
         self._thread = thread
         thread.start()
@@ -95,7 +87,16 @@ class DesktopStaticServer:
 
     def url_for(self, relative_path: str = "index.html") -> str:
         clean = str(relative_path or "index.html").replace("\\", "/").lstrip("/")
-        return f"{self.base_url}/{quote(clean, safe='/')}"
+        url = f"{self.base_url}/{quote(clean, safe='/')}"
+        # On macOS, presentation must not block the rest of Mary. The Vite
+        # safe-renderer transform honors this query by skipping WebGL/Metal and
+        # keeping the full companion UI alive on portrait art. Creator opt-in
+        # to the live renderer remains explicit.
+        if sys.platform == "darwin" and Path(clean).name == "index.html":
+            requested = os.getenv("MARY_DESKTOP_MAC_RENDERER", "portrait").strip().lower()
+            mode = "webgl" if requested == "webgl" else "portrait"
+            url = f"{url}?{urlencode({'mary_renderer': mode})}"
+        return url
 
     def voice_url(self, path: str | Path) -> str:
         candidate = Path(path).expanduser().resolve()

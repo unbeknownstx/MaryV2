@@ -34,6 +34,8 @@ from mary.llm.interface import (
     generation_correlation_id,
 )
 from mary.llm.output_quality import inspect_output_quality
+from mary.llm.model_fabric import build_model_execution_fabric
+from mary.llm.providers.device_local import DeviceLocalProvider
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
 from mary.llm.providers.device_llama_cpp import DeviceLlamaCppProvider
 from mary.protocol.models import (
@@ -58,6 +60,15 @@ from mary.runtime.backup import (
     durable_fingerprint,
     durable_public_report,
     inspect_backup,
+    validate_json_state_payload,
+)
+from mary.runtime.continuity_recovery import (
+    RECOVERY_FORMAT,
+    apply_recovery_payload,
+    build_recovery_plan,
+    capture_continuity_state,
+    normalize_recovery_payload,
+    restore_continuity_state,
 )
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
 from mary.runtime.session_handshake import build_connected_session_handshake
@@ -182,11 +193,33 @@ class MaryCoreService:
             broker_kwargs["execution_policy"] = self.enforce_execution_policy
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
         self._install_execution_policy()
+        self._device_local_provider: DeviceLocalProvider | None = None
         self._device_ollama_provider: DeviceOllamaProvider | None = None
         self._device_llama_cpp_provider: DeviceLlamaCppProvider | None = None
+        self._attach_device_local_provider()
         self._attach_device_ollama_provider()
         self._attach_device_llama_cpp_provider()
         self._sync_creator_lifecycle()
+
+    def _attach_device_local_provider(self) -> None:
+        """Expose one replaceable host-local runtime through provider local_device.
+
+        The Core owns routing and Mary state. The connected device owns the
+        runtime choice, concrete model, and local permission. Until a node
+        advertises llm.local this provider simply reports unavailable, allowing
+        the normal free-cloud fallback order to continue.
+        """
+
+        router = getattr(self.mary, "llm", None)
+        registry = getattr(self.mary, "node_registry", None)
+        register = getattr(router, "register_provider", None)
+        if registry is None or not callable(register):
+            return
+        self._device_local_provider = DeviceLocalProvider(
+            registry,
+            self.device_tasks,
+        )
+        register("local_device", self._device_local_provider)
 
     def _attach_device_ollama_provider(self) -> None:
         """Let remote Core treat a connected Ollama node as provider ``ollama``.
@@ -235,9 +268,33 @@ class MaryCoreService:
             trace.set_turn_id(turn.turn_id)
             trace.set_conversation_id(turn.conversation_id)
         with observe_turn_stage("lifecycle_gate"):
-            if not self.execution_allowed():
+            lifecycle = self.creator_lifecycle_status()
+            if lifecycle.get("state") == "SLEEPING" and not lifecycle.get("offline"):
+                # A creator-authenticated turn may wake only an already known
+                # creator surface. Explicit OFFLINE remains a stronger hard gate.
+                candidates = [
+                    str(turn.device_id or "").strip(),
+                    str(turn.surface or "").strip(),
+                ]
+                active_surface_ids = [
+                    str(item.get("surface_id") or "")
+                    for item in list(lifecycle.get("surfaces") or [])
+                    if str(item.get("surface_id") or "")
+                ]
+                if len(active_surface_ids) == 1:
+                    candidates.append(active_surface_ids[0])
+                for surface_id in candidates:
+                    if not surface_id:
+                        continue
+                    try:
+                        self.creator_surfaces.wake(surface_id)
+                        lifecycle = self.creator_lifecycle_status()
+                        break
+                    except (KeyError, RuntimeError):
+                        continue
+            if lifecycle.get("state") not in {"ACTIVE", "IDLE"}:
                 raise RuntimeError(
-                    "Mary Core is sleeping or offline; wake a creator surface first."
+                    "Mary Core is sleeping or offline; an active authenticated creator surface is required."
                 )
 
         with observe_turn_stage(
@@ -297,6 +354,7 @@ class MaryCoreService:
                         "device_id": turn.device_id,
                         "requested_mode": turn.requested_mode,
                         "voice_input": bool(turn.voice_input),
+                        "client_local_time": turn.client_local_time,
                 }
                 application_run = self.application.run
                 manager = getattr(self.mary, "performance_context", None)
@@ -473,6 +531,161 @@ class MaryCoreService:
                 2,
             ),
         }
+
+    @staticmethod
+    def _validate_continuity_recovery_payload(
+        payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Validate imported continuity without returning or logging its prose."""
+
+        normalized = normalize_recovery_payload(payload)
+        for name in ("memory", "relationship"):
+            encoded = (
+                json.dumps(
+                    normalized[name],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                )
+                + "\n"
+            ).encode("utf-8")
+            # Reuse canonical durable-state validation, including recursive
+            # credential-like key rejection. Recovery is continuity only.
+            validate_json_state_payload(encoded)
+        return normalized
+
+    def preview_continuity_recovery(
+        self,
+        payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Return a content-free merge plan for older creator-owned continuity."""
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        normalized = self._validate_continuity_recovery_payload(payload)
+        paths = getattr(getattr(self.mary, "config", None), "paths", None)
+        data_root = getattr(paths, "data", None)
+        if data_root is None:
+            raise RuntimeError("Canonical Mary data root is unavailable.")
+        sourcebook = getattr(self.mary, "character_sourcebook", None)
+
+        with self._turn_lock:
+            fingerprint = durable_fingerprint(
+                Path(data_root),
+                sourcebook=sourcebook,
+            )
+            plan = build_recovery_plan(self.mary, normalized)
+
+        return _json_safe({
+            "ok": True,
+            "format": RECOVERY_FORMAT,
+            "plan": plan,
+            "expected_durable_state_fingerprint": fingerprint[
+                "durable_state_fingerprint"
+            ],
+            "core_instance_id": self.instance_id,
+            "backup_ready": bool(str(os.getenv("MARY_BACKUP_DIR", "") or "").strip()),
+            "apply_confirmation": "MERGE_LOCAL_CONTINUITY",
+            "mutated": False,
+        })
+
+    def apply_continuity_recovery(
+        self,
+        payload: dict[str, Any] | None,
+        *,
+        expected_fingerprint: str,
+        confirmation: str,
+    ) -> dict[str, Any]:
+        """Merge reviewed local continuity after backup and optimistic locking."""
+
+        if self._closed:
+            raise RuntimeError("Mary Core is closed.")
+        if str(confirmation or "") != "MERGE_LOCAL_CONTINUITY":
+            raise PermissionError(
+                "Continuity recovery requires the exact creator confirmation."
+            )
+        expected = str(expected_fingerprint or "").strip()
+        if len(expected) != 64:
+            raise ValueError("expected durable-state fingerprint is invalid")
+
+        normalized = self._validate_continuity_recovery_payload(payload)
+        paths = getattr(getattr(self.mary, "config", None), "paths", None)
+        data_root = getattr(paths, "data", None)
+        if data_root is None:
+            raise RuntimeError("Canonical Mary data root is unavailable.")
+        if getattr(self.mary.memory, "storage_path", None) is None:
+            raise RuntimeError("Canonical memory persistence is unavailable.")
+        if getattr(self.mary.relationship, "path", None) is None:
+            raise RuntimeError("Canonical relationship persistence is unavailable.")
+        sourcebook = getattr(self.mary, "character_sourcebook", None)
+
+        with self._turn_lock:
+            current = durable_fingerprint(
+                Path(data_root),
+                sourcebook=sourcebook,
+            )
+            if current["durable_state_fingerprint"] != expected:
+                raise RuntimeError(
+                    "Canonical durable state changed after preview; run preview again."
+                )
+
+            # Refuse to mutate unless the normal protected canonical backup
+            # policy succeeds first.
+            backup = self.create_durable_backup()
+            snapshot = capture_continuity_state(self.mary)
+
+            try:
+                result = apply_recovery_payload(self.mary, normalized)
+                memory_saved = bool(self.mary.memory.save())
+                if not memory_saved:
+                    raise RuntimeError(
+                        "Canonical memory refused the recovery write."
+                    )
+                self.mary.relationship.save()
+            except Exception:
+                # Roll back live objects and rewrite the pre-merge state. The
+                # protected backup remains available even if rollback itself
+                # encounters an infrastructure failure.
+                restore_continuity_state(self.mary, snapshot)
+                try:
+                    self.mary.memory.save()
+                finally:
+                    self.mary.relationship.save()
+                raise
+
+            post = durable_fingerprint(
+                Path(data_root),
+                sourcebook=sourcebook,
+            )
+            residual = build_recovery_plan(self.mary, normalized)
+            if int(residual.get("total_additions", 0) or 0) != 0:
+                raise RuntimeError(
+                    "Continuity recovery persisted but post-merge verification "
+                    "still reports unapplied additions."
+                )
+            return _json_safe({
+                "ok": True,
+                "format": RECOVERY_FORMAT,
+                "mutated": True,
+                "merge": result,
+                "post_merge_verification": {
+                    "total_additions": 0,
+                    "total_duplicates": int(
+                        residual.get("total_duplicates", 0) or 0
+                    ),
+                    "total_id_collisions": int(
+                        residual.get("total_id_collisions", 0) or 0
+                    ),
+                    "conflicts": dict(residual.get("conflicts", {}) or {}),
+                },
+                "backup": backup,
+                "before_durable_state_fingerprint": expected,
+                "after_durable_state_fingerprint": post[
+                    "durable_state_fingerprint"
+                ],
+                "core_instance_id": self.instance_id,
+            })
 
     def execution_allowed(self, *_args: Any, **_kwargs: Any) -> bool:
         """Policy callback for optional execution owners; identity stays in Core."""
@@ -665,6 +878,11 @@ class MaryCoreService:
                 if callable(getattr(getattr(self.mary, "performance_context", None), "status", None))
                 else {"mode": "private", "enabled": False}
             ),
+            "performance_hardening": (
+                self.mary.performance_hardening.snapshot()
+                if callable(getattr(getattr(self.mary, "performance_hardening", None), "snapshot", None))
+                else {"enabled": False}
+            ),
             "character": {
                 "sourcebook": (
                     self.mary.character_sourcebook.snapshot()
@@ -683,6 +901,11 @@ class MaryCoreService:
                 else {}
             ),
             "training": self.mary.training_feedback.status() if hasattr(self.mary, "training_feedback") else {},
+            "experiential_continuity": (
+                self.mary.experiential_continuity.status()
+                if callable(getattr(getattr(self.mary, "experiential_continuity", None), "status", None))
+                else {"enabled": False}
+            ),
             "creative_services": (
                 self.mary.creative_services.snapshot()
                 if callable(getattr(getattr(self.mary, "creative_services", None), "snapshot", None))
@@ -723,16 +946,54 @@ class MaryCoreService:
         registry = getattr(self.mary, "node_registry", None)
         nodes = registry.snapshot() if callable(getattr(registry, "snapshot", None)) else {}
         tasks = self.device_tasks.snapshot()
+        local_route = {}
         ollama_route = {}
+        llama_cpp_route = {}
         if registry is not None:
             preview = getattr(registry, "route_preview", None)
             if callable(preview):
-                ollama_route = preview("llm.ollama")
+                def _safe_preview(capability: str) -> dict[str, Any]:
+                    try:
+                        return dict(preview(capability) or {})
+                    except Exception:
+                        # Capability-route diagnostics are advisory. Older
+                        # registries/test doubles may know only llm.ollama;
+                        # a missing newer route must never break Core state.
+                        return {}
+
+                local_route = _safe_preview("llm.local")
+                ollama_route = _safe_preview("llm.ollama")
+                llama_cpp_route = _safe_preview("llm.llama_cpp")
+        capability_routes = {
+            "llm.local": local_route,
+            "llm.ollama": ollama_route,
+            "llm.llama_cpp": llama_cpp_route,
+        }
+        try:
+            model_execution = build_model_execution_fabric(
+                router,
+                capability_routes=capability_routes,
+            )
+        except Exception as exc:
+            # Model-execution suitability is advisory observability only. It
+            # must never make canonical Core state unavailable.
+            model_execution = {
+                "version": "13.35",
+                "status": "degraded",
+                "error_type": type(exc).__name__,
+                "authority": "planning_and_observability_only",
+                "policy": (
+                    "Advisory model-fabric diagnostics failed; canonical Core "
+                    "state, routing, memory, relationship, and node authority "
+                    "remain available."
+                ),
+            }
         return _json_safe({
             "routing": routing,
             "nodes": nodes,
             "tasks": tasks,
-            "capability_routes": {"llm.ollama": ollama_route},
+            "capability_routes": capability_routes,
+            "model_execution": model_execution,
             "private_route_ready": bool(ollama_route.get("available")),
             "authority": "mary_core",
             "policy": (
@@ -769,7 +1030,9 @@ class MaryCoreService:
         payload["retrieval"] = state.get("retrieval", {})
         payload["perception"] = state.get("perception", {})
         payload["performance_context"] = state.get("performance_context", {})
+        payload["performance_hardening"] = state.get("performance_hardening", {})
         payload["training"] = state.get("training", {})
+        payload["experiential_continuity"] = state.get("experiential_continuity", {})
         payload["production"] = state.get("production", {})
         payload["integration"] = state.get("integration", {})
         payload["mary_lifecycle"] = state.get("mary_lifecycle", {})
@@ -1681,6 +1944,9 @@ class MaryCoreService:
                     )
                 )
 
+            if action.action == "realtime.brain_activity.status":
+                return _json_safe(self.mary.realtime.brain_activity.snapshot())
+
             if action.action == "presence.scene.status":
                 return _json_safe(self.application.ecosystem.presence.scene.snapshot())
 
@@ -1716,6 +1982,29 @@ class MaryCoreService:
                     "ok": True,
                     "published": published,
                     "scene": self.application.ecosystem.presence.scene.snapshot(),
+                    "authority": "environment_context_only",
+                })
+
+            if action.action == "perception.browser.observe":
+                from mary.perception import BrowserContext
+                raw_metadata = values.get("metadata")
+                metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+                context = BrowserContext(
+                    page_title=str(values.get("page_title") or "")[:240],
+                    url=str(values.get("url") or "")[:2000],
+                    visible_text_summary=str(values.get("visible_text_summary") or "")[:700],
+                    video_subtitle_segment=str(values.get("video_subtitle_segment") or "")[:500],
+                    media_state=str(values.get("media_state") or "")[:120],
+                    source=f"browser:{action.device_id}",
+                    metadata=metadata,
+                )
+                observation = self.mary.browser_context_sensor.ingest(
+                    context,
+                    importance=max(0.0, min(1.0, float(values.get("importance", .45)))),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "observation": observation.to_dict(),
                     "authority": "environment_context_only",
                 })
 
@@ -1828,6 +2117,13 @@ class MaryCoreService:
             if action.action == "mind.maintenance":
                 return _json_safe(self.mary.mind.maintenance())
 
+            if action.action == "continuity.status":
+                return _json_safe(self.mary.experiential_continuity.status())
+
+            if action.action == "continuity.maintenance":
+                self.enforce_execution_policy("continuity.maintenance")
+                return _json_safe(self.mary.experiential_continuity.maintenance())
+
             if action.action == "llm.probe":
                 return _json_safe(self._probe_llm_provider(values))
 
@@ -1838,6 +2134,31 @@ class MaryCoreService:
                         focus_active=bool(values.get("focus_active", False))
                     )
                 )
+
+            if action.action == "runtime.performance.status":
+                return _json_safe(self.mary.performance_profiles.status())
+
+            if action.action == "runtime.performance.set":
+                self.mary.performance_profiles.set(
+                    str(values.get("profile") or values.get("name") or "balanced")
+                )
+                return _json_safe(self.mary.performance_profiles.status())
+
+            if action.action == "game.action.preview":
+                from mary.game_control import GameAction
+                raw_constraints = values.get("constraints")
+                constraints = dict(raw_constraints) if isinstance(raw_constraints, dict) else {}
+                action_model = GameAction(
+                    verb=str(values.get("verb") or ""),
+                    target=str(values.get("target") or ""),
+                    game_id=str(values.get("game_id") or ""),
+                    urgency=float(values.get("urgency", .5)),
+                    constraints=constraints,
+                )
+                return _json_safe(self.mary.game_action_router.route(action_model))
+
+            if action.action == "capability.invocations.status":
+                return _json_safe(self.mary.capability_invocations.status())
 
             if action.action == "performance.context.status":
                 return _json_safe(
@@ -2146,7 +2467,7 @@ class MaryCoreService:
                     max_tokens=max_tokens,
                 )
         except Exception as exc:
-            return {
+            payload = {
                 "ok": False,
                 "status": "generation_error",
                 "provider": provider_name,
@@ -2157,6 +2478,9 @@ class MaryCoreService:
                 "availability_ms": round(availability_ms, 2),
                 "generation_ms": round((monotonic() - generation_started) * 1000.0, 2),
             }
+            if provider_name in {"ollama", "llama_cpp"}:
+                payload["error_detail"] = " ".join(str(exc or "").split())[:240]
+            return payload
 
         generation_ms = (monotonic() - generation_started) * 1000.0
         content = str(response.content or "").strip()
@@ -2250,6 +2574,27 @@ class MaryCoreService:
                 ),
             },
             "self_grounded": bool(metadata.get("self_grounded", False)),
+            "deliberation": {
+                key: value
+                for key, value in dict(
+                    metadata.get("deliberation_execution", {}) or {}
+                ).items()
+                if key in {
+                    "requested_strategy",
+                    "executed_strategy",
+                    "strategy",
+                    "passes",
+                    "branches",
+                    "verifier_calls",
+                    "verifier_score",
+                    "degraded",
+                    "failure_kind",
+                    "latency_ms",
+                    "authority",
+                    "private_reasoning_retained",
+                    "production_policy",
+                }
+            },
             "usage": usage,
         })
 

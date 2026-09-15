@@ -177,3 +177,31 @@ The 12.7 launcher can check, download, hash-verify, and **stage** a newer packag
 ## Failure isolation
 
 Text conversation remains authoritative. Voice, avatar presentation, microphone input, a creative integration, the launcher update server, or an individual LLM provider may fail without being allowed to swallow Mary's text response or corrupt persistent state.
+
+
+## 13.66 Desktop product shell
+
+The current Desktop presentation is defined by `src/product-shell-13-66.css`
+on top of the long-lived functional shell. It intentionally uses opaque or
+near-opaque reading surfaces, grouped navigation, a split Talk/character stage,
+and a human-facing Core / Compute / Voice / Presence projection. Runtime keeps
+the deeper model/node diagnostics.
+
+The presentation layer does not own Mary state or provider authority.
+
+
+## 13.67 Desktop product polish
+
+13.67 keeps the 13.66 architecture and adds the final product-polish layer at
+`public/product-shell-13-67.css`. The layer is injected after the historical
+public presentation CSS so old game-HUD pseudo-elements, scan effects, custom
+cursors and generic glow/lift rules cannot leak back into the current shell.
+
+The current presentation contract is documented at
+`docs/design/DESKTOP_PRODUCT_SHELL_13_67.md`.
+
+The pass also makes avatar fallback deterministic, unifies every workspace
+under one opaque panel grammar, preserves Talk + Mary before secondary context
+on compact Desktop hosts, and updates the launcher to the same product
+language. The underlying Core, VRM runtime, voice path, workspaces, model
+fabric and capability boundaries are unchanged.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from time import monotonic
 from typing import Any
 
@@ -31,6 +32,7 @@ from mary.desktop.turn_trace import build_turn_trace
 from mary.presence import PresenceEventType
 from mary.presence.websocket_server import LocalPresenceWebSocket
 from mary.conversation import ConversationLane, classify_conversation_lane
+from mary.distributed.permissions import DeviceExecutionPermissions
 from mary.desktop.conversation_runtime import (
     DesktopConversationRuntime,
     DesktopConversationState,
@@ -112,6 +114,7 @@ class _ConversationWorker(QObject):
                         "desktop",
                     ),
                     "voice_input": bool(self.voice_input),
+                    "client_local_time": datetime.now().astimezone().isoformat(timespec="seconds"),
                 },
             )
             pipeline_ms = (monotonic() - pipeline_started) * 1000.0
@@ -527,6 +530,8 @@ class MaryDesktopBridge(QObject):
         self._pending_turn_submitted_at: float | None = None
         self._active_feedback_user_text: str = ""
         self._last_feedback_context: dict[str, Any] = {}
+        self._node_agent: Any | None = None
+        self._device_permissions = DeviceExecutionPermissions()
 
         self.microphone.stateChanged.connect(
             self._on_microphone_state_changed
@@ -966,6 +971,71 @@ class MaryDesktopBridge(QObject):
                 "nodes": mary.node_registry.snapshot(),
             }
         )
+
+    def attach_node_agent(self, agent: Any | None) -> None:
+        """Attach the bounded local capability host owned by the Desktop window."""
+        self._node_agent = agent
+        if agent is not None:
+            permissions = getattr(agent, "permissions", None)
+            if permissions is not None:
+                self._device_permissions = permissions
+
+    @Slot(result=str)
+    def getLocalComputePermission(self) -> str:  # noqa: N802 - JS-facing API
+        allowed = self._device_permissions.is_allowed("llm.local")
+        agent = self._node_agent
+        status = {}
+        if agent is not None:
+            try:
+                status = dict(agent.status() or {})
+            except Exception:
+                status = {}
+        return _json({
+            "ok": True,
+            "capability": "llm.local",
+            "enabled": bool(allowed),
+            "registered": bool(status.get("registered", False)),
+            "default": "deny",
+            "authority": "device_local_permission",
+        })
+
+    @Slot(bool, result=str)
+    def setLocalComputePermission(self, enabled: bool) -> str:  # noqa: N802
+        """Explicit creator control for this host's bounded local LLM executor."""
+
+        try:
+            if bool(enabled):
+                status = self._device_permissions.allow("llm.local")
+            else:
+                status = self._device_permissions.deny("llm.local")
+
+            agent = self._node_agent
+            registration = {}
+            if agent is not None:
+                try:
+                    registration = dict(agent.refresh_registration() or {})
+                except Exception as exc:
+                    registration = {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+
+            self._emit_dashboard_state()
+            return _json({
+                "ok": True,
+                "capability": "llm.local",
+                "enabled": self._device_permissions.is_allowed("llm.local"),
+                "registration": registration,
+                "allowed_capabilities": list(status.get("allowed_capabilities", []) or []),
+                "authority": "device_local_permission",
+            })
+        except Exception as exc:
+            return _json({
+                "ok": False,
+                "capability": "llm.local",
+                "enabled": self._device_permissions.is_allowed("llm.local"),
+                "error": f"{type(exc).__name__}: {exc}",
+            })
 
     @Slot(result=str)
     def getAvatarState(
@@ -2108,16 +2178,37 @@ class MaryDesktopBridge(QObject):
     ) -> None:  # noqa: N802
         self.windowMoveRequested.emit()
 
+    def _emit_dashboard_state(
+        self,
+    ) -> None:
+        """Refresh presentation state without making it turn authority."""
+        try:
+            payload = self.getDashboardState()
+        except Exception as exc:
+            print(
+                "[MaryDesktop] dashboard projection unavailable: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return
+        self.dashboardStateChanged.emit(payload)
+
     def _emit_character_state(
         self,
     ) -> None:
-        self.characterStateChanged.emit(
-            self.getCharacterState()
-        )
+        """Best-effort UI projection; never abort a canonical conversation turn."""
+        try:
+            payload = self.getCharacterState()
+        except Exception as exc:
+            print(
+                "[MaryDesktop] character projection unavailable: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+        else:
+            self.characterStateChanged.emit(payload)
 
-        self.dashboardStateChanged.emit(
-            self.getDashboardState()
-        )
+        self._emit_dashboard_state()
 
     @Slot()
     def save(
@@ -2505,9 +2596,7 @@ class MaryDesktopBridge(QObject):
         self._pending_turn_trace = None
         self._pending_turn_submitted_at = None
 
-        self.dashboardStateChanged.emit(
-            self.getDashboardState()
-        )
+        self._emit_dashboard_state()
 
     @Slot(object)
     def _on_presence_finished(self, payload: object) -> None:
