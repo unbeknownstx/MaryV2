@@ -190,16 +190,17 @@ def ensure_desktop_frontend(root: Path, *, page: str = "index.html") -> Path:
 
     desktop = root / "desktop"
     built_page = desktop / "dist" / page
+    needs_build = frontend_needs_build(root, page=page)
 
     # Seed a newly recovered/downloaded personal avatar even when the generated
-    # frontend itself is already current. Previously this only happened inside
-    # a Vite rebuild, so a valid VRM downloaded after the last build still
-    # produced a 404 until some unrelated source file changed.
+    # frontend itself is already current. Capture source freshness first so the
+    # act of copying a gitignored VRM into public/models does not manufacture a
+    # frontend rebuild requirement by changing that file's mtime.
     configured_avatar = _configured_vrm_path(root)
     if configured_avatar is not None:
         _restore_local_avatar_assets(root, [configured_avatar])
 
-    if not frontend_needs_build(root, page=page):
+    if not needs_build:
         return built_page
 
     npm = shutil.which("npm.cmd") or shutil.which("npm")
