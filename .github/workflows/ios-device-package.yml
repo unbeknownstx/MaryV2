@@ -1,0 +1,60 @@
+name: MaryV2 iPhone device package
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-ipa:
+    name: Build unsigned iPhone IPA
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate native iPhone project
+        working-directory: ios/MaryV2iOS
+        run: xcodegen generate
+
+      - name: Build device target without signing
+        working-directory: ios/MaryV2iOS
+        run: |
+          set -euo pipefail
+          rm -rf build Payload MaryV2iOS-unsigned.ipa
+          xcodebuild \
+            -project MaryV2iOS.xcodeproj \
+            -scheme MaryV2iOS \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+          APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name '*.app' | head -n 1)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload MaryV2iOS-unsigned.ipa
+
+          test -s MaryV2iOS-unsigned.ipa
+          file MaryV2iOS-unsigned.ipa
+
+      - name: Upload unsigned device IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: MaryV2iOS-unsigned-device
+          path: ios/MaryV2iOS/MaryV2iOS-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
