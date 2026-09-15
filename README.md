@@ -25,6 +25,7 @@ See:
 - `MARY_ROOT.md` — canonical authority rules
 - `docs/README.md` — documentation map
 - `docs/architecture/SYSTEM_REGISTRY.md` — current system registry
+- `docs/design/DESKTOP_PRODUCT_SHELL_13_66.md` — current cohesive Desktop UI hierarchy, opacity and backend-state projection contract
 - `docs/architecture/DESKTOP_STABLE_CONVERSATION_13_65.md` — one-click Desktop/local conversation runtime and authority boundary
 - `docs/architecture/FREELLMAPI_INTEGRATION_13_64.md` — unified provider/model execution fabric and 13.60–13.64 boundary
 - `docs/architecture/MODEL_EXECUTION_FABRIC_13_35.md` — task-aware model/node feasibility and promotion policy
@@ -63,6 +64,7 @@ Key boundaries:
 MaryV2 currently includes:
 
 - canonical remote Core plus explicit standalone development mode;
+- a 13.66 Desktop product shell with grouped navigation, readable opaque Talk/work surfaces, character presence, human-facing Core/Compute/Voice/Presence state, and a dedicated Runtime fabric view;
 - Desktop, mobile/PWA, native iPhone and terminal clients;
 - a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - a bounded Twitch/OBS live-cohost host with Core-owned chat attention, creator-floor protection, Mary voice/captions and optional typed replies;
