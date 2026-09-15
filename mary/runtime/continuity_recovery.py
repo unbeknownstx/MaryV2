@@ -334,11 +334,6 @@ def build_recovery_plan(mary: Any, payload: dict[str, Any]) -> dict[str, Any]:
             current_history,
             _history_signature,
         ),
-        "creator_profile_records": (
-            source_profile,
-            current_profile,
-            _profile_signature,
-        ),
         "relationship_milestones": (
             relationship["milestones"],
             current_milestones,
@@ -374,11 +369,31 @@ def build_recovery_plan(mary: Any, payload: dict[str, Any]) -> dict[str, Any]:
         duplicates[name] = dup
         id_collisions[name] = collision
 
+    # Profile reconciliation has stronger semantics than a generic list diff:
+    # current Core wins scalar conflicts and legacy facade values may duplicate
+    # source-aware profile records. Simulate the actual merge against a cloned
+    # UserModel so preview counts exactly match apply behavior.
+    profile_clone = UserModel.from_dict(
+        mary.relationship.user_model.to_dict()
+    )
+    profile_added, profile_conflicts = _merge_profiles(
+        relationship["user_model"],
+        profile_clone,
+    )
+    raw_profile_add, raw_profile_dup, raw_profile_collision = _collection_diff(
+        source_profile,
+        current_profile,
+        signature=_profile_signature,
+    )
+    additions["creator_profile_records"] = profile_added
+    duplicates["creator_profile_records"] = max(
+        raw_profile_dup,
+        max(0, len(source_profile) - profile_added - raw_profile_collision),
+    )
+    id_collisions["creator_profile_records"] = raw_profile_collision
+
     conflicts = {
-        "creator_profile_scalar_conflicts": _profile_conflicts(
-            source_profile,
-            current_profile,
-        ),
+        "creator_profile_scalar_conflicts": profile_conflicts,
     }
     return {
         "format": RECOVERY_FORMAT,
