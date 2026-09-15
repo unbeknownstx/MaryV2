@@ -27,7 +27,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.35 model execution fabric](MODEL_EXECUTION_FABRIC_13_35.md),
 [13.36 MaryOS Linux substrate](MARYOS_LINUX_SUBSTRATE_13_36.md), and
 [13.60–13.64 unified provider/model execution fabric](FREELLMAPI_INTEGRATION_13_64.md), and
-[13.65 stable Desktop conversation runtime](DESKTOP_STABLE_CONVERSATION_13_65.md).
+[13.65 stable Desktop conversation runtime](DESKTOP_STABLE_CONVERSATION_13_65.md), and
+[13.66 Desktop product shell](../design/DESKTOP_PRODUCT_SHELL_13_66.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -97,7 +98,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Duplex interaction policy | `mary.realtime.duplex_policy` | ACTIVE POLICY 13.32 | Transport-neutral backchannel/barge-in/retrieval-overlap policy; existing realtime lifecycle remains authoritative. |
 | Research runtime catalog | `mary.distributed.research_runtime_catalog`, `scripts.check_research_convergence` | ACTIVE DISCOVERY 13.32 | Optional Coconut/recurrent/latent-verifier, vLLM/SGLang, ExecuTorch/MLC, exo, Pipecat/LiveKit, A2A, AReaL/verl and OpenTelemetry candidates; discovery is not permission or promotion. |
 | Experience projector | `mary.experience.projector` | ACTIVE PRESENTATION 13.8 | Whitelisted `/api/experience` projection surfaces explicit close/romantic/partner mode from Core while keeping provider/secrets/non-authoritative fields out. |
-| Visual/product design contract | `docs/design/MARY_VISUAL_SYSTEM.md` | ACTIVE CONTRACT 13.7 | Shared semantic color/motion/degraded-state language for surfaces; presentation only. |
+| Visual/product design contract | `docs/design/MARY_VISUAL_SYSTEM.md`, `docs/design/DESKTOP_PRODUCT_SHELL_13_66.md` | ACTIVE CONTRACT 13.7/13.66 | Shared semantic color/motion/degraded-state language plus current Desktop hierarchy/opacity/product-shell rules; presentation only. |
 | Relational UI contract | `docs/architecture/RELATIONAL_PRESENCE_UI_13_8.md`, `desktop/public/relational-13-8.css` | ACTIVE CONTRACT 13.8 | Shared-life cards/actions, privacy projection and anti-attention-trap styling; normal product surfaces remain creator-facing rather than backend dashboards. |
 | Native iPhone product contract | `docs/design/NATIVE_IPHONE_PRODUCT_13_9.md` | ACTIVE CONTRACT 13.9 | Home/Talk/Together/Work/More prioritize companion presence and shared context; approved bundled Mary art + SF Symbols; no copied competitor assets or mobile-owned relationship authority. |
 | Windows legacy node entrypoint | `scripts.run_windows_node`, `scripts/launch_windows_node.ps1` | COMPATIBILITY | Delegates to the canonical `scripts.run_home_node`; must not register a separate `windows_node` session. |
