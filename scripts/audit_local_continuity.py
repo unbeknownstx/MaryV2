@@ -21,6 +21,7 @@ def main() -> int:
     if candidates:
         print(f"\nRecoverable local continuity candidates: {len(candidates)}")
         print("No state was changed. Review before any explicit recovery/import.")
+        print("Next safe step: python -m scripts.recover_local_continuity")
     else:
         print("\nNo recoverable local continuity was found in the bounded conventional roots.")
     return 0
