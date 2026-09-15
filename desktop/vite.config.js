@@ -57,6 +57,19 @@ function marySafeRendererPlugin() {
         `bootStep(28, 'Loading character renderer…');\nconst rendererReady = initializeRenderer();\nsyncAvatarPresentation();\nif (rendererReady) {\n  loadMaryVrm();\n} else {\n  bootStep(36, 'Avatar renderer unavailable · using portrait mode…');\n}`,
         'renderer startup'
       );
+
+      // Historical UI copy must not claim a fixed provider/model after routing
+      // became dynamic and local-first. Runtime/Diagnostics already renders the
+      // actual winning provider, model, backing model and route from live state.
+      next = next
+        .replace(
+          'Fast chat model</span><strong>Groq · llama-3.1-8b-instant',
+          'Conversation route</span><strong>Automatic · see live Runtime route'
+        )
+        .replace(
+          '12.12.2 keeps ordinary delivery restrained.',
+          'Current delivery stays restrained and follows the live performance context.'
+        );
       return { code: next, map: null };
     },
     transformIndexHtml(html) {
