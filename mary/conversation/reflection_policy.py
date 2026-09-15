@@ -85,6 +85,11 @@ def local_conversation_repair(text: str, *, micro: bool = False) -> str:
     # audit flags stacked/forced register, remove the flavor tokens rather than
     # spending another model call merely to rewrite the same semantic answer.
     value = re.sub(
+        r"(?i),\s*(?:bucko|nah fam|feller|what up gang|twinnn)[.!?]\s*",
+        ". ",
+        value,
+    )
+    value = re.sub(
         r"(?i)(?:^|(?<=[\s,;—-]))(?:bucko|nah fam|feller|what up gang|twinnn)(?:[,.!?])?\s*",
         "",
         value,
