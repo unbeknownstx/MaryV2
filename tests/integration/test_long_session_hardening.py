@@ -206,6 +206,29 @@ def test_unsupported_background_ping_promise_is_revised():
     assert "quick updates" in lowered
 
 
+def test_surface_local_time_query_is_deterministic_and_model_free():
+    router = SequenceRouter(["MODEL SHOULD NOT ANSWER THE CLOCK"])
+    app = _application(router)
+    calls_before = len(router.calls)
+
+    result = _cycle(app.run(
+        "time now",
+        metadata={
+            "surface": "desktop",
+            "transport": "core",
+            "client_local_time": "2026-09-15T02:21:00-07:00",
+        },
+    ))
+
+    assert result.intent.intent_type == IntentType.INFORMATION
+    assert result.intent.parameters["system_action"] == "current_time"
+    assert len(router.calls) == calls_before
+    assert result.final_response == "It's 2:21 AM."
+    assert result.reasoning.metadata["provider"] == "local/system"
+    assert result.reasoning.metadata["generation_purpose"] == "surface_clock"
+    assert result.reasoning.metadata["llm_skipped"] is True
+
+
 def test_runtime_architecture_query_is_local_and_deterministic():
     router = SequenceRouter(["I am GPT-4 running in the OpenAI cloud."])
     app = _application(router)
