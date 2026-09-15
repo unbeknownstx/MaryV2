@@ -1,5 +1,15 @@
 # Changelog
 
+## 13.65 — 2026-09-14 — Stable Desktop Conversation Runtime
+
+- Added a logical `local_device` conversation provider so Mary can prefer a replaceable host-local runtime without making LM Studio, Ollama, llama.cpp or any model an identity/state authority.
+- Added the bounded `llm.local` capability, device permission gate, canonical-Core bridge and node executor; the device owns concrete runtime/model choice while Core owns routing and conversation state.
+- Added LM Studio-aware local runtime selection and a best-effort Desktop startup supervisor that can start the loopback server and load an already-downloaded qualified conversation model without making local inference a startup dependency.
+- Added product-mode Desktop local-compute hosting so normal Desktop startup can register the bounded local model capability instead of requiring a separate VS Code/home-node launch for everyday conversation.
+- Kept task/general routing cloud/free-first while allowing ordinary conversation to prefer `local_device` and fall through to Groq/Gemini/OpenRouter/Ollama when local inference is unavailable.
+- Added local TTS fallback for `auto_fast` when the configured cloud voice fails at runtime.
+- Added deterministic tests and a 13.65 product/authority guide for the one-click Desktop conversation path.
+
 ## 13.64 — 2026-09-14 — Unified Provider & Model Execution Fabric
 
 - Reconciled 13.60–13.64 provider/gateway hardening into the existing 13.15 provider catalog, `LLMRouter`, `ResourceGovernor`, and 13.35+ Model Execution Fabric instead of treating it as a parallel routing stack.
