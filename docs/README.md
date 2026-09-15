@@ -18,7 +18,8 @@ The repository contains years of iterative design notes. This file defines where
 - [`architecture/STREAM_COHOST_13_10.md`](architecture/STREAM_COHOST_13_10.md) — live Twitch/OBS cohost architecture.
 - [`architecture/PRODUCT_EXPERIENCE_13_7.md`](architecture/PRODUCT_EXPERIENCE_13_7.md) — current product experience/research convergence.
 - [`design/MARY_VISUAL_SYSTEM.md`](design/MARY_VISUAL_SYSTEM.md) — cross-platform visual/presentation language.
-- [`design/DESKTOP_PRODUCT_SHELL_13_66.md`](design/DESKTOP_PRODUCT_SHELL_13_66.md) — current Desktop shell hierarchy, clarity/opacity rules, and backend-state projection.
+- [`design/DESKTOP_PRODUCT_SHELL_13_66.md`](design/DESKTOP_PRODUCT_SHELL_13_66.md) — Desktop shell hierarchy and backend-state projection baseline.
+- [`design/DESKTOP_PRODUCT_SHELL_13_67.md`](design/DESKTOP_PRODUCT_SHELL_13_67.md) — current Desktop polish/final-cascade contract, workspace unification, responsive priority, and launcher consistency.
 
 ## Architecture
 
