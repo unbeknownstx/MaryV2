@@ -539,7 +539,7 @@ class LLMRouter:
             getattr(
                 self.config.llm,
                 "conversation_provider_order",
-                ["groq", "gemini", "openrouter", "ollama"],
+                ["local_device", "groq", "gemini", "openrouter", "ollama"],
             )
         )
 
