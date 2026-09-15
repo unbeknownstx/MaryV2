@@ -252,8 +252,12 @@ class NodeRegistry:
         selected_metadata = dict(
             getattr(selected_capability, "metadata", {}) or {}
         )
-        execution_authorized = bool(
+        permission_known = bool(
             selected is not None
+            and "execution_authorized" in selected_metadata
+        )
+        execution_authorized = bool(
+            permission_known
             and selected_metadata.get("execution_authorized", False)
         )
         return {
@@ -290,9 +294,14 @@ class NodeRegistry:
             "execution": (
                 "authorized"
                 if execution_authorized
-                else ("permission_required" if selected is not None else "unavailable")
+                else (
+                    "permission_required"
+                    if permission_known
+                    else ("not_authorized" if selected is not None else "unavailable")
+                )
             ),
             "execution_authorized": execution_authorized,
+            "execution_permission_known": permission_known,
             "policy": (
                 "routing selects a capable node; device-local execution remains "
                 "separately permission-gated"
