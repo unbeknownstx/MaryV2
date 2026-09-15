@@ -19,10 +19,23 @@ def main() -> int:
         runtime = prepare_desktop_runtime()
         state = "READY" if runtime.get("ready") else "DEGRADED"
         local = dict(runtime.get("local") or {})
+        lm_studio = dict(runtime.get("lm_studio") or {})
+        backing_model = str(
+            lm_studio.get("backing_model")
+            or local.get("backing_model")
+            or local.get("model")
+            or "fallback-only"
+        )
+        permission = (
+            "AUTHORIZED"
+            if runtime.get("local_compute_authorized")
+            else ("NOT AUTHORIZED" if runtime.get("ready") else "UNAVAILABLE")
+        )
         print(
             "[MaryDesktop] local runtime "
             f"{state}: {local.get('runtime') or 'none'} / "
-            f"{local.get('model') or 'fallback-only'}",
+            f"{local.get('model') or 'fallback-only'} "
+            f"(backing={backing_model}; llm.local={permission})",
             flush=True,
         )
     except Exception as exc:
