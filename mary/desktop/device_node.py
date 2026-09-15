@@ -603,7 +603,20 @@ class DesktopCapabilityNodeAgent:
             temperature=float(args.get("temperature", 0.7)),
             max_tokens=max_tokens,
         )
-        response = provider.generate_constrained(generation_request)
+        generation_timeout: float | None = None
+        if role == "fast":
+            try:
+                generation_timeout = float(
+                    os.getenv("MARY_DEVICE_LOCAL_FAST_GENERATION_TIMEOUT", "10")
+                )
+            except (TypeError, ValueError):
+                generation_timeout = 10.0
+            generation_timeout = max(3.0, min(30.0, generation_timeout))
+
+        response = provider.generate_constrained(
+            generation_request,
+            timeout_seconds=generation_timeout,
+        )
         content = str(response.content or "").strip()
         if not content:
             raise RuntimeError("Local model runtime returned an empty response.")
