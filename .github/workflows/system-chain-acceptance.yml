@@ -1,0 +1,105 @@
+name: MaryV2 system chain acceptance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chain:
+    name: Core to bounded actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up repository Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            requirements-desktop.txt
+            requirements-node-mcp.txt
+
+      - name: Install desktop runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpulse0 \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
+      - name: Install chain test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-desktop.txt -r requirements-node-mcp.txt
+
+      - name: Repository and one-Mary convergence
+        run: |
+          python -m scripts.verify_repository_structure
+          python -m scripts.verify_maryv2_convergence
+
+      - name: Core, projects, tasks, and durable memory
+        run: |
+          python -m pytest -q \
+            tests/runtime/test_mary_application.py \
+            tests/integration/test_durable_projects_tasks_13_69.py \
+            tests/protocol/test_workspace_contract_13_2.py \
+            tests/continuity/test_memory_lab_retrieval_13_6.py
+
+      - name: Providers, Ollama, and capability nodes
+        run: |
+          python -m pytest -q \
+            tests/llm/test_provider_routing_guarantees.py \
+            tests/protocol/test_device_ollama_core_bridge_13_2.py \
+            tests/protocol/test_device_task_execution_contract_13_2.py \
+            tests/distributed/test_device_task_broker_13_2.py \
+            tests/desktop/test_device_node_agent_13_2.py \
+            tests/desktop/test_headless_windows_node_13_2.py
+
+      - name: Desktop and native iPhone Core surfaces
+        run: |
+          python -m pytest -q \
+            tests/runtime/test_runtime_gateway_13_2.py \
+            tests/desktop/test_remote_core_desktop_13_2.py \
+            tests/mobile/test_remote_core_mode_13_2.py \
+            tests/mobile/test_mobile_convergence_13_2.py \
+            tests/mobile/test_native_iphone_core_contract_13_70.py
+
+      - name: Voice and VRM graceful embodiment
+        run: |
+          python -m pytest -q \
+            tests/mobile/test_mobile_audio_12_13.py \
+            tests/desktop/test_desktop_voice_alpha.py \
+            tests/desktop/test_desktop_avatar_asset_preservation_13_68.py \
+            tests/desktop/test_desktop_alpha.py \
+            tests/desktop/test_windows_live_hotfix_12_8_2.py \
+            tests/desktop/test_macos_safe_renderer_boot_13_6.py
+
+      - name: MCP and bounded actual actions
+        run: |
+          python -m pytest -q \
+            tests/distributed/test_mcp_fabric_13_4.py \
+            tests/distributed/test_mcp_permissions_13_4.py \
+            tests/distributed/test_mcp_task_broker_13_4.py \
+            tests/desktop/test_mcp_node_executor_13_4.py \
+            tests/protocol/test_capability_authority_boundaries_13_2.py \
+            tests/tools/test_local_tool_runtime.py \
+            tests/tools/test_code_change_workflow.py \
+            tests/tools/test_tool_integration.py
