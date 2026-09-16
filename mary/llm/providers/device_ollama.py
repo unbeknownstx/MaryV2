@@ -46,10 +46,12 @@ class DeviceOllamaProvider(LLMInterface):
         *,
         role: str = "general",
         timeout_seconds: float | None = None,
+        fallback_provider: LLMInterface | None = None,
     ) -> None:
         self.registry = registry
         self.broker = broker
         self.role = self._normalize_role(role)
+        self.fallback_provider = fallback_provider
         if timeout_seconds is None:
             try:
                 timeout_seconds = float(os.getenv("MARY_DEVICE_OLLAMA_TIMEOUT", "480"))
@@ -70,6 +72,7 @@ class DeviceOllamaProvider(LLMInterface):
             self.broker,
             role=self._normalize_role(role),
             timeout_seconds=self.timeout_seconds,
+            fallback_provider=self.fallback_provider,
         )
 
     def for_purpose(self, purpose: str | None) -> "DeviceOllamaProvider":
@@ -90,10 +93,21 @@ class DeviceOllamaProvider(LLMInterface):
     ) -> LLMResponse:
         selected = self.registry.choose("llm.ollama", require_execution_ready=True)
         if selected is None:
-            raise LLMProviderError(
-                "No connected capability node currently exposes llm.ollama.",
-                provider="ollama",
-                retryable=True,
+            fallback = self.fallback_provider
+            try:
+                fallback_ready = bool(fallback is not None and fallback.is_available())
+            except Exception:
+                fallback_ready = False
+            if not fallback_ready:
+                raise LLMProviderError(
+                    "No authorized device or Core-local Ollama runtime is currently available.",
+                    provider="ollama",
+                    retryable=True,
+                )
+            return fallback.generate(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
 
         task = self.broker.enqueue(
@@ -145,7 +159,12 @@ class DeviceOllamaProvider(LLMInterface):
         )
 
     def is_available(self) -> bool:
-        return self.registry.choose("llm.ollama", require_execution_ready=True) is not None
+        if self.registry.choose("llm.ollama", require_execution_ready=True) is not None:
+            return True
+        try:
+            return bool(self.fallback_provider is not None and self.fallback_provider.is_available())
+        except Exception:
+            return False
 
     def provider_name(self) -> str:
         return "ollama"
@@ -153,6 +172,11 @@ class DeviceOllamaProvider(LLMInterface):
     def model_name(self) -> str:
         selected = self.registry.choose("llm.ollama", require_execution_ready=True)
         if selected is None:
+            try:
+                if self.fallback_provider is not None and self.fallback_provider.is_available():
+                    return str(self.fallback_provider.model_name() or f"core-ollama:{self.role}")[:160]
+            except Exception:
+                pass
             return f"device:{self.role}:offline"
         capability = selected.capabilities.get("llm.ollama")
         metadata = dict(getattr(capability, "metadata", {}) or {})
