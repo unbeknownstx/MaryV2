@@ -150,6 +150,52 @@ class MaryClient:
             timeout=max(self.timeout, 60.0),
         )
 
+    def voice_status(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/voice/status")
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        value = str(text or "").strip()
+        if not value:
+            raise ValueError("text is required.")
+        plan = dict(delivery_plan or {})
+        data, headers = self._request_bytes(
+            "POST",
+            "/v1/voice/synthesize",
+            {
+                "text": value,
+                "user_text": str(user_text or ""),
+                "delivery_plan": plan,
+            },
+        )
+        content_type = str(headers.get("Content-Type") or "application/octet-stream").split(";", 1)[0].strip()
+        format_name = {
+            "audio/mpeg": "mp3",
+            "audio/wav": "wav",
+            "audio/x-wav": "wav",
+            "audio/ogg": "ogg",
+            "audio/flac": "flac",
+        }.get(content_type, "binary")
+        import base64
+
+        return {
+            "status": "success",
+            "provider": str(headers.get("X-Mary-Voice-Provider") or "unknown"),
+            "model": str(headers.get("X-Mary-Voice-Model") or "unknown"),
+            "cached": str(headers.get("X-Mary-Voice-Cached") or "0") == "1",
+            "format": format_name,
+            "mime_type": content_type,
+            "audio_base64": base64.b64encode(data).decode("ascii"),
+            "audio_size": len(data),
+            "spoken_text": value,
+            "authority": "remote_mary_core",
+        }
+
     def growth_status(self) -> dict[str, Any]:
         return self._request("GET", "/v1/growth")
 
@@ -378,6 +424,39 @@ class MaryClient:
         })
         raw = self._request("POST", "/v1/turn", payload.to_dict())
         return TurnResponse(**raw)
+
+    def _request_bytes(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> tuple[bytes, Any]:
+        body = None if payload is None else json.dumps(payload).encode("utf-8")
+        headers = {"Accept": "*/*"}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = Request(self.base_url + path, data=body, headers=headers, method=method)
+        try:
+            with urlopen(
+                request,
+                timeout=self.timeout if timeout is None else float(timeout),
+            ) as response:
+                return response.read(), response.headers
+        except HTTPError as exc:
+            request_id = str((exc.headers or {}).get("X-Mary-Request-ID") or "")
+            safe_request_id = request_id if _SAFE_REQUEST_ID.fullmatch(request_id) else ""
+            suffix = f" (request_id={safe_request_id})" if safe_request_id else ""
+            raise MaryProtocolError(
+                f"Mary Core returned HTTP {exc.code}{suffix}.",
+                request_id=safe_request_id,
+                status_code=int(exc.code),
+            ) from exc
+        except OSError as exc:
+            raise MaryProtocolError("Could not reach Mary Core.") from exc
 
     def _request(
         self,
