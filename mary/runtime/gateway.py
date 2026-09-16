@@ -513,16 +513,16 @@ class RemoteMaryGateway:
             try:
                 self.client.surface_renew(
                     surface_id=self._surface_id,
-                    visible=True,
-                    foreground=True,
+                    visible=self._surface_visible,
+                    foreground=self._surface_foreground,
                     activity=False,
                 )
             except Exception:
                 try:
                     self.client.surface_register(
                         surface_id=self._surface_id,
-                        visible=True,
-                        foreground=True,
+                        visible=self._surface_visible,
+                        foreground=self._surface_foreground,
                         lease_seconds=self._lease_seconds,
                     )
                 except Exception:
