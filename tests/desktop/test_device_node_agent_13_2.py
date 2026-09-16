@@ -54,8 +54,26 @@ def test_desktop_advertisement_is_path_free_and_permission_bounded(monkeypatch):
     by_name = {item.name: item.to_dict() for item in items}
 
     assert by_name["filesystem"]["private"] is True
-    assert by_name["filesystem"]["metadata"] == {"search_root_count": 2}
-    assert by_name["desktop_apps"]["metadata"] == {"available_app_count": 1}
+    assert by_name["filesystem"]["routable"] is False
+    assert by_name["filesystem"]["metadata"] == {
+        "search_root_count": 2,
+        "presentation_only": True,
+    }
+    assert by_name["desktop_apps"]["routable"] is False
+    assert by_name["desktop_apps"]["metadata"] == {
+        "available_app_count": 1,
+        "presentation_only": True,
+    }
+    assert by_name["personal_search"]["routable"] is True
+    for name in (
+        "creative_workspace",
+        "native_microphone",
+        "native_audio",
+        "desktop_ui",
+        "avatar",
+        "desktop_apps",
+    ):
+        assert by_name[name]["routable"] is False
     assert "C:/private-alpha" not in repr(by_name)
     assert "D:/private-beta" not in repr(by_name)
 
