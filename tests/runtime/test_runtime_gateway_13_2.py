@@ -31,6 +31,19 @@ class FakeClient:
         self.actions.append((action, dict(args or {})))
         return {"ok": True}
 
+    def voice_status(self):
+        return {"tts": {"enabled": True, "provider": "core-voice", "model": "voice-model"}}
+
+    def voice_synthesize(self, text, *, user_text=None, delivery_plan=None):
+        return {
+            "status": "success",
+            "provider": "core-voice",
+            "model": "voice-model",
+            "audio_base64": "SUQz",
+            "mime_type": "audio/mpeg",
+            "spoken_text": text,
+        }
+
     def runtime_action(self, action, args=None):
         self.actions.append((action, dict(args or {})))
         return {"ok": True}
@@ -101,6 +114,20 @@ def test_remote_gateway_uses_client_without_local_application():
         {"surface_id": surface_id},
     )
     assert client.surface_active is False
+
+
+def test_remote_gateway_exposes_canonical_core_voice():
+    client = FakeClient()
+    gateway = RemoteMaryGateway(client, surface="desktop")
+
+    assert gateway.voice_status()["tts"]["provider"] == "core-voice"
+    audio = gateway.voice_synthesize(
+        "hello",
+        user_text="hi",
+        delivery_plan={"pace": 1.0},
+    )
+    assert audio["status"] == "success"
+    assert audio["provider"] == "core-voice"
 
 
 def test_remote_gateway_close_waits_for_turn_then_disconnects_last():
