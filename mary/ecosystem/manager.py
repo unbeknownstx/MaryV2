@@ -229,12 +229,109 @@ class MaryEcosystem:
                 # Presence publication failed.
                 pass
 
+        if name == "project.create":
+            project = self.command.create_project(
+                str(values.get("title") or ""),
+                priority=int(values.get("priority", 2)),
+                notes=str(values.get("notes") or ""),
+            )
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Project created: {project.get('title', '')}",
+                importance=.62,
+                metadata={"project_id": project.get("id"), "kind": "project"},
+            )
+            return {"ok": True, "project": project}
+
+        if name == "project.update":
+            project_id = str(values.get("project_id") or "")
+            changes = {
+                key: values[key]
+                for key in ("title", "notes", "status", "priority")
+                if key in values
+            }
+            if not changes:
+                raise ValueError("project.update requires at least one change.")
+            existing = self.command.get(project_id)
+            if existing is None or existing.get("kind") != "project":
+                raise KeyError(project_id)
+            project = self.command.update(project_id, **changes)
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Project updated: {project.get('title', '')}",
+                importance=.55,
+                metadata={"project_id": project.get("id"), "status": project.get("status")},
+            )
+            return {"ok": True, "project": project}
+
+        if name == "task.create":
+            task = self.command.create_task(
+                str(values.get("title") or ""),
+                project_id=str(values.get("project_id") or ""),
+                priority=int(values.get("priority", 2)),
+                notes=str(values.get("notes") or ""),
+                due_at=str(values.get("due_at") or ""),
+            )
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Task created: {task.get('title', '')}",
+                importance=.58,
+                metadata={
+                    "task_id": task.get("id"),
+                    "project_id": task.get("project_id"),
+                    "status": task.get("status"),
+                },
+            )
+            return {"ok": True, "task": task}
+
+        if name == "task.update":
+            task_id = str(values.get("task_id") or "")
+            changes = {
+                key: values[key]
+                for key in ("title", "notes", "status", "priority", "project_id", "due_at")
+                if key in values
+            }
+            if not changes:
+                raise ValueError("task.update requires at least one change.")
+            existing = self.command.get(task_id)
+            if existing is None or existing.get("kind") != "task":
+                raise KeyError(task_id)
+            task = self.command.update(task_id, **changes)
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Task updated: {task.get('title', '')}",
+                importance=.52,
+                metadata={
+                    "task_id": task.get("id"),
+                    "project_id": task.get("project_id"),
+                    "status": task.get("status"),
+                },
+            )
+            return {"ok": True, "task": task}
+
+        if name == "task.complete":
+            task_id = str(values.get("task_id") or "")
+            task = self.command.complete_task(task_id)
+            publish(
+                PresenceEventType.COMMAND_CHANGED,
+                f"Task completed: {task.get('title', '')}",
+                importance=.58,
+                metadata={
+                    "task_id": task.get("id"),
+                    "project_id": task.get("project_id"),
+                    "status": task.get("status"),
+                },
+            )
+            return {"ok": True, "task": task}
+
         if name == "command.add":
             item = self.command.add(
                 str(values.get("title") or ""),
                 kind=str(values.get("kind") or "task"),
                 priority=int(values.get("priority", 2)),
                 notes=str(values.get("notes") or ""),
+                project_id=str(values.get("project_id") or ""),
+                due_at=str(values.get("due_at") or ""),
             )
             publish(
                 PresenceEventType.COMMAND_CHANGED,
@@ -251,7 +348,7 @@ class MaryEcosystem:
             item_id = str(values.get("item_id") or "")
             changes = {
                 key: values[key]
-                for key in ("title", "notes", "status", "priority")
+                for key in ("title", "notes", "status", "priority", "project_id", "due_at")
                 if key in values
             }
             if not changes:
