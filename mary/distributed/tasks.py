@@ -337,10 +337,10 @@ class DeviceTaskBroker:
         return output
 
     def _select_node(self, registry: NodeRegistry, capability: str, args: dict[str, Any]) -> Any:
-        fallback = registry.choose(capability)
+        fallback = registry.choose(capability, require_execution_ready=True)
         if fallback is None:
             return None
-        candidates_fn = getattr(registry, "candidates", None)
+        candidates_fn = getattr(registry, "executable_candidates", None)
         if not callable(candidates_fn):
             return fallback
         candidates = list(candidates_fn(capability))
