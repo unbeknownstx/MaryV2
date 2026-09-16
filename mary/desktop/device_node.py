@@ -236,12 +236,21 @@ def desktop_capabilities(
     except Exception:
         pass
 
+    # Only capabilities backed by DeviceCapabilityNodeAgent executors may be
+    # routable. Presentation/device-presence features remain visible in node
+    # diagnostics, but are explicitly non-routable so Core never dispatches a
+    # task that this node cannot execute.
     items = [
         CapabilityDescriptor(
             "filesystem",
+            available=False,
             private=True,
             local=True,
-            metadata={"search_root_count": len(roots)},
+            readiness="unavailable",
+            metadata={
+                "search_root_count": len(roots),
+                "presentation_only": True,
+            },
         ),
         CapabilityDescriptor(
             "personal_search",
@@ -251,20 +260,57 @@ def desktop_capabilities(
         ),
         CapabilityDescriptor(
             "creative_workspace",
+            available=False,
             private=True,
             local=True,
-            metadata={"workspace_selected": creative_configured},
+            readiness="unavailable",
+            metadata={
+                "workspace_selected": creative_configured,
+                "presentation_only": True,
+            },
         ),
-        CapabilityDescriptor("native_microphone", private=True, local=True),
-        CapabilityDescriptor("native_audio", private=True, local=True),
-        CapabilityDescriptor("desktop_ui", private=True, local=True),
-        CapabilityDescriptor("avatar", private=True, local=True),
+        CapabilityDescriptor(
+            "native_microphone",
+            available=False,
+            private=True,
+            local=True,
+            readiness="unavailable",
+            metadata={"presentation_only": True},
+        ),
+        CapabilityDescriptor(
+            "native_audio",
+            available=False,
+            private=True,
+            local=True,
+            readiness="unavailable",
+            metadata={"presentation_only": True},
+        ),
+        CapabilityDescriptor(
+            "desktop_ui",
+            available=False,
+            private=True,
+            local=True,
+            readiness="unavailable",
+            metadata={"presentation_only": True},
+        ),
+        CapabilityDescriptor(
+            "avatar",
+            available=False,
+            private=True,
+            local=True,
+            readiness="unavailable",
+            metadata={"presentation_only": True},
+        ),
         CapabilityDescriptor(
             "desktop_apps",
-            available=available_apps > 0,
+            available=False,
             private=True,
             local=True,
-            metadata={"available_app_count": available_apps},
+            readiness="unavailable",
+            metadata={
+                "available_app_count": available_apps,
+                "presentation_only": True,
+            },
         ),
     ]
     local_model = _local_model_capability()
