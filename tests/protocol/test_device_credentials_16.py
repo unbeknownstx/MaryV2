@@ -97,6 +97,43 @@ def test_node_gateway_accepts_stored_credential_without_migration_grant(monkeypa
     assert gateway.client._device_credential == "stored-value"
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://127.0.0.1:8080",
+        "http://localhost:8080",
+        "http://[::1]:8080",
+    ],
+)
+def test_node_credentials_allow_true_loopback_plaintext_transport(monkeypatch, base_url):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b'{"node_token":"session-only"}'
+
+    monkeypatch.setattr("mary.protocol.client.urlopen", lambda *_args, **_kwargs: Response())
+    client = MaryClient(
+        base_url,
+        device_id="node-a",
+        credential_store=_Store("durable-value"),
+    )
+
+    response = client.register_node(
+        display_name="node-a",
+        host_type="node",
+        platform="windows",
+        surface="windows_node",
+        capabilities=[],
+    )
+
+    assert response["node_token"] == "session-only"
+
+
 def test_durable_credential_refuses_non_loopback_plaintext_transport():
     client = MaryClient(
         "http://core.example",
