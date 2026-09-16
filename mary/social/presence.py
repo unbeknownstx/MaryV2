@@ -204,7 +204,7 @@ class SocialPresenceRuntime:
         for index, row in enumerate(self.proposals):
             if row.get("id") == clean:
                 return index
-        raise KeyError("Social proposal was not found.")
+        raise ValueError("Social proposal was not found.")
 
     def proposal(self, proposal_id: Any) -> dict[str, Any]:
         return _copy_json(self.proposals[self._index(proposal_id)])
@@ -348,6 +348,7 @@ class SocialPresenceRuntime:
         brief: Any = "",
         media_summary: Any = "",
         context: Any = None,
+        audience_text: Any = "",
         asset_refs: Any = None,
         tags: Any = None,
         collaborators: Any = None,
@@ -380,6 +381,7 @@ class SocialPresenceRuntime:
             "brief": _text(brief, 1_600),
             "media_summary": safe_media,
             "context": sanitize_social_context(context or {}),
+            "audience_text": _text(audience_text, 1_200),
             "asset_refs": strings(asset_refs, limit=12, width=500),
             "tags": strings(tags),
             "collaborators": strings(collaborators, width=120),
