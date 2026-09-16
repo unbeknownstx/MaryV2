@@ -51,7 +51,7 @@ class DeviceLlamaCppProvider(LLMInterface):
         return self.for_role("general")
 
     def generate(self, messages: list[LLMMessage], temperature: float = 0.7, max_tokens: int = 2048) -> LLMResponse:
-        selected = self.registry.choose("llm.llama_cpp")
+        selected = self.registry.choose("llm.llama_cpp", require_execution_ready=True)
         if selected is None:
             raise LLMProviderError("No connected capability node currently exposes llm.llama_cpp.", provider="llama_cpp", retryable=True)
         task = self.broker.enqueue(
@@ -77,13 +77,13 @@ class DeviceLlamaCppProvider(LLMInterface):
         return LLMResponse(content=content, provider="llama_cpp", model=str(result.get("model") or self.model_name()), finish_reason=str(result.get("finish_reason") or "") or None, usage=dict(result.get("usage") or {}), raw=None)
 
     def is_available(self) -> bool:
-        return self.registry.choose("llm.llama_cpp") is not None
+        return self.registry.choose("llm.llama_cpp", require_execution_ready=True) is not None
 
     def provider_name(self) -> str:
         return "llama_cpp"
 
     def model_name(self) -> str:
-        selected = self.registry.choose("llm.llama_cpp")
+        selected = self.registry.choose("llm.llama_cpp", require_execution_ready=True)
         if selected is None:
             return f"device:{self.role}:offline"
         capability = selected.capabilities.get("llm.llama_cpp")
