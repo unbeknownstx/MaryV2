@@ -6,6 +6,7 @@ from mary.core.service import MaryCoreService
 from mary.expression.context import PerformanceContextManager
 from mary.llm.interface import LLMResponse
 from mary.protocol.models import RuntimeActionRequest, TurnRequest
+from mary.social import SocialPresenceRuntime
 
 
 class FakeEngagement:
@@ -67,6 +68,7 @@ class FakeMary:
         self.node_registry = SimpleNamespace(snapshot=lambda: {})
         self.training_feedback = FakeFeedbackStore()
         self.performance_context = PerformanceContextManager()
+        self.social_presence = SocialPresenceRuntime()
 
     def live_state(self, runtime_status=None):
         return {"runtime_status": runtime_status}
@@ -168,6 +170,82 @@ def test_performance_context_is_scoped_per_creator_device_and_turn():
 
     assert seen_modes == [("iphone", "stream"), ("mac", "private")]
     assert app.mary.performance_context.mode == "private"
+
+def test_social_proposal_runs_through_canonical_mary_as_public_context_only():
+    app = FakeApplication()
+    core = _active_core(app)
+
+    result = core.runtime_action(
+        {
+            "action": "social.propose",
+            "args": {
+                "platform": "instagram",
+                "kind": "reel_script",
+                "brief": "tease creator about his failing tests",
+                "media_summary": "Mary looks at the camera and smirks.",
+                "tone": "funny and sarcastic",
+                "tags": ["maryv2"],
+            },
+            "device_id": "iphone",
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["proposal"]["status"] == "proposed"
+    assert result["proposal"]["platform"] == "instagram"
+    assert result["publication"]["automatic"] is False
+    assert result["publication"]["external_write_performed"] is False
+    assert result["voice_request"]["text"] == result["proposal"]["content"]
+    assert app.calls[-1]["surface"] == "social"
+    assert app.calls[-1]["initiated_by"] == "mary_initiative"
+    assert app.calls[-1]["input_authority"] == "context_only"
+    assert app.calls[-1]["conversation_id"] == "social-instagram"
+    assert app.mary.performance_context.mode == "private"
+
+
+def test_social_publication_record_requires_prior_approval():
+    app = FakeApplication()
+    core = _active_core(app)
+    proposed = core.runtime_action(
+        {
+            "action": "social.propose",
+            "args": {"platform": "instagram", "kind": "caption", "brief": "hello"},
+            "device_id": "iphone",
+        }
+    )["proposal"]
+
+    with pytest.raises(ValueError, match="creator-approved"):
+        core.runtime_action(
+            {
+                "action": "social.mark_published",
+                "args": {"proposal_id": proposed["id"]},
+                "device_id": "iphone",
+            }
+        )
+
+    approved = core.runtime_action(
+        {
+            "action": "social.approve",
+            "args": {"proposal_id": proposed["id"]},
+            "device_id": "iphone",
+        }
+    )
+    assert approved["proposal"]["status"] == "approved"
+
+    published = core.runtime_action(
+        {
+            "action": "social.mark_published",
+            "args": {
+                "proposal_id": proposed["id"],
+                "public_url": "https://instagram.com/p/example?tracking=removed",
+            },
+            "device_id": "iphone",
+        }
+    )
+    assert published["proposal"]["status"] == "published"
+    assert published["external_write_performed"] is False
+    assert published["proposal"]["public_url"] == "https://instagram.com/p/example"
+
 
 def test_runtime_action_controls_conversation_without_new_mary():
     app = FakeApplication()
