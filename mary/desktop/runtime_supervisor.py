@@ -236,6 +236,26 @@ def ensure_lm_studio_runtime() -> dict[str, Any]:
     }
 
 
+def _available_local_llm_capabilities() -> list[str]:
+    """Discover already-running local LLM backends the Desktop can advertise.
+
+    This is discovery only. It never grants device execution permission; the
+    existing DeviceExecutionPermissions boundary remains authoritative.
+    """
+
+    try:
+        from mary.desktop.device_node import headless_local_llm_capabilities
+
+        return sorted({
+            str(item.name)
+            for item in headless_local_llm_capabilities()
+            if bool(getattr(item, "available", True))
+            and str(getattr(item, "name", "")).startswith("llm.")
+        })
+    except Exception:
+        return []
+
+
 def prepare_desktop_runtime() -> dict[str, Any]:
     """Prepare a usable local conversation lane without blocking desktop startup.
 
@@ -276,7 +296,9 @@ def prepare_desktop_runtime() -> dict[str, Any]:
             "error_type": type(exc).__name__,
         }
 
-    ready = bool(local_status.get("available"))
+    available_capabilities = _available_local_llm_capabilities()
+    local_runtime_ready = bool(local_status.get("available"))
+    ready = bool(local_runtime_ready or available_capabilities)
     local_compute_enabled = _env_bool("MARY_DESKTOP_LOCAL_COMPUTE", True)
     auto_authorize = _env_bool("MARY_DESKTOP_LOCAL_COMPUTE_AUTO_AUTHORIZE", True)
     local_authorized = False
@@ -286,23 +308,25 @@ def prepare_desktop_runtime() -> dict[str, Any]:
         # home-node mode remains available for always-on/mobile use.
         os.environ.setdefault("MARY_DESKTOP_CAPABILITY_NODE_ENABLED", "true")
 
-        if auto_authorize:
-            try:
-                permissions = DeviceExecutionPermissions()
-                permissions.allow("llm.local")
-                local_authorized = bool(permissions.is_allowed("llm.local"))
-            except Exception:
-                local_authorized = False
-        else:
-            try:
-                local_authorized = bool(DeviceExecutionPermissions().is_allowed("llm.local"))
-            except Exception:
-                local_authorized = False
+        if "llm.local" in available_capabilities:
+            if auto_authorize:
+                try:
+                    permissions = DeviceExecutionPermissions()
+                    permissions.allow("llm.local")
+                    local_authorized = bool(permissions.is_allowed("llm.local"))
+                except Exception:
+                    local_authorized = False
+            else:
+                try:
+                    local_authorized = bool(DeviceExecutionPermissions().is_allowed("llm.local"))
+                except Exception:
+                    local_authorized = False
 
     return {
         "ready": ready,
         "local": local_status,
         "lm_studio": lm_status,
+        "available_capabilities": available_capabilities,
         "local_compute_enabled": local_compute_enabled,
         "local_compute_auto_authorize": auto_authorize,
         "local_compute_authorized": local_authorized,
