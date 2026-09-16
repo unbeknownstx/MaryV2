@@ -9,7 +9,8 @@ class _Registry:
     def __init__(self, node_id="node-a"):
         self.node_id = node_id
 
-    def choose(self, capability):
+    def choose(self, capability, *, require_execution_ready=False):
+        assert require_execution_ready is True
         return SimpleNamespace(node_id=self.node_id)
 
     def candidates(self, capability):
