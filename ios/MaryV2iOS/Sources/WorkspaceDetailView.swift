@@ -168,6 +168,8 @@ struct WorkspaceDetailView: View {
                 title: "Creative workspace",
                 body: "Creative projects remain synchronized through Mary's shared workspace and connected capability nodes."
             )
+        case .social:
+            SocialStudioView()
         case .media:
             statusCard(
                 eyebrow: "Media",
@@ -192,7 +194,7 @@ struct WorkspaceDetailView: View {
             )
         case .advanced:
             advancedCard
-        case .gallery, .search, .devices, .integrations:
+        case .gallery:
             EmptyView()
         }
     }
