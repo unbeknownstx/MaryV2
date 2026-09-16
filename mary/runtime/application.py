@@ -39,6 +39,7 @@ from mary.runtime.turn_envelope import build_turn_envelope
 from mary.runtime.turn_observability import observe_turn_stage
 from mary.runtime.turn_observability import record_turn_stage
 from mary.runtime.workspace_context import build_workspace_context
+from mary.runtime.shared_work_stage import SharedWorkStage
 
 
 # ================================================================
@@ -2255,6 +2256,10 @@ def create_application(
 
     state = RuntimeState()
 
+    shared_work_stage = SharedWorkStage(
+        ecosystem=ecosystem,
+    )
+
     stage = MaryStage(
         mary=mary,
     )
@@ -2262,6 +2267,7 @@ def create_application(
     pipeline = Pipeline(
         state,
         stages=[
+            shared_work_stage,
             stage,
         ],
         name=name,
