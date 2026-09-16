@@ -420,6 +420,34 @@ class _InboxView:
         )
 
 
+class _ArcadeView:
+    """Canonical remote Arcade projection.
+
+    Arcade is shared workspace state, not a device-local Desktop toy. Remote
+    Desktop actions therefore round-trip through Mary Core just like projects,
+    focus, study, research, and inbox mutations.
+    """
+
+    def __init__(self, gateway: RemoteMaryGateway) -> None:
+        self.gateway = gateway
+
+    def games(self) -> list[dict[str, Any]]:
+        workspace = dict(self.gateway.workspace() or {})
+        arcade = dict(workspace.get("arcade", {}) or {})
+        return [
+            dict(item)
+            for item in list(arcade.get("games", []) or [])
+            if isinstance(item, dict)
+        ]
+
+    def play(self, game: str, payload: str = "") -> dict[str, Any]:
+        result = self.gateway.workspace_action(
+            "arcade.play",
+            {"game": str(game or ""), "payload": payload},
+        )
+        return dict(result or {})
+
+
 class _PresenceView:
     def __init__(self, gateway: RemoteMaryGateway) -> None:
         self.gateway = gateway
@@ -483,7 +511,7 @@ class _RemoteEcosystemView:
         self.presence = _PresenceView(gateway)
         self.metrics = RuntimeMetrics()
         self.youtube = YouTubeSearch()
-        self.arcade = MaryArcade()
+        self.arcade = _ArcadeView(gateway)
         self.skills = SkillRegistry()
         workspace_root = Path.home() / "MaryV2Workspace"
         roots = [path for path in (workspace_root, project_root) if path.exists()]
@@ -499,7 +527,6 @@ class _RemoteEcosystemView:
         shared = self.workspace_snapshot()
         return {
             **shared,
-            "arcade": {"games": self.arcade.games()},
             "metrics": self.metrics.snapshot(),
             "last_turn": self.metrics.last_turn(),
             "skills": self.skills.snapshot(),
