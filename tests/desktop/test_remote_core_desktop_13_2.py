@@ -82,6 +82,7 @@ class FakeClient:
             "study": {},
             "research": {},
             "presence": {},
+            "arcade": {"games": [{"key": "coin", "title": "Coin Flip"}]},
             "semantics": {"authority": "canonical_workspace"},
         }
 
@@ -99,6 +100,8 @@ class FakeClient:
         self.workspace_actions.append((action, dict(args or {})))
         if action == "command.add":
             return {"ok": True, "item": {"id": "c1", "title": args["title"]}}
+        if action == "arcade.play":
+            return {"ok": True, "game": args["game"], "result": "Heads"}
         return {"ok": True}
 
     def runtime_action(self, action, args=None):
@@ -150,6 +153,23 @@ def test_remote_desktop_workspace_routes_to_core(tmp_path):
     assert item["title"] == "Ship Mary"
     assert gateway.client.workspace_actions[0][0] == "command.add"
     assert view.ecosystem.workspace_snapshot()["semantics"]["authority"] == "canonical_workspace"
+
+
+def test_remote_desktop_arcade_routes_to_canonical_core(tmp_path):
+    client = FakeClient()
+    gateway = RemoteMaryGateway(client, surface="desktop")
+    view = RemoteMaryApplicationView(gateway, project_root=tmp_path)
+
+    games = view.ecosystem.arcade.games()
+    result = view.ecosystem.arcade.play("coin")
+
+    assert games == [{"key": "coin", "title": "Coin Flip"}]
+    assert result["result"] == "Heads"
+    assert client.workspace_actions[-1] == (
+        "arcade.play",
+        {"game": "coin", "payload": ""},
+    )
+    assert view.ecosystem.snapshot()["arcade"]["games"] == games
 
 
 def test_remote_desktop_close_does_not_close_core(tmp_path):
