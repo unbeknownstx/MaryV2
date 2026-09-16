@@ -214,7 +214,7 @@ struct RelationalSnapshot {
 
 enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
     case memories, growth, personality, presence, study, search, research
-    case studio, gallery, media, voiceAvatar, devices, integrations
+    case studio, social, gallery, media, voiceAvatar, devices, integrations
     case world, training, advanced
 
     var id: String { rawValue }
@@ -228,6 +228,7 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .search: return "Search"
         case .research: return "Research"
         case .studio: return "Studio"
+        case .social: return "Social Studio"
         case .gallery: return "Gallery"
         case .media: return "Media"
         case .voiceAvatar: return "Voice & Avatar"
@@ -248,6 +249,7 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .search: return "Search approved connected devices"
         case .research: return "Persistent research threads"
         case .studio: return "Creative projects"
+        case .social: return "Let Mary draft posts, Reels and replies"
         case .gallery: return "Mary and project artwork"
         case .media: return "Media connections"
         case .voiceAvatar: return "Voice and presentation"
@@ -268,6 +270,7 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .search: return "magnifyingglass"
         case .research: return "doc.text.magnifyingglass"
         case .studio: return "paintbrush.fill"
+        case .social: return "person.crop.square.filled.and.at.rectangle"
         case .gallery: return "photo.on.rectangle.angled"
         case .media: return "play.rectangle.fill"
         case .voiceAvatar: return "waveform.and.mic"
