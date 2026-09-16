@@ -34,6 +34,7 @@ class MarySystemContract:
         "response_feedback": "ResponseFeedbackStore (explicit private evaluation/training data; never character-state authority)",
         "creative_production": "MaryEcosystem/ProductionStudio (canonical project artifacts only; never identity or automatic execution authority)",
         "creative_services": "CreativeServiceRegistry (secret-free capability/cost discovery only; no execution/spending authority)",
+        "public_social_presence": "SocialPresenceRuntime (creator-reviewed public artifact continuity only; no identity/memory or automatic publishing authority)",
         "turn_routing_policy": "TurnPolicyEngine",
         "task_orchestration": "TaskOrchestrator + OrchestrationExecutor",
         "tools": "ToolManager",
