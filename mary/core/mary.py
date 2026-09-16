@@ -157,6 +157,7 @@ from mary.mind.production_bridge import (
 from mary.development import GrowthEngine
 from mary.training import ResponseFeedbackStore
 from mary.creative import CreativeServiceRegistry
+from mary.social import SocialPresenceRuntime
 
 
 class Mary:
@@ -351,6 +352,14 @@ class Mary:
         # a secret-free registry. It can quote/advertise capabilities but never
         # executes or authorizes spending by itself.
         self.creative_services = CreativeServiceRegistry.from_environment()
+
+        # Public/social presence is a creator-reviewed artifact workflow over
+        # this same canonical Mary. It persists approved/public continuity but
+        # never becomes identity, relationship, memory, or publishing authority.
+        self.social_presence = SocialPresenceRuntime(
+            self.config.paths.data / "social" / "social_presence.json",
+            backup_generations=self.config.governance.backup_generations,
+        )
 
         # Perception providers must describe before Mary interprets. Raw frames
         # are never stored by this boundary and observations enter the same
@@ -5225,6 +5234,7 @@ class Mary:
                 "evaluation": self.character_evaluation.snapshot(),
             },
             "creative_services": self.creative_services.snapshot(),
+            "social_presence": self.social_presence.status(limit=6),
             "runtime_environment": self.runtime_environment.snapshot(),
             "conversation_learning": self.conversation_learning.status(),
             "conversation_sessions": self.dialogue.session_status(),
