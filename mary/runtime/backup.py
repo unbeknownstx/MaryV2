@@ -112,6 +112,12 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "voice_lab",
     ),
     DurableStateFile(
+        "social/social_presence.json",
+        "public_presence",
+        "SocialPresenceRuntime",
+        "social_presence",
+    ),
+    DurableStateFile(
         "ecosystem/command_center.json",
         "shared_work",
         "CommandCenter",
@@ -214,6 +220,7 @@ _STRICT_DURABLE_ROOTS = {
     "development",
     "training",
     "voice",
+    "social",
     "ecosystem",
 }
 
