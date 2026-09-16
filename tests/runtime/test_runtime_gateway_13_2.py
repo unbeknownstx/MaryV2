@@ -59,6 +59,17 @@ class FakeClient:
             raise RuntimeError("lease missing")
         return {"state": "ACTIVE", "surface_id": payload["surface_id"]}
 
+    def surface_visibility(self, **payload):
+        self.surface_calls.append(("visibility", dict(payload)))
+        if not self.surface_active:
+            raise RuntimeError("lease missing")
+        return {
+            "state": "ACTIVE",
+            "surface_id": payload["surface_id"],
+            "visible": payload["visible"],
+            "foreground": payload.get("foreground"),
+        }
+
     def surface_wake(self, **payload):
         self.surface_calls.append(("wake", dict(payload)))
         if not self.surface_active:
@@ -128,6 +139,23 @@ def test_remote_gateway_exposes_canonical_core_voice():
     )
     assert audio["status"] == "success"
     assert audio["provider"] == "core-voice"
+
+
+def test_remote_gateway_visibility_is_retained_across_renewal():
+    client = FakeClient()
+    gateway = RemoteMaryGateway(client, surface="desktop")
+    gateway.connect_surface()
+
+    state = gateway.set_surface_visibility(visible=False, foreground=False)
+    assert state["visible"] is False
+    gateway._renew_creator_surface()
+
+    visibility = [payload for name, payload in client.surface_calls if name == "visibility"][-1]
+    renewal = [payload for name, payload in client.surface_calls if name == "renew"][-1]
+    assert visibility["visible"] is False
+    assert renewal["visible"] is False
+    assert renewal["foreground"] is False
+    gateway.close()
 
 
 def test_remote_gateway_close_waits_for_turn_then_disconnects_last():
