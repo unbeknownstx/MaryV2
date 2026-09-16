@@ -89,8 +89,11 @@ def test_macos_setup_guards_the_physical_monterey_toolchain() -> None:
     assert "PySide6" in setup
 
 
-def test_ci_exercises_macos_desktop_on_the_compatibility_runtime() -> None:
+def test_ci_exercises_desktop_runtime_on_windows_and_macos() -> None:
     workflow = _text(".github/workflows/platform-readiness.yml")
+    assert "windows-latest" in workflow
+    assert "Install Windows desktop runtime dependencies" in workflow
+    assert "Windows Qt desktop import smoke" in workflow
     assert "macos-latest" in workflow
     assert "python: '3.13'" in workflow
     assert "Install macOS desktop runtime dependencies" in workflow
