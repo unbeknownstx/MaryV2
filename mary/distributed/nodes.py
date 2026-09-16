@@ -168,6 +168,23 @@ class NodeRegistry:
         normalized = str(capability).strip().lower()
         return [node for node in self.available() if node.supports(normalized)]
 
+    def executable_candidates(self, capability: str) -> list[NodeDescriptor]:
+        """Return capable nodes that are not explicitly reported locally denied.
+
+        The metadata flag is only a readiness hint. Missing metadata remains
+        routable for backward compatibility and never grants authority; the
+        device-local permission check still runs before execution.
+        """
+        normalized = str(capability).strip().lower()
+        output: list[NodeDescriptor] = []
+        for node in self.candidates(normalized):
+            descriptor = node.capabilities.get(normalized)
+            metadata = dict(getattr(descriptor, "metadata", {}) or {})
+            if metadata.get("execution_authorized") is False:
+                continue
+            output.append(node)
+        return output
+
     @staticmethod
     def _benchmark_score(cap: CapabilityDescriptor) -> tuple[int, int, float, float]:
         """Return a stable preference tuple from sanitized operational hints.
@@ -196,9 +213,20 @@ class NodeRegistry:
         latency_value = latency if latency >= 0.0 else float("inf")
         return (failure_penalty, has_measurement, quality_sort, latency_value)
 
-    def choose(self, capability: str, *, prefer_private: bool = True, prefer_local: bool = True) -> NodeDescriptor | None:
+    def choose(
+        self,
+        capability: str,
+        *,
+        prefer_private: bool = True,
+        prefer_local: bool = True,
+        require_execution_ready: bool = False,
+    ) -> NodeDescriptor | None:
         normalized = str(capability).strip().lower()
-        candidates = self.candidates(normalized)
+        candidates = (
+            self.executable_candidates(normalized)
+            if require_execution_ready
+            else self.candidates(normalized)
+        )
         if not candidates:
             return None
 
