@@ -21,6 +21,7 @@ from mary.llm.interface import (
 from mary.runtime.application import create_application
 from mary.runtime.interactive import create_mary as create_interactive_mary
 from mary.runtime.mary_stage import MaryStage
+from mary.runtime.shared_work_stage import SharedWorkStage
 from mary.runtime.pipeline import PipelineResult, PipelineStatus
 
 
@@ -78,13 +79,19 @@ def test_canonical_application_pipeline_uses_full_mary(
     )
 
     assert app.pipeline.stage_names == (
+        "shared_work",
         "mary",
     )
     assert isinstance(
         app.pipeline.stages[0],
+        SharedWorkStage,
+    )
+    assert app.pipeline.stages[0].ecosystem is app.ecosystem
+    assert isinstance(
+        app.pipeline.stages[1],
         MaryStage,
     )
-    assert app.pipeline.stages[0].mary is mary
+    assert app.pipeline.stages[1].mary is mary
 
     result = app.run(
         "remember that my favorite color is blue"
@@ -96,6 +103,62 @@ def test_canonical_application_pipeline_uses_full_mary(
         in result.output.lower()
     )
     assert app.state.turn_count == 1
+
+
+def test_explicit_chat_commands_mutate_canonical_shared_work_without_llm_guessing(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    project_result = app.run("create a project called Cleaning Business")
+    assert project_result.success is True
+    assert project_result.metadata["handled_by"] == "shared_work"
+    assert project_result.output == 'Created project "Cleaning Business".'
+
+    project = app.ecosystem.command.list_projects()[0]
+    task_result = app.run(
+        "add task Follow up with ABC Property Management to project Cleaning Business"
+    )
+    assert task_result.success is True
+    assert task_result.metadata["handled_by"] == "shared_work"
+
+    task = app.ecosystem.command.list_tasks(project_id=project["id"])[0]
+    assert task["title"] == "Follow up with ABC Property Management"
+    assert task["project_title"] == "Cleaning Business"
+
+    completed = app.run("complete task Follow up with ABC Property Management")
+    assert completed.success is True
+    assert completed.metadata["handled_by"] == "shared_work"
+    assert app.ecosystem.command.get(task["id"])["status"] == "done"
+
+
+def test_shared_work_chat_fails_closed_when_project_name_is_unknown(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    mary = Mary()
+    configure_runtime_fake_llm(mary)
+    app = create_application(
+        mary=mary,
+        memory_path=tmp_path / "memory" / "memory.json",
+    )
+
+    result = app.run("add task Send proposal to project Missing Project")
+
+    assert result.success is True
+    assert result.metadata["handled_by"] == "shared_work"
+    assert "did not change anything" in result.output
+    assert app.ecosystem.command.list_tasks() == []
 
 
 def test_application_connects_and_cycles_marys_existing_autonomy(
@@ -305,10 +368,18 @@ def test_legacy_entry_point_factories_now_use_mary_stage(
 
     assert isinstance(
         main_pipeline.stages[0],
+        SharedWorkStage,
+    )
+    assert isinstance(
+        main_pipeline.stages[1],
         MaryStage,
     )
     assert isinstance(
         interactive_pipeline.stages[0],
+        SharedWorkStage,
+    )
+    assert isinstance(
+        interactive_pipeline.stages[1],
         MaryStage,
     )
 
