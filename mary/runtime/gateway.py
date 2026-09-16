@@ -58,6 +58,14 @@ class MaryRuntimeGateway(Protocol):
     def conversation(self) -> dict[str, Any]: ...
     def workspace(self) -> dict[str, Any]: ...
     def dashboard(self) -> dict[str, Any]: ...
+    def voice_status(self) -> dict[str, Any]: ...
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
     def workspace_action(
         self,
         action: str,
@@ -222,6 +230,35 @@ class LocalMaryGateway:
         payload["retrieval"] = self.mary.mind.retrieval.status()
         payload["perception"] = self.mary.perception_director.snapshot()
         return payload
+
+    def voice_status(self) -> dict[str, Any]:
+        from mary.mobile.audio import MobileSpeechService
+
+        return MobileSpeechService().status()
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from mary.mobile.audio import MobileSpeechService
+        import base64
+
+        speech = MobileSpeechService().synthesize(
+            text,
+            user_text=user_text,
+            delivery_plan=delivery_plan,
+        )
+        metadata = dict(speech.metadata or {})
+        return {
+            **metadata,
+            "status": str(metadata.get("status") or ("success" if speech.audio else "disabled")),
+            "mime_type": speech.mime_type,
+            "audio_base64": base64.b64encode(speech.audio).decode("ascii") if speech.audio else "",
+            "audio_size": len(speech.audio),
+        }
 
     def workspace_action(
         self,
@@ -542,6 +579,22 @@ class RemoteMaryGateway:
 
     def dashboard(self) -> dict[str, Any]:
         return self.client.dashboard()
+
+    def voice_status(self) -> dict[str, Any]:
+        return self.client.voice_status()
+
+    def voice_synthesize(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        delivery_plan: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self.client.voice_synthesize(
+            text,
+            user_text=user_text,
+            delivery_plan=delivery_plan,
+        )
 
     def workspace_action(
         self,
