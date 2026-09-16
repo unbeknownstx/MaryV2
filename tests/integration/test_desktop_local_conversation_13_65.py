@@ -7,6 +7,7 @@ import pytest
 from mary.core.config import LLMConfig
 from mary.desktop import runtime_supervisor
 from mary.desktop import device_node as desktop_device_node
+from mary.distributed import CapabilityDescriptor, DeviceTaskBroker, NodeDescriptor, NodeRegistry
 from mary.distributed.permissions import DeviceExecutionPermissions
 from mary.distributed.tasks import _sanitize_task_args
 from mary.llm.providers import local_runtime as local_runtime_module
@@ -95,6 +96,81 @@ def test_llm_local_remains_device_permission_gated(tmp_path):
     assert permissions.is_allowed("llm.local") is False
     permissions.allow("llm.local")
     assert permissions.is_allowed("llm.local") is True
+
+
+def test_device_local_route_skips_node_that_explicitly_reports_permission_denied():
+    registry = NodeRegistry()
+    registry.register(
+        NodeDescriptor(
+            node_id="windows-pc",
+            role="capability_node",
+            host_type="desktop",
+            platform="windows",
+            capabilities={
+                "llm.local": CapabilityDescriptor(
+                    "llm.local",
+                    private=True,
+                    local=True,
+                    metadata={
+                        "runtime": "ollama",
+                        "conversation_model": "qwen3:4b",
+                        "execution_authorized": False,
+                    },
+                )
+            },
+        )
+    )
+    provider = DeviceLocalProvider(
+        registry=registry,
+        broker=DeviceTaskBroker(),
+        role="conversation",
+        timeout_seconds=3,
+    )
+
+    assert registry.choose("llm.local") is not None
+    assert registry.choose(
+        "llm.local",
+        require_execution_ready=True,
+    ) is None
+    assert provider.is_available() is False
+
+
+def test_device_task_broker_prefers_execution_ready_node_when_permission_hint_is_known():
+    registry = NodeRegistry()
+    for node_id, authorized in (("denied", False), ("ready", True)):
+        registry.register(
+            NodeDescriptor(
+                node_id=node_id,
+                role="capability_node",
+                host_type="desktop",
+                platform="windows",
+                capabilities={
+                    "llm.local": CapabilityDescriptor(
+                        "llm.local",
+                        private=True,
+                        local=True,
+                        metadata={
+                            "runtime": "ollama",
+                            "execution_authorized": authorized,
+                        },
+                    )
+                },
+            )
+        )
+
+    broker = DeviceTaskBroker()
+    task = broker.enqueue(
+        registry,
+        capability="llm.local",
+        intent="conversation",
+        args={
+            "messages": [{"role": "user", "content": "hello"}],
+            "role": "conversation",
+        },
+        requester_device_id="mary-core-llm-router",
+    )
+
+    assert task.selected_node_id == "ready"
 
 
 def test_device_local_provider_maps_conversation_purpose_without_model_authority():
