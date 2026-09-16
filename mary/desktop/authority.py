@@ -7,8 +7,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from mary.desktop.remote_application import RemoteMaryApplicationView
 from mary.runtime.application import MaryApplication, create_application
 from mary.runtime.gateway import RemoteMaryGateway, gateway_from_environment
@@ -19,9 +17,14 @@ def resolve_desktop_application(
     *,
     project_root: Path | None = None,
 ) -> tuple[MaryApplication | RemoteMaryApplicationView, Path]:
-    """Resolve Desktop authority without ever creating two Mary runtimes."""
+    """Resolve Desktop authority without ever creating two Mary runtimes.
 
-    load_dotenv()
+    ``mary.core.config`` is imported by the canonical application/gateway path
+    and owns dotenv resolution.  Do not perform a second cwd-relative dotenv
+    load here: packaged Desktop launches must resolve the same Mary environment
+    regardless of the shell/shortcut working directory.
+    """
+
     core_url = os.getenv("MARY_CORE_URL", "").strip()
 
     if core_url:
