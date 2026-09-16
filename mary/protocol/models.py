@@ -165,6 +165,11 @@ class TurnResponse:
 
 
 _ALLOWED_WORKSPACE_ACTIONS = {
+    "project.create",
+    "project.update",
+    "task.create",
+    "task.update",
+    "task.complete",
     "command.add",
     "command.update",
     "focus.start",
