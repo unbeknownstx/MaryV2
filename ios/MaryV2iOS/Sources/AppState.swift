@@ -25,6 +25,8 @@ final class AppState: ObservableObject {
     @Published var workspaceData: [String: Any] = [:]
     @Published var liveData: [String: Any] = [:]
     @Published var searchResult: [String: Any] = [:]
+    @Published var socialStatusData: [String: Any] = [:]
+    @Published var socialProposalData: [String: Any] = [:]
 
     let voice = VoiceCapture()
     let playback = VoicePlayback()
@@ -361,6 +363,9 @@ final class AppState: ObservableObject {
                 liveData = try await client.runtimeAction("presence.scene.status")
             case .study, .research, .studio, .gallery:
                 liveData = try await client.workspace()
+            case .social:
+                socialStatusData = try await client.runtimeAction("social.status")
+                liveData = socialStatusData
             case .search:
                 liveData = try await client.nodes()
             case .media:
@@ -382,6 +387,119 @@ final class AppState: ObservableObject {
         } catch {
             liveData = [:]
             lastError = error.localizedDescription
+        }
+    }
+
+    func refreshSocialStatus() async {
+        guard let client else { return }
+        do {
+            socialStatusData = try await client.runtimeAction("social.status")
+            liveData = socialStatusData
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func proposeSocial(
+        kind: String,
+        brief: String,
+        mediaSummary: String,
+        tone: String = "",
+        audienceText: String = ""
+    ) async -> Bool {
+        guard let client else { return false }
+        let cleanBrief = brief.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanBrief.isEmpty else { return false }
+
+        do {
+            try? await client.renewSurface(foreground: true)
+            let result = try await client.runtimeAction(
+                "social.propose",
+                args: [
+                    "platform": "instagram",
+                    "kind": kind,
+                    "brief": cleanBrief,
+                    "media_summary": mediaSummary,
+                    "tone": tone,
+                    "audience_text": audienceText,
+                ]
+            )
+            socialProposalData = CoreProjection.dict(result["proposal"])
+            liveData = result
+            lastError = nil
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await refreshSocialStatus()
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
+    func approveSocial(
+        proposalID: String,
+        editedContent: String
+    ) async -> Bool {
+        guard let client, !proposalID.isEmpty else { return false }
+        do {
+            let result = try await client.runtimeAction(
+                "social.approve",
+                args: [
+                    "proposal_id": proposalID,
+                    "edited_content": editedContent,
+                ]
+            )
+            socialProposalData = CoreProjection.dict(result["proposal"])
+            lastError = nil
+            await refreshSocialStatus()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    func rejectSocial(proposalID: String, reason: String = "") async -> Bool {
+        guard let client, !proposalID.isEmpty else { return false }
+        do {
+            let result = try await client.runtimeAction(
+                "social.reject",
+                args: ["proposal_id": proposalID, "reason": reason]
+            )
+            socialProposalData = CoreProjection.dict(result["proposal"])
+            lastError = nil
+            await refreshSocialStatus()
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    func speakSocialProposal() async {
+        guard
+            let client,
+            !socialProposalData.isEmpty
+        else { return }
+
+        let text = CoreProjection.string(socialProposalData["content"])
+        guard !text.isEmpty else { return }
+        let deliveryPlan = CoreProjection.dict(socialProposalData["delivery_plan"])
+
+        do {
+            let audio = try await client.synthesizeVoice(
+                text: text,
+                deliveryPlan: deliveryPlan
+            )
+            voiceProvider = audio.provider
+            voiceServerAvailable = true
+            try playback.play(audio)
+            lastVoiceError = nil
+        } catch {
+            lastVoiceError = error.localizedDescription
         }
     }
 
