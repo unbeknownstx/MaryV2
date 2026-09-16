@@ -33,10 +33,12 @@ class DeviceLocalProvider(LLMInterface):
         *,
         role: str = "general",
         timeout_seconds: float | None = None,
+        fallback_provider: LLMInterface | None = None,
     ) -> None:
         self.registry = registry
         self.broker = broker
         self.role = self._normalize_role(role)
+        self.fallback_provider = fallback_provider
         if timeout_seconds is None:
             timeout_env = (
                 "MARY_DEVICE_LOCAL_FAST_TIMEOUT"
@@ -73,11 +75,19 @@ class DeviceLocalProvider(LLMInterface):
         # device wait merely because the registered provider was created as
         # role=general.
         inherited_timeout = self.timeout_seconds if normalized == self.role else None
+        fallback = self.fallback_provider
+        for_role = getattr(fallback, "for_role", None)
+        if callable(for_role):
+            try:
+                fallback = for_role(normalized)
+            except Exception:
+                fallback = self.fallback_provider
         return DeviceLocalProvider(
             self.registry,
             self.broker,
             role=normalized,
             timeout_seconds=inherited_timeout,
+            fallback_provider=fallback,
         )
 
     def for_purpose(self, purpose: str | None) -> "DeviceLocalProvider":
@@ -98,10 +108,29 @@ class DeviceLocalProvider(LLMInterface):
     ) -> LLMResponse:
         selected = self.registry.choose("llm.local", require_execution_ready=True)
         if selected is None:
-            raise LLMProviderError(
-                "No connected capability node currently exposes llm.local.",
+            fallback = self.fallback_provider
+            try:
+                fallback_ready = bool(fallback is not None and fallback.is_available())
+            except Exception:
+                fallback_ready = False
+            if not fallback_ready:
+                raise LLMProviderError(
+                    "No authorized device or Core-local runtime currently exposes llm.local.",
+                    provider="local_device",
+                    retryable=True,
+                )
+            response = fallback.generate(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return LLMResponse(
+                content=str(response.content or ""),
                 provider="local_device",
-                retryable=True,
+                model=str(response.model or fallback.model_name()),
+                finish_reason=response.finish_reason,
+                usage=dict(response.usage or {}),
+                raw=response.raw,
             )
 
         task = self.broker.enqueue(
@@ -184,7 +213,12 @@ class DeviceLocalProvider(LLMInterface):
         )
 
     def is_available(self) -> bool:
-        return self.registry.choose("llm.local", require_execution_ready=True) is not None
+        if self.registry.choose("llm.local", require_execution_ready=True) is not None:
+            return True
+        try:
+            return bool(self.fallback_provider is not None and self.fallback_provider.is_available())
+        except Exception:
+            return False
 
     def provider_name(self) -> str:
         return "local_device"
@@ -192,6 +226,11 @@ class DeviceLocalProvider(LLMInterface):
     def model_name(self) -> str:
         selected = self.registry.choose("llm.local", require_execution_ready=True)
         if selected is None:
+            try:
+                if self.fallback_provider is not None and self.fallback_provider.is_available():
+                    return str(self.fallback_provider.model_name() or f"core-local:{self.role}")[:160]
+            except Exception:
+                pass
             return f"device:{self.role}:offline"
         capability = selected.capabilities.get("llm.local")
         metadata = dict(getattr(capability, "metadata", {}) or {})
