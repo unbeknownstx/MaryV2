@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private struct SharedWorkItem: Identifiable {
     let id: String
@@ -224,11 +225,6 @@ struct WorkView: View {
             .padding(.bottom, 8)
         }
         .refreshable { await app.refreshHome() }
-        .onChange(of: projects.map(\.id)) { _, ids in
-            if !selectedProjectID.isEmpty, !ids.contains(selectedProjectID) {
-                selectedProjectID = ""
-            }
-        }
     }
 
     private func addSharedWork() async {
