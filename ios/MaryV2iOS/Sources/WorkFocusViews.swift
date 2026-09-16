@@ -32,6 +32,8 @@ struct WorkView: View {
     @State private var newItem = ""
     @State private var kind = "task"
     @State private var selectedProjectID = ""
+    @State private var editingItemID = ""
+    @State private var editingTitle = ""
 
     private var commandItems: [SharedWorkItem] {
         guard
@@ -131,17 +133,45 @@ struct WorkView: View {
 
                         ForEach(projects) { project in
                             GlassCard {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "folder.fill")
-                                        .foregroundStyle(MaryTheme.cyan)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(project.title).font(.headline)
-                                        let taskCount = openTasks.filter { $0.projectID == project.id }.count
-                                        Text("\(taskCount) open task\(taskCount == 1 ? "" : "s")")
-                                            .font(.caption)
-                                            .foregroundStyle(MaryTheme.muted)
+                                if editingItemID == project.id {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        TextField("Project name", text: $editingTitle)
+                                            .textFieldStyle(.plain)
+                                            .padding(10)
+                                            .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 12))
+                                        HStack {
+                                            Button("Cancel") { cancelEditing() }
+                                                .buttonStyle(.plain)
+                                                .foregroundStyle(MaryTheme.muted)
+                                            Spacer()
+                                            Button("Save") {
+                                                Task { await updateSharedWork(project) }
+                                            }
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(MaryTheme.cyan)
+                                            .disabled(editingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                        }
                                     }
-                                    Spacer()
+                                } else {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "folder.fill")
+                                            .foregroundStyle(MaryTheme.cyan)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(project.title).font(.headline)
+                                            let taskCount = openTasks.filter { $0.projectID == project.id }.count
+                                            Text("\(taskCount) open task\(taskCount == 1 ? "" : "s")")
+                                                .font(.caption)
+                                                .foregroundStyle(MaryTheme.muted)
+                                        }
+                                        Spacer()
+                                        Button { beginEditing(project) } label: {
+                                            Image(systemName: "pencil.circle")
+                                                .font(.title3)
+                                                .foregroundStyle(MaryTheme.muted)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Rename \(project.title)")
+                                    }
                                 }
                             }
                         }
@@ -160,25 +190,53 @@ struct WorkView: View {
 
                         ForEach(openTasks) { item in
                             GlassCard {
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.title).font(.headline)
-                                        if !item.projectTitle.isEmpty, item.projectTitle != "nil" {
-                                            Label(item.projectTitle, systemImage: "folder")
-                                                .font(.caption)
+                                if editingItemID == item.id {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        TextField("Task name", text: $editingTitle)
+                                            .textFieldStyle(.plain)
+                                            .padding(10)
+                                            .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 12))
+                                        HStack {
+                                            Button("Cancel") { cancelEditing() }
+                                                .buttonStyle(.plain)
                                                 .foregroundStyle(MaryTheme.muted)
+                                            Spacer()
+                                            Button("Save") {
+                                                Task { await updateSharedWork(item) }
+                                            }
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(MaryTheme.cyan)
+                                            .disabled(editingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                         }
                                     }
-                                    Spacer()
-                                    Button {
-                                        Task { await completeTask(item) }
-                                    } label: {
-                                        Image(systemName: "checkmark.circle")
-                                            .font(.title2)
-                                            .foregroundStyle(MaryTheme.cyan)
+                                } else {
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(item.title).font(.headline)
+                                            if !item.projectTitle.isEmpty, item.projectTitle != "nil" {
+                                                Label(item.projectTitle, systemImage: "folder")
+                                                    .font(.caption)
+                                                    .foregroundStyle(MaryTheme.muted)
+                                            }
+                                        }
+                                        Spacer()
+                                        Button { beginEditing(item) } label: {
+                                            Image(systemName: "pencil.circle")
+                                                .font(.title3)
+                                                .foregroundStyle(MaryTheme.muted)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Rename \(item.title)")
+                                        Button {
+                                            Task { await completeTask(item) }
+                                        } label: {
+                                            Image(systemName: "checkmark.circle")
+                                                .font(.title2)
+                                                .foregroundStyle(MaryTheme.cyan)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Complete \(item.title)")
                                     }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Complete \(item.title)")
                                 }
                             }
                         }
@@ -268,6 +326,31 @@ struct WorkView: View {
         if success {
             newItem = ""
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        }
+    }
+
+    private func beginEditing(_ item: SharedWorkItem) {
+        editingItemID = item.id
+        editingTitle = item.title
+    }
+
+    private func cancelEditing() {
+        editingItemID = ""
+        editingTitle = ""
+    }
+
+    private func updateSharedWork(_ item: SharedWorkItem) async {
+        let title = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+
+        let action = item.kind == "project" ? "project.update" : "task.update"
+        let idKey = item.kind == "project" ? "project_id" : "task_id"
+        if await app.runWorkspaceAction(
+            action,
+            args: [idKey: item.id, "title": title]
+        ) {
+            cancelEditing()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }
 
