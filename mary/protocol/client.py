@@ -93,6 +93,24 @@ class MaryClient:
         })
         return self._request("POST", "/v1/creator-surfaces/renew", model.to_dict())
 
+    def surface_visibility(
+        self,
+        surface_id: str | None = None,
+        *,
+        visible: bool,
+        foreground: bool | None = None,
+    ) -> dict[str, Any]:
+        model = CreatorSurfaceRequest.from_dict({
+            "surface_id": surface_id or self.device_id,
+            "visible": bool(visible),
+            "foreground": foreground,
+        })
+        return self._request(
+            "POST",
+            "/v1/creator-surfaces/visibility",
+            model.to_dict(),
+        )
+
     def surface_disconnect(self, surface_id: str | None = None) -> dict[str, Any]:
         model = CreatorSurfaceRequest.from_dict({"surface_id": surface_id or self.device_id})
         return self._request("POST", "/v1/creator-surfaces/disconnect", model.to_dict())
