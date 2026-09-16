@@ -215,9 +215,17 @@ class MaryCoreService:
         register = getattr(router, "register_provider", None)
         if registry is None or not callable(register):
             return
+        existing = None
+        getter = getattr(router, "get_provider", None)
+        if callable(getter):
+            try:
+                existing = getter("local_device")
+            except Exception:
+                existing = None
         self._device_local_provider = DeviceLocalProvider(
             registry,
             self.device_tasks,
+            fallback_provider=existing,
         )
         register("local_device", self._device_local_provider)
 
@@ -234,7 +242,18 @@ class MaryCoreService:
         register = getattr(router, "register_provider", None)
         if registry is None or not callable(register):
             return
-        self._device_ollama_provider = DeviceOllamaProvider(registry, self.device_tasks)
+        existing = None
+        getter = getattr(router, "get_provider", None)
+        if callable(getter):
+            try:
+                existing = getter("ollama")
+            except Exception:
+                existing = None
+        self._device_ollama_provider = DeviceOllamaProvider(
+            registry,
+            self.device_tasks,
+            fallback_provider=existing,
+        )
         register("ollama", self._device_ollama_provider)
 
     def _attach_device_llama_cpp_provider(self) -> None:
