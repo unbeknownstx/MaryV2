@@ -13,16 +13,26 @@ def test_companion_pulse_reads_existing_workspaces_without_new_owner(tmp_path, m
                              load_knowledge=False)
     try:
         ecosystem = app.ecosystem
-        ecosystem.command.add("Polish Mary Home", kind="project", priority=4)
+        work_project = ecosystem.command.create_project(
+            "Polish Mary Home",
+            priority=4,
+        )
+        ecosystem.command.create_task(
+            "Fix the Home pulse",
+            project_id=work_project["id"],
+            priority=4,
+        )
         project = ecosystem.study.create_project("CompTIA")
         ecosystem.study.add_card(project["id"], "HTTPS port?", "443")
         ecosystem.inbox.add("Quiet note", importance=.5)
 
         pulse = ecosystem.companion_snapshot()
         assert pulse["counts"]["active_tasks"] == 1
+        assert pulse["counts"]["work_projects"] == 1
         assert pulse["counts"]["study_due"] == 1
         assert pulse["counts"]["inbox_unread"] == 1
-        assert pulse["top_tasks"][0]["title"] == "Polish Mary Home"
+        assert pulse["top_tasks"][0]["title"] == "Fix the Home pulse"
+        assert pulse["top_tasks"][0]["project_title"] == "Polish Mary Home"
         assert "not an autonomous planner" in pulse["semantics"]
         assert not (ecosystem.root / "companion.json").exists()
     finally:
