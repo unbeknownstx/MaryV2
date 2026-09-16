@@ -100,6 +100,7 @@ def build_workspace_context(
     counts = {
         "active_tasks": _bounded_int(counts_source.get("active_tasks")),
         "waiting": _bounded_int(counts_source.get("waiting")),
+        "work_projects": _bounded_int(counts_source.get("work_projects")),
         "study_due": _bounded_int(counts_source.get("study_due")),
         "study_projects": _bounded_int(counts_source.get("study_projects")),
         "research_open": _bounded_int(counts_source.get("research_open")),
@@ -145,8 +146,8 @@ def build_workspace_context(
     top_tasks = _items(
         source.get("top_tasks"),
         limit=3,
-        text_fields={"title": 160},
-        passthrough=("id", "kind", "status"),
+        text_fields={"title": 160, "project_title": 160, "due_at": 80},
+        passthrough=("id", "kind", "status", "project_id"),
         integer_fields=("priority",),
     )
 
