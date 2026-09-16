@@ -1,10 +1,56 @@
 import SwiftUI
 
+private struct SharedWorkItem: Identifiable {
+    let id: String
+    let kind: String
+    let title: String
+    let status: String
+    let projectID: String
+    let projectTitle: String
+    let priority: Int
+
+    init?(_ value: [String: Any]) {
+        let id = String(describing: value["id"] ?? "")
+        let title = String(describing: value["title"] ?? "")
+        guard !id.isEmpty, id != "nil", !title.isEmpty, title != "nil" else {
+            return nil
+        }
+        self.id = id
+        self.kind = String(describing: value["kind"] ?? "task")
+        self.title = title
+        self.status = String(describing: value["status"] ?? "active")
+        self.projectID = String(describing: value["project_id"] ?? "")
+        self.projectTitle = String(describing: value["project_title"] ?? "")
+        self.priority = value["priority"] as? Int ?? 0
+    }
+}
+
 struct WorkView: View {
     @EnvironmentObject var app: AppState
     let navigate: (WorkspaceKind) -> Void
     @State private var newItem = ""
     @State private var kind = "task"
+    @State private var selectedProjectID = ""
+
+    private var commandItems: [SharedWorkItem] {
+        guard
+            let command = app.workspaceData["command"] as? [String: Any],
+            let raw = command["items"] as? [[String: Any]]
+        else { return [] }
+        return raw.compactMap(SharedWorkItem.init)
+    }
+
+    private var projects: [SharedWorkItem] {
+        commandItems.filter {
+            $0.kind == "project" && $0.status != "done" && $0.status != "archived"
+        }
+    }
+
+    private var openTasks: [SharedWorkItem] {
+        commandItems.filter {
+            $0.kind == "task" && $0.status != "done" && $0.status != "archived"
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -12,40 +58,47 @@ struct WorkView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Eyebrow(text: "Shared work")
                     Text("Work with Mary").font(.largeTitle.bold())
-                    Text("Capture tasks, study, research, and creative work in the same canonical workspace.")
+                    Text("Projects and tasks live in Mary Core, so the same work follows you across phone, desktop, and Mac.")
                         .foregroundStyle(MaryTheme.muted)
                 }
 
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        TextField("Add something to work on…", text: $newItem)
-                            .padding(12)
-                            .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
+                        TextField(
+                            kind == "project" ? "Name a project…" :
+                                kind == "task" ? "Add a task…" : "Capture an idea…",
+                            text: $newItem
+                        )
+                        .padding(12)
+                        .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
 
                         Picker("Type", selection: $kind) {
                             Text("Task").tag("task")
                             Text("Project").tag("project")
-                            Text("Note").tag("note")
+                            Text("Idea").tag("idea")
                         }
                         .pickerStyle(.segmented)
 
-                        Button {
-                            Task {
-                                if await app.runWorkspaceAction(
-                                    "command.add",
-                                    args: [
-                                        "title": newItem,
-                                        "kind": kind,
-                                        "priority": 2,
-                                        "notes": "",
-                                    ]
-                                ) {
-                                    newItem = ""
+                        if kind == "task", !projects.isEmpty {
+                            Picker("Project", selection: $selectedProjectID) {
+                                Text("No project").tag("")
+                                ForEach(projects) { project in
+                                    Text(project.title).tag(project.id)
                                 }
                             }
+                            .pickerStyle(.menu)
+                            .tint(MaryTheme.cyan)
+                        }
+
+                        Button {
+                            Task { await addSharedWork() }
                         } label: {
-                            Label("Add to shared work", systemImage: "plus.circle.fill")
-                                .frame(maxWidth: .infinity)
+                            Label(
+                                kind == "project" ? "Create project" :
+                                    kind == "task" ? "Create task" : "Save idea",
+                                systemImage: "plus.circle.fill"
+                            )
+                            .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(MaryPrimaryButtonStyle())
                         .disabled(newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -61,6 +114,85 @@ struct WorkView: View {
                                 Text(app.snapshot.currentSummary)
                                     .foregroundStyle(MaryTheme.muted)
                             }
+                        }
+                    }
+                }
+
+                if !projects.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Projects").font(.title3.bold())
+                            Spacer()
+                            Text("\(projects.count)")
+                                .font(.caption.bold())
+                                .foregroundStyle(MaryTheme.muted)
+                        }
+
+                        ForEach(projects) { project in
+                            GlassCard {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "folder.fill")
+                                        .foregroundStyle(MaryTheme.cyan)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(project.title).font(.headline)
+                                        let taskCount = openTasks.filter { $0.projectID == project.id }.count
+                                        Text("\(taskCount) open task\(taskCount == 1 ? "" : "s")")
+                                            .font(.caption)
+                                            .foregroundStyle(MaryTheme.muted)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !openTasks.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Open tasks").font(.title3.bold())
+                            Spacer()
+                            Text("\(openTasks.count)")
+                                .font(.caption.bold())
+                                .foregroundStyle(MaryTheme.muted)
+                        }
+
+                        ForEach(openTasks) { item in
+                            GlassCard {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(item.title).font(.headline)
+                                        if !item.projectTitle.isEmpty, item.projectTitle != "nil" {
+                                            Label(item.projectTitle, systemImage: "folder")
+                                                .font(.caption)
+                                                .foregroundStyle(MaryTheme.muted)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button {
+                                        Task { await completeTask(item) }
+                                    } label: {
+                                        Image(systemName: "checkmark.circle")
+                                            .font(.title2)
+                                            .foregroundStyle(MaryTheme.cyan)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Complete \(item.title)")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if projects.isEmpty && openTasks.isEmpty {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Eyebrow(text: "Ready")
+                            Text("No active projects or tasks")
+                                .font(.headline)
+                            Text("Create one here or tell Mary in chat: “create a project called Cleaning Business.”")
+                                .font(.subheadline)
+                                .foregroundStyle(MaryTheme.muted)
                         }
                     }
                 }
@@ -92,6 +224,64 @@ struct WorkView: View {
             .padding(.bottom, 8)
         }
         .refreshable { await app.refreshHome() }
+        .onChange(of: projects.map(\.id)) { _, ids in
+            if !selectedProjectID.isEmpty, !ids.contains(selectedProjectID) {
+                selectedProjectID = ""
+            }
+        }
+    }
+
+    private func addSharedWork() async {
+        let title = newItem.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+
+        let success: Bool
+        switch kind {
+        case "project":
+            success = await app.runWorkspaceAction(
+                "project.create",
+                args: [
+                    "title": title,
+                    "priority": 2,
+                    "notes": "",
+                ]
+            )
+        case "task":
+            success = await app.runWorkspaceAction(
+                "task.create",
+                args: [
+                    "title": title,
+                    "project_id": selectedProjectID,
+                    "priority": 2,
+                    "notes": "",
+                    "due_at": "",
+                ]
+            )
+        default:
+            success = await app.runWorkspaceAction(
+                "command.add",
+                args: [
+                    "title": title,
+                    "kind": "idea",
+                    "priority": 2,
+                    "notes": "",
+                ]
+            )
+        }
+
+        if success {
+            newItem = ""
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        }
+    }
+
+    private func completeTask(_ item: SharedWorkItem) async {
+        if await app.runWorkspaceAction(
+            "task.complete",
+            args: ["task_id": item.id]
+        ) {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
 
     private func workspaceButton(_ workspace: WorkspaceKind) -> some View {
