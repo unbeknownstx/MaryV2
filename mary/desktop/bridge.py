@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QFileDialog
 
 from mary.runtime.application import MaryApplication
 from mary.desktop.remote_application import RemoteMaryApplicationView
-from mary.desktop.voice import DesktopVoiceEngine
+from mary.desktop.voice import DesktopVoiceEngine, RemoteCoreVoiceEngine
 from mary.desktop.audio_cache import DesktopAudioCache
 from mary.desktop.microphone import DesktopMicrophoneRecorder
 from mary.desktop.resident_hearing import DesktopResidentHearing
@@ -507,7 +507,12 @@ class MaryDesktopBridge(QObject):
 
         self.conversation_runtime = DesktopConversationRuntime()
 
-        self.voice = DesktopVoiceEngine.from_environment()
+        local_voice = DesktopVoiceEngine.from_environment()
+        self.voice = (
+            RemoteCoreVoiceEngine(application.gateway, fallback=local_voice)
+            if getattr(application, "authority", "") == "remote_mary_core"
+            else local_voice
+        )
         self.audio_cache = DesktopAudioCache()
         self.stt = DesktopSpeechToText.from_environment()
         self.microphone = DesktopMicrophoneRecorder()
