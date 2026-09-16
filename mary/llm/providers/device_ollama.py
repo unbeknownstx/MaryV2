@@ -88,7 +88,7 @@ class DeviceOllamaProvider(LLMInterface):
         temperature: float = 0.7,
         max_tokens: int = 2048,
     ) -> LLMResponse:
-        selected = self.registry.choose("llm.ollama")
+        selected = self.registry.choose("llm.ollama", require_execution_ready=True)
         if selected is None:
             raise LLMProviderError(
                 "No connected capability node currently exposes llm.ollama.",
@@ -145,13 +145,13 @@ class DeviceOllamaProvider(LLMInterface):
         )
 
     def is_available(self) -> bool:
-        return self.registry.choose("llm.ollama") is not None
+        return self.registry.choose("llm.ollama", require_execution_ready=True) is not None
 
     def provider_name(self) -> str:
         return "ollama"
 
     def model_name(self) -> str:
-        selected = self.registry.choose("llm.ollama")
+        selected = self.registry.choose("llm.ollama", require_execution_ready=True)
         if selected is None:
             return f"device:{self.role}:offline"
         capability = selected.capabilities.get("llm.ollama")
