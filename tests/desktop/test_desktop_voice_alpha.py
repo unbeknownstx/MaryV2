@@ -91,3 +91,70 @@ def test_voice_failure_still_preserves_speech_synchronized_transcript() -> None:
     assert '"spoken_text": spoken_text' in bridge
     assert '"status": "disabled",' in voice
     assert '"spoken_text": spoken_text' in voice
+
+def test_remote_core_voice_prefers_core_and_falls_back_locally():
+    from mary.desktop.voice import (
+        DesktopVoiceEngine,
+        DesktopVoiceStatus,
+        RemoteCoreVoiceEngine,
+    )
+
+    class Gateway:
+        def __init__(self):
+            self.fail = False
+
+        def voice_status(self):
+            return {
+                "tts": {
+                    "enabled": True,
+                    "provider": "core-elevenlabs",
+                    "model": "flash",
+                    "premium": True,
+                }
+            }
+
+        def voice_synthesize(self, text, *, user_text=None, delivery_plan=None):
+            if self.fail:
+                raise RuntimeError("temporary core voice failure")
+            return {
+                "status": "success",
+                "provider": "core-elevenlabs",
+                "model": "flash",
+                "audio_base64": "SUQz",
+                "mime_type": "audio/mpeg",
+                "spoken_text": text,
+            }
+
+    class LocalFallback(DesktopVoiceEngine):
+        def __init__(self):
+            super().__init__(
+                status=DesktopVoiceStatus(
+                    True,
+                    "local-test",
+                    model="local",
+                    local=True,
+                )
+            )
+
+        def synthesize(self, text, **kwargs):
+            return {
+                **self.status.to_dict(),
+                "status": "success",
+                "format": "wav",
+                "mime_type": "audio/wav",
+                "audio_base64": "UklGRg==",
+                "audio_size": 4,
+                "spoken_text": text,
+            }
+
+    gateway = Gateway()
+    engine = RemoteCoreVoiceEngine(gateway, fallback=LocalFallback())
+    core = engine.synthesize("hello")
+    assert core["provider"] == "core-elevenlabs"
+    assert core["authority"] == "remote_mary_core"
+
+    gateway.fail = True
+    fallback = engine.synthesize("hello")
+    assert fallback["provider"] == "local-test"
+    assert fallback["authority"] == "desktop_local_fallback"
+
