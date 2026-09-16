@@ -289,6 +289,12 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "training.dataset.preview",
     "production.jobs.preview",
     "integration.status",
+    "social.status",
+    "social.proposal",
+    "social.propose",
+    "social.approve",
+    "social.reject",
+    "social.mark_published",
     "training.feedback.record",
 }
 
