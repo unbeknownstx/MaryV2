@@ -83,7 +83,7 @@ def build_companion_pulse(
     presence_state = dict(presence.snapshot() or {})
 
     top_tasks = []
-    for item in list(command_summary.get("top", []) or [])[:3]:
+    for item in list(command_summary.get("top_tasks", command_summary.get("top", [])) or [])[:3]:
         if not isinstance(item, dict):
             continue
         top_tasks.append(
@@ -93,6 +93,9 @@ def build_companion_pulse(
                 "title": _clip(item.get("title"), 160),
                 "priority": int(item.get("priority", 0) or 0),
                 "status": str(item.get("status") or "active"),
+                "project_id": str(item.get("project_id") or ""),
+                "project_title": _clip(item.get("project_title"), 160),
+                "due_at": _clip(item.get("due_at"), 80),
             }
         )
 
@@ -172,7 +175,7 @@ def build_companion_pulse(
         )
 
     due_count = int(study_summary.get("due", 0) or 0)
-    active_tasks = int(command_summary.get("active", 0) or 0)
+    active_tasks = int(command_summary.get("active_tasks", command_summary.get("active", 0)) or 0)
     unread = int(inbox_summary.get("unread", 0) or 0)
     focus_active = bool(focus_state.get("active"))
 
@@ -210,6 +213,7 @@ def build_companion_pulse(
         "counts": {
             "active_tasks": active_tasks,
             "waiting": int(command_summary.get("waiting", 0) or 0),
+            "work_projects": int(command_summary.get("projects", 0) or 0),
             "study_due": due_count,
             "study_projects": int(study_summary.get("projects", 0) or 0),
             "research_open": int(research_summary.get("open", 0) or 0),
