@@ -111,8 +111,8 @@ class CommandCenter:
         project = self._find_item(project_id)
         if project.kind != "project":
             raise ValueError(f"Command item {project.id} is not a project.")
-        if require_available and project.status == "archived":
-            raise ValueError("Cannot attach work to an archived project.")
+        if require_available and project.status in {"done", "archived"}:
+            raise ValueError("Cannot attach work to a completed or archived project.")
         return project
 
     def _present(self, item: CommandItem) -> dict[str, Any]:
