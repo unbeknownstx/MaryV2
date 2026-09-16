@@ -54,6 +54,8 @@ jobs:
         run: |
           python -m scripts.verify_repository_structure
           python -m scripts.verify_maryv2_convergence
+          python -m scripts.audit_runtime_wiring
+          python -m pytest -q tests/runtime/test_runtime_wiring_audit_13_70.py
 
       - name: Core, projects, tasks, and durable memory
         run: |
