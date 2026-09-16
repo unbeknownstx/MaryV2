@@ -102,6 +102,12 @@ class MaryRuntimeGateway(Protocol):
     def complete_capability_task(self, task_id: str, *, status: str, result: dict[str, Any] | None = None, error: str = "") -> dict[str, Any]: ...
     def capability_task_status(self, task_id: str) -> dict[str, Any]: ...
     def connect_surface(self) -> dict[str, Any]: ...
+    def set_surface_visibility(
+        self,
+        *,
+        visible: bool,
+        foreground: bool | None = None,
+    ) -> dict[str, Any]: ...
     def close(self) -> None: ...
 
 
@@ -410,6 +416,19 @@ class LocalMaryGateway:
     def connect_surface(self) -> dict[str, Any]:
         return {"state": "ACTIVE", "authority": self.authority}
 
+    def set_surface_visibility(
+        self,
+        *,
+        visible: bool,
+        foreground: bool | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "state": "ACTIVE",
+            "authority": self.authority,
+            "visible": bool(visible),
+            "foreground": bool(visible if foreground is None else foreground),
+        }
+
     def close(self) -> None:
         return None
 
@@ -441,6 +460,8 @@ class RemoteMaryGateway:
         self._surface_lock = RLock()
         self._surface_timer: Timer | None = None
         self._surface_connected = False
+        self._surface_visible = True
+        self._surface_foreground = True
         self._closed = False
 
     def _new_surface_id(self) -> str:
@@ -461,8 +482,8 @@ class RemoteMaryGateway:
             payload = dict(
                 self.client.surface_register(
                     surface_id=self._surface_id,
-                    visible=True,
-                    foreground=True,
+                    visible=self._surface_visible,
+                    foreground=self._surface_foreground,
                     lease_seconds=self._lease_seconds,
                 )
                 or {}
@@ -507,6 +528,38 @@ class RemoteMaryGateway:
                 except Exception:
                     pass
             self._schedule_surface_renewal_locked()
+
+    def set_surface_visibility(
+        self,
+        *,
+        visible: bool,
+        foreground: bool | None = None,
+    ) -> dict[str, Any]:
+        """Publish presentation visibility without changing Mary identity/state."""
+        with self._surface_lock:
+            if self._closed:
+                raise RuntimeError("Remote Mary gateway is closed.")
+            self._surface_visible = bool(visible)
+            self._surface_foreground = bool(
+                self._surface_visible
+                if foreground is None
+                else foreground
+            )
+            if not self.creator_surface or not self._surface_connected:
+                return {
+                    "state": "UNSUPPORTED" if not self.creator_surface else "PENDING",
+                    "surface_id": self._surface_id,
+                    "visible": self._surface_visible,
+                    "foreground": self._surface_foreground,
+                }
+            return dict(
+                self.client.surface_visibility(
+                    surface_id=self._surface_id,
+                    visible=self._surface_visible,
+                    foreground=self._surface_foreground,
+                )
+                or {}
+            )
 
     def close(self) -> None:
         """Retire only this presentation lease; never close canonical Core."""
