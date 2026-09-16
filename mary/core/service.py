@@ -920,9 +920,24 @@ class MaryCoreService:
         })
 
     def integration_status(self) -> dict[str, Any]:
-        """Return executable top-to-bottom Mary architecture connection health."""
+        """Return identity wiring plus executable runtime readiness."""
         from mary.runtime.integration_graph import build_integration_graph
-        return _json_safe(build_integration_graph(application=self.application, service=self))
+        from mary.runtime.wiring_audit import build_runtime_wiring_audit
+
+        graph = build_integration_graph(
+            application=self.application,
+            service=self,
+        )
+        runtime = build_runtime_wiring_audit(
+            application=self.application,
+            service=self,
+        )
+        return _json_safe({
+            **graph,
+            "runtime": runtime,
+            "healthy": bool(graph.get("healthy")) and bool(runtime.get("healthy")),
+            "operational": bool(runtime.get("operational")),
+        })
 
     def production_jobs(self, production_id: str) -> dict[str, Any]:
         """Compile a canonical production project into non-executing capability jobs."""
