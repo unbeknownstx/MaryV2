@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QUrl
+from PySide6.QtCore import QEvent, QSettings, Qt, QUrl
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
@@ -199,6 +199,33 @@ class MaryDesktopWindow(QMainWindow):
             self.showMaximized()
         else:
             self.showNormal()
+
+    def _sync_creator_surface_visibility(self) -> None:
+        if not isinstance(self.application, RemoteMaryApplicationView):
+            return
+        try:
+            visible = bool(self.isVisible() and not self.isMinimized())
+            foreground = bool(visible and self.isActiveWindow())
+            self.application.gateway.set_surface_visibility(
+                visible=visible,
+                foreground=foreground,
+            )
+        except Exception:
+            # Presentation lifecycle reporting must never make the window fail.
+            pass
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._sync_creator_surface_visibility()
+
+    def focusInEvent(self, event) -> None:  # type: ignore[override]
+        super().focusInEvent(event)
+        self._sync_creator_surface_visibility()
+
+    def focusOutEvent(self, event) -> None:  # type: ignore[override]
+        super().focusOutEvent(event)
+        self._sync_creator_surface_visibility()
 
     def _start_system_move(self) -> None:
         handle = self.windowHandle()
