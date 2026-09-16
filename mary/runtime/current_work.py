@@ -91,10 +91,16 @@ def _workspace_candidates(workspace: Mapping[str, Any] | None) -> list[dict[str,
                 continue
             title = _clip(item.get("title"), 180)
             if title:
+                kind = str(item.get("kind") or "task")[:48]
+                project = (
+                    title
+                    if kind == "project"
+                    else _clip(item.get("project_title"), 120)
+                )
                 values.append({
                     "summary": title,
-                    "kind": str(item.get("kind") or "task")[:48],
-                    "project": "",
+                    "kind": kind,
+                    "project": project,
                     "stage": str(item.get("status") or "active")[:48],
                     "source": "workspace.command",
                 })
@@ -128,10 +134,15 @@ def _workspace_candidates(workspace: Mapping[str, Any] | None) -> list[dict[str,
             continue
         title = _clip(item.get("title"), 180)
         if title:
+            kind = str(item.get("kind") or "task")[:48]
             values.append({
                 "summary": title,
-                "kind": str(item.get("kind") or "task")[:48],
-                "project": "",
+                "kind": kind,
+                "project": (
+                    title
+                    if kind == "project"
+                    else _clip(item.get("project_title"), 120)
+                ),
                 "stage": str(item.get("status") or "active")[:48],
                 "source": "workspace_context.command",
             })
