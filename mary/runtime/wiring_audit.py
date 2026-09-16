@@ -230,19 +230,28 @@ def _voice(service: Any | None) -> dict[str, Any]:
 
 
 def _avatar(application: Any) -> dict[str, Any]:
-    mary = application.mary
+    mary = getattr(application, "mary", None)
     avatar = getattr(mary, "avatar", None)
     state = getattr(avatar, "state", None)
-    root = Path(getattr(getattr(mary, "config", None).paths, "root", Path.cwd()))
+
+    config = getattr(mary, "config", None)
+    paths = getattr(config, "paths", None)
+    configured_root = getattr(paths, "root", None)
+    root = Path(configured_root) if configured_root is not None else Path.cwd()
+
     assets: dict[str, Any] = {}
     try:
         from mary.desktop.frontend_build import avatar_asset_status
 
         assets = dict(avatar_asset_status(root))
     except Exception as exc:
+        # Diagnostics must never make Core state/status fail merely because a
+        # minimal composition has no Desktop asset tree or optional frontend
+        # dependency. Report the unavailable readiness evidence instead.
         assets = {"error_type": type(exc).__name__}
     return {
-        "healthy": avatar is not None and state is not None,
+        "healthy": avatar is None or state is not None,
+        "applicable": avatar is not None,
         "bridge_connected": avatar is not None,
         "state_connected": state is not None,
         "vrm_configured": bool(assets.get("configured")),
@@ -318,7 +327,7 @@ def build_runtime_wiring_audit(
         degraded.append("no_conversation_provider_currently_available")
     if service is not None and not sections["voice"].get("tts_ready"):
         degraded.append("core_tts_not_ready")
-    if not sections["avatar"].get("vrm_configured"):
+    if sections["avatar"].get("applicable") and not sections["avatar"].get("vrm_configured"):
         degraded.append("personal_vrm_not_configured")
     if service is not None and not sections["nodes"].get("local_llm_live"):
         degraded.append("no_live_local_llm_node")
