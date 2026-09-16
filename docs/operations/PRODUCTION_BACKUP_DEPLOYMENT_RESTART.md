@@ -38,6 +38,7 @@ under a durable owner root fails the backup rather than being silently omitted.
 | Durable device trust | `MaryCoreService` | `runtime/node_enrollment.json` | Atomic JSON | Sanitized v2 export retains trusted-device digests only | New Core loads trust; devices reconnect and receive new sessions |
 | Explicit response feedback | `ResponseFeedbackStore` | `training/response_feedback.json` | Atomic JSON | v2 archive + volume backup | Training feedback store loads when present |
 | Voice-lab selections | `VoiceLabStore` | `voice/voice_lab.json` when Core and Mobile share this root | Atomic JSON | v2 archive + volume backup | Voice-lab store loads on the owning surface |
+| Public social artifact continuity | `SocialPresenceRuntime` | `social/social_presence.json` | Atomic JSON | v2 archive + volume backup | Canonical Mary reloads creator-reviewed proposed/approved/published social artifacts; no platform credentials are stored |
 | Command Center shared work | `CommandCenter` | `ecosystem/command_center.json` | Atomic JSON | v2 archive + volume backup | `MaryEcosystem` reconstructs around the same Mary |
 | Focus state/history | `FocusManager` | `ecosystem/focus.json` | Atomic JSON | v2 archive + volume backup | `MaryEcosystem` reconstructs the focus manager |
 | Inbox | `MaryInbox` | `ecosystem/inbox.json` | Atomic JSON | v2 archive + volume backup | `MaryEcosystem` reconstructs the inbox |
