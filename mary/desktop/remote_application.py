@@ -261,10 +261,29 @@ class _CommandView:
     def __init__(self, gateway: RemoteMaryGateway) -> None:
         self.gateway = gateway
 
-    def add(self, title: str, *, kind: str = "task", priority: int = 2, notes: str = ""):
+    def snapshot(self) -> dict[str, Any]:
+        return dict(self.gateway.workspace().get("command", {}) or {})
+
+    def add(
+        self,
+        title: str,
+        *,
+        kind: str = "task",
+        priority: int = 2,
+        notes: str = "",
+        project_id: str = "",
+        due_at: str = "",
+    ):
         return self.gateway.workspace_action(
             "command.add",
-            {"title": title, "kind": kind, "priority": priority, "notes": notes},
+            {
+                "title": title,
+                "kind": kind,
+                "priority": priority,
+                "notes": notes,
+                "project_id": project_id,
+                "due_at": due_at,
+            },
         )["item"]
 
     def update(self, item_id: str, **changes):
@@ -272,6 +291,60 @@ class _CommandView:
             "command.update",
             {"item_id": item_id, **changes},
         )["item"]
+
+    def create_project(
+        self,
+        title: str,
+        *,
+        priority: int = 2,
+        notes: str = "",
+    ) -> dict[str, Any]:
+        return self.gateway.workspace_action(
+            "project.create",
+            {"title": title, "priority": priority, "notes": notes},
+        )["project"]
+
+    def create_task(
+        self,
+        title: str,
+        *,
+        project_id: str = "",
+        priority: int = 2,
+        notes: str = "",
+        due_at: str = "",
+    ) -> dict[str, Any]:
+        return self.gateway.workspace_action(
+            "task.create",
+            {
+                "title": title,
+                "project_id": project_id,
+                "priority": priority,
+                "notes": notes,
+                "due_at": due_at,
+            },
+        )["task"]
+
+    def complete_task(self, task_id: str) -> dict[str, Any]:
+        return self.gateway.workspace_action(
+            "task.complete",
+            {"task_id": task_id},
+        )["task"]
+
+    def projects(self) -> list[dict[str, Any]]:
+        return list(self.snapshot().get("project_list", []) or [])
+
+    def tasks(self, *, project_id: str = "") -> list[dict[str, Any]]:
+        items = [
+            dict(item)
+            for item in list(self.snapshot().get("items", []) or [])
+            if isinstance(item, dict) and item.get("kind") == "task"
+        ]
+        if project_id:
+            items = [
+                item for item in items
+                if str(item.get("project_id") or "") == str(project_id)
+            ]
+        return items
 
 
 class _FocusView:
