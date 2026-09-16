@@ -96,7 +96,7 @@ class DeviceLocalProvider(LLMInterface):
         max_tokens: int,
         timeout_seconds: float | None = None,
     ) -> LLMResponse:
-        selected = self.registry.choose("llm.local")
+        selected = self.registry.choose("llm.local", require_execution_ready=True)
         if selected is None:
             raise LLMProviderError(
                 "No connected capability node currently exposes llm.local.",
@@ -184,13 +184,13 @@ class DeviceLocalProvider(LLMInterface):
         )
 
     def is_available(self) -> bool:
-        return self.registry.choose("llm.local") is not None
+        return self.registry.choose("llm.local", require_execution_ready=True) is not None
 
     def provider_name(self) -> str:
         return "local_device"
 
     def model_name(self) -> str:
-        selected = self.registry.choose("llm.local")
+        selected = self.registry.choose("llm.local", require_execution_ready=True)
         if selected is None:
             return f"device:{self.role}:offline"
         capability = selected.capabilities.get("llm.local")
