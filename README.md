@@ -37,6 +37,7 @@ See:
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
 - `docs/architecture/STREAM_COHOST_13_10.md` — live Twitch/OBS cohost architecture
+- `docs/architecture/SOCIAL_PRESENCE.md` — canonical Mary social drafting, approval, public continuity and voice/video handoff
 - `docs/STREAMING_ADAPTERS.md` — stream-host setup and operations
 - `docs/architecture/RELATIONAL_PRESENCE_13_8.md` — relational-presence architecture
 - `docs/design/NATIVE_IPHONE_PRODUCT_13_9.md` — native iPhone product/navigation/asset contract
@@ -68,6 +69,7 @@ MaryV2 currently includes:
 - Desktop, mobile/PWA, native iPhone and terminal clients;
 - a native iPhone companion shell with Home, Talk, Together, Work and More plus preserved Focus/workspace access;
 - a bounded Twitch/OBS live-cohost host with Core-owned chat attention, creator-floor protection, Mary voice/captions and optional typed replies;
+- creator-reviewed social presence where canonical Mary authors captions, Reel scripts and replies in public context, with expressive voice handoff and no automatic platform publishing;
 - benchmark-aware Mac/Windows/Linux home compute nodes with disposable operational profiles and cross-platform launch tooling;
 - a MaryOS Linux substrate with read-only host discovery and an optional systemd user-service path;
 - explicit opt-in home-node STT and bounded screen-capture workers for realtime/perception pipelines;
