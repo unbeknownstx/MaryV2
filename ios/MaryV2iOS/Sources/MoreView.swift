@@ -5,7 +5,7 @@ struct MoreView: View {
     let navigate: (WorkspaceKind) -> Void
 
     private let companion: [WorkspaceKind] = [.memories, .growth, .personality, .presence]
-    private let create: [WorkspaceKind] = [.gallery, .voiceAvatar, .media]
+    private let create: [WorkspaceKind] = [.social, .gallery, .voiceAvatar, .media]
     private let system: [WorkspaceKind] = [.devices, .integrations, .world, .training]
 
     var body: some View {
