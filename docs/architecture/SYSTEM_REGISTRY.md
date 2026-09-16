@@ -29,7 +29,8 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 [13.60–13.64 unified provider/model execution fabric](FREELLMAPI_INTEGRATION_13_64.md), and
 [13.65 stable Desktop conversation runtime](DESKTOP_STABLE_CONVERSATION_13_65.md), and
 [13.66 Desktop product shell baseline](../design/DESKTOP_PRODUCT_SHELL_13_66.md), and
-[13.67 Desktop product polish](../design/DESKTOP_PRODUCT_SHELL_13_67.md).
+[13.67 Desktop product polish](../design/DESKTOP_PRODUCT_SHELL_13_67.md), and
+[social presence](SOCIAL_PRESENCE.md).
 
 | Domain | Canonical implementation | Status | Authority / notes |
 |---|---|---|---|
@@ -46,6 +47,7 @@ Companion architecture maps: [data and authority flows](data_flow.md),
 | Relational presence | `mary.relationship.relational_presence` | ACTIVE COMPOSITION 13.8 | `friend/close/romantic/partner`, bounded active shared activity, proposal-only presence impulses; durable changes delegate to canonical `RelationshipManager`. |
 | Derived social graph | `RelationalPresenceRuntime.social_graph` | ACTIVE READ-ONLY 13.8 | Projection over canonical creator profile/history/shared experiences; no graph database or truth authority. |
 | Social delivery projection | `mary.expression.social_delivery` | ACTIVE PRESENTATION 13.8 | Relationship/emotion-aware warmth/playfulness/intimacy/pace/energy hints; public scope suppresses private intimacy; providers cannot define relationship truth. |
+| Public social presence | `mary.social`, `MaryCoreService` social runtime actions | ACTIVE BOUNDED | Canonical Mary authors public-context-only captions/posts/Reel scripts/replies through the normal cognition and performance stack; durable social artifact continuity is creator-reviewed, audience text is untrusted, and external publication is never automatic. |
 | Memory | `mary.memory` | CANONICAL OWNER | Episodic and semantic memory are durable through the canonical memory store; working memory is bounded process/session state unless explicitly promoted into a durable owner. |
 | Memory action policy | `mary.memory.action_policy`, `MemoryManager.propose_action` | ACTIVE POLICY 13.30 | Proposes ignore/working/episodic/semantic/temporal/delegate operations only; cannot write or promote memory itself. |
 | Temporal memory projection | `mary.memory.temporal_projection` | ACTIVE DERIVED 13.19 | Rebuildable validity/supersession/contradiction/provenance view over canonical records; never truth authority. |
