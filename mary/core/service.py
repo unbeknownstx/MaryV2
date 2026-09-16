@@ -2210,6 +2210,79 @@ class MaryCoreService:
             if action.action == "presence.pulse":
                 return _json_safe(self._presence_pulse(values, device_id=action.device_id))
 
+            if action.action == "social.status":
+                social = getattr(self.mary, "social_presence", None)
+                if social is None:
+                    raise RuntimeError("Mary social presence is unavailable.")
+                return _json_safe(
+                    social.status(
+                        limit=max(1, min(32, int(values.get("limit", 12)))),
+                    )
+                )
+
+            if action.action == "social.proposal":
+                social = getattr(self.mary, "social_presence", None)
+                if social is None:
+                    raise RuntimeError("Mary social presence is unavailable.")
+                return _json_safe(
+                    social.proposal(str(values.get("proposal_id") or ""))
+                )
+
+            if action.action == "social.propose":
+                return _json_safe(
+                    self._social_propose(values, device_id=action.device_id)
+                )
+
+            if action.action == "social.approve":
+                social = getattr(self.mary, "social_presence", None)
+                if social is None:
+                    raise RuntimeError("Mary social presence is unavailable.")
+                proposal = social.approve(
+                    str(values.get("proposal_id") or ""),
+                    edited_content=str(values.get("edited_content") or ""),
+                    note=str(values.get("note") or ""),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "proposal": proposal,
+                    "voice_request": {
+                        "text": str(proposal.get("content") or ""),
+                        "delivery_plan": dict(proposal.get("delivery_plan") or {}),
+                    },
+                    "publication": {
+                        "automatic": False,
+                        "creator_approval_required": True,
+                        "next": "publish externally, then record with social.mark_published",
+                    },
+                })
+
+            if action.action == "social.reject":
+                social = getattr(self.mary, "social_presence", None)
+                if social is None:
+                    raise RuntimeError("Mary social presence is unavailable.")
+                proposal = social.reject(
+                    str(values.get("proposal_id") or ""),
+                    reason=str(values.get("reason") or ""),
+                )
+                return _json_safe({"ok": True, "proposal": proposal})
+
+            if action.action == "social.mark_published":
+                social = getattr(self.mary, "social_presence", None)
+                if social is None:
+                    raise RuntimeError("Mary social presence is unavailable.")
+                proposal = social.mark_published(
+                    str(values.get("proposal_id") or ""),
+                    public_url=str(values.get("public_url") or ""),
+                    external_id=str(values.get("external_id") or ""),
+                    published_at=str(values.get("published_at") or ""),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "proposal": proposal,
+                    "external_write_performed": False,
+                    "authority": "publication_confirmation_only",
+                })
+
             if action.action == "training.feedback.status":
                 return _json_safe(self.mary.training_feedback.status())
 
@@ -2254,6 +2327,131 @@ class MaryCoreService:
                 })
 
         raise ValueError(f"Unsupported runtime action: {action.action}")
+
+    def _social_propose(
+        self,
+        values: dict[str, Any],
+        *,
+        device_id: str,
+    ) -> dict[str, Any]:
+        """Generate one public-safe social draft through canonical Mary.
+
+        This deliberately uses a Mary-initiated/context-only turn.  The creator's
+        brief may shape the task, but it is not learned as creator biography or
+        relationship evidence.  The performance context is temporarily public
+        and is restored before returning.
+        """
+
+        social = getattr(self.mary, "social_presence", None)
+        if social is None:
+            raise RuntimeError("Mary social presence is unavailable.")
+        self.enforce_execution_policy("turn.execute")
+
+        kind = social.normalize_kind(values.get("kind") or "caption")
+        platform = social.normalize_platform(values.get("platform") or "instagram")
+        default_limit = {
+            "bio": 240,
+            "reply": 1_200,
+            "story": 1_200,
+            "caption": 2_200,
+            "post": 2_200,
+            "reel_script": 4_000,
+        }.get(kind, 2_200)
+        try:
+            max_chars = max(
+                80,
+                min(8_000, int(values.get("max_chars", default_limit))),
+            )
+        except (TypeError, ValueError):
+            max_chars = default_limit
+
+        raw_context = values.get("context")
+        context = dict(raw_context) if isinstance(raw_context, dict) else {}
+        prompt = social.prompt_for_draft(
+            kind=kind,
+            platform=platform,
+            brief=values.get("brief") or "",
+            media_summary=values.get("media_summary") or "",
+            context=context,
+            audience_text=values.get("audience_text") or "",
+            tone=values.get("tone") or "",
+            max_chars=max_chars,
+        )
+
+        manager = getattr(self.mary, "performance_context", None)
+        previous_mode = str(getattr(manager, "mode", "private") or "private")
+        if not callable(getattr(manager, "set_mode", None)):
+            raise RuntimeError("Mary performance context is unavailable.")
+
+        before = self._state_fingerprint()
+        manager.set_mode("performance")
+        try:
+            result = self.application.run(
+                prompt,
+                metadata={
+                    "surface": "social",
+                    "transport": "core",
+                    "conversation_id": f"social-{platform}"[:160],
+                    "device_id": str(device_id or "unknown-device")[:160],
+                    "initiated_by": "mary_initiative",
+                    "input_authority": "context_only",
+                    "presence_action": "react",
+                    "social_kind": kind,
+                    "social_platform": platform,
+                },
+            )
+        finally:
+            manager.set_mode(previous_mode)
+
+        if not bool(getattr(result, "success", False)):
+            raise RuntimeError("Mary could not create the social draft.")
+
+        content = str(getattr(result, "output", "") or "").strip()
+        if not content:
+            raise RuntimeError("Mary returned an empty social draft.")
+        if len(content) > max_chars:
+            content = content[:max_chars].rstrip()
+
+        display = self._display_hints(result)
+        delivery_plan = dict(display.get("delivery_plan") or {})
+        performance_packet = dict(display.get("performance_packet") or {})
+        provenance = self._provenance(result)
+        conversation_id = f"social-{platform}"[:160]
+        proposal = social.create_proposal(
+            platform=platform,
+            kind=kind,
+            content=content,
+            brief=values.get("brief") or "",
+            media_summary=values.get("media_summary") or "",
+            context=context,
+            audience_text=values.get("audience_text") or "",
+            asset_refs=values.get("asset_refs") or [],
+            tags=values.get("tags") or [],
+            collaborators=values.get("collaborators") or [],
+            delivery_plan=delivery_plan,
+            performance_packet=performance_packet,
+            provenance=provenance,
+            conversation_id=conversation_id,
+            supersedes_id=values.get("supersedes_id") or "",
+        )
+        after = self._state_fingerprint()
+        return {
+            "ok": True,
+            "proposal": proposal,
+            "display_hints": display,
+            "voice_request": {
+                "text": str(proposal.get("content") or ""),
+                "delivery_plan": delivery_plan,
+            },
+            "creative_brief": dict(proposal.get("creative_brief") or {}),
+            "canonical_state_changes": self._state_changes(before, after),
+            "publication": {
+                "automatic": False,
+                "creator_approval_required": True,
+                "external_write_performed": False,
+            },
+            "authority": "canonical_mary_public_draft_creator_review_required",
+        }
 
     def _performance_context_status(self, device_id: str | None) -> dict[str, Any]:
         """Return the presentation context for one creator surface/device.
