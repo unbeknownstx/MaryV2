@@ -506,3 +506,111 @@ class DesktopVoiceEngine:
             },
             synth_started,
         )
+
+class RemoteCoreVoiceEngine:
+    """Desktop voice adapter that prefers canonical Mary Core speech.
+
+    Remote Desktop should sound like the same Mary as native iPhone. The Core
+    chooses the configured server-side voice; a device-local Desktop engine is
+    retained only as a best-effort degraded fallback.
+    """
+
+    def __init__(
+        self,
+        gateway: Any,
+        *,
+        fallback: DesktopVoiceEngine | None = None,
+    ) -> None:
+        self.gateway = gateway
+        self.fallback = fallback or DesktopVoiceEngine.from_environment()
+        self.renderer = SpeechRenderer()
+        self._core_enabled = False
+        self.status = self.fallback.status
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        try:
+            payload = dict(self.gateway.voice_status() or {})
+            tts = dict(payload.get("tts", payload) or {})
+            enabled = bool(tts.get("enabled") or tts.get("server_available"))
+            self._core_enabled = enabled
+            if enabled:
+                self.status = DesktopVoiceStatus(
+                    True,
+                    str(tts.get("provider") or "mary_core"),
+                    str(tts.get("voice_id") or "") or None,
+                    str(tts.get("model") or "") or None,
+                    bool(tts.get("local", False)),
+                    bool(tts.get("premium", False)),
+                )
+            elif self.fallback.status.enabled:
+                self.status = self.fallback.status
+            else:
+                self.status = DesktopVoiceStatus(False, "mary_core")
+        except Exception:
+            self._core_enabled = False
+            self.status = self.fallback.status
+
+    def render_text(self, text: str, *, user_text: str | None = None) -> str:
+        return self.renderer.render(str(text), user_text=user_text)
+
+    def synthesize(
+        self,
+        text: str,
+        *,
+        user_text: str | None = None,
+        emotional_state: EmotionalState | None = None,
+        delivery_plan: DeliveryPlan | dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        del emotional_state
+        started = monotonic()
+        plan = (
+            delivery_plan.to_dict()
+            if hasattr(delivery_plan, "to_dict")
+            else dict(delivery_plan or {})
+        )
+        if self._core_enabled:
+            try:
+                payload = dict(
+                    self.gateway.voice_synthesize(
+                        text,
+                        user_text=user_text,
+                        delivery_plan=plan,
+                    )
+                    or {}
+                )
+                payload.setdefault("spoken_text", self.render_text(text, user_text=user_text))
+                payload.setdefault("authority", "remote_mary_core")
+                payload.setdefault("timings", {})
+                payload["timings"].setdefault(
+                    "voice_total_ms",
+                    round((monotonic() - started) * 1000.0, 2),
+                )
+                return payload
+            except Exception:
+                # A transient Core TTS failure must not suppress speech if this
+                # device has an explicitly configured local engine.
+                pass
+
+        if self.fallback.status.enabled:
+            payload = self.fallback.synthesize(
+                text,
+                user_text=user_text,
+                delivery_plan=delivery_plan,
+            )
+            payload["authority"] = "desktop_local_fallback"
+            return payload
+
+        spoken_text = self.render_text(text, user_text=user_text)
+        return {
+            **self.status.to_dict(),
+            "status": "disabled",
+            "spoken_text": spoken_text,
+            "authority": "remote_mary_core",
+            "timings": {
+                "speech_render_ms": 0.0,
+                "tts_synthesis_ms": 0.0,
+                "voice_total_ms": round((monotonic() - started) * 1000.0, 2),
+            },
+        }
+
