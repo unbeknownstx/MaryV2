@@ -1,6 +1,7 @@
 """Dependency-light Python client for Mary Protocol v1."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from typing import Any
@@ -277,7 +278,18 @@ class MaryClient:
 
     def _device_credential_transport_is_safe(self) -> bool:
         parsed = urlsplit(self.base_url)
-        return parsed.scheme.lower() == "https"
+        if parsed.scheme.lower() == "https":
+            return True
+        if parsed.scheme.lower() != "http":
+            return False
+
+        hostname = str(parsed.hostname or "").strip().lower()
+        if hostname == "localhost":
+            return True
+        try:
+            return bool(ipaddress.ip_address(hostname).is_loopback)
+        except ValueError:
+            return False
 
     def heartbeat_node(self) -> dict[str, Any]:
         model = NodeHeartbeatRequest.from_dict({"node_id": self.device_id})
