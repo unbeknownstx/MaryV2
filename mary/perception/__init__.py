@@ -10,6 +10,7 @@ from .entities import Entity, EntityType
 from .input import Input, InputSource, InputType
 from .director import PerceptionDirector, PerceptionObservation
 from .browser import BrowserContext, BrowserContextSensor
+from .sensory import SensoryAttentionController, SensoryPolicy
 
 __all__ = [
     "Event",
@@ -23,4 +24,6 @@ __all__ = [
     "PerceptionObservation",
     "BrowserContext",
     "BrowserContextSensor",
+    "SensoryAttentionController",
+    "SensoryPolicy",
 ]
