@@ -7,10 +7,9 @@ from mary.tools.manager import ToolManager
 from mary.tools.registry import PermissionLevel
 from mary.tools.search_backends import (
     FallbackSearchProvider,
-    SearXNGSearchProvider,
     build_managed_search_provider,
 )
-from mary.tools.web import SearchResult
+from mary.tools.web import SearchResult, SearXNGSearchProvider
 
 
 class _Response:
@@ -93,7 +92,7 @@ def test_searxng_search_uses_json_endpoint_and_normalizes_results(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "mary.tools.search_backends.urllib.request.urlopen",
+        "mary.tools.web.urllib.request.urlopen",
         fake_urlopen,
     )
 
@@ -141,11 +140,12 @@ def test_local_first_falls_through_and_records_display_safe_route():
     assert results[0].metadata["selected_backend"] == "_WorkingProvider"
 
 
-def test_managed_provider_preserves_legacy_tavily_brave_ownership(monkeypatch):
+def test_managed_provider_preserves_single_provider_web_ownership(monkeypatch):
     monkeypatch.delenv("MARY_SEARCH_PROVIDER", raising=False)
 
     assert build_managed_search_provider("tavily") is None
     assert build_managed_search_provider("brave") is None
+    assert build_managed_search_provider("searxng") is None
 
 
 def test_tool_manager_wires_searxng_without_weakening_tool_permission(
