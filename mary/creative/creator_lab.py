@@ -22,14 +22,28 @@ def _strings(value: Any, *, limit: int = 16, width: int = 500) -> list[str]:
 
 def normalize_asset(value: Mapping[str, Any] | None) -> dict[str, Any]:
     raw = dict(value or {})
+    # PerceptionAssetRegistry uses `description` + `description_source`; accept
+    # that shape directly so every surface can hand Creator Lab the same asset.
+    grounded = _text(raw.get("description"), 2_000)
+    grounded_source = _text(raw.get("description_source"), 80).casefold()
+    perceived = _text(raw.get("perception_description"), 2_000)
+    creator = _text(raw.get("creator_description"), 2_000)
+    if grounded and grounded_source == "perception_capability":
+        perceived = grounded
+    elif grounded and grounded_source == "creator_description" and not creator:
+        creator = grounded
     return {
         "asset_id": _text(raw.get("asset_id") or f"creative_{uuid4().hex}", 120),
         "kind": _text(raw.get("kind") or "image", 40).lower(),
         "uri": _text(raw.get("uri"), 2_000),
-        "creator_description": _text(raw.get("creator_description"), 2_000),
-        "perception_description": _text(raw.get("perception_description"), 2_000),
-        "provenance": _text(raw.get("provenance") or "creator_supplied", 80),
+        "creator_description": creator,
+        "perception_description": perceived,
+        "provenance": _text(raw.get("provenance") or raw.get("source") or "creator_supplied", 120),
         "reference_only": bool(raw.get("reference_only", False)),
+        "content_sha256": _text(raw.get("content_sha256"), 64),
+        "mime_type": _text(raw.get("mime_type"), 100),
+        "perception_provider": _text(raw.get("provider"), 80),
+        "perception_model": _text(raw.get("model"), 180),
     }
 
 
