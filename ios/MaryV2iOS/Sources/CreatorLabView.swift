@@ -16,11 +16,9 @@ struct CreatorLabView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Eyebrow(text: "Creator Lab")
-                Text("Make something with Mary")
-                    .font(.title2.bold())
+                Text("Make something with Mary").font(.title2.bold())
                 Text("Choose an image, ground what Mary is looking at, then let the same Mary who chats with you author the caption or narration. Voice and video can build from the same artifact.")
-                    .font(.caption)
-                    .foregroundStyle(MaryTheme.muted)
+                    .font(.caption).foregroundStyle(MaryTheme.muted)
 
                 PhotosPicker(selection: $pickerItem, matching: .images) {
                     Label(imageData == nil ? "Choose image" : "Change image", systemImage: "photo.badge.plus")
@@ -28,43 +26,28 @@ struct CreatorLabView: View {
                 }
                 .buttonStyle(MaryPrimaryButtonStyle())
                 .onChange(of: pickerItem) { _, item in
-                    Task {
-                        imageData = try? await item?.loadTransferable(type: Data.self)
-                    }
+                    Task { imageData = try? await item?.loadTransferable(type: Data.self) }
                 }
 
                 if let imageData, let image = UIImage(data: imageData) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 280)
+                    Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 280)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(MaryTheme.hairline))
                 }
 
                 TextField("What is in the image? (temporary grounding until Core vision upload is live)", text: $sceneSummary, axis: .vertical)
-                    .lineLimit(2...5)
-                    .padding(12)
+                    .lineLimit(2...5).padding(12)
                     .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
-
                 TextField("What should Mary do with it?", text: $intent, axis: .vertical)
-                    .lineLimit(2...5)
-                    .padding(12)
+                    .lineLimit(2...5).padding(12)
                     .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
-
-                TextField("Tone", text: $tone)
-                    .padding(12)
+                TextField("Tone", text: $tone).padding(12)
                     .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
 
                 Button {
                     working = true
                     Task {
-                        _ = await app.proposeSocial(
-                            kind: "caption",
-                            brief: intent,
-                            mediaSummary: sceneSummary,
-                            tone: tone
-                        )
+                        _ = await app.proposeSocial(kind: "caption", brief: intent, mediaSummary: sceneSummary, tone: tone)
                         working = false
                     }
                 } label: {
@@ -79,10 +62,9 @@ struct CreatorLabView: View {
                     if !text.isEmpty {
                         Divider().overlay(MaryTheme.hairline)
                         Eyebrow(text: "Mary's draft")
-                        Text(text)
-                            .textSelection(.enabled)
+                        Text(text).textSelection(.enabled)
                         Button {
-                            Task { await app.speak(text) }
+                            Task { await app.speakMaryResponse(text) }
                         } label: {
                             Label("Hear Mary say it", systemImage: "speaker.wave.2.fill")
                         }
@@ -91,8 +73,7 @@ struct CreatorLabView: View {
                 }
 
                 Text("Image bytes are not silently uploaded. The next transport step is a bounded authenticated Core asset endpoint feeding vision.describe; until then the description above is explicit grounding.")
-                    .font(.caption2)
-                    .foregroundStyle(MaryTheme.muted)
+                    .font(.caption2).foregroundStyle(MaryTheme.muted)
             }
         }
     }
