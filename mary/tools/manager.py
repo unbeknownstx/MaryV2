@@ -34,6 +34,7 @@ from .registry import (
     ToolResult,
 )
 from .web import WebClient, WebConfig, register_web_tools
+from .search_backends import build_managed_search_provider
 
 
 class ToolManager:
@@ -79,12 +80,35 @@ class ToolManager:
             )
         )
 
-        self.web: WebClient = (
-            register_web_tools(
-                self.registry,
-                config=web_config,
-            )
+        # Keep Tavily/Brave ownership in mary.tools.web exactly as before. The
+        # managed resolver only intercepts the new creator-selected SearXNG and
+        # local-first modes. Network execution remains registered through the
+        # same approval-gated WebClient tool definitions either way.
+        resolved_web_config = (
+            web_config
+            if web_config is not None
+            else WebConfig()
         )
+        managed_search_provider = build_managed_search_provider(
+            resolved_web_config.search_provider,
+            timeout=resolved_web_config.timeout,
+        )
+
+        if managed_search_provider is None:
+            self.web: WebClient = (
+                register_web_tools(
+                    self.registry,
+                    config=resolved_web_config,
+                )
+            )
+        else:
+            self.web = WebClient(
+                config=resolved_web_config,
+                search_provider=managed_search_provider,
+            )
+            self.web.register_tools(
+                self.registry
+            )
 
         self.knowledge: KnowledgeToolClient = (
             register_knowledge_tools(
@@ -228,6 +252,12 @@ class ToolManager:
     ) -> dict[str, Any]:
         """Return non-secret tool-system status."""
 
+        provider = self.web.search_provider
+        provider_name = str(
+            getattr(provider, "name", "")
+            or getattr(provider, "__class__", type(provider)).__name__
+        )
+
         return {
             "registered": len(
                 self.registry.all()
@@ -237,11 +267,12 @@ class ToolManager:
             ),
             "web_search_configured": bool(
                 getattr(
-                    self.web.search_provider,
+                    provider,
                     "configured",
                     False,
                 )
             ),
+            "web_search_provider": provider_name,
             "knowledge_gateway": self.knowledge.status(),
             "repository_map": {
                 "registered": self.registry.has("code_repository_map"),
