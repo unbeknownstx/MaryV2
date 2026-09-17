@@ -48,6 +48,13 @@ from .web import (
     register_web_tools,
 )
 
+from .search_backends import (
+    SearXNGSearchProvider,
+    FallbackSearchProvider,
+    SearchBackendFailure,
+    build_managed_search_provider,
+)
+
 from .filesystem import (
     FilesystemClient,
     FilesystemConfig,
@@ -82,6 +89,10 @@ __all__ = [
     "SearchResult",
     "TavilySearchProvider",
     "BraveSearchProvider",
+    "SearXNGSearchProvider",
+    "FallbackSearchProvider",
+    "SearchBackendFailure",
+    "build_managed_search_provider",
     "create_search_provider",
     "create_web_client",
     "register_web_tools",
