@@ -210,6 +210,13 @@ class SemanticScholarAdapter(KnowledgeAdapter):
 
 
 class SearXNGAdapter(KnowledgeAdapter):
+    """Backward-compatible explicit adapter; not part of the default gateway.
+
+    General web retrieval is canonically owned by ``mary.tools.web``. Keeping
+    this adapter importable avoids breaking older integrations while preventing
+    one SearXNG service from being exposed by two default approval-gated tools.
+    """
+
     name = "searxng"
     category = "web"
 
@@ -245,8 +252,11 @@ class KnowledgeGateway:
     VERSION = "13.20"
 
     def __init__(self, adapters: Iterable[KnowledgeAdapter] | None = None) -> None:
+        # General web search belongs to mary.tools.web. This gateway defaults to
+        # bounded encyclopedic/academic sources only; SearXNGAdapter remains
+        # available for explicit backward-compatible construction.
         self.adapters = list(adapters) if adapters is not None else [
-            WikipediaAdapter(), OpenAlexAdapter(), CrossrefAdapter(), SemanticScholarAdapter(), SearXNGAdapter()
+            WikipediaAdapter(), OpenAlexAdapter(), CrossrefAdapter(), SemanticScholarAdapter()
         ]
 
     def search(self, query: str, *, categories: Iterable[str] | None = None, limit_per_source: int = 4) -> list[dict[str, Any]]:

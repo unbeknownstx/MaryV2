@@ -618,6 +618,197 @@ class BraveSearchProvider:
         return results
 
 
+class SearXNGSearchProvider:
+    """Search a creator-configured SearXNG instance.
+
+    SearXNG is a first-class web-search backend alongside Tavily and Brave. It
+    is retrieval-only and does not grant permission, persist evidence, or own
+    truth. The creator must configure ``MARY_SEARXNG_URL`` (or ``SEARXNG_URL``)
+    explicitly; no default external SearXNG service is assumed.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        *,
+        timeout: float = 10.0,
+        language: str = "en",
+        safesearch: int = 1,
+    ) -> None:
+        configured_url = (
+            base_url
+            if base_url is not None
+            else (
+                os.getenv("MARY_SEARXNG_URL")
+                or os.getenv("SEARXNG_URL")
+                or ""
+            )
+        )
+        self.base_url = self._normalize_base_url(configured_url)
+        self.timeout = float(timeout)
+        self.language = str(language or "en")
+        self.safesearch = max(0, min(2, int(safesearch)))
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.base_url)
+
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        user_agent: str = "MaryV2/0.1",
+    ) -> list[SearchResult]:
+        """Search through the configured SearXNG JSON endpoint."""
+
+        if not self.configured:
+            raise RuntimeError(
+                "SearXNG Search is not configured. Set MARY_SEARXNG_URL "
+                "to the base URL of a SearXNG instance."
+            )
+
+        query = str(query).strip()
+        if not query:
+            raise ValueError("Search query cannot be empty.")
+
+        count = max(1, min(int(limit), 20))
+        params = urlencode(
+            {
+                "q": query,
+                "format": "json",
+                "language": self.language,
+                "safesearch": self.safesearch,
+            }
+        )
+        request = urllib.request.Request(
+            f"{self.base_url}/search?{params}",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": user_agent,
+            },
+            method="GET",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=self.timeout,
+            ) as response:
+                payload = json.loads(
+                    response.read().decode("utf-8")
+                )
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode(
+                    "utf-8",
+                    errors="replace",
+                )
+            except Exception:
+                detail = ""
+            raise RuntimeError(
+                f"SearXNG Search HTTP {exc.code}: "
+                f"{detail[:500] or exc.reason}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"SearXNG Search network error: {exc.reason}"
+            ) from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "SearXNG Search returned an invalid JSON response."
+            ) from exc
+
+        return self._parse_results(
+            payload,
+            limit=count,
+        )
+
+    def _parse_results(
+        self,
+        payload: dict[str, Any],
+        *,
+        limit: int,
+    ) -> list[SearchResult]:
+        results: list[SearchResult] = []
+        raw_results = payload.get("results", [])
+
+        for rank, item in enumerate(raw_results, start=1):
+            if not isinstance(item, dict):
+                continue
+
+            title = _clean_search_text(item.get("title", ""))
+            url = str(item.get("url", "")).strip()
+            snippet = _clean_search_text(item.get("content", ""))
+            if not title and not url:
+                continue
+
+            engines = item.get("engines")
+            if isinstance(engines, (list, tuple)):
+                engine_names = [
+                    str(value).strip()
+                    for value in engines
+                    if str(value).strip()
+                ]
+            else:
+                single_engine = str(item.get("engine", "")).strip()
+                engine_names = [single_engine] if single_engine else []
+
+            results.append(
+                SearchResult(
+                    title=title or url,
+                    url=url,
+                    snippet=snippet,
+                    content=snippet,
+                    source="searxng",
+                    metadata={
+                        "provider": "searxng",
+                        "rank": rank,
+                        "score": item.get("score"),
+                        "published_date": (
+                            item.get("publishedDate")
+                            or item.get("published_date")
+                        ),
+                        "category": item.get("category"),
+                        "engines": engine_names,
+                        "result_type": "web",
+                        "content_source": "snippet",
+                    },
+                )
+            )
+
+            if len(results) >= limit:
+                break
+
+        return results
+
+    @staticmethod
+    def _normalize_base_url(value: str | None) -> str:
+        text = str(value or "").strip().rstrip("/")
+        if not text:
+            return ""
+
+        parsed = urlparse(text)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            raise ValueError(
+                "MARY_SEARXNG_URL must use http:// or https://."
+            )
+        if not parsed.hostname:
+            raise ValueError(
+                "MARY_SEARXNG_URL must include a hostname."
+            )
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError(
+                "MARY_SEARXNG_URL cannot contain embedded credentials."
+            )
+        if parsed.query or parsed.fragment:
+            raise ValueError(
+                "MARY_SEARXNG_URL must be a base URL without a query or fragment."
+            )
+        return text
+
+
 def _clean_search_text(value: Any) -> str:
     """Normalize HTML-ish search result text."""
 
@@ -646,8 +837,8 @@ def create_search_provider(
     Create Mary's configured web-search provider.
 
     MARY_SEARCH_PROVIDER can override the configured provider name.
-    Tavily is the default. Brave remains available as an optional backend
-    so the rest of Mary's research architecture is provider-independent.
+    Tavily is the default. Brave and creator-configured SearXNG remain
+    replaceable retrieval backends behind the same WebClient interface.
     """
 
     provider_name = (
@@ -668,9 +859,14 @@ def create_search_provider(
             timeout=timeout,
         )
 
+    if provider_name == "searxng":
+        return SearXNGSearchProvider(
+            timeout=timeout,
+        )
+
     raise ValueError(
         "Unknown web search provider: "
-        f"{provider_name}. Supported providers: tavily, brave."
+        f"{provider_name}. Supported providers: tavily, brave, searxng."
     )
 
 
