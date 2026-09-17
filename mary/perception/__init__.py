@@ -11,6 +11,7 @@ from .input import Input, InputSource, InputType
 from .director import PerceptionDirector, PerceptionObservation
 from .browser import BrowserContext, BrowserContextSensor
 from .sensory import SensoryAttentionController, SensoryPolicy
+from .assets import PerceptionAsset, PerceptionAssetRegistry, sha256_bytes
 
 __all__ = [
     "Event",
@@ -26,4 +27,7 @@ __all__ = [
     "BrowserContextSensor",
     "SensoryAttentionController",
     "SensoryPolicy",
+    "PerceptionAsset",
+    "PerceptionAssetRegistry",
+    "sha256_bytes",
 ]
