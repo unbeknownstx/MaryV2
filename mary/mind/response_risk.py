@@ -36,6 +36,12 @@ class ResponseAuthorityContext:
     makes the turn precision-sensitive, including a domain unknown to this
     experiment.  That fail-closed behavior prevents new authority types from
     being treated as harmless social wording by accident.
+
+    ``user_correction_with_evidence`` is a bounded routing signal, not evidence
+    itself.  It means an upstream owner has already determined that the creator
+    is correcting a claim using evidence available to the turn.  Such a turn
+    must not be demoted to the social/fast path merely because its dialogue form
+    sounds conversational.
     """
 
     authority_domains: tuple[str, ...] = ()
@@ -44,6 +50,7 @@ class ResponseAuthorityContext:
     represented_stance: bool = False
     represented_uncertainty: bool = False
     represented_personal_state: bool = False
+    user_correction_with_evidence: bool = False
     requires_tool: bool = False
     requires_deep_reasoning: bool = False
     mutates_authoritative_state: bool = False
@@ -70,6 +77,7 @@ class ResponseAuthorityContext:
             or self.represented_stance
             or self.represented_uncertainty
             or self.represented_personal_state
+            or self.user_correction_with_evidence
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -80,6 +88,7 @@ class ResponseAuthorityContext:
             "represented_stance": self.represented_stance,
             "represented_uncertainty": self.represented_uncertainty,
             "represented_personal_state": self.represented_personal_state,
+            "user_correction_with_evidence": self.user_correction_with_evidence,
             "requires_tool": self.requires_tool,
             "requires_deep_reasoning": self.requires_deep_reasoning,
             "mutates_authoritative_state": self.mutates_authoritative_state,
@@ -208,7 +217,11 @@ def classify_response_risk(
         hard_reasons.append("existing lane is expert")
     if conversation_lane == ConversationLane.THINKING:
         hard_reasons.append("existing conversation lane requires thinking")
-    if context.open_ended and context.carries_precision_semantics:
+    if (
+        context.open_ended
+        and context.carries_precision_semantics
+        and not context.user_correction_with_evidence
+    ):
         hard_reasons.append(
             "mixed represented precision semantics and unrepresented open work"
         )
@@ -219,6 +232,10 @@ def classify_response_risk(
         )
 
     precision_reasons: list[str] = []
+    if context.user_correction_with_evidence:
+        precision_reasons.append(
+            "creator correction is backed by evidence available to the turn"
+        )
     if context.authority_domains:
         precision_reasons.append(
             "authority-bearing semantics: " + ", ".join(context.authority_domains)
