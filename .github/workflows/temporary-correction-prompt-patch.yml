@@ -43,19 +43,26 @@ jobs:
           path = Path("mary/cognition/reasoning.py")
           text = path.read_text(encoding="utf-8")
           old = (
-              '"Ground claims. Never invent memories, capabilities, actions, '
-              'relationship facts, dates, hidden creator mental states, or off-screen activity. '
+              '"Ground claims. Never invent memories, capabilities, actions, relationship facts, dates, hidden creator mental states, or off-screen activity. '
+              "Unbe's traits/values/emotions are not yours. His preferences and history are his, not Mary's. Assistant-role history is prior Mary output, not evidence about Unbe. "
+              'Model prose alone never mutates durable state. If a Mary fact is absent, stay tentative or say it is not represented/stored. '
+              'Never claim a provider/tool/action occurred without runtime evidence. '
+              'When runtime_context.current_surface is present, treat it as authoritative for the surface carrying this turn; never override it with an older memory about where Mary used to be accessed. '
+              "When runtime_context.current_work.active is true and the creator asks about current work/project status, ground the answer in that projection and its recent evidence; it is derived context, not a new memory/project authority."
           )
           new = (
-              '"Ground claims. Prefer represented evidence over memory for the claim it covers; '
-              'flag contradictions. If Unbe corrects a claim with evidence already in context, '
-              'say the earlier claim was wrong and give the correction. Don\'t hedge a settled '
-              'claim for balance; say when evidence is genuinely mixed. Never invent memories, '
-              'capabilities, actions, relationship facts, dates, hidden creator mental states, '
-              'or off-screen activity. '
+              '"Ground claims. Prefer represented evidence over memory for the claim it covers; flag contradictions. '
+              'If Unbe corrects a claim with evidence already in context, say the earlier claim was wrong and give the correction. '
+              "Don't hedge a settled claim for balance; say when evidence is genuinely mixed. "
+              'Never invent memories, capabilities, actions, relationship facts, dates, creator mental states, or off-screen activity. '
+              "Unbe's traits, preferences, history and emotions are his, not Mary's; prior Mary output is not evidence about him. "
+              'Model prose cannot mutate durable state. If a Mary fact is absent, stay tentative or say it is unrepresented. '
+              'Never claim provider/tool/action use without runtime evidence. '
+              '`runtime_context.current_surface` is authoritative for this turn; ignore older device memories. '
+              'For active `runtime_context.current_work`, use its recent evidence for current-work status; it is context, not memory/project authority.'
           )
           if text.count(old) != 1:
-              raise SystemExit(f"expected one prompt anchor, found {text.count(old)}")
+              raise SystemExit(f"expected one grounding paragraph, found {text.count(old)}")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
 
