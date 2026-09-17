@@ -25,7 +25,7 @@ struct CreatorLabView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(MaryPrimaryButtonStyle())
-                .onChange(of: pickerItem) { _, item in
+                .onChange(of: pickerItem) { item in
                     Task { imageData = try? await item?.loadTransferable(type: Data.self) }
                 }
 
@@ -63,9 +63,7 @@ struct CreatorLabView: View {
                         Divider().overlay(MaryTheme.hairline)
                         Eyebrow(text: "Mary's draft")
                         Text(text).textSelection(.enabled)
-                        Button {
-                            Task { await app.speakMaryResponse(text) }
-                        } label: {
+                        Button { Task { await app.speakMaryResponse(text) } } label: {
                             Label("Hear Mary say it", systemImage: "speaker.wave.2.fill")
                         }
                         .buttonStyle(MarySecondaryButtonStyle())
