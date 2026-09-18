@@ -40,6 +40,10 @@ from mary.runtime.turn_observability import (
 )
 
 MAX_WORKSPACE_ACTION_BYTES = 16_384
+# Base64 image evidence for sensor.image_describe is deliberately capped.
+# 1.35 MiB JPEG input expands to ~1.8 MiB JSON/base64; 2.25 MiB leaves
+# envelope headroom without creating a generic upload surface.
+MAX_CAPABILITY_TASK_BYTES = 2_359_296
 MAX_VOICE_SYNTHESIS_BYTES = 32_768
 MAX_CONTINUITY_RECOVERY_BYTES = 2_000_000
 
@@ -715,9 +719,11 @@ def create_app(service: MaryCoreService | None = None):
         await require_creator(request)
 
         try:
-            model = CapabilityTaskDispatchRequest.from_dict(
-                await request.json()
+            payload = await bounded_json(
+                request,
+                limit=MAX_CAPABILITY_TASK_BYTES,
             )
+            model = CapabilityTaskDispatchRequest.from_dict(payload)
 
             return await asyncio.to_thread(
                 core.dispatch_capability_task,
