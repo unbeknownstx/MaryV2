@@ -1608,6 +1608,10 @@ class MaryCoreService:
                 evidence_ids=(str(getattr(task, "task_id", "") or ""),),
                 result=summary,
             )
+            # Terminal capability work is the natural low-frequency trigger
+            # for replay consolidation. It may create review candidates, never
+            # approve a skill or grant new execution permission automatically.
+            self.mary.experiential_continuity.maintenance()
         except Exception:
             # Learning evidence is subordinate to the completed task protocol.
             return
