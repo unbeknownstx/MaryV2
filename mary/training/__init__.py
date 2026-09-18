@@ -5,6 +5,7 @@ from .dataset_v1 import MaryDatasetV1Exporter, MaryDatasetV1Summary
 from .novel_miner import NovelSceneCandidate, mine_mary_scenes, read_paragraphs, write_mining_bundle
 from .mlx_bundle import MlxTrainingProfile, PROFILES as MLX_TRAINING_PROFILES, prepare_mlx_bundle
 from .mlx_preflight import MlxBundlePreflight, inspect_mlx_bundle
+from .adapter_candidate import MlxAdapterCandidateProposal, build_mlx_adapter_candidate_proposal
 
 __all__ = [
     "ResponseFeedback", "ResponseFeedbackStore",
@@ -13,4 +14,5 @@ __all__ = [
     "NovelSceneCandidate", "mine_mary_scenes", "read_paragraphs", "write_mining_bundle",
     "MlxTrainingProfile", "MLX_TRAINING_PROFILES", "prepare_mlx_bundle",
     "MlxBundlePreflight", "inspect_mlx_bundle",
+    "MlxAdapterCandidateProposal", "build_mlx_adapter_candidate_proposal",
 ]
