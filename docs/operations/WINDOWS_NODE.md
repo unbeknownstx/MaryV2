@@ -31,6 +31,14 @@ Repository writes stay separately disabled until you choose:
 python -m scripts.node_permissions allow engineering.repo.apply
 ```
 
+After a repair passes verification, optional Git publication remains separately gated:
+
+```powershell
+python -m scripts.node_permissions allow engineering.git.commit
+python -m scripts.node_permissions allow engineering.git.push
+$env:MARY_ENGINEERING_PUSH_ENABLED = "true"  # only if you want explicit Push-that-fix support
+```
+
 Then Mary can use the creator-facing flow `Fix yourself` -> `Check the repair`
 -> `Apply that fix` -> `Verify that fix`. Planning never writes, validation
 runs in a disposable copied workspace, and the worker has no generic
