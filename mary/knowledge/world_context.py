@@ -79,6 +79,19 @@ class WorldContextStore:
             self._items[:] = self._items[-self.capacity :]
         return item
 
+    def get(self, item_id: str) -> WorldContextItem | None:
+        """Return one still-current world-context item by id."""
+
+        key = str(item_id or "").strip()
+        if not key:
+            return None
+        with self._lock:
+            self._prune_locked()
+            for item in self._items:
+                if item.id == key:
+                    return item
+        return None
+
     def replace_lane(self, lane: str, items: list[WorldContextItem]) -> None:
         normalized = str(lane).casefold()
         with self._lock:
