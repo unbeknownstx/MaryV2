@@ -728,6 +728,9 @@ class KnowledgeFabric:
             if current:
                 chunks.append(current.strip())
                 tail = current[-overlap:].strip() if overlap else ""
+                if tail:
+                    remaining = max(0, target - len(paragraph) - 2)
+                    tail = tail[-remaining:].strip() if remaining else ""
                 current = f"{tail}\n\n{paragraph}".strip() if tail else paragraph
             else:
                 current = paragraph
