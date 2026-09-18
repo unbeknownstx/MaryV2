@@ -224,12 +224,25 @@ class MobileSpeechService:
             cache_bytes = self._cache_size
             last_tts = dict(self._last_tts)
             last_stt = dict(self._last_stt)
+
+        last_tts_status = str(last_tts.get("status") or "").strip().lower()
+        last_tts_available = last_tts.get("server_available")
+        tts_available = bool(
+            tts_enabled
+            and not (
+                last_tts_status in {"failed", "disabled"}
+                and last_tts_available is False
+            )
+        )
+
         return _json_safe(
             {
                 "tts": {
                     **voice_status,
                     "enabled": tts_enabled,
-                    "server_available": tts_enabled,
+                    "configured": tts_enabled,
+                    "server_available": tts_available,
+                    "degraded": bool(tts_enabled and not tts_available),
                     "device_fallback": True,
                     "max_chars": self.tts_max_chars,
                     "cache_items": cache_items,
