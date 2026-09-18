@@ -91,7 +91,10 @@ def _workload_for(capability: str, args: dict[str, Any] | None) -> WorkloadReque
         capability=str(capability).strip().lower(),
         operation=operation,
         realtime=operation in _REALTIME_OPERATIONS,
-        privacy_required=str(capability).strip().lower().startswith("sensor."),
+        privacy_required=(
+            str(capability).strip().lower().startswith("sensor.")
+            or str(capability).strip().lower().startswith("engineering.")
+        ),
         local_preferred=True,
         cost_sensitive=True,
     )
