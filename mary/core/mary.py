@@ -3638,6 +3638,20 @@ class Mary:
             "engineering_apply",
             "engineering_test",
         }:
+            try:
+                performance_mode = str(
+                    self.performance_context.status().get("mode") or "private"
+                ).strip().lower()
+            except Exception:
+                performance_mode = "private"
+            if performance_mode in {"stream", "performance", "public"}:
+                return {
+                    "system_response": (
+                        "Repository engineering is disabled on public/performance surfaces. "
+                        "Switch this Mary surface back to Private, Casual, or Focus first."
+                    ),
+                    "skip_cognition": True,
+                }
             dispatcher = self.engineering_dispatcher
             if not callable(dispatcher):
                 return {
