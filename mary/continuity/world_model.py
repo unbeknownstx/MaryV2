@@ -389,14 +389,16 @@ class WorldModel:
         verified_only: bool = False,
     ) -> list[BeliefClaim]:
         if subject is not None:
-            subject = self.canonical_label(subject)
+            subject = self.canonical_label(subject).casefold()
+        if predicate is not None:
+            predicate = _bounded(predicate, 160).casefold()
         output: list[BeliefClaim] = []
         for row in list(self._store.snapshot().get("beliefs") or []):
             if row.get("valid_to") is not None or row.get("status") == "retired":
                 continue
-            if subject is not None and str(row.get("subject") or "") != subject:
+            if subject is not None and str(row.get("subject") or "").casefold() != subject:
                 continue
-            if predicate is not None and str(row.get("predicate") or "") != predicate:
+            if predicate is not None and str(row.get("predicate") or "").casefold() != predicate:
                 continue
             if verified_only and str(row.get("verification") or "") != "verified":
                 continue
