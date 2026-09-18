@@ -91,6 +91,21 @@ def test_native_iphone_prefers_core_but_falls_back_to_device_voice_safely() -> N
     assert "Core voice unavailable · iPhone voice fallback ready" in call
 
 
+def test_diagnostics_distinguish_configured_from_live_readiness() -> None:
+    audit = _text("mary/runtime/wiring_audit.py")
+    doctor = _text("scripts/check_mary_13.py")
+
+    assert '"tts_configured"' in audit
+    assert '"tts_ready"' in audit
+    assert '"tts_degraded"' in audit
+    assert 'tts.get("server_available", tts.get("enabled", False))' in audit
+
+    assert "connected /" in doctor
+    assert "vector index=" in doctor
+    assert "not built (structured/lexical recall active)" in doctor
+    assert '"DEGRADED" if tts_configured else "OFF"' in doctor
+
+
 def test_docs_describe_one_mary_across_current_surfaces() -> None:
     registry = _text("docs/architecture/SYSTEM_REGISTRY.md")
     legacy_mobile = _text("mobile_native/README.md")
