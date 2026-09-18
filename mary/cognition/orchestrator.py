@@ -1752,6 +1752,8 @@ class CognitiveOrchestrator:
             r"\bnear me\b",
             r"\bwhat is the latest\b",
             r"\bwhat(?:'s| is) happening (?:today|right now|this week)\b",
+            r"\bwhen (?:does|is|will) .{1,120}\b(?:come out|coming out|release|launch)\b",
+            r"\b(?:release|launch) date (?:for|of)\b",
         )
 
         if (
