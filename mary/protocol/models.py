@@ -264,6 +264,8 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "presence.scene.status",
     "presence.observe",
     "perception.status",
+    "perception.asset.status",
+    "perception.asset.register",
     "perception.observe",
     "perception.browser.observe",
     "stream.chat.ingest",

@@ -580,3 +580,14 @@ def test_device_presence_and_perception_observations_remain_context_only(tmp_pat
         "device_id": "iphone",
     })
     assert status["recent"][-1]["modality"] == "screen"
+
+
+
+def test_perception_asset_registration_is_typed_and_metadata_only():
+    for action in ("perception.asset.status", "perception.asset.register"):
+        parsed = RuntimeActionRequest.from_dict({
+            "action": action,
+            "args": {},
+            "device_id": "iphone",
+        })
+        assert parsed.action == action

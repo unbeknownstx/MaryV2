@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from collections import OrderedDict, deque
+import base64
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -34,6 +35,7 @@ from mary.llm.interface import (
     generation_correlation_id,
 )
 from mary.llm.output_quality import inspect_output_quality
+from mary.perception import PerceptionAssetRegistry
 from mary.llm.model_fabric import build_model_execution_fabric
 from mary.llm.providers.device_local import DeviceLocalProvider
 from mary.llm.providers.device_ollama import DeviceOllamaProvider
@@ -195,6 +197,10 @@ class MaryCoreService:
         if "competence" in broker_signature:
             broker_kwargs["competence"] = getattr(self.mary, "competence", None)
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
+        # Creator-supplied visual bytes stay inside bounded device tasks. Core
+        # retains only ephemeral asset metadata + grounded description evidence.
+        self.perception_assets = PerceptionAssetRegistry(capacity=128)
+        self._perception_asset_tasks: dict[str, str] = {}
         # Ephemeral links bind process-local device tasks back to durable plan
         # and skill records. Device tasks themselves intentionally do not
         # survive Core restarts.
@@ -2493,6 +2499,20 @@ class MaryCoreService:
             args=model.args,
             requester_device_id=model.device_id,
         )
+        if model.capability == "sensor.image_describe":
+            asset_id = str(model.args.get("asset_id") or "").strip()[:120]
+            if asset_id:
+                asset = self.perception_assets.get(asset_id)
+                encoded = str(model.args.get("image_base64") or "")
+                try:
+                    raw = base64.b64decode(encoded, validate=True)
+                except Exception as exc:
+                    raise ValueError("Creator image payload must be valid base64.") from exc
+                actual_sha = hashlib.sha256(raw).hexdigest()
+                expected_sha = str(asset.get("content_sha256") or "")
+                if expected_sha and not secrets.compare_digest(actual_sha, expected_sha):
+                    raise ValueError("Creator image bytes do not match registered asset metadata.")
+                self._perception_asset_tasks[str(task.task_id)] = asset_id
         return _json_safe({
             "ok": True,
             "task": task.to_dict(),
@@ -2556,7 +2576,29 @@ class MaryCoreService:
             )
         self._record_task_replay(task)
         self._settle_continuity_task_link(task)
-        return _json_safe({"ok": True, "task": task.to_dict()})
+        perception_asset = None
+        asset_id = self._perception_asset_tasks.pop(str(task.task_id), "")
+        if asset_id and str(getattr(task, "status", "") or "") == "completed":
+            result = dict(getattr(task, "result", {}) or {})
+            description = str(result.get("description") or "").strip()
+            source_sha = str(result.get("source_sha256") or "").strip().lower()
+            if description:
+                registered = self.perception_assets.get(asset_id)
+                expected_sha = str(registered.get("content_sha256") or "").strip().lower()
+                if expected_sha and source_sha and not secrets.compare_digest(expected_sha, source_sha):
+                    raise ValueError("Visual description source does not match the registered creator asset.")
+                perception_asset = self.perception_assets.describe(
+                    asset_id,
+                    description=description,
+                    provider=str(result.get("provider") or ""),
+                    model=str(result.get("model") or ""),
+                    description_source="perception_capability",
+                )
+        return _json_safe({
+            "ok": True,
+            "task": task.to_dict(),
+            "perception_asset": perception_asset,
+        })
 
     @staticmethod
     def _node_token_digest(token: str) -> str:
@@ -2588,7 +2630,13 @@ class MaryCoreService:
             "completed", "rejected", "failed", "expired"
         }:
             self._settle_continuity_task_link(task)
-        return _json_safe({"ok": True, "task": task.to_dict()})
+        asset_id = self._perception_asset_tasks.get(str(task_id), "")
+        asset = self.perception_assets.get(asset_id) if asset_id else None
+        return _json_safe({
+            "ok": True,
+            "task": task.to_dict(),
+            "perception_asset": asset,
+        })
 
     def workspace_status(self) -> dict[str, Any]:
         """Return the canonical remote-safe Mary workspace snapshot."""
@@ -2820,7 +2868,29 @@ class MaryCoreService:
                 })
 
             if action.action == "perception.status":
-                return _json_safe(self.mary.perception_director.snapshot())
+                return _json_safe({
+                    **self.mary.perception_director.snapshot(),
+                    "assets": self.perception_assets.status(),
+                })
+
+            if action.action == "perception.asset.status":
+                return _json_safe(self.perception_assets.status())
+
+            if action.action == "perception.asset.register":
+                digest = str(values.get("content_sha256") or "").strip().lower()
+                item = self.perception_assets.register(
+                    kind=str(values.get("kind") or "image")[:40],
+                    source=f"creator_surface:{action.device_id}",
+                    mime_type=str(values.get("mime_type") or "")[:100],
+                    content_sha256=digest,
+                    byte_count=int(values.get("byte_count", 0) or 0),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "asset": item,
+                    "raw_media_stored": False,
+                    "authority": "ephemeral_perception_asset_metadata",
+                })
 
             if action.action == "perception.observe":
                 description = " ".join(str(values.get("description") or "").split()).strip()[:1400]
