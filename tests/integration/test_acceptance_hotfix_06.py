@@ -165,6 +165,38 @@ def test_engineering_followup_phrases_route_to_status_apply_and_verify(tmp_path,
         assert intent.parameters["self_query_type"] == subtype
 
 
+def test_engineering_apply_requires_immediately_bound_proposal_context(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _mary()
+    mary = app.mary
+
+    guarded = mary._detect_intent(
+        "Apply that fix",
+        recent_conversation=[
+            {"role": "assistant", "content": "We were talking about something unrelated."}
+        ],
+    )
+    assert guarded.intent_type == IntentType.SELF_QUERY
+    assert guarded.parameters["self_query_type"] == "engineering_status"
+    assert guarded.source == "engineering_apply_context_guard"
+
+    bound = mary._detect_intent(
+        "Ok do it",
+        recent_conversation=[
+            {
+                "role": "assistant",
+                "content": (
+                    "This is a proposal only; nothing has been written. "
+                    "If you want me to apply this exact node-local proposal, say: apply that fix."
+                ),
+            }
+        ],
+    )
+    assert bound.intent_type == IntentType.SELF_QUERY
+    assert bound.parameters["self_query_type"] == "engineering_apply"
+    assert bound.source == "engineering_apply_followup"
+
+
 def test_runtime_inspection_direct_and_followup_are_deterministic(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     router = SequenceRouter(["provider answer must not be used"])
