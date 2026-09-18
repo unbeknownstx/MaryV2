@@ -198,14 +198,12 @@ def sanitize_engineering_task_args(capability: str, args: dict[str, Any] | None)
 
     if name == "engineering.repo.apply":
         proposal_id = _clean_text(values.get("proposal_id"), 120)
-        if proposal_id:
-            return {"proposal_id": proposal_id}
-        raw_changes = values.get("changes")
-        if not isinstance(raw_changes, list) or not raw_changes:
-            raise ValueError("engineering.repo.apply requires proposal_id or exact changes.")
-        if len(raw_changes) > 12:
-            raise ValueError("Engineering task may change at most 12 files.")
-        return {"changes": [_sanitize_change(item) for item in raw_changes]}
+        if not proposal_id or not proposal_id.startswith("engineering_proposal_"):
+            raise ValueError(
+                "engineering.repo.apply requires the exact node-local proposal_id "
+                "returned by engineering.repair.plan."
+            )
+        return {"proposal_id": proposal_id}
 
     if name == "engineering.tests.targeted":
         raw_paths = values.get("paths")
