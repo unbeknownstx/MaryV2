@@ -24,10 +24,18 @@ class AdapterSpec:
     license: str = "unknown"
     purpose: str = "character_style"
     enabled: bool = True
+    subfolder: str = ""
+    source_url: str = ""
+    review_status: str = "unreviewed"
+    trust: str = "external_candidate"
+    hardware_fit: str = "unknown"
+    notes: str = ""
+    risk_tags: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["scale"] = round(max(0.0, min(2.0, float(self.scale))), 3)
+        payload["risk_tags"] = list(self.risk_tags)
         return payload
 
 
@@ -133,6 +141,192 @@ class AdapterLab:
         ranked = sorted(latest.values(), key=lambda item: (item.mary_fit, -(item.latency_ms or 0.0)), reverse=True)
         return [item.to_dict() for item in ranked[: max(1, int(limit))]]
 
+    def seed_research_candidates(self) -> list[AdapterConfiguration]:
+        """Register reviewed-by-metadata external candidates, disabled by default.
+
+        These are benchmark inputs, not promoted Mary behavior. Exact base-model
+        compatibility is preserved so Adapter Lab cannot accidentally apply a
+        LoRA to a merely similar model family.
+        """
+
+        candidates = (
+            AdapterConfiguration(
+                config_id="candidate_qwen3_4b_execution_world_model",
+                base_model="Qwen/Qwen3-4B-Thinking-2507",
+                runtime="peft",
+                notes="Execution-tracing/reasoning candidate; compare against base before any Mary stack.",
+                adapters=(
+                    AdapterSpec(
+                        adapter_id="codelion_execution_world_model",
+                        base_model="Qwen/Qwen3-4B-Thinking-2507",
+                        path_or_repo="codelion/Qwen3-4B-execution-world-model-lora",
+                        format="peft_lora",
+                        license="apache-2.0",
+                        purpose="execution_reasoning",
+                        enabled=False,
+                        source_url="https://huggingface.co/codelion/Qwen3-4B-execution-world-model-lora",
+                        review_status="benchmark_required",
+                        hardware_fit="4B base; candidate for stronger local node",
+                        notes="GRPO execution-trace adapter; upstream reports limited execution/state accuracy, so treat as experiment only.",
+                        risk_tags=("reasoning_style_shift", "thinking_only_base", "small_training_set"),
+                    ),
+                ),
+            ),
+            AdapterConfiguration(
+                config_id="candidate_qwen3_4b_structured_output",
+                base_model="Qwen/Qwen3-4B-Instruct-2507",
+                runtime="peft",
+                notes="Tool/schema-output candidate for JSON/YAML/XML/TOML/CSV reliability.",
+                adapters=(
+                    AdapterSpec(
+                        adapter_id="uchkw_structured_output",
+                        base_model="Qwen/Qwen3-4B-Instruct-2507",
+                        path_or_repo="uchkw/qwen3-4b-structured-output-lora",
+                        format="peft_qlora",
+                        license="dataset-mixed-mit-cc-by-4.0; adapter-license-review",
+                        purpose="structured_tool_output",
+                        enabled=False,
+                        source_url="https://huggingface.co/uchkw/qwen3-4b-structured-output-lora",
+                        review_status="license_and_benchmark_required",
+                        hardware_fit="4B base; realistic local experiment",
+                        notes="QLoRA r64/a128; final-output supervision masks intermediate reasoning.",
+                        risk_tags=("license_review", "schema_overfit"),
+                    ),
+                ),
+            ),
+            AdapterConfiguration(
+                config_id="candidate_qwen3_4b_roleplay",
+                base_model="Qwen/Qwen3-4B-Instruct-2507",
+                runtime="peft",
+                notes="Exact-base roleplay/dialogue candidate; Mary character corpus remains authority.",
+                adapters=(
+                    AdapterSpec(
+                        adapter_id="arityflow_roleplay",
+                        base_model="Qwen/Qwen3-4B-Instruct-2507",
+                        path_or_repo="ArityFlow/ArityFlow-Qwen3-4B-Instruct-2507-RolePlay",
+                        subfolder="lora",
+                        format="peft_qlora",
+                        license="review-required",
+                        purpose="roleplay_dialogue",
+                        enabled=False,
+                        source_url="https://huggingface.co/ArityFlow/ArityFlow-Qwen3-4B-Instruct-2507-RolePlay",
+                        review_status="license_and_marybench_required",
+                        hardware_fit="4B base; realistic local experiment",
+                        notes="Roleplay QLoRA from exact Qwen3-4B-Instruct-2507 base; benchmark naturalism and character drift.",
+                        risk_tags=("character_drift", "over_roleplay", "license_review"),
+                    ),
+                ),
+            ),
+            AdapterConfiguration(
+                config_id="candidate_qwen25vl_3b_gui_grounding_grpo",
+                base_model="Qwen/Qwen2.5-VL-3B-Instruct",
+                runtime="peft",
+                notes="Vision/UI grounding candidate for Mary's eyes; never grants click/control authority.",
+                adapters=(
+                    AdapterSpec(
+                        adapter_id="screenspot_web_grpo",
+                        base_model="Qwen/Qwen2.5-VL-3B-Instruct",
+                        path_or_repo="Prakharpandey31/qwen2.5-vl-3b-grpo-screenspot-web",
+                        subfolder="grpo_lora",
+                        format="peft_lora",
+                        license="apache-2.0",
+                        purpose="vision_gui_grounding",
+                        enabled=False,
+                        source_url="https://huggingface.co/Prakharpandey31/qwen2.5-vl-3b-grpo-screenspot-web",
+                        review_status="benchmark_required",
+                        hardware_fit="3B VLM; likely Mac/stronger GPU before RX580",
+                        notes="ScreenSpot-Web click-coordinate grounding; observation only in Mary architecture.",
+                        risk_tags=("web_ui_bias", "coordinate_only", "vision_vram"),
+                    ),
+                ),
+            ),
+            AdapterConfiguration(
+                config_id="candidate_qwen25vl_3b_portal_grounding",
+                base_model="Qwen/Qwen2.5-VL-3B-Instruct",
+                runtime="peft",
+                notes="Alternative MIT-licensed GUI-grounding candidate; compare blind against ScreenSpot GRPO.",
+                adapters=(
+                    AdapterSpec(
+                        adapter_id="portal_vlm_lm_vision",
+                        base_model="Qwen/Qwen2.5-VL-3B-Instruct",
+                        path_or_repo="manihani4/portal-vlm-qwen25vl-lora-lm-vision",
+                        format="peft_lora",
+                        license="mit",
+                        purpose="vision_gui_grounding",
+                        enabled=False,
+                        source_url="https://huggingface.co/manihani4/portal-vlm-qwen25vl-lora-lm-vision",
+                        review_status="benchmark_required",
+                        hardware_fit="3B VLM; likely Mac/stronger GPU before RX580",
+                        notes="Pinned-base ScreenSpot-v2 grounding adapter affecting LM and vision sites.",
+                        risk_tags=("gui_grounding_only", "vision_vram"),
+                    ),
+                ),
+            ),
+            AdapterConfiguration(
+                config_id="candidate_qwen25vl_3b_design_critic",
+                base_model="Qwen/Qwen2.5-VL-3B-Instruct",
+                runtime="peft",
+                notes="Non-commercial research candidate for web UI critique; useful for Creator Lab evaluation only.",
+                adapters=(
+                    AdapterSpec(
+                        adapter_id="design_critic_vlm",
+                        base_model="Qwen/Qwen2.5-VL-3B-Instruct",
+                        path_or_repo="riazmo/design-critic-vlm-3b-lora",
+                        format="peft_lora",
+                        license="cc-by-nc-4.0",
+                        purpose="vision_ui_critique",
+                        enabled=False,
+                        source_url="https://huggingface.co/riazmo/design-critic-vlm-3b-lora",
+                        review_status="research_only",
+                        hardware_fit="3B VLM; Mac/stronger GPU candidate",
+                        notes="Web-design critic only; upstream explicitly reports native-mobile limitations.",
+                        risk_tags=("noncommercial", "web_only", "small_eval", "vision_vram"),
+                    ),
+                ),
+            ),
+        )
+        output: list[AdapterConfiguration] = []
+        for config in candidates:
+            existing = self.configurations.get(config.config_id)
+            if existing is not None:
+                output.append(existing)
+                continue
+            output.append(self.register(config))
+        return output
+
+    @staticmethod
+    def experiment_matrix(
+        *,
+        base_model: str,
+        third_party_adapter: AdapterSpec | None = None,
+        mary_adapter: AdapterSpec | None = None,
+    ) -> list[dict[str, Any]]:
+        """Describe the minimum fair comparison before promotion."""
+
+        base = str(base_model or "").strip()
+        rows = [{"variant": "base", "base_model": base, "adapters": []}]
+        if third_party_adapter is not None:
+            rows.append({
+                "variant": "third_party",
+                "base_model": base,
+                "adapters": [third_party_adapter.adapter_id],
+            })
+        if mary_adapter is not None:
+            rows.append({
+                "variant": "mary",
+                "base_model": base,
+                "adapters": [mary_adapter.adapter_id],
+            })
+        if third_party_adapter is not None and mary_adapter is not None:
+            rows.append({
+                "variant": "third_party_plus_mary",
+                "base_model": base,
+                "adapters": [third_party_adapter.adapter_id, mary_adapter.adapter_id],
+                "note": "only run when runtime confirms multi-adapter compatibility",
+            })
+        return rows
+
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "configurations": [item.to_dict() for item in self.configurations.values()],
@@ -160,7 +354,15 @@ class AdapterLab:
             return
         for item in payload.get("configurations", []):
             try:
-                adapters = tuple(AdapterSpec(**adapter) for adapter in item.get("adapters", []))
+                adapters = tuple(
+                    AdapterSpec(
+                        **{
+                            **adapter,
+                            "risk_tags": tuple(adapter.get("risk_tags") or ()),
+                        }
+                    )
+                    for adapter in item.get("adapters", [])
+                )
                 config = AdapterConfiguration(
                     config_id=item["config_id"],
                     base_model=item["base_model"],
