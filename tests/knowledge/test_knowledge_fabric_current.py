@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import zipfile
 
 import pytest
 
@@ -91,3 +92,57 @@ def test_recommended_pack_candidates_are_disabled_metadata_only(tmp_path: Path):
     }
     assert all(item.enabled is False for item in rows)
     assert fabric.search("anything") == []
+
+
+def test_large_documents_are_chunked_and_docx_is_local_extractable(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    docx = docs / "book.docx"
+    paragraphs = "".join(
+        f"<w:p><w:r><w:t>Mary knowledge paragraph {index} " +
+        ("network topology evidence " * 40) +
+        "</w:t></w:r></w:p>"
+        for index in range(40)
+    )
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{paragraphs}</w:body></w:document>"
+    )
+    with zipfile.ZipFile(docx, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
+
+    fabric = KnowledgeFabric(
+        tmp_path / "knowledge" / "fabric.json",
+        index_path=tmp_path / "knowledge" / "fabric.sqlite3",
+    )
+    pack = fabric.register(
+        pack_id="book",
+        title="Local Book",
+        kind="local_files",
+        location=str(docs),
+        query_mode="fts",
+        topics=("network", "book"),
+    )
+    result = fabric.index_local_pack(pack.id)
+
+    assert result["files_seen"] == 1
+    assert result["chunks_indexed"] > 1
+    hits = fabric.search("network topology evidence", pack_ids=(pack.id,), limit=5)
+    assert hits
+    assert all(item.locator.startswith("book.docx") for item in hits)
+
+
+def test_chunker_bounds_large_corpus_segments_without_changing_source_authority():
+    body = "\n\n".join(
+        f"Section {index}. " + ("bounded retrieval text " * 100)
+        for index in range(20)
+    )
+    chunks = KnowledgeFabric._document_chunks(
+        body,
+        target_characters=1800,
+        overlap_characters=200,
+    )
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert any("Section 0" in chunk for chunk in chunks)
