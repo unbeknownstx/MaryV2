@@ -58,7 +58,8 @@ final class MaryCoreClient {
     }
 
     private func safeHTTPErrorMessage(_ data: Data, statusCode: Int) -> String {
-        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let rawObject = try? JSONSerialization.jsonObject(with: data),
+           let object = rawObject as? [String: Any] {
             for key in ["error", "message", "detail"] {
                 if let value = object[key] as? String {
                     let compact = value
