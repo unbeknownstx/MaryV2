@@ -657,6 +657,12 @@ class CharacterSourcebook:
                 )
                 if not comfort_evidence:
                     score -= 1.00
+                # Direct comfort retrieval should retain the authored guard
+                # against clinical/templated consolation alongside Mary's
+                # action-first care invariant.  This is a query-specific
+                # relevance boost, not an authority override.
+                if record.heading.startswith("CARE-004"):
+                    score += 0.55
                 if body_tokens.intersection({"anger", "angry"}) and not body_tokens.intersection(
                     {"care", "comfort", "hurt", "upset", "protect"}
                 ):

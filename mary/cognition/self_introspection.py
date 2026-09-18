@@ -410,8 +410,8 @@ class SelfIntrospection:
             "connected_self_systems": connected,
             "agency_status": self.agency.status(),
             "fallback_response": (
-                "Yes—within my actual represented runtime I can analyze parts of myself. "
-                "I can inspect my Core state, identity/self systems, memory and growth state, "
+                "Yes—within my actual represented runtime I can analyze parts of myself through "
+                "structured systems. I can inspect my Core state, identity/self systems, memory and growth state, "
                 "relationship model, realtime/attention state, routing, and registered tool "
                 "status, then reason about patterns or inconsistencies I can observe. "
                 "That is bounded software self-inspection, not unrestricted access to every "

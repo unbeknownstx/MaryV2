@@ -761,8 +761,8 @@ class KnowledgeFabric:
             address = ipaddress.ip_address(hostname)
         except ValueError as exc:
             raise ValueError(
-                "Kiwix endpoint must use localhost or a literal private/LAN IP; "
-                "Mary will not resolve arbitrary hostnames from this adapter."
+                "Kiwix endpoint must be local/private: use localhost or a literal "
+                "private/LAN IP; Mary will not resolve arbitrary hostnames from this adapter."
             ) from exc
         if not (address.is_private or address.is_loopback or address.is_link_local):
             raise ValueError("Kiwix endpoint must be local/private")

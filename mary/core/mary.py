@@ -3347,9 +3347,24 @@ class Mary:
             continuity_bits.extend(relationship_memories[:2])
         continuity_bits = list(dict.fromkeys(continuity_bits))[:3]
         if continuity_bits:
-            pieces.append("I also remember shared continuity like " + "; ".join(continuity_bits) + ".")
+            if relationship_memories:
+                pieces.append(
+                    "From our relationship history, I also remember shared continuity like "
+                    + "; ".join(continuity_bits)
+                    + "."
+                )
+            else:
+                pieces.append(
+                    "I also remember shared continuity like "
+                    + "; ".join(continuity_bits)
+                    + "."
+                )
         if session_shares:
-            pieces.append("From this session, I also remember " + session_shares[-1] + ".")
+            pieces.append(
+                "From the current session, I also remember "
+                + session_shares[-1]
+                + "."
+            )
 
         pieces.append("I have more detail stored, but I won't dump all of it unless you ask.")
         return " ".join(pieces)
