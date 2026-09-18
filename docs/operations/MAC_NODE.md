@@ -46,7 +46,7 @@ Repository mutation remains a separate opt-in:
 .venv/bin/python -m scripts.node_permissions allow engineering.repo.apply
 ```
 
-Tests run in disposable sandboxes and no generic shell, commit, push, merge or
+Tests run in disposable copied workspaces and no generic shell, commit, push, merge or
 deploy task exists. See `docs/architecture/ENGINEERING_WORKER_CURRENT.md`.
 
 ## Launch
