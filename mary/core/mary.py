@@ -3542,6 +3542,8 @@ class Mary:
             "disagreement",
             "priorities",
             "curiosity",
+            "self_understanding",
+            "capabilities",
         }
         if subtype in deterministic_self_subtypes:
             response = str(evidence.get("fallback_response", "")).strip()
