@@ -157,8 +157,19 @@ class TemporalKnowledgeGraph:
         *,
         limit: int = 12,
         include_history: bool = True,
+        context_floor: int = 2,
     ) -> list[TemporalRelation]:
-        """Return query-relevant temporal facts without collapsing history."""
+        """Return bounded temporal evidence without losing current continuity anchors.
+
+        Query matches rank first.  A small recency floor then keeps current
+        relations visible even when the user's wording does not repeat the
+        relation's subject/predicate (for example a deployment change while
+        asking to repair MaryV2).  When history is requested, directly
+        superseded rows for those current anchors are carried with them so a
+        model never sees a new state without the prior state that explains it.
+        """
+        bounded_limit = max(1, min(100, int(limit)))
+        bounded_floor = max(0, min(bounded_limit, int(context_floor)))
         terms = {
             token.casefold()
             for token in re.findall(r"[A-Za-z0-9_.-]{3,}", str(query or ""))
@@ -168,16 +179,15 @@ class TemporalKnowledgeGraph:
             for row in self._store.snapshot().get("relations", [])
             if include_history or row.get("valid_to") is None
         ]
+        if not rows:
+            return []
+
+        def recency_key(item: TemporalRelation) -> tuple[bool, str, float]:
+            return (item.current, item.valid_from, item.confidence)
+
         if not terms:
-            rows.sort(
-                key=lambda item: (
-                    item.current,
-                    item.valid_from,
-                    item.confidence,
-                ),
-                reverse=True,
-            )
-            return rows[: max(1, min(100, int(limit)))]
+            rows.sort(key=recency_key, reverse=True)
+            return rows[:bounded_limit]
 
         scored: list[tuple[float, TemporalRelation]] = []
         for item in rows:
@@ -201,7 +211,49 @@ class TemporalKnowledgeGraph:
             ),
             reverse=True,
         )
-        return [item for _, item in scored[: max(1, min(100, int(limit)))]]
+
+        selected: list[TemporalRelation] = []
+        selected_ids: set[str] = set()
+
+        def add(item: TemporalRelation) -> None:
+            if item.id in selected_ids or len(selected) >= bounded_limit:
+                return
+            selected.append(item)
+            selected_ids.add(item.id)
+
+        for _, item in scored:
+            add(item)
+            if len(selected) >= bounded_limit:
+                return selected
+
+        if bounded_floor:
+            current_rows = sorted(
+                (item for item in rows if item.current),
+                key=recency_key,
+                reverse=True,
+            )
+            anchors_added = 0
+            for item in current_rows:
+                before = len(selected)
+                add(item)
+                if len(selected) > before:
+                    anchors_added += 1
+                if anchors_added >= bounded_floor or len(selected) >= bounded_limit:
+                    break
+
+        if include_history and len(selected) < bounded_limit:
+            anchor_ids = {
+                item.supersedes
+                for item in selected
+                if item.current and item.supersedes
+            }
+            for item in sorted(rows, key=recency_key, reverse=True):
+                if item.id in anchor_ids:
+                    add(item)
+                if len(selected) >= bounded_limit:
+                    break
+
+        return selected
 
     def status(self) -> dict[str, Any]:
         rows = list(self._store.snapshot().get("relations") or [])
