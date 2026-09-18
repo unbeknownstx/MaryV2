@@ -192,6 +192,16 @@ class MaryCoreService:
         if "execution_policy" in inspect.signature(DeviceTaskBroker).parameters:
             broker_kwargs["execution_policy"] = self.enforce_execution_policy
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
+        # Ephemeral links bind process-local device tasks back to durable plan
+        # and skill records. Device tasks themselves intentionally do not
+        # survive Core restarts.
+        self._continuity_task_links: dict[str, dict[str, str]] = {}
+        try:
+            if int(self.mary.executive_plans.status().get("running_steps", 0) or 0) > 0:
+                self.mary.executive_plans.recover_running_steps()
+        except Exception:
+            # Plan recovery is subordinate to Core startup.
+            pass
         self._last_engineering_task_id = ""
         self._last_engineering_proposal_id = ""
         self._last_engineering_node_id = ""
