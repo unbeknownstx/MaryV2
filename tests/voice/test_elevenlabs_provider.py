@@ -170,3 +170,41 @@ def test_elevenlabs_provider_can_return_precise_alignment_without_changing_voice
     assert alignment["words"][1]["text"] == "Mary"
     assert alignment["characters"][-1]["end_seconds"] == 0.52
     assert speech.metadata["alignment_source"] == "elevenlabs_tts_timestamps"
+
+
+def test_elevenlabs_provider_sanitizes_payment_http_body() -> None:
+    import io
+    from urllib.error import HTTPError
+
+    provider = ElevenLabsTextToSpeechProvider(
+        api_key="secret-test-key",
+        voice_id="mary-voice",
+        model_id="eleven_flash_v2_5",
+    )
+
+    raw = (
+        b'{"detail":{"type":"payment_required","message":'
+        b'"Your subscription has a failed or incomplete payment.",'
+        b'"request_id":"private-provider-request"}}'
+    )
+    failure = HTTPError(
+        "https://api.elevenlabs.io/v1/text-to-speech/mary-voice",
+        401,
+        "Unauthorized",
+        hdrs=None,
+        fp=io.BytesIO(raw),
+    )
+
+    with patch("mary.voice.providers.elevenlabs.urlopen", side_effect=failure):
+        try:
+            provider.synthesize("Hello")
+        except Exception as exc:
+            rendered = str(exc)
+        else:
+            raise AssertionError("Expected synthesis to fail.")
+
+    assert "requires payment" in rendered
+    assert "payment_required" not in rendered
+    assert "private-provider-request" not in rendered
+    assert "subscription has a failed" not in rendered
+
