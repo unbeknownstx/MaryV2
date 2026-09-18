@@ -25,6 +25,30 @@ Enable only the local inference lanes this Mac should execute:
 
 Other capabilities remain default-deny.
 
+### Optional bounded engineering worker
+
+The Mac can use the same local model as a replaceable coding worker while Core
+remains Mary's only identity/state authority:
+
+```bash
+.venv/bin/python -m scripts.node_permissions allow engineering.repo.inspect
+.venv/bin/python -m scripts.node_permissions allow engineering.repair.plan
+.venv/bin/python -m scripts.node_permissions allow engineering.patch.propose
+.venv/bin/python -m scripts.node_permissions allow engineering.git.status
+.venv/bin/python -m scripts.node_permissions allow engineering.git.diff
+.venv/bin/python -m scripts.node_permissions allow engineering.structure.verify
+.venv/bin/python -m scripts.node_permissions allow engineering.tests.targeted
+```
+
+Repository mutation remains a separate opt-in:
+
+```bash
+.venv/bin/python -m scripts.node_permissions allow engineering.repo.apply
+```
+
+Tests run in disposable sandboxes and no generic shell, commit, push, merge or
+deploy task exists. See `docs/architecture/ENGINEERING_WORKER_CURRENT.md`.
+
 ## Launch
 
 ```bash
