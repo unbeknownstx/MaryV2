@@ -68,6 +68,12 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "KnowledgeStateStore",
         "knowledge",
     ),
+    DurableStateFile(
+        "knowledge/knowledge_fabric.json",
+        "knowledge",
+        "KnowledgeFabric",
+        "knowledge_fabric_registry",
+    ),
     DurableStateFile("goals/goals.json", "autonomy", "GoalManager", "goals"),
     DurableStateFile(
         "goals/intentions.json",
@@ -172,10 +178,22 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "temporal_knowledge",
     ),
     DurableStateFile(
+        "continuity/world_model.json",
+        "experiential_continuity",
+        "WorldModel",
+        "world_model",
+    ),
+    DurableStateFile(
         "continuity/skills.json",
         "experiential_continuity",
         "SkillLibrary",
         "procedural_skills",
+    ),
+    DurableStateFile(
+        "continuity/plans.json",
+        "experiential_continuity",
+        "ExecutivePlanGraph",
+        "executive_plans",
     ),
     DurableStateFile(
         "continuity/workflows.json",
