@@ -1599,6 +1599,15 @@ class MaryCoreService:
                 ),
                 task_id=str(getattr(task, "task_id", "") or ""),
             )
+            self.mary.competence.record(
+                capability=capability,
+                operation=str(getattr(task, "operation", "") or "general"),
+                node_id=str(getattr(task, "selected_node_id", "") or ""),
+                success=success,
+                verified=success,
+                evidence_ids=(str(getattr(task, "task_id", "") or ""),),
+                result=summary,
+            )
         except Exception:
             # Learning evidence is subordinate to the completed task protocol.
             return
