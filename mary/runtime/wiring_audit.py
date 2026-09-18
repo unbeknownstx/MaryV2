@@ -217,14 +217,24 @@ def _voice(service: Any | None) -> dict[str, Any]:
     status = _safe_dict(getattr(service, "voice_status", lambda: {}))
     tts = dict(status.get("tts", {}) or {})
     stt = dict(status.get("stt", {}) or {})
+
+    tts_configured = bool(tts.get("configured", tts.get("enabled", False)))
+    tts_ready = bool(tts.get("server_available", tts.get("enabled", False)))
+    stt_configured = bool(stt.get("configured", stt.get("enabled", False)))
+    stt_ready = bool(stt.get("server_available", stt.get("enabled", False)))
+
     return {
-        # Voice is optional; a disabled provider is a readiness degradation, not
-        # a broken Core composition.
+        # Voice is optional; a configured-but-unavailable provider is a
+        # readiness degradation, not a broken Core composition.
         "healthy": "_error" not in status,
         "applicable": True,
-        "tts_ready": bool(tts.get("enabled") or tts.get("server_available")),
+        "tts_configured": tts_configured,
+        "tts_ready": tts_ready,
+        "tts_degraded": bool(tts_configured and not tts_ready),
         "tts_provider": str(tts.get("provider") or "off"),
-        "stt_ready": bool(stt.get("enabled") or stt.get("server_available")),
+        "stt_configured": stt_configured,
+        "stt_ready": stt_ready,
+        "stt_degraded": bool(stt_configured and not stt_ready),
         "stt_provider": str(stt.get("provider") or "off"),
     }
 
