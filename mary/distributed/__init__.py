@@ -31,7 +31,11 @@ from .knowledge import (
     sanitize_knowledge_result,
     sanitize_knowledge_task_args,
 )
-from .qdrant_knowledge import EmbeddingSpaceMismatch, QdrantKnowledgeBackend
+from .qdrant_knowledge import (
+    EmbeddingSpaceMismatch,
+    QdrantKnowledgeBackend,
+    QdrantKnowledgeIndexer,
+)
 from .permissions import DeviceExecutionPermissions, default_permission_path
 from .tasks import (
     CapabilityTaskPlan,
@@ -120,6 +124,7 @@ __all__ = [
     "sanitize_knowledge_task_args",
     "EmbeddingSpaceMismatch",
     "QdrantKnowledgeBackend",
+    "QdrantKnowledgeIndexer",
     "discover_engineering_repository",
     "engineering_capability_descriptors",
     "sanitize_engineering_result",

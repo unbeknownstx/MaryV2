@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from mary.distributed.knowledge import node_knowledge_fabric
+from mary.distributed.qdrant_knowledge import QdrantKnowledgeIndexer
 from mary.knowledge import KnowledgeFabric
 from mary.mind.embeddings import OllamaEmbeddingClient
 
@@ -69,10 +70,24 @@ def main() -> int:
     qdrant.add_argument("--collection", default="default")
     qdrant.add_argument("--license", default="creator-owned-derived-index")
     qdrant.add_argument(
+        "--source-pack",
+        default="",
+        help="local_files pack used to rebuild this derived vector index",
+    )
+    qdrant.add_argument(
         "--hybrid",
         action="store_true",
         help="mark the pack as hybrid instead of vector-only",
     )
+
+    qdrant_create = sub.add_parser("qdrant-create")
+    qdrant_create.add_argument("pack_id")
+
+    qdrant_rebuild = sub.add_parser("qdrant-rebuild")
+    qdrant_rebuild.add_argument("pack_id")
+    qdrant_rebuild.add_argument("--source-pack", default="")
+    qdrant_rebuild.add_argument("--limit", type=int, default=20_000)
+    qdrant_rebuild.add_argument("--batch-size", type=int, default=32)
 
     embedding_identity = sub.add_parser("embedding-identity")
     embedding_identity.add_argument("--model", default="")
@@ -182,10 +197,29 @@ def main() -> int:
                 "embedding_space_identity": args.embedding_space_identity,
                 "embedding_dimensions": args.embedding_dimensions,
                 **({"vector_name": args.vector_name} if args.vector_name else {}),
+                **({"source_pack_id": args.source_pack} if args.source_pack else {}),
             },
         )
         print(json.dumps(pack.to_dict(), indent=2, ensure_ascii=False))
         return 0
+
+    if args.command == "qdrant-create":
+        pack = fabric.get(args.pack_id)
+        result = QdrantKnowledgeIndexer().create_collection(pack)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "qdrant-rebuild":
+        pack = fabric.get(args.pack_id)
+        result = QdrantKnowledgeIndexer().rebuild(
+            pack,
+            fabric,
+            source_pack_id=args.source_pack,
+            limit=max(1, min(20_000, int(args.limit))),
+            batch_size=max(1, min(128, int(args.batch_size))),
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["ok"] else 2
 
     if args.command == "embedding-identity":
         client = OllamaEmbeddingClient(

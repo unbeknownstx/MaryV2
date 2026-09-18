@@ -346,6 +346,55 @@ class KnowledgeFabric:
                 item["indexed_at"] = _text(indexed_at, 80)
         return list(grouped.values())
 
+    def indexed_chunks(
+        self,
+        pack_id: str,
+        *,
+        enabled_only: bool = True,
+        limit: int = 20_000,
+    ) -> list[dict[str, Any]]:
+        """Return bounded rebuildable local chunks for a derived indexer.
+
+        Chunk text never becomes canonical Mary state.  This method is intended
+        for node-local derivative builders such as Qdrant and respects durable
+        per-document activation policy by default.
+        """
+
+        pack = self.get(pack_id)
+        if pack.kind != "local_files":
+            raise ValueError("indexed_chunks requires a local_files source pack")
+        if not self.index_path.exists():
+            return []
+        self._ensure_index()
+        rows: list[tuple[Any, ...]] = []
+        with self._connect() as db:
+            rows = list(db.execute(
+                """
+                SELECT locator, title, body, content_hash, indexed_at, source_modified_at
+                FROM documents
+                WHERE pack_id = ?
+                ORDER BY locator, id
+                LIMIT ?
+                """,
+                (pack.id, max(1, min(20_000, int(limit)))),
+            ))
+        disabled = set(pack.disabled_documents)
+        output: list[dict[str, Any]] = []
+        for locator, title, body, content_hash, indexed_at, source_date in rows:
+            locator_text = _text(locator, 500)
+            if enabled_only and self._document_source(locator_text) in disabled:
+                continue
+            output.append({
+                "pack_id": pack.id,
+                "locator": locator_text,
+                "title": _text(title, 240),
+                "text": str(body or "")[:20_000],
+                "content_hash": _text(content_hash, 128),
+                "indexed_at": _text(indexed_at, 80),
+                "source_date": _text(source_date, 80),
+            })
+        return output
+
     def enable_document(self, pack_id: str, locator: str) -> dict[str, Any]:
         return self._set_document_enabled(pack_id, locator, True)
 
@@ -799,6 +848,53 @@ class KnowledgeFabric:
                 row["metadata"] = metadata
                 break
         self._save(payload)
+
+    def record_vector_build(
+        self,
+        pack_id: str,
+        *,
+        source_pack_id: str,
+        source_fingerprint: str,
+        embedding_space_identity: str,
+        vectors: int,
+        rebuild_id: str,
+    ) -> KnowledgePack:
+        """Record content-free evidence for one successful derived vector build."""
+
+        payload = self._load()
+        found = False
+        for row in list(payload.get("packs") or []):
+            if str(row.get("id") or "") != pack_id:
+                continue
+            metadata = dict(row.get("metadata") or {})
+            metadata["vector_build"] = {
+                "source_pack_id": _text(source_pack_id, 160),
+                "source_fingerprint": _text(source_fingerprint, 128),
+                "embedding_space_identity": _text(
+                    embedding_space_identity,
+                    128,
+                ),
+                "vectors": max(0, int(vectors)),
+                "rebuild_id": _text(rebuild_id, 128),
+                "built_at": _now(),
+            }
+            row["metadata"] = metadata
+            row["content_fingerprint"] = sha256(
+                (
+                    _text(source_fingerprint, 128)
+                    + "|"
+                    + _text(embedding_space_identity, 128)
+                    + "|"
+                    + _text(rebuild_id, 128)
+                ).encode("utf-8")
+            ).hexdigest()
+            row["updated_at"] = _now()
+            found = True
+            break
+        if not found:
+            raise KeyError(pack_id)
+        self._save(payload)
+        return self.get(pack_id)
 
     def _ensure_index(self) -> None:
         with self._connect() as db:

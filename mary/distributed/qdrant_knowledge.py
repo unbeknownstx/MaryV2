@@ -12,6 +12,7 @@ import json
 import re
 from typing import Any, Callable
 from urllib.parse import quote
+from uuid import NAMESPACE_URL, uuid5
 from urllib.request import Request, urlopen
 
 from mary.knowledge import KnowledgeFabric, KnowledgeHit, KnowledgePack
@@ -214,4 +215,278 @@ class QdrantKnowledgeBackend:
             "local_private_only": True,
             "embedding_identity_required": True,
             "authority": "derived semantic retrieval only",
+        }
+
+
+
+class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
+    """Explicit derived-index writer; never runs during Mary startup."""
+
+    INDEX_VERSION = 1
+
+    def __init__(
+        self,
+        *,
+        embedding_client_factory: Callable[[str], Any] | None = None,
+        request_json: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+        write_json: Callable[
+            [str, str, dict[str, Any]], dict[str, Any]
+        ] | None = None,
+        timeout: float = 15.0,
+    ) -> None:
+        super().__init__(
+            embedding_client_factory=embedding_client_factory,
+            request_json=request_json,
+            timeout=timeout,
+        )
+        self.write_json = write_json or self._write_json
+
+    def _write_json(
+        self,
+        method: str,
+        url: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        request = Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "MaryV2-QdrantKnowledgeIndexer/1",
+            },
+            method=str(method).upper(),
+        )
+        with urlopen(request, timeout=self.timeout) as response:  # nosec B310 - endpoint is validated local/private
+            raw = response.read(4 * 1024 * 1024)
+        decoded = json.loads(raw.decode("utf-8"))
+        return dict(decoded) if isinstance(decoded, dict) else {}
+
+    def _verified_embedding(
+        self,
+        pack: KnowledgePack,
+    ) -> tuple[Any, str, int, str, str]:
+        KnowledgeFabric._validate_qdrant_endpoint(pack.location)
+        collection, model, dimensions, vector_name = self._metadata(pack)
+        client = self.embedding_client_factory(model)
+        actual = self._fingerprint(
+            client.embedding_identity(refresh=True)
+        )
+        expected = str(
+            (pack.metadata or {}).get("embedding_space_identity") or ""
+        ).strip()
+        if not actual or actual != expected:
+            raise EmbeddingSpaceMismatch(
+                "Qdrant embedding-space identity mismatch; rebuild/reconfigure required"
+            )
+        probe = [float(value) for value in list(
+            client.embed("MaryV2 vector index preflight")
+        )[:65536]]
+        if len(probe) != dimensions:
+            raise EmbeddingSpaceMismatch(
+                "Qdrant embedding dimension mismatch; rebuild/reconfigure required"
+            )
+        return client, collection, dimensions, vector_name, actual
+
+    def create_collection(self, pack: KnowledgePack) -> dict[str, Any]:
+        _client, collection, dimensions, vector_name, identity = (
+            self._verified_embedding(pack)
+        )
+        vector_config: dict[str, Any]
+        if vector_name:
+            vector_config = {
+                vector_name: {
+                    "size": dimensions,
+                    "distance": "Cosine",
+                }
+            }
+        else:
+            vector_config = {
+                "size": dimensions,
+                "distance": "Cosine",
+            }
+        url = (
+            pack.location.rstrip("/")
+            + "/collections/"
+            + quote(collection, safe="")
+        )
+        response = self.write_json(
+            "PUT",
+            url,
+            {
+                "vectors": vector_config,
+                "on_disk_payload": True,
+            },
+        )
+        return {
+            "ok": True,
+            "pack_id": pack.id,
+            "collection": collection,
+            "dimensions": dimensions,
+            "vector_name": vector_name,
+            "embedding_space_identity": identity,
+            "response_status": str(response.get("status") or "")[:80],
+            "authority": "derived local vector index only",
+        }
+
+    def rebuild(
+        self,
+        pack: KnowledgePack,
+        fabric: KnowledgeFabric,
+        *,
+        source_pack_id: str = "",
+        limit: int = 20_000,
+        batch_size: int = 32,
+    ) -> dict[str, Any]:
+        client, collection, dimensions, vector_name, identity = (
+            self._verified_embedding(pack)
+        )
+        source_id = (
+            str(source_pack_id or "").strip()
+            or str((pack.metadata or {}).get("source_pack_id") or "").strip()
+        )
+        if not source_id:
+            raise ValueError(
+                "Qdrant rebuild requires source_pack_id metadata or argument"
+            )
+        source_pack = fabric.get(source_id)
+        if source_pack.kind != "local_files":
+            raise ValueError("Qdrant rebuild source must be a local_files pack")
+        if not source_pack.content_fingerprint:
+            raise RuntimeError(
+                "source local_files pack must be indexed before Qdrant rebuild"
+            )
+        chunks = fabric.indexed_chunks(
+            source_id,
+            enabled_only=True,
+            limit=limit,
+        )
+        rebuild_id = sha256(
+            (
+                source_pack.content_fingerprint
+                + "|"
+                + identity
+                + "|"
+                + str(dimensions)
+                + "|"
+                + vector_name
+            ).encode("utf-8")
+        ).hexdigest()
+
+        endpoint = (
+            pack.location.rstrip("/")
+            + "/collections/"
+            + quote(collection, safe="")
+        )
+        bounded_batch = max(1, min(128, int(batch_size)))
+        indexed = 0
+        batches = 0
+        errors = 0
+
+        for offset in range(0, len(chunks), bounded_batch):
+            rows = chunks[offset : offset + bounded_batch]
+            points: list[dict[str, Any]] = []
+            try:
+                for row in rows:
+                    text = str(row.get("text") or "")
+                    vector = [
+                        float(value)
+                        for value in list(client.embed(text))[:65536]
+                    ]
+                    if len(vector) != dimensions:
+                        raise EmbeddingSpaceMismatch(
+                            "Qdrant embedding dimension changed during rebuild"
+                        )
+                    content_hash = str(
+                        row.get("content_hash") or sha256(
+                            text.encode("utf-8")
+                        ).hexdigest()
+                    )[:128]
+                    point_id = str(uuid5(
+                        NAMESPACE_URL,
+                        (
+                            "maryv2-knowledge:"
+                            + pack.id
+                            + ":"
+                            + str(row.get("locator") or "")
+                            + ":"
+                            + content_hash
+                        ),
+                    ))
+                    vector_payload: Any = (
+                        {vector_name: vector}
+                        if vector_name
+                        else vector
+                    )
+                    points.append({
+                        "id": point_id,
+                        "vector": vector_payload,
+                        "payload": {
+                            "mary_vector_pack_id": pack.id,
+                            "mary_source_pack_id": source_id,
+                            "mary_rebuild_id": rebuild_id,
+                            "embedding_space_identity": identity,
+                            "title": str(row.get("title") or "")[:240],
+                            "text": text[:20_000],
+                            "locator": str(row.get("locator") or "")[:500],
+                            "content_hash": content_hash,
+                            "source_date": str(row.get("source_date") or "")[:80],
+                            "indexed_at": str(row.get("indexed_at") or "")[:80],
+                        },
+                    })
+            except Exception:
+                errors += 1
+                break
+
+            self.write_json(
+                "PUT",
+                endpoint + "/points?wait=true",
+                {"points": points},
+            )
+            indexed += len(points)
+            batches += 1
+
+        # Never remove the previous successful generation unless every current
+        # chunk was embedded and upserted. An interrupted rebuild stays usable.
+        stale_deleted = False
+        if errors == 0 and indexed == len(chunks):
+            self.write_json(
+                "POST",
+                endpoint + "/points/delete?wait=true",
+                {
+                    "filter": {
+                        "must": [{
+                            "key": "mary_vector_pack_id",
+                            "match": {"value": pack.id},
+                        }],
+                        "must_not": [{
+                            "key": "mary_rebuild_id",
+                            "match": {"value": rebuild_id},
+                        }],
+                    }
+                },
+            )
+            stale_deleted = True
+            fabric.record_vector_build(
+                pack.id,
+                source_pack_id=source_id,
+                source_fingerprint=source_pack.content_fingerprint,
+                embedding_space_identity=identity,
+                vectors=indexed,
+                rebuild_id=rebuild_id,
+            )
+
+        return {
+            "ok": bool(errors == 0 and indexed == len(chunks)),
+            "pack_id": pack.id,
+            "source_pack_id": source_id,
+            "source_chunks": len(chunks),
+            "vectors_indexed": indexed,
+            "batches": batches,
+            "errors": errors,
+            "stale_generation_deleted": stale_deleted,
+            "rebuild_id": rebuild_id,
+            "embedding_space_identity": identity,
+            "dimensions": dimensions,
+            "authority": "rebuildable derived semantic index only",
         }
