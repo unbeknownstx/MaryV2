@@ -115,3 +115,28 @@ input:focus-visible {
   .panel,
   .card { border-color: rgba(255,255,255,.30) !important; }
 }
+
+/* 2026-09-17 mobile stage polish: treat rotating artwork as a full-bleed
+   presentation layer instead of a contained illustration. This keeps portrait
+   assets with different aspect ratios from exposing bright side bars. */
+.mary-stage-art {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  object-fit: cover !important;
+  filter: none !important;
+}
+.mary-stage-art.art-a { object-position: 50% 30% !important; }
+.mary-stage-art.art-b { object-position: 50% 38% !important; }
+.mary-stage-art.art-c { object-position: 50% 34% !important; }
+
+/* Keep the character visually dominant even when a reply is long. The message
+   rail scrolls internally; it should not continue growing over the stage. */
+@media (max-width: 719px) and (min-height: 701px) {
+  .chat-glass {
+    height: 32% !important;
+    min-height: 230px;
+    max-height: 330px;
+  }
+}
+
