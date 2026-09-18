@@ -125,6 +125,52 @@ def test_self_analysis_and_own_code_questions_stay_core_grounded(tmp_path, monke
     assert router.calls == []
 
 
+def test_runtime_inspection_direct_and_followup_are_deterministic(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    router = SequenceRouter(["provider answer must not be used"])
+    app = _mary(router)
+    mary = app.mary
+
+    direct = mary.cognition.detect_intent("Can you point anything out? Inspect everything")
+    assert direct.intent_type == IntentType.SELF_QUERY
+    assert direct.parameters["self_query_type"] == "runtime_inspection"
+
+    followup = mary._detect_intent(
+        "Ok do it",
+        recent_conversation=[
+            {
+                "role": "assistant",
+                "content": "Sure thing—give me a sec to skim the current surface. I'll flag anything that looks off.",
+            }
+        ],
+    )
+    assert followup.intent_type == IntentType.SELF_QUERY
+    assert followup.parameters["self_query_type"] == "runtime_inspection"
+
+    result = _run(app, "Inspect everything")
+    assert "Here is what I can verify from my own runtime right now" in result.final_response
+    assert "cannot truthfully certify source files" in result.final_response
+    assert router.calls == []
+
+
+def test_unrelated_do_it_does_not_become_runtime_inspection(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _mary()
+    mary = app.mary
+
+    intent = mary._detect_intent(
+        "Ok do it",
+        recent_conversation=[
+            {"role": "assistant", "content": "I can tell you a joke if you want."}
+        ],
+    )
+
+    assert not (
+        intent.intent_type == IntentType.SELF_QUERY
+        and intent.parameters.get("self_query_type") == "runtime_inspection"
+    )
+
+
 def test_relational_compliment_is_feedback_not_speech_query(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     app = _mary()
