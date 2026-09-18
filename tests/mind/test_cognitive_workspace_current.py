@@ -43,7 +43,7 @@ class _Nodes:
                             "available": True,
                             "metadata": {"execution_authorized": True},
                         },
-                        "knowledge.local.search": {
+                        "knowledge.search": {
                             "available": True,
                             "metadata": {"execution_authorized": False},
                         },
