@@ -24,6 +24,11 @@ def test_full_runtime_connection_graph_has_no_required_disconnects(tmp_path):
         edges = {item["name"]: item for item in graph["edges"]}
         names = {name for name, item in edges.items() if item["connected"]}
         assert "TurnMind -> character" in names
+        assert "Mary -> shared cognitive workspace" in names
+        assert "Mary -> local knowledge fabric" in names
+        assert "Mary -> unified experiential continuity" in names
+        assert "ecosystem -> reviewed model candidate catalog" in names
+        assert "Core dashboard -> shared read-only system fabric" in names
         assert "TurnMind -> relationship" in names
         assert "TurnMind -> agency" in names
         assert "TurnMind -> autonomy" in names
