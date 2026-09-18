@@ -1347,6 +1347,7 @@ const SCREEN_META = {
   search: ['PERSONAL SEARCH', 'Find That Thing', 'Bounded search over only the folders Mary has been allowed to inspect.'],
   research: ['RESEARCH', 'Research Notebook', 'Persistent research threads, notes, and conclusions without restarting from zero.'],
   arcade: ['PLAY', 'Mary Arcade', 'Small local games and creative sparks that do not require a cloud model.'],
+  fabric: ['SYSTEM FABRIC', 'System Fabric', 'Knowledge, temporal world state, procedural learning, model experiments, and compute evidence from the same Core.'],
   diagnostics: ['SYSTEM', 'Runtime & Compute', 'A clear view of Mary Core, local/cloud model routes, capability nodes, realtime state, and measured turn performance.'],
   settings: ['SYSTEM', 'Settings', 'Provider availability, private state paths, skills, integrations, and desktop configuration.'],
 };
@@ -1772,6 +1773,28 @@ function renderArcade() {
   return `<div class="workspace-panel hero-panel"><h3>Mary Arcade</h3><p>Small local games keep the app entertaining even when you didn't open Mary with a task.</p><div class="game-grid">${games.map(g=>`<button class="game-card" data-arcade="${escapeHtml(g.key)}"><strong>${escapeHtml(g.label)}</strong><small>${escapeHtml(g.description)}</small></button>`).join('')}</div><div id="arcade-result" class="workspace-empty compact" style="margin-top:12px">Pick something.</div></div>`;
 }
 
+function renderFabric() {
+  const f = dashboardState.system_fabric || {};
+  const k = f.knowledge || {};
+  const w = f.world || {};
+  const c = f.continuity || {};
+  const skills = c.skills || {};
+  const plans = c.plans || {};
+  const competence = c.competence || {};
+  const models = f.models || {};
+  const lab = models.adapter_lab || {};
+  const candidates = models.candidates || {};
+  const compute = f.compute || {};
+  const nodes = compute.nodes || {};
+  const integration = f.integration || {};
+  return `
+    <div class="workspace-grid three">
+      <div class="workspace-panel accent"><h3>One Mary Core</h3><div class="data-row"><span>Architecture</span><strong>${integration.healthy ? 'Connected' : 'Degraded'}</strong></div><div class="data-row"><span>Operational</span><strong>${integration.operational ? 'Yes' : 'No'}</strong></div><div class="data-row"><span>Connected nodes</span><strong>${nodes.connected ?? nodes.connected_nodes ?? 0}</strong></div><p>PC, Mac, PWA and iPhone are surfaces or workers around the same canonical identity and state.</p></div>
+      <div class="workspace-panel"><h3>Knowledge + World</h3><div class="data-row"><span>Enabled packs</span><strong>${k.enabled ?? 0}/${k.packs ?? 0}</strong></div><div class="data-row"><span>Indexed chunks</span><strong>${k.indexed_documents ?? 0}</strong></div><div class="data-row"><span>Current beliefs</span><strong>${w.beliefs?.current_beliefs ?? 0}</strong></div><div class="data-row"><span>Temporal relations</span><strong>${w.temporal?.relations ?? 0}</strong></div><p>Retrieval is evidence, and superseded history never becomes current truth.</p></div>
+      <div class="workspace-panel"><h3>Procedures + Models</h3><div class="data-row"><span>Approved skills</span><strong>${skills.approved ?? 0}</strong></div><div class="data-row"><span>Active plans</span><strong>${plans.active_plans ?? 0}</strong></div><div class="data-row"><span>Competence evidence</span><strong>${competence.records ?? 0}</strong></div><div class="data-row"><span>Model candidates</span><strong>${candidates.count ?? 0}</strong></div><div class="data-row"><span>Adapter configs</span><strong>${(lab.configurations || []).length}</strong></div><p>Skills require creator approval. Benchmarks and competence cannot grant permission or auto-promote a model.</p></div>
+    </div>`;
+}
+
 function renderDiagnostics() {
   const metrics = ecosystemState.metrics || {};
   const rows = Object.entries(metrics);
@@ -2003,6 +2026,7 @@ function renderWorkspace(screen) {
     search: renderSearch,
     research: renderResearch,
     arcade: renderArcade,
+    fabric: renderFabric,
     diagnostics: renderDiagnostics,
     gallery: renderGallery,
     media: renderMedia,
