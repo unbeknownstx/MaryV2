@@ -9,6 +9,8 @@ from .resources import ActionAffordance, AffordanceScorer, ComputeResourceGovern
 from .runtime import ExperientialContinuityRuntime
 from .skills import SkillLibrary, SkillRecord
 from .temporal import TemporalKnowledgeGraph, TemporalRelation
+from .world_model import BeliefClaim, WorldEntity, WorldModel
+from .plans import ExecutivePlan, ExecutivePlanGraph, PlanStep
 from .trace import CausalTraceLedger, TraceSpan
 from .verification import ActionVerificationManager, VerificationRecord
 from .workflows import DurableWorkflowStore, WorkflowCheckpoint
@@ -36,6 +38,12 @@ __all__ = [
     "ResourceSnapshot",
     "SkillLibrary",
     "SkillRecord",
+    "BeliefClaim",
+    "WorldEntity",
+    "WorldModel",
+    "ExecutivePlan",
+    "ExecutivePlanGraph",
+    "PlanStep",
     "TemporalKnowledgeGraph",
     "TemporalRelation",
     "TraceSpan",
