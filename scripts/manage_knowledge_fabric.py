@@ -12,6 +12,7 @@ from pathlib import Path
 
 from mary.distributed.knowledge import node_knowledge_fabric
 from mary.knowledge import KnowledgeFabric
+from mary.mind.embeddings import OllamaEmbeddingClient
 
 
 def _fabric(root: Path | None) -> KnowledgeFabric:
@@ -54,6 +55,27 @@ def main() -> int:
     kiwix.add_argument("--topics", default="")
     kiwix.add_argument("--collection", default="default")
     kiwix.add_argument("--license", default="content-specific")
+
+    qdrant = sub.add_parser("register-qdrant")
+    qdrant.add_argument("pack_id")
+    qdrant.add_argument("title")
+    qdrant.add_argument("endpoint")
+    qdrant.add_argument("--qdrant-collection", required=True)
+    qdrant.add_argument("--embedding-model", required=True)
+    qdrant.add_argument("--embedding-space-identity", required=True)
+    qdrant.add_argument("--embedding-dimensions", type=int, required=True)
+    qdrant.add_argument("--vector-name", default="")
+    qdrant.add_argument("--topics", default="")
+    qdrant.add_argument("--collection", default="default")
+    qdrant.add_argument("--license", default="creator-owned-derived-index")
+    qdrant.add_argument(
+        "--hybrid",
+        action="store_true",
+        help="mark the pack as hybrid instead of vector-only",
+    )
+
+    embedding_identity = sub.add_parser("embedding-identity")
+    embedding_identity.add_argument("--model", default="")
 
     index = sub.add_parser("index")
     index.add_argument("pack_id")
@@ -140,6 +162,45 @@ def main() -> int:
         )
         print(json.dumps(pack.to_dict(), indent=2, ensure_ascii=False))
         return 0
+
+    if args.command == "register-qdrant":
+        topics = [item.strip() for item in args.topics.split(",") if item.strip()]
+        pack = fabric.register(
+            pack_id=args.pack_id,
+            title=args.title,
+            kind="qdrant",
+            location=args.endpoint,
+            query_mode="hybrid" if args.hybrid else "vector",
+            topics=topics,
+            collection=args.collection,
+            license=args.license,
+            local_only=True,
+            source="creator_cli",
+            metadata={
+                "qdrant_collection": args.qdrant_collection,
+                "embedding_model": args.embedding_model,
+                "embedding_space_identity": args.embedding_space_identity,
+                "embedding_dimensions": args.embedding_dimensions,
+                **({"vector_name": args.vector_name} if args.vector_name else {}),
+            },
+        )
+        print(json.dumps(pack.to_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "embedding-identity":
+        client = OllamaEmbeddingClient(
+            model=(args.model or None),
+            timeout=15.0,
+        )
+        identity = client.embedding_identity(refresh=True)
+        vector = client.embed("MaryV2 embedding-space identity probe")
+        print(json.dumps({
+            "identity": identity.to_dict(),
+            "dimensions": len(vector),
+            "model_available": client.model_available(),
+            "authority": "local embedding configuration evidence only",
+        }, indent=2, ensure_ascii=False))
+        return 0 if vector else 2
 
     if args.command == "index":
         print(json.dumps(

@@ -7,6 +7,10 @@ from typing import Any
 
 from mary.distributed.capabilities import CapabilityDescriptor
 from mary.knowledge import KnowledgeFabric
+from mary.distributed.qdrant_knowledge import (
+    EmbeddingSpaceMismatch,
+    QdrantKnowledgeBackend,
+)
 
 
 KNOWLEDGE_NODE_CAPABILITIES = frozenset({"knowledge.search"})
@@ -33,6 +37,21 @@ def knowledge_capability_descriptors(permissions: Any) -> list[CapabilityDescrip
     packs = list(fabric.packs(enabled_only=True))
     if not packs:
         return []
+    vector_packs = sum(
+        1 for pack in packs
+        if pack.kind in {"qdrant", "qdrant_edge"}
+        and pack.query_mode in {"vector", "hybrid"}
+    )
+    lexical_packs = sum(
+        1 for pack in packs
+        if pack.kind == "local_files"
+        and pack.query_mode in {"fts", "hybrid"}
+    )
+    direct_packs = sum(
+        1 for pack in packs
+        if pack.kind == "kiwix"
+        and pack.query_mode in {"direct", "hybrid"}
+    )
     topics = sorted({
         str(topic)
         for pack in packs
@@ -51,6 +70,9 @@ def knowledge_capability_descriptors(permissions: Any) -> list[CapabilityDescrip
                 "execution_authorized": bool(permissions.is_allowed("knowledge.search")),
                 "packs": len(packs),
                 "indexed_documents": int(status.get("indexed_documents", 0) or 0),
+                "lexical_packs": lexical_packs,
+                "direct_packs": direct_packs,
+                "vector_packs": vector_packs,
                 "pack_titles": [str(pack.title)[:120] for pack in packs[:20]],
                 "topics": topics,
                 "authority": "retrieval evidence only; not Mary memory/identity",
@@ -122,21 +144,86 @@ def sanitize_knowledge_result(
         "hits": hits,
         "pack_count": max(0, int(values.get("pack_count", 0) or 0)),
         "retrieval_mode": str(values.get("retrieval_mode") or "auto")[:40],
+        "vector_errors": [
+            {
+                "pack_id": str(item.get("pack_id") or "")[:160],
+                "error_class": str(item.get("error_class") or "")[:80],
+            }
+            for item in list(values.get("vector_errors") or [])[:20]
+            if isinstance(item, dict)
+        ],
         "authority": "node-local knowledge evidence only",
     }
 
 
-def execute_knowledge_search(args: dict[str, Any]) -> dict[str, Any]:
+def execute_knowledge_search(
+    args: dict[str, Any],
+    *,
+    qdrant_backend: QdrantKnowledgeBackend | None = None,
+) -> dict[str, Any]:
     values = sanitize_knowledge_task_args("knowledge.search", args)
     fabric = node_knowledge_fabric()
+    mode = values["retrieval_mode"]
     hits = fabric.search(
         values["query"],
         pack_ids=values["pack_ids"],
         limit=values["limit"],
-        retrieval_mode=values["retrieval_mode"],
+        retrieval_mode=mode,
+    )
+
+    selected = set(values["pack_ids"])
+    packs = [
+        pack for pack in fabric.packs(enabled_only=True)
+        if not selected or pack.id in selected
+    ]
+    vector_packs = [
+        pack for pack in packs
+        if pack.kind in {"qdrant", "qdrant_edge"}
+        and pack.query_mode in {"vector", "hybrid"}
+        and mode in {"auto", "vector", "hybrid"}
+    ]
+    vector_errors: list[dict[str, str]] = []
+    backend = qdrant_backend
+    if vector_packs and backend is None:
+        backend = QdrantKnowledgeBackend()
+
+    for pack in vector_packs:
+        try:
+            assert backend is not None
+            hits.extend(
+                backend.search(
+                    pack,
+                    values["query"],
+                    limit=values["limit"],
+                )
+            )
+        except EmbeddingSpaceMismatch:
+            vector_errors.append({
+                "pack_id": pack.id,
+                "error_class": "embedding_space_mismatch",
+            })
+        except Exception as exc:
+            vector_errors.append({
+                "pack_id": pack.id,
+                "error_class": type(exc).__name__[:80],
+            })
+
+    deduplicated = {}
+    for item in sorted(hits, key=lambda row: row.score, reverse=True):
+        key = item.citation_id or item.content_hash or (
+            f"{item.pack_id}:{item.locator}:{item.title}"
+        )
+        deduplicated.setdefault(key, item)
+    bounded = list(deduplicated.values())[: values["limit"]]
+
+    vector_only_failure = bool(
+        mode == "vector"
+        and vector_packs
+        and not bounded
+        and len(vector_errors) == len(vector_packs)
     )
     return {
-        "ok": True,
+        "ok": not vector_only_failure,
         "hits": [
             {
                 "pack_id": item.pack_id,
@@ -151,8 +238,9 @@ def execute_knowledge_search(args: dict[str, Any]) -> dict[str, Any]:
                 "indexed_at": item.indexed_at,
                 "citation_id": item.citation_id,
             }
-            for item in hits
+            for item in bounded
         ],
-        "pack_count": len(fabric.packs(enabled_only=True)),
-        "retrieval_mode": values["retrieval_mode"],
+        "pack_count": len(packs),
+        "retrieval_mode": mode,
+        "vector_errors": vector_errors,
     }

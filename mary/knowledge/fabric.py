@@ -110,7 +110,7 @@ class KnowledgeFabric:
     VERSION = 2
     KINDS = {"local_files", "kiwix", "qdrant", "qdrant_edge", "kolibri", "notes", "custom"}
     QUERY_MODES = {"fts", "direct", "vector", "hybrid", "catalog_only"}
-    RETRIEVAL_MODES = {"auto", "off", "lexical", "direct", "hybrid"}
+    RETRIEVAL_MODES = {"auto", "off", "lexical", "direct", "vector", "hybrid"}
 
     def __init__(
         self,
@@ -186,10 +186,17 @@ class KnowledgeFabric:
             clean_location = str(resolved)
         if clean_kind == "kiwix":
             self._validate_local_endpoint(clean_location)
+        if clean_kind in {"qdrant", "qdrant_edge"}:
+            self._validate_qdrant_endpoint(clean_location)
 
         identifier = _text(pack_id, 160) or f"pack_{uuid4().hex}"
         now = _now()
         safe_metadata = self._safe_metadata(metadata)
+        if (
+            clean_kind in {"qdrant", "qdrant_edge"}
+            and clean_mode in {"vector", "hybrid"}
+        ):
+            self._validate_qdrant_metadata(safe_metadata)
         payload = self._load()
         rows = list(payload.get("packs") or [])
         existing = next((row for row in rows if row.get("id") == identifier), None)
@@ -1009,6 +1016,45 @@ class KnowledgeFabric:
             ) from exc
         if not (address.is_private or address.is_loopback or address.is_link_local):
             raise ValueError("Kiwix endpoint must be local/private")
+
+    @staticmethod
+    def _validate_qdrant_endpoint(value: str) -> None:
+        parsed = urlparse(str(value or ""))
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("Qdrant endpoint must be an explicit HTTP(S) endpoint")
+        hostname = parsed.hostname.casefold()
+        if hostname in {"localhost", "127.0.0.1", "::1"}:
+            return
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError as exc:
+            raise ValueError(
+                "Qdrant endpoint must be local/private: use localhost or a literal "
+                "private/LAN IP; Mary will not resolve arbitrary hostnames from this adapter."
+            ) from exc
+        if not (address.is_private or address.is_loopback or address.is_link_local):
+            raise ValueError("Qdrant endpoint must be local/private")
+
+    @staticmethod
+    def _validate_qdrant_metadata(metadata: dict[str, Any]) -> None:
+        collection = str(metadata.get("qdrant_collection") or "").strip()
+        model = str(metadata.get("embedding_model") or "").strip()
+        identity = str(metadata.get("embedding_space_identity") or "").strip()
+        try:
+            dimensions = int(metadata.get("embedding_dimensions") or 0)
+        except (TypeError, ValueError):
+            dimensions = 0
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,200}", collection):
+            raise ValueError("Qdrant pack requires a safe qdrant_collection")
+        if not model:
+            raise ValueError("Qdrant pack requires embedding_model")
+        if len(identity) < 16:
+            raise ValueError("Qdrant pack requires embedding_space_identity")
+        if dimensions < 1 or dimensions > 65536:
+            raise ValueError("Qdrant pack requires valid embedding_dimensions")
+        vector_name = str(metadata.get("vector_name") or "").strip()
+        if vector_name and not re.fullmatch(r"[A-Za-z0-9_.-]{1,200}", vector_name):
+            raise ValueError("Qdrant vector_name is invalid")
 
     @staticmethod
     def _citation_id(
