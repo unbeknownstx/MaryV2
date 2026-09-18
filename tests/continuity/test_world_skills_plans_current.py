@@ -170,7 +170,7 @@ def test_plan_wait_and_restart_recovery_preserve_unfinished_work(tmp_path: Path)
     step = plans.add_step(
         plan.id,
         title="Run local knowledge search",
-        required_capabilities=("knowledge.local.search",),
+        required_capabilities=("knowledge.search",),
         verification=("typed result returns",),
     )
     plans.start_step(plan.id, step.id, node_id="mac")
