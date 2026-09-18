@@ -2144,6 +2144,47 @@ class Mary:
                 source="engineering_apply_context_guard",
             )
 
+        if (
+            intent.intent_type == IntentType.SELF_QUERY
+            and str(intent.parameters.get("self_query_type") or "") == "engineering_commit"
+            and not any(marker in previous_mary for marker in (
+                "commit this verified fix",
+                "validation passed",
+                "say commit that fix",
+            ))
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description="Creator referenced commit without an immediately verified engineering change.",
+                parameters={
+                    "query": input_text,
+                    "self_query_type": "engineering_status",
+                },
+                source="engineering_commit_context_guard",
+            )
+
+        if (
+            intent.intent_type == IntentType.SELF_QUERY
+            and str(intent.parameters.get("self_query_type") or "") == "engineering_push"
+            and not any(marker in previous_mary for marker in (
+                "publish this exact commit",
+                "say push that fix",
+                "push this exact commit",
+                "pushing may trigger",
+            ))
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description="Creator referenced push without an immediately bound engineering commit.",
+                parameters={
+                    "query": input_text,
+                    "self_query_type": "engineering_status",
+                },
+                source="engineering_push_context_guard",
+            )
+
         # Resolve a tiny confirmation as repository apply only when Mary's
         # immediately previous response explicitly offered the exact proposal.
         if normalized in {
@@ -3637,6 +3678,8 @@ class Mary:
             "engineering_status",
             "engineering_apply",
             "engineering_test",
+            "engineering_commit",
+            "engineering_push",
         }:
             try:
                 performance_mode = str(
@@ -3666,6 +3709,8 @@ class Mary:
                 "engineering_status": "status",
                 "engineering_apply": "apply",
                 "engineering_test": "test",
+                "engineering_commit": "commit",
+                "engineering_push": "push",
             }[subtype]
             try:
                 response = dispatcher(
