@@ -26,6 +26,44 @@ from mary.voice.text_to_speech import (
 )
 
 
+def _safe_http_failure_message(code: int, detail: str = "") -> tuple[str, bool]:
+    """Classify provider HTTP failures without exposing vendor response bodies."""
+
+    lowered = str(detail or "").casefold()
+    if any(marker in lowered for marker in (
+        "payment_required",
+        "payment issue",
+        "subscription has failed",
+        "incomplete payment",
+        "complete the latest invoice",
+    )):
+        return (
+            "ElevenLabs voice is unavailable because the provider account requires payment.",
+            False,
+        )
+    if any(marker in lowered for marker in (
+        "quota", "credits exhausted", "credit balance", "usage limit",
+    )) or code == 429:
+        return (
+            "ElevenLabs voice is temporarily unavailable because its usage limit was reached.",
+            True,
+        )
+    if code in {401, 403}:
+        return (
+            "ElevenLabs voice authentication failed.",
+            False,
+        )
+    if 500 <= int(code) < 600:
+        return (
+            "ElevenLabs voice is temporarily unavailable.",
+            True,
+        )
+    return (
+        f"ElevenLabs voice request failed with HTTP {int(code)}.",
+        False,
+    )
+
+
 def _setting_float(
     metadata: dict,
     key: str,
@@ -228,13 +266,15 @@ class ElevenLabsTextToSpeechProvider(TextToSpeechProvider):
         except HTTPError as exc:
             detail = ""
             try:
-                detail = exc.read().decode("utf-8", errors="replace")[:500]
+                detail = exc.read().decode("utf-8", errors="replace")[:2_000]
             except Exception:
                 detail = ""
-            message = f"ElevenLabs returned HTTP {exc.code}."
-            if detail:
-                message += f" {detail}"
-            raise SynthesisError(message, provider=self.name, retryable=500 <= exc.code < 600) from exc
+            message, retryable = _safe_http_failure_message(exc.code, detail)
+            raise SynthesisError(
+                message,
+                provider=self.name,
+                retryable=retryable,
+            ) from exc
         except URLError as exc:
             raise SynthesisError(
                 f"ElevenLabs request failed: {exc.reason}",
