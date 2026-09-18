@@ -33,8 +33,10 @@ python -m scripts.node_permissions allow engineering.repo.apply
 
 Then Mary can use the creator-facing flow `Fix yourself` -> `Check the repair`
 -> `Apply that fix` -> `Verify that fix`. Planning never writes, validation
-runs in a disposable sandbox, and the worker has no generic shell/commit/push/deploy
-capability.
+runs in a disposable copied workspace, and the worker has no generic
+shell/commit/push/deploy capability. This workspace isolation protects the live
+checkout from normal test writes but is not an OS/VM containment boundary;
+test execution therefore remains separately default-deny.
 
 See `docs/architecture/ENGINEERING_WORKER_CURRENT.md`.
 
