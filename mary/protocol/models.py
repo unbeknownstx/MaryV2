@@ -271,6 +271,7 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "world.status",
     "world.refresh_plan",
     "world.ingest",
+    "world.accept_evidence",
     "model.adapter.status",
     "mind.rebuild_reservoir",
     "mind.maintenance",
