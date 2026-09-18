@@ -13,6 +13,8 @@ from .recovery import NodeRecoveryManager
 from .resources import AffordanceScorer, ComputeResourceGovernor
 from .skills import SkillLibrary
 from .temporal import TemporalKnowledgeGraph
+from .world_model import WorldModel
+from .plans import ExecutivePlanGraph
 from .trace import CausalTraceLedger
 from .verification import ActionVerificationManager
 from .workflows import DurableWorkflowStore
@@ -36,7 +38,9 @@ class ExperientialContinuityRuntime:
         self.cancellation = GenerationCancellationRegistry()
         self.memory_lab = MemoryEvaluationSuite()
         self.temporal = TemporalKnowledgeGraph(self.root / "temporal_knowledge.json")
+        self.world_model = WorldModel(self.root / "world_model.json")
         self.skills = SkillLibrary(self.root / "skills.json")
+        self.plans = ExecutivePlanGraph(self.root / "plans.json")
         self.workflows = DurableWorkflowStore(self.root / "workflows.json")
         self.verification = ActionVerificationManager(self.root / "verification.json")
         self.resources = ComputeResourceGovernor(self.root / "resources.json")
@@ -64,7 +68,9 @@ class ExperientialContinuityRuntime:
             "version": self.VERSION,
             "experience": self.experience.status(),
             "temporal": self.temporal.status(),
+            "world_model": self.world_model.status(),
             "skills": self.skills.status(),
+            "plans": self.plans.status(),
             "workflows": self.workflows.status(),
             "verification": self.verification.status(),
             "resources": self.resources.status(),
