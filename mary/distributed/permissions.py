@@ -7,9 +7,13 @@ from threading import RLock
 from typing import Any
 
 from .mcp_fabric import MCP_CAPABILITIES, MCP_SERVER_CAPABILITIES, normalize_mcp_tool_name
+from .engineering import ENGINEERING_CAPABILITIES
 from .sensors import SENSOR_CAPABILITIES
 
-_SAFE_CAPABILITIES = {"personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
+_SAFE_CAPABILITIES = {
+    "personal_search", "llm.local", "llm.ollama", "llm.llama_cpp",
+    *MCP_CAPABILITIES, *SENSOR_CAPABILITIES, *ENGINEERING_CAPABILITIES,
+}
 
 
 def default_permission_path() -> Path:
@@ -152,6 +156,6 @@ class DeviceExecutionPermissions:
                     for server, tools in sorted(mcp_tools.items())
                     if tools
                 },
-                "policy": "local device opt-in; sensor capture/transcription are explicit capabilities; MCP requires per-tool allowlist; no shell or arbitrary command execution",
+                "policy": "local device opt-in; engineering work is typed and repository-scoped; repository writes require their own capability; MCP requires per-tool allowlist; no generic shell or arbitrary command execution",
             }
             self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
