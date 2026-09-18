@@ -1612,6 +1612,119 @@ class MaryCoreService:
             # Learning evidence is subordinate to the completed task protocol.
             return
 
+    def _settle_continuity_task_link(self, task: Any) -> None:
+        """Close durable plan/skill evidence linked to one terminal device task.
+
+        DeviceTaskBroker remains the execution owner. This method only projects
+        terminal evidence into durable continuity owners and must never change
+        the task protocol's success/failure result.
+        """
+
+        task_id = str(getattr(task, "task_id", "") or "")
+        if not task_id:
+            return
+        link = self._continuity_task_links.pop(task_id, None)
+        if not link:
+            return
+
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        result = dict(getattr(task, "result", {}) or {})
+        success = bool(status == "completed" and result.get("ok", True) is not False)
+        capability = str(getattr(task, "capability", "") or "").strip()
+        operation = str(getattr(task, "operation", "") or "general").strip().lower()
+        node_id = str(getattr(task, "selected_node_id", "") or "")
+        summary = str(
+            result.get("summary")
+            or result.get("finish_reason")
+            or getattr(task, "error", "")
+            or (f"{capability} completed" if success else f"{capability} ended as {status}")
+        )[:1200]
+        evidence = (task_id,)
+
+        skill_id = str(link.get("skill_id") or "")
+        if skill_id:
+            try:
+                self.mary.procedural_skills.record_outcome(
+                    skill_id,
+                    success=success,
+                    result=summary,
+                    evidence_ids=evidence,
+                )
+            except Exception:
+                pass
+            try:
+                self.mary.competence.record(
+                    capability=capability,
+                    operation=operation,
+                    node_id=node_id,
+                    skill_id=skill_id,
+                    success=success,
+                    verified=success,
+                    evidence_ids=evidence,
+                    result=summary,
+                )
+            except Exception:
+                pass
+
+        plan_id = str(link.get("plan_id") or "")
+        step_id = str(link.get("step_id") or "")
+        if plan_id and step_id:
+            try:
+                if success:
+                    self.mary.executive_plans.complete_step(
+                        plan_id,
+                        step_id,
+                        result=summary,
+                        evidence_ids=evidence,
+                    )
+                else:
+                    self.mary.executive_plans.wait_step(
+                        plan_id,
+                        step_id,
+                        reason=summary or f"task ended as {status}",
+                        evidence_ids=evidence,
+                    )
+            except Exception:
+                pass
+
+    def _settle_terminal_continuity_links(self) -> int:
+        """Settle links whose process-local task has become terminal/expired."""
+
+        settled = 0
+        for task_id in list(self._continuity_task_links):
+            try:
+                task = self.device_tasks.get(task_id)
+            except Exception:
+                task = None
+            if task is None:
+                continue
+            if str(getattr(task, "status", "") or "") not in {
+                "completed", "rejected", "failed", "expired"
+            }:
+                continue
+            before = task_id in self._continuity_task_links
+            self._settle_continuity_task_link(task)
+            if before and task_id not in self._continuity_task_links:
+                settled += 1
+        return settled
+
+    def _plan_capabilities(self) -> set[str]:
+        """Return currently live advertised capabilities for plan readiness."""
+
+        try:
+            snapshot = dict(self.mary.node_registry.snapshot() or {})
+        except Exception:
+            return set()
+        output: set[str] = set()
+        for node in list(snapshot.get("nodes") or []):
+            if not isinstance(node, dict) or not bool(node.get("connected")):
+                continue
+            for name, raw in dict(node.get("capabilities") or {}).items():
+                info = dict(raw or {}) if isinstance(raw, dict) else {}
+                if bool(info.get("available", True)):
+                    output.add(str(name))
+        return output
+
     def node_status(self) -> dict[str, Any]:
         return _json_safe(self.mary.node_registry.snapshot())
 
@@ -2308,6 +2421,7 @@ class MaryCoreService:
                 error=model.error,
             )
         self._record_task_replay(task)
+        self._settle_continuity_task_link(task)
         return _json_safe({"ok": True, "task": task.to_dict()})
 
     @staticmethod
@@ -2336,6 +2450,10 @@ class MaryCoreService:
         task = self.device_tasks.get(task_id)
         if task is None:
             raise KeyError(f"Unknown capability task: {task_id}")
+        if str(getattr(task, "status", "") or "") in {
+            "completed", "rejected", "failed", "expired"
+        }:
+            self._settle_continuity_task_link(task)
         return _json_safe({"ok": True, "task": task.to_dict()})
 
     def workspace_status(self) -> dict[str, Any]:
