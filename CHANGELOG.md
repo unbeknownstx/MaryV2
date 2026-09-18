@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Mary Dataset v1
+
+- Added a provenance-bearing Mary Dataset v1 exporter spanning approved character corpus, structured behavior SFT seeds, NEG anti-examples, held-out MaryBench cases and explicit creator feedback.
+- Explicitly excludes ordinary chat harvesting, memory, relationship, growth/profile state and provider traces.
+- Added deterministic dataset fingerprints and model-agnostic LoRA/QLoRA preparation guidance.
+
+
 ## Unreleased — 2026-09-17 — Bounded self-repair engineering loop
 
 - Added a default-deny local engineering capability family for repository inspection, local-model repair planning, exact patch proposals, separately authorized repository apply, Git status/diff and workspace-isolated validation.
