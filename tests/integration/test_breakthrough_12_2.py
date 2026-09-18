@@ -233,6 +233,19 @@ def test_external_latest_model_question_is_still_web_intent():
     assert intent.intent_type == IntentType.WEB_SEARCH
 
 
+def test_release_date_question_routes_to_web_instead_of_stale_model_knowledge():
+    app = _application()
+    mary = app.mary
+    for text in (
+        "When does gta6 come out?",
+        "When is GTA VI coming out?",
+        "What is the release date for GTA 6?",
+    ):
+        intent = mary.cognition.detect_intent(text)
+        assert intent.intent_type == IntentType.WEB_SEARCH
+        assert intent.parameters.get("explicit_creator_request") is False
+
+
 def test_portability_matrix_windows_with_ollama(monkeypatch):
     _clear_host_env(monkeypatch)
     config, router, _ = _router(ollama=True)
