@@ -342,6 +342,9 @@ class MaryCoreService:
                 requester_device_id="creator-chat",
             )
             self._last_engineering_task_id = task.task_id
+            # Proposal IDs are one-shot from Core's perspective. The node also
+            # deletes the stored exact proposal after a successful apply.
+            self._last_engineering_proposal_id = ""
             return (
                 f"I queued the exact approved proposal as {task.task_id} on {task.selected_node_id}. "
                 "The node will reject it if the source changed since the proposal. "
