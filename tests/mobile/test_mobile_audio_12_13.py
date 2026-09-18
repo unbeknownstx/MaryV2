@@ -105,6 +105,13 @@ def test_mobile_tts_payment_failure_is_safe_and_device_fallback_ready():
     assert result.metadata["status"] == "failed"
     assert result.metadata["fallback"] == "device"
     assert "requires payment" in result.metadata["reason"]
+
+    status = service.status()["tts"]
+    assert status["configured"] is True
+    assert status["server_available"] is False
+    assert status["degraded"] is True
+    assert status["device_fallback"] is True
+
     rendered = json.dumps(result.metadata)
     assert "subscription has a failed" not in rendered
     assert "payment_required" not in rendered
