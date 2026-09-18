@@ -2935,18 +2935,23 @@ class MaryCoreService:
                     0.0,
                     min(1.0, float(values.get("confidence", item.confidence))),
                 )
+                supersede_current = bool(values.get("supersede_current", False))
+                accepted_confidence = min(
+                    float(item.confidence),
+                    requested_confidence,
+                )
                 belief = self.mary.world_model.observe(
                     subject=subject,
                     predicate=predicate,
                     value=accepted_value,
                     source=item.source,
                     belief_type=str(values.get("belief_type") or "fact")[:40],
-                    confidence=min(float(item.confidence), requested_confidence),
+                    confidence=accepted_confidence,
                     authority="verified_external",
                     evidence_ids=(f"world_context:{item.id}",),
                     verification="verified",
                     observed_at=item.observed_at,
-                    supersede_current=bool(values.get("supersede_current", False)),
+                    supersede_current=supersede_current,
                     metadata={
                         "world_context_id": item.id,
                         "lane": item.lane,
@@ -2954,13 +2959,25 @@ class MaryCoreService:
                         "accepted_by": action.device_id,
                     },
                 )
+                temporal_relation = self.mary.temporal_knowledge.record(
+                    subject=subject,
+                    predicate=predicate,
+                    value=accepted_value,
+                    source=item.source,
+                    confidence=accepted_confidence,
+                    authority="verified_external",
+                    valid_from=item.observed_at,
+                    supersede_current=supersede_current,
+                )
                 return _json_safe({
                     "ok": True,
                     "belief": belief.to_dict(),
+                    "temporal_relation": asdict(temporal_relation),
                     "source_context": item.to_dict(),
                     "policy": (
-                        "explicit evidence acceptance only; external context does "
-                        "not become durable belief automatically"
+                        "explicit evidence acceptance only; accepted facts enter "
+                        "both belief and temporal evidence stores, while external "
+                        "context never promotes itself automatically"
                     ),
                 })
 

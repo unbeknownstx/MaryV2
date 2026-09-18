@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import RLock
 from types import SimpleNamespace
 
-from mary.continuity import WorldModel
+from mary.continuity import TemporalKnowledgeGraph, WorldModel
 from mary.core.service import MaryCoreService
 from mary.knowledge import WorldContextItem, WorldContextStore
 
@@ -40,6 +40,9 @@ def test_explicit_world_evidence_acceptance_creates_provenance_bound_belief(tmp_
     )
     service.mary = SimpleNamespace(
         world_model=WorldModel(tmp_path / "world_model.json"),
+        temporal_knowledge=TemporalKnowledgeGraph(
+            tmp_path / "temporal_knowledge.json"
+        ),
     )
 
     result = service.runtime_action({
@@ -63,6 +66,13 @@ def test_explicit_world_evidence_acceptance_creates_provenance_bound_belief(tmp_
     assert belief["confidence"] == 0.92
     assert f"world_context:{item.id}" in belief["evidence_ids"]
     assert service.mary.world_model.status()["current_beliefs"] == 1
+    temporal = result["temporal_relation"]
+    assert temporal["subject"] == "Example Game"
+    assert temporal["predicate"] == "release_date"
+    assert temporal["value"] == "2026-11-19"
+    assert temporal["source"] == "official publisher"
+    assert temporal["authority"] == "verified_external"
+    assert service.mary.temporal_knowledge.status()["current"] == 1
 
 
 def test_world_context_never_promotes_itself():
