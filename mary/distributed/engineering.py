@@ -42,10 +42,18 @@ ENGINEERING_CAPABILITIES = frozenset({
     "engineering.structure.verify",
     "engineering.git.status",
     "engineering.git.diff",
+    "engineering.git.commit",
+    "engineering.git.push",
+})
+
+MUTATING_ENGINEERING_CAPABILITIES = frozenset({
+    "engineering.repo.apply",
+    "engineering.git.commit",
+    "engineering.git.push",
 })
 
 READ_ONLY_ENGINEERING_CAPABILITIES = frozenset(
-    ENGINEERING_CAPABILITIES - {"engineering.repo.apply"}
+    ENGINEERING_CAPABILITIES - MUTATING_ENGINEERING_CAPABILITIES
 )
 
 _ALLOWED_SUFFIXES = {
@@ -93,9 +101,16 @@ def engineering_capability_descriptors(permissions: Any) -> list[CapabilityDescr
 
     output: list[CapabilityDescriptor] = []
     for name in sorted(ENGINEERING_CAPABILITIES):
-        mutating = name == "engineering.repo.apply"
+        mutating = name in MUTATING_ENGINEERING_CAPABILITIES
         needs_model = name == "engineering.repair.plan"
-        available = bool(model_ready if needs_model else True)
+        push_enabled = str(
+            os.getenv("MARY_ENGINEERING_PUSH_ENABLED", "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        available = bool(
+            model_ready if needs_model
+            else push_enabled if name == "engineering.git.push"
+            else True
+        )
         output.append(CapabilityDescriptor(
             name=name,
             available=available,
@@ -113,6 +128,7 @@ def engineering_capability_descriptors(permissions: Any) -> list[CapabilityDescr
                 "generic_shell": False,
                 "network_policy": "Core exposes no network command; local test process inherits node OS policy",
                 "local_model_required": needs_model,
+                "push_requires_environment_opt_in": name == "engineering.git.push",
                 "runtime": runtime if needs_model else "",
                 "model": model if needs_model else "",
             },
@@ -205,6 +221,18 @@ def sanitize_engineering_task_args(capability: str, args: dict[str, Any] | None)
             )
         return {"proposal_id": proposal_id}
 
+    if name == "engineering.git.commit":
+        message = _clean_text(values.get("message") or "MaryV2 bounded repair", 120)
+        if not message:
+            message = "MaryV2 bounded repair"
+        return {"message": message}
+
+    if name == "engineering.git.push":
+        commit_sha = str(values.get("commit_sha") or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40}", commit_sha):
+            raise ValueError("engineering.git.push requires the exact 40-character commit SHA.")
+        return {"commit_sha": commit_sha}
+
     if name == "engineering.tests.targeted":
         raw_paths = values.get("paths")
         if not isinstance(raw_paths, list) or not raw_paths:
@@ -226,6 +254,7 @@ def sanitize_engineering_result(capability: str, result: dict[str, Any] | None) 
         "ok", "capability", "summary", "base_sha", "files", "changes", "diff",
         "status", "checks", "stdout", "stderr", "returncode", "worker",
         "model", "runtime", "warnings", "applied", "proposal_id", "workspace_isolated",
+        "commit_sha", "branch", "remote", "pushed",
     }
     output = {key: values[key] for key in allowed if key in values}
     for key in ("summary", "diff", "stdout", "stderr"):
@@ -258,8 +287,11 @@ class EngineeringWorker:
         self.root = root.resolve()
         if not (self.root / ".git").exists():
             raise RuntimeError("Engineering repository must be a Git checkout.")
-        self._proposals: dict[str, list[dict[str, Any]]] = {}
+        self._proposals: dict[str, dict[str, Any]] = {}
         self._proposal_order: list[str] = []
+        self._last_applied_paths: list[str] = []
+        self._last_applied_base_sha = ""
+        self._last_commit_sha = ""
 
     def _path(self, relpath: str) -> Path:
         clean = _safe_relpath(relpath)
@@ -303,9 +335,37 @@ class EngineeringWorker:
             raise ValueError(f"Engineering file exceeds {_MAX_FILE_BYTES} bytes: {relpath}")
         return path.read_text(encoding="utf-8")
 
+    @staticmethod
+    def _git_executable() -> str:
+        explicit = os.getenv("MARY_ENGINEERING_GIT_BIN", "").strip()
+        if explicit:
+            path = Path(explicit).expanduser()
+            if path.is_file():
+                return str(path)
+            raise RuntimeError("MARY_ENGINEERING_GIT_BIN does not point to a Git executable.")
+
+        resolved = shutil.which("git")
+        if resolved:
+            return resolved
+
+        if os.name == "nt":
+            local = Path(os.getenv("LOCALAPPDATA", "")).expanduser()
+            if local.exists():
+                candidates = sorted(
+                    local.glob("GitHubDesktop/app-*/resources/app/git/cmd/git.exe"),
+                    reverse=True,
+                )
+                if candidates:
+                    return str(candidates[0])
+
+        raise RuntimeError(
+            "Git is required for bounded repository engineering. "
+            "Install Git or set MARY_ENGINEERING_GIT_BIN."
+        )
+
     def _git(self, *args: str, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ["git", *args],
+            [self._git_executable(), *args],
             cwd=self.root,
             text=True,
             capture_output=True,
@@ -319,6 +379,37 @@ class EngineeringWorker:
     def _safe_env() -> dict[str, str]:
         allowed = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "HOME", "USERPROFILE", "LANG", "LC_ALL"}
         return {key: value for key, value in os.environ.items() if key.upper() in allowed}
+
+    def _head_sha(self) -> str:
+        run = self._git("rev-parse", "HEAD")
+        if run.returncode != 0:
+            raise RuntimeError("Unable to resolve the engineering checkout HEAD.")
+        value = run.stdout.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40}", value):
+            raise RuntimeError("Engineering checkout returned an invalid HEAD SHA.")
+        return value
+
+    def _allowed_branch(self) -> str:
+        return os.getenv("MARY_ENGINEERING_ALLOWED_BRANCH", "main").strip() or "main"
+
+    def _allowed_remote(self) -> str:
+        return os.getenv("MARY_ENGINEERING_ALLOWED_REMOTE", "origin").strip() or "origin"
+
+    def _current_branch(self) -> str:
+        run = self._git("branch", "--show-current")
+        if run.returncode != 0:
+            raise RuntimeError("Unable to resolve the engineering checkout branch.")
+        return run.stdout.strip()
+
+    def _require_clean_checkout(self) -> None:
+        run = self._git("status", "--porcelain", "--untracked-files=normal")
+        if run.returncode != 0:
+            raise RuntimeError("Unable to inspect engineering checkout status.")
+        if run.stdout.strip():
+            raise RuntimeError(
+                "Engineering repair planning requires a clean checkout so Mary never "
+                "mixes her proposal with unrelated local changes."
+            )
 
     def git_status(self) -> dict[str, Any]:
         run = self._git("status", "--short", "--untracked-files=normal")
@@ -421,9 +512,17 @@ class EngineeringWorker:
             "diff": "\n".join(diffs)[:_MAX_RESULT_CHARS],
         }
 
-    def _remember_proposal(self, changes: list[dict[str, Any]]) -> str:
+    def _remember_proposal(
+        self,
+        changes: list[dict[str, Any]],
+        *,
+        base_sha: str,
+    ) -> str:
         proposal_id = f"engineering_proposal_{uuid4().hex}"
-        self._proposals[proposal_id] = [dict(item) for item in changes]
+        self._proposals[proposal_id] = {
+            "base_sha": str(base_sha or ""),
+            "changes": [dict(item) for item in changes],
+        }
         self._proposal_order.append(proposal_id)
         while len(self._proposal_order) > 20:
             stale = self._proposal_order.pop(0)
@@ -436,11 +535,17 @@ class EngineeringWorker:
         *,
         proposal_id: str = "",
     ) -> dict[str, Any]:
+        proposal_base_sha = ""
         if proposal_id:
             stored = self._proposals.get(str(proposal_id))
             if stored is None:
                 raise KeyError("Engineering proposal is unknown or expired on this node.")
-            changes = [dict(item) for item in stored]
+            proposal_base_sha = str(stored.get("base_sha") or "")
+            changes = [dict(item) for item in list(stored.get("changes") or [])]
+            if proposal_base_sha and self._head_sha() != proposal_base_sha:
+                raise RuntimeError(
+                    "Refusing engineering apply because repository HEAD changed after the proposal."
+                )
         changes = list(changes or [])
         if not changes:
             raise ValueError("No engineering changes were supplied for repository apply.")
@@ -467,6 +572,9 @@ class EngineeringWorker:
             })
         for path, proposed, _rel in prepared:
             path.write_text(proposed, encoding="utf-8")
+        self._last_applied_paths = [rel for _path, _proposed, rel in prepared]
+        self._last_applied_base_sha = proposal_base_sha or self._head_sha()
+        self._last_commit_sha = ""
         if proposal_id:
             self._proposals.pop(str(proposal_id), None)
             self._proposal_order = [
@@ -480,6 +588,126 @@ class EngineeringWorker:
             "proposal_id": str(proposal_id or ""),
             "changes": manifest,
         }
+
+    def commit_last_applied(self, message: str) -> dict[str, Any]:
+        if not self._last_applied_paths or not self._last_applied_base_sha:
+            raise RuntimeError("No creator-approved engineering apply is waiting to be committed.")
+
+        branch = self._current_branch()
+        allowed_branch = self._allowed_branch()
+        if branch != allowed_branch:
+            raise RuntimeError(
+                f"Engineering commit is restricted to branch {allowed_branch!r}; current branch is {branch!r}."
+            )
+        if self._head_sha() != self._last_applied_base_sha:
+            raise RuntimeError(
+                "Repository HEAD changed after the engineering proposal; refusing to create a mixed commit."
+            )
+
+        remote = self._allowed_remote()
+        remote_ref = self._git("rev-parse", f"refs/remotes/{remote}/{allowed_branch}")
+        if remote_ref.returncode == 0:
+            tracked = remote_ref.stdout.strip().lower()
+            if tracked and tracked != self._last_applied_base_sha:
+                raise RuntimeError(
+                    f"Local {allowed_branch} is not synchronized with {remote}/{allowed_branch}; "
+                    "sync it manually before Mary creates a commit."
+                )
+
+        dirty = self._git("status", "--porcelain", "--untracked-files=normal")
+        if dirty.returncode != 0:
+            raise RuntimeError("Unable to inspect repository changes before commit.")
+        allowed_paths = set(self._last_applied_paths)
+        for line in dirty.stdout.splitlines():
+            path_text = line[3:].strip()
+            if " -> " in path_text:
+                path_text = path_text.split(" -> ", 1)[1].strip()
+            if path_text not in allowed_paths:
+                raise RuntimeError(
+                    f"Unrelated working-tree change blocks Mary engineering commit: {path_text}"
+                )
+
+        add = self._git("add", "--", *self._last_applied_paths)
+        if add.returncode != 0:
+            raise RuntimeError(add.stderr.strip() or "Git add failed.")
+
+        staged = self._git("diff", "--cached", "--name-only")
+        staged_paths = {line.strip() for line in staged.stdout.splitlines() if line.strip()}
+        if staged.returncode != 0 or not staged_paths or not staged_paths.issubset(allowed_paths):
+            self._git("reset", "--", *self._last_applied_paths)
+            raise RuntimeError("Staged files did not match the exact engineering apply set.")
+
+        clean_message = _clean_text(message or "MaryV2 bounded repair", 120)
+        commit = self._git("commit", "-m", clean_message, "--", *self._last_applied_paths, timeout=60.0)
+        if commit.returncode != 0:
+            self._git("reset", "--", *self._last_applied_paths)
+            raise RuntimeError(commit.stderr.strip() or "Git commit failed.")
+
+        commit_sha = self._head_sha()
+        self._last_commit_sha = commit_sha
+        self._last_applied_paths = []
+        self._last_applied_base_sha = ""
+        return {
+            "ok": True,
+            "capability": "engineering.git.commit",
+            "summary": "Created one local commit containing only the approved engineering apply.",
+            "commit_sha": commit_sha,
+            "branch": branch,
+            "remote": remote,
+        }
+
+    def push_last_commit(self, commit_sha: str) -> dict[str, Any]:
+        push_enabled = str(
+            os.getenv("MARY_ENGINEERING_PUSH_ENABLED", "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if not push_enabled:
+            raise PermissionError(
+                "Engineering push also requires MARY_ENGINEERING_PUSH_ENABLED=true on the node."
+            )
+
+        expected = str(commit_sha or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40}", expected):
+            raise ValueError("A valid exact commit SHA is required for engineering push.")
+        if not self._last_commit_sha or expected != self._last_commit_sha:
+            raise RuntimeError("Engineering push may only publish the commit Mary just created.")
+        if self._head_sha() != expected:
+            raise RuntimeError("Repository HEAD changed after Mary's engineering commit.")
+
+        branch = self._current_branch()
+        allowed_branch = self._allowed_branch()
+        remote = self._allowed_remote()
+        if branch != allowed_branch:
+            raise RuntimeError(
+                f"Engineering push is restricted to branch {allowed_branch!r}; current branch is {branch!r}."
+            )
+
+        status = self._git("status", "--porcelain", "--untracked-files=normal")
+        if status.returncode != 0 or status.stdout.strip():
+            raise RuntimeError("Engineering push requires a clean working tree.")
+
+        run = self._git(
+            "push",
+            "--porcelain",
+            remote,
+            f"{expected}:refs/heads/{allowed_branch}",
+            timeout=180.0,
+        )
+        if run.returncode != 0:
+            raise RuntimeError(run.stderr.strip() or "Git push failed.")
+        self._last_commit_sha = ""
+        return {
+            "ok": True,
+            "capability": "engineering.git.push",
+            "summary": (
+                f"Pushed the exact approved engineering commit to {remote}/{allowed_branch}. "
+                "Connected CI or deployment services may now react to that branch update."
+            ),
+            "commit_sha": expected,
+            "branch": allowed_branch,
+            "remote": remote,
+            "pushed": True,
+        }
+
 
     def _copy_sandbox(self, destination: Path) -> Path:
         """Copy the working tree into a disposable isolated workspace.
@@ -547,6 +775,7 @@ class EngineeringWorker:
         return {"capability": "engineering.structure.verify", **result}
 
     def repair_plan(self, task: str, max_files: int = 6) -> dict[str, Any]:
+        self._require_clean_checkout()
         inspection = self.inspect(task, max_files=max_files)
         evidence = list(inspection.get("evidence") or [])
         if not evidence:
@@ -619,7 +848,14 @@ class EngineeringWorker:
             "changes": [],
             "diff": "",
         }
-        proposal_id = self._remember_proposal(changes) if changes else ""
+        proposal_id = (
+            self._remember_proposal(
+                changes,
+                base_sha=str(inspection.get("base_sha") or self._head_sha()),
+            )
+            if changes
+            else ""
+        )
         return {
             "ok": True,
             "capability": "engineering.repair.plan",
@@ -662,4 +898,8 @@ class EngineeringWorker:
             return self.git_status()
         if name == "engineering.git.diff":
             return self.git_diff()
+        if name == "engineering.git.commit":
+            return self.commit_last_applied(values["message"])
+        if name == "engineering.git.push":
+            return self.push_last_commit(values["commit_sha"])
         raise ValueError(f"No engineering executor exists for {name}.")
