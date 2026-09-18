@@ -1431,6 +1431,168 @@ class MaryCoreService:
     def growth_status(self) -> dict[str, Any]:
         return _json_safe(self.mary.growth.status())
 
+    def _observe_node_world_state(
+        self,
+        node: Any,
+        *,
+        connected: bool,
+        source: str,
+    ) -> None:
+        """Project verified node/runtime state into Mary's evidence world model.
+
+        The node registry remains the operational owner. WorldModel receives a
+        durable evidence projection so Mary can reason across restarts without
+        pretending that a stale node is currently live.
+        """
+
+        if node is None:
+            return
+        try:
+            node_id = str(getattr(node, "node_id", "") or "").strip()
+            if not node_id:
+                return
+            display_name = str(getattr(node, "display_name", "") or node_id)
+            self.mary.world_model.upsert_entity(
+                label=node_id,
+                entity_type="compute_node",
+                aliases=(display_name,),
+                source=source,
+                authority="runtime",
+                confidence=1.0,
+                metadata={
+                    "host_type": str(getattr(node, "host_type", "") or ""),
+                    "platform": str(getattr(node, "platform", "") or ""),
+                    "local": bool(getattr(node, "local", False)),
+                },
+            )
+            self._observe_runtime_belief(
+                subject=node_id,
+                predicate="connected",
+                value=bool(connected),
+                source=source,
+            )
+            capabilities = sorted(
+                str(name)
+                for name, descriptor in dict(getattr(node, "capabilities", {}) or {}).items()
+                if bool(getattr(descriptor, "available", True))
+            )
+            self._observe_runtime_belief(
+                subject=node_id,
+                predicate="available_capabilities",
+                value=capabilities,
+                source=source,
+            )
+        except Exception:
+            # World-model projection must never break node enrollment/liveness.
+            return
+
+    def _observe_runtime_belief(
+        self,
+        *,
+        subject: str,
+        predicate: str,
+        value: Any,
+        source: str,
+    ) -> None:
+        try:
+            current = list(
+                self.mary.world_model.current_beliefs(
+                    subject=subject,
+                    predicate=predicate,
+                )
+            )
+            if current and any(
+                self.mary.world_model._value_key(item.value)
+                == self.mary.world_model._value_key(value)
+                for item in current
+            ):
+                return
+            self.mary.world_model.observe(
+                subject=subject,
+                predicate=predicate,
+                value=value,
+                source=source,
+                belief_type="observation",
+                confidence=1.0,
+                authority="runtime",
+                verification="verified",
+                supersede_current=bool(current),
+                evidence_ids=(f"runtime:{subject}:{predicate}",),
+            )
+        except Exception:
+            return
+
+    def _record_task_replay(self, task: Any) -> None:
+        """Capture structural device-task outcome for replay/skill learning."""
+
+        try:
+            capability = str(getattr(task, "capability", "") or "").strip()
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            result = dict(getattr(task, "result", {}) or {})
+            success = bool(
+                status == "completed"
+                and result.get("ok", True) is not False
+            )
+            summary = str(
+                result.get("summary")
+                or result.get("finish_reason")
+                or (
+                    f"{capability} completed"
+                    if success
+                    else f"{capability} ended as {status}"
+                )
+            )
+            public_steps = [
+                f"dispatch typed capability {capability}",
+                f"receive terminal node status {status}",
+            ]
+            verification = ["node-scoped task completion received by Mary Core"]
+            if capability.startswith("engineering.tests.") or capability == "engineering.structure.verify":
+                verification.append("typed repository validation result")
+            if capability.startswith("engineering."):
+                public_steps.append("preserve repository authority/permission boundary")
+
+            self.mary.experience_replay.record_episode(
+                source_task_id=str(getattr(task, "task_id", "") or ""),
+                root_task_id=str(getattr(task, "root_task_id", "") or ""),
+                capability=capability,
+                operation=str(getattr(task, "operation", "") or "general"),
+                objective=f"Typed capability task: {capability}",
+                node_id=str(getattr(task, "selected_node_id", "") or ""),
+                status=status,
+                success=success,
+                # A typed terminal result verifies the structural procedure,
+                # not the truth/content of a model answer.
+                verified=success,
+                public_steps=public_steps,
+                verification=verification,
+                evidence_ids=(str(getattr(task, "task_id", "") or ""),),
+                tags=(
+                    capability.split(".", 1)[0] if capability else "capability",
+                    str(getattr(task, "operation", "") or "general"),
+                ),
+                outcome_summary=summary,
+                attempt=int(getattr(task, "attempt", 1) or 1),
+            )
+            self.mary.experience.record(
+                kind="capability_outcome",
+                summary=(
+                    f"{capability} on {getattr(task, 'selected_node_id', '')} "
+                    f"ended as {status}."
+                ),
+                source="device_task_broker",
+                importance=0.72 if success else 0.82,
+                tags=(
+                    "capability_task",
+                    "success" if success else "failure",
+                    capability.split(".", 1)[0] if capability else "capability",
+                ),
+                task_id=str(getattr(task, "task_id", "") or ""),
+            )
+        except Exception:
+            # Learning evidence is subordinate to the completed task protocol.
+            return
+
     def node_status(self) -> dict[str, Any]:
         return _json_safe(self.mary.node_registry.snapshot())
 
@@ -1573,6 +1735,11 @@ class MaryCoreService:
                         self._node_token_digest(raw_token)
                     )
             registered = registry.register(descriptor)
+        self._observe_node_world_state(
+            registered,
+            connected=True,
+            source="node_registration",
+        )
         session_generation = self._node_session_generations.get(model.node_id, 0)
         response = {
             "ok": True,
@@ -1950,6 +2117,11 @@ class MaryCoreService:
             if not self.mary.node_registry.heartbeat(model.node_id):
                 raise KeyError(f"Unknown capability node: {model.node_id}")
             node = self.mary.node_registry.get(model.node_id)
+        self._observe_node_world_state(
+            node,
+            connected=True,
+            source="node_heartbeat",
+        )
         return _json_safe({
             "ok": True,
             "node": node.to_dict(stale_after=self.mary.node_registry.stale_after) if node else {},
@@ -1974,6 +2146,12 @@ class MaryCoreService:
             self.device_tasks.expire_pending_for_node(
                 model.node_id, reason="Capability node disconnected before task completion."
             )
+            node = self.mary.node_registry.get(model.node_id)
+        self._observe_node_world_state(
+            node,
+            connected=False,
+            source="node_disconnect",
+        )
         return _json_safe({
             "ok": changed,
             "node_id": model.node_id,
@@ -2110,6 +2288,7 @@ class MaryCoreService:
                 result=model.result,
                 error=model.error,
             )
+        self._record_task_replay(task)
         return _json_safe({"ok": True, "task": task.to_dict()})
 
     @staticmethod
