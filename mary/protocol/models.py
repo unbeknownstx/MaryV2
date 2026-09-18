@@ -280,6 +280,7 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "continuity.plan.create",
     "continuity.plan.add_step",
     "continuity.plan.satisfy_approval",
+    "continuity.plan.resolve_blocker",
     "continuity.plan.next",
     "continuity.plan.dispatch",
     "llm.probe",
