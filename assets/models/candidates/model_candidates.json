@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "policy": "Explicit creator-selected downloads only. These are optional generation/specialist assets and never Mary identity authority.",
+  "schema_version": 2,
+  "policy": "Explicit creator-selected downloads only. Optional model/adapter assets remain replaceable capabilities and never Mary identity, memory, permission or truth authority. Exact upstream lineage is required for adapter experiments.",
   "candidates": [
     {
       "id": "qwen3-1.7b-q4km-fast-brain",
@@ -17,7 +17,8 @@
       "sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
       "approx_size": "1.28 GB",
       "license": "Apache-2.0",
-      "notes": "Small current candidate for Mac/local specialist experiments. Do not assume it is Mary's primary conversational model."
+      "notes": "Small current candidate for Mac/local specialist experiments. Do not assume it is Mary's primary conversational model.",
+      "upstream_base": "Qwen/Qwen3-1.7B"
     },
     {
       "id": "qwen3-4b-heretic-q4km-roleplay-base",
@@ -70,7 +71,8 @@
       "sha256": "da2572f16c06133561ce56accaa822216f2391ef4d37fba427801cd6736417d4",
       "approx_size": "429 MB",
       "license": "Apache-2.0",
-      "notes": "Very small current candidate for cheap attention/ranking/intent experiments on Apple Silicon or CPU. Not intended to carry Mary's full conversational identity."
+      "notes": "Very small current candidate for cheap attention/ranking/intent experiments on Apple Silicon or CPU. Not intended to carry Mary's full conversational identity.",
+      "upstream_base": "Qwen/Qwen3-0.6B"
     },
     {
       "id": "whispercpp-tiny-en-q5_1",
@@ -145,6 +147,47 @@
       "license": "Apache-2.0",
       "upstream_base": "HuggingFaceTB/SmolLM3-3B",
       "notes": "NPC/roleplay fine-tune candidate. Its training style is not Mary; use only as a blinded comparison for embodiment/acting naturalism, never as character authority."
+    },
+    {
+      "id": "qwen3-0.6b-tldr-lora-f16",
+      "kind": "lora_adapter",
+      "asset_group": "llm",
+      "role": [
+        "adapter_lab",
+        "summarization_specialist_experiment",
+        "adapter_isolation_test"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "phh/Qwen3-0.6B-TLDR-Lora",
+      "filename": "Qwen3-0.6B-tldr-lora-f16.gguf",
+      "download_url": "https://huggingface.co/phh/Qwen3-0.6B-TLDR-Lora/resolve/main/Qwen3-0.6B-tldr-lora-f16.gguf?download=true",
+      "sha256": "bf991b0f9fc59e992ad0fe5db8b8edcbdb9f55c324cb0749904d5180cc363493",
+      "approx_size": "4.6 MB",
+      "license": "Apache-2.0",
+      "required_base": "Qwen/Qwen3-0.6B",
+      "training_dataset": "trl-lib/tldr",
+      "notes": "Tiny GGUF LoRA used to test exact-base adapter loading, task specialization and isolation on current hardware. It is a summarization specialist, not Mary personality/canon."
+    },
+    {
+      "id": "qwen3-0.6b-tools-q4km",
+      "kind": "fine_tuned_model",
+      "asset_group": "llm",
+      "role": [
+        "tool_calling_specialist",
+        "local_specialist",
+        "micro_cortex_experiment",
+        "agent_protocol_experiment"
+      ],
+      "runtime": "llama.cpp",
+      "repository": "iromu/Qwen3-0.6B-tools-GGUF",
+      "upstream_base": "Qwen/Qwen3-0.6B",
+      "filename": "Qwen3-0.6B-tools-Q4_K_M.gguf",
+      "download_url": "https://huggingface.co/iromu/Qwen3-0.6B-tools-GGUF/resolve/main/Qwen3-0.6B-tools-Q4_K_M.gguf?download=true",
+      "sha256": "455af02ec0ae5d0380449e45d65b83c3f57052fbb41f43ac3b75463a4b7dc938",
+      "approx_size": "397 MB",
+      "license": "Apache-2.0",
+      "training_dataset": "r0b0tlab/qwen3.8-max-glm5.2-kimi-k3-distillation (sft_tools split)",
+      "notes": "Tiny tool/function-calling fine-tune for narrow node-worker experiments. It must not receive device authority itself; Core capability permissions remain authoritative."
     }
   ]
 }

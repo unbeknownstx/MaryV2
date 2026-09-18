@@ -48,9 +48,9 @@ Local-AI community discussions repeatedly point to the same problems: raw chat l
 
 ## Model / LoRA convergence
 
-Third-party adapters are benchmark inputs, never Mary. Current research families include the simple rockerBOO Qwen3-4B roleplay GGUF, an ArityFlow Qwen3-4B roleplay candidate, structured-output Qwen3-4B, an execution/state Qwen3-4B experiment, and Qwen2.5-VL 3B GUI-grounding adapters.
+Third-party adapters are benchmark inputs, never Mary. Current directly downloadable experiments now include the small rockerBOO Qwen3-4B roleplay GGUF plus a 4.6 MB Qwen3-0.6B TLDR GGUF LoRA for cheap adapter-isolation tests. A separate 397 MB Qwen3-0.6B tool-calling GGUF is cataloged as a narrow micro-cortex worker. Additional research families include ArityFlow Qwen3-4B roleplay, structured-output Qwen3-4B, execution/state Qwen3-4B experiments, Qwen2.5-VL 3B GUI-grounding adapters, and small PEFT roleplay adapters that require a different runtime/conversion path.
 
-Rules: exact base identity is mandatory; base-only is always a control; generic-adapter-only and Mary-adapter-only are separate arms; combined stacking is evaluated only when both adapters target the exact same base/runtime; MaryBench stays held out; identity boundary, fiction boundary, epistemic honesty, relationship continuity, character restraint and tool correctness are acceptance dimensions; successful adapters remain replaceable capabilities.
+Rules: exact base identity is mandatory; base-only is always a control; generic-adapter-only and Mary-adapter-only are separate arms; combined stacking is evaluated only when both adapters target the exact same base/runtime; MaryBench stays held out; identity boundary, fiction boundary, epistemic honesty, relationship continuity, character restraint and tool correctness are acceptance dimensions; successful adapters remain replaceable capabilities. ModelCandidateCatalog now computes exact upstream-base plus runtime compatibility and emits base-only/single-adapter experiment arms so a PEFT adapter cannot be silently treated as a llama.cpp GGUF adapter.
 
 ## Apple Silicon Mary adapter path
 
