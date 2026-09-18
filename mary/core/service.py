@@ -207,7 +207,38 @@ class MaryCoreService:
         self._attach_device_llama_cpp_provider()
         self._sync_creator_lifecycle()
 
-    def _engineering_route_ready(self, capability: str) -> tuple[bool, str]:
+    def _engineering_route_ready(
+        self,
+        capability: str,
+        *,
+        preferred_node_id: str | None = None,
+    ) -> tuple[bool, str]:
+        preferred = str(preferred_node_id or "").strip()
+        if preferred:
+            candidates_fn = getattr(
+                self.mary.node_registry,
+                "executable_candidates",
+                None,
+            )
+            candidates = (
+                list(candidates_fn(capability))
+                if callable(candidates_fn)
+                else []
+            )
+            selected = next(
+                (
+                    node for node in candidates
+                    if str(getattr(node, "node_id", "")) == preferred
+                ),
+                None,
+            )
+            if selected is None:
+                return (
+                    False,
+                    f"The original engineering node {preferred} is not live/authorized for {capability}.",
+                )
+            return True, preferred
+
         route = dict(
             self.mary.node_registry.route_preview(
                 capability,
@@ -361,7 +392,10 @@ class MaryCoreService:
                     "I do not have a completed engineering proposal to apply. "
                     "Ask me to fix myself first, then check engineering status."
                 )
-            ready, detail = self._engineering_route_ready("engineering.repo.apply")
+            ready, detail = self._engineering_route_ready(
+                "engineering.repo.apply",
+                preferred_node_id=self._last_engineering_node_id or None,
+            )
             if not ready:
                 return (
                     detail
@@ -393,7 +427,10 @@ class MaryCoreService:
                 if full
                 else "engineering.structure.verify"
             )
-            ready, detail = self._engineering_route_ready(capability)
+            ready, detail = self._engineering_route_ready(
+                capability,
+                preferred_node_id=self._last_engineering_node_id or None,
+            )
             if not ready:
                 return (
                     detail
@@ -420,7 +457,10 @@ class MaryCoreService:
                     "I will not create an engineering commit until the last applied repair "
                     "has passed verification. Say: verify that fix."
                 )
-            ready, detail = self._engineering_route_ready("engineering.git.commit")
+            ready, detail = self._engineering_route_ready(
+                "engineering.git.commit",
+                preferred_node_id=self._last_engineering_node_id or None,
+            )
             if not ready:
                 return (
                     detail
@@ -458,7 +498,10 @@ class MaryCoreService:
                     "I do not have an immediately verified Mary engineering commit ready to publish. "
                     "Check engineering status after the commit finishes."
                 )
-            ready, detail = self._engineering_route_ready("engineering.git.push")
+            ready, detail = self._engineering_route_ready(
+                "engineering.git.push",
+                preferred_node_id=self._last_engineering_node_id or None,
+            )
             if not ready:
                 return (
                     detail
