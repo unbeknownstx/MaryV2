@@ -10,6 +10,7 @@ from .lanes import CognitionLaneRouter
 from .memory_lab import MemoryEvaluationSuite
 from .prosody import TurnTakingAdvisor
 from .recovery import NodeRecoveryManager
+from .replay import ExperienceReplayStore
 from .resources import AffordanceScorer, ComputeResourceGovernor
 from .skills import SkillLibrary
 from .temporal import TemporalKnowledgeGraph
@@ -34,6 +35,7 @@ class ExperientialContinuityRuntime:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.experience = ExperienceLedger(self.root / "experience.json")
+        self.replay = ExperienceReplayStore(self.root / "experience_replay.json")
         self.cognition_lanes = CognitionLaneRouter()
         self.cancellation = GenerationCancellationRegistry()
         self.memory_lab = MemoryEvaluationSuite()
@@ -55,9 +57,12 @@ class ExperientialContinuityRuntime:
 
     def maintenance(self) -> dict[str, Any]:
         candidates = self.experience.consolidate()
+        replay = self.replay.consolidate(self.skills)
         return {
             "version": self.VERSION,
             "experience_candidates_created": len(candidates),
+            "replay_lessons_created": int(replay.get("lessons_created", 0) or 0),
+            "skill_candidates_created": int(replay.get("skill_candidates_created", 0) or 0),
             "resumable_workflows": len(self.workflows.resumable()),
             "pending_verifications": len(self.verification.pending()),
             "promotion_performed": False,
@@ -67,6 +72,7 @@ class ExperientialContinuityRuntime:
         return {
             "version": self.VERSION,
             "experience": self.experience.status(),
+            "replay": self.replay.status(),
             "temporal": self.temporal.status(),
             "world_model": self.world_model.status(),
             "skills": self.skills.status(),
