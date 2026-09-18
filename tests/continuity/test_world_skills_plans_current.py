@@ -224,3 +224,84 @@ def test_world_entity_aliases_converge_without_fuzzy_merging(tmp_path: Path):
     assert world.current_beliefs(subject="my pc")[0].id == belief.id
     assert world.neighborhood("desktop")[0].id == belief.id
     assert world.resolve_entity("unknown alias") is None
+
+
+def test_skill_revision_keeps_approved_predecessor_until_creator_approves(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-revision.json")
+    original = skills.approve(skills.register_candidate(
+        name="search project references",
+        description="Search the selected local knowledge collection.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search selected collection",),
+    ).id)
+
+    revision = skills.register_revision(
+        original.id,
+        reason="add verification after repeated ambiguous results",
+        steps=("search selected collection", "verify source citation"),
+        verification=("citation resolves to enabled document",),
+    )
+
+    assert revision.status == "candidate"
+    assert revision.supersedes == original.id
+    assert skills.get(original.id).status == "approved"
+
+    approved = skills.approve(revision.id)
+    assert approved.status == "approved"
+    assert skills.get(original.id).status == "superseded"
+    assert skills.get(original.id).superseded_by == approved.id
+
+    hits = skills.retrieve(
+        "search project references",
+        capabilities=("knowledge.search",),
+        permissions=("knowledge.search",),
+    )
+    assert [item.id for item in hits] == [approved.id]
+
+
+def test_rejected_skill_revision_leaves_current_procedure_approved(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-reject-revision.json")
+    original = skills.approve(skills.register_candidate(
+        name="bounded lookup",
+        description="Search local knowledge.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+    ).id)
+    revision = skills.register_revision(
+        original.id,
+        reason="experiment with a different step order",
+        steps=("alternate lookup",),
+    )
+    skills.reject(revision.id)
+    assert skills.get(original.id).status == "approved"
+    assert skills.get(revision.id).status == "rejected"
+
+
+def test_world_reconciliation_retires_competitors_without_deleting_history(tmp_path: Path):
+    world = WorldModel(tmp_path / "world-reconcile.json")
+    first = world.observe(
+        subject="Mary Core",
+        predicate="active_instance",
+        value="instance-a",
+        source="runtime-a",
+        authority="runtime",
+        confidence=0.8,
+    )
+    second = world.observe(
+        subject="Mary Core",
+        predicate="active_instance",
+        value="instance-b",
+        source="runtime-b",
+        authority="runtime",
+        confidence=0.95,
+    )
+    winner = world.reconcile(second.id, resolved_by="creator")
+    assert winner.status == "current"
+    assert winner.verification == "verified"
+    old = world.get_belief(first.id)
+    assert old.status == "retired"
+    assert old.valid_to is not None
+    assert world.current_beliefs(subject="Mary Core", predicate="active_instance")[0].id == second.id

@@ -48,6 +48,9 @@ class SkillRecord:
     confidence: float = 0.5
     last_used_at: str | None = None
     last_result: str = ""
+    supersedes: str | None = None
+    superseded_by: str | None = None
+    revision_reason: str = ""
 
 
 class SkillLibrary:
@@ -74,6 +77,8 @@ class SkillLibrary:
         tags: Iterable[str] = (),
         origin_experience_ids: Iterable[str] = (),
         confidence: float = 0.5,
+        supersedes: str | None = None,
+        revision_reason: str = "",
     ) -> SkillRecord:
         name = str(name).strip()[:160]
         if not name:
@@ -103,6 +108,8 @@ class SkillLibrary:
             tags=_tuple(tags),
             origin_experience_ids=_tuple(origin_experience_ids),
             confidence=max(0.0, min(1.0, float(confidence))),
+            supersedes=(str(supersedes).strip()[:180] if supersedes else None),
+            revision_reason=str(revision_reason or "").strip()[:600],
         )
 
         def mutate(data: dict[str, Any]) -> None:
@@ -129,23 +136,96 @@ class SkillLibrary:
         return record
 
     def approve(self, skill_id: str, *, approved_by: str = "creator") -> SkillRecord:
+        candidate = self.get(skill_id)
+        if candidate.status not in {"candidate", "approved"}:
+            raise ValueError("only a candidate skill may be approved")
+        predecessor_id = str(candidate.supersedes or "").strip()
+        if predecessor_id:
+            predecessor = self.get(predecessor_id)
+            if predecessor.status != "approved":
+                raise ValueError(
+                    "skill revision may replace only the currently approved predecessor"
+                )
+
         found = False
         approved_at = _now()
 
         def mutate(data: dict[str, Any]) -> None:
             nonlocal found
-            for row in list(data.get("skills") or []):
+            rows = list(data.get("skills") or [])
+            target = None
+            predecessor = None
+            for row in rows:
                 if row.get("id") == skill_id:
-                    row["status"] = "approved"
-                    row["approved_at"] = approved_at
-                    row["approved_by"] = str(approved_by).strip()[:160] or "creator"
-                    found = True
-                    break
+                    target = row
+                if predecessor_id and row.get("id") == predecessor_id:
+                    predecessor = row
+            if target is None:
+                return
+            target["status"] = "approved"
+            target["approved_at"] = approved_at
+            target["approved_by"] = str(approved_by).strip()[:160] or "creator"
+            if predecessor is not None:
+                predecessor["status"] = "superseded"
+                predecessor["superseded_by"] = skill_id
+            found = True
 
         self._store.mutate(mutate)
         if not found:
             raise KeyError(skill_id)
         return self.get(skill_id)
+
+    def register_revision(
+        self,
+        skill_id: str,
+        *,
+        reason: str,
+        description: str | None = None,
+        steps: Iterable[str] | None = None,
+        verification: Iterable[str] | None = None,
+        failure_recovery: Iterable[str] | None = None,
+        preconditions: Iterable[str] | None = None,
+        inputs: Iterable[str] | None = None,
+        outputs: Iterable[str] | None = None,
+        tags: Iterable[str] | None = None,
+        source: str = "creator_revision",
+    ) -> SkillRecord:
+        """Create a review-only revision without changing the approved procedure.
+
+        A revision inherits capabilities and permissions from its approved
+        predecessor. This prevents a seemingly harmless procedure edit from
+        widening execution authority. The predecessor remains eligible until
+        the creator explicitly approves the new candidate.
+        """
+
+        base = self.get(skill_id)
+        if base.status != "approved":
+            raise ValueError("only an approved skill may be revised")
+        clean_reason = str(reason or "").strip()[:600]
+        if not clean_reason:
+            raise ValueError("skill revision reason is required")
+        return self.register_candidate(
+            name=base.name,
+            description=base.description if description is None else str(description),
+            source=str(source or "creator_revision"),
+            required_capabilities=base.required_capabilities,
+            required_permissions=base.required_permissions,
+            steps=base.steps if steps is None else steps,
+            verification=base.verification if verification is None else verification,
+            failure_recovery=(
+                base.failure_recovery
+                if failure_recovery is None
+                else failure_recovery
+            ),
+            preconditions=base.preconditions if preconditions is None else preconditions,
+            inputs=base.inputs if inputs is None else inputs,
+            outputs=base.outputs if outputs is None else outputs,
+            tags=base.tags if tags is None else tags,
+            origin_experience_ids=base.origin_experience_ids,
+            confidence=base.confidence,
+            supersedes=base.id,
+            revision_reason=clean_reason,
+        )
 
     def reject(self, skill_id: str) -> SkillRecord:
         found = False
@@ -302,6 +382,11 @@ class SkillLibrary:
             "candidates": sum(1 for row in rows if row.get("status") == "candidate"),
             "successful_uses": sum(int(row.get("success_count", 0) or 0) for row in rows),
             "failed_uses": sum(int(row.get("failure_count", 0) or 0) for row in rows),
+            "superseded": sum(1 for row in rows if row.get("status") == "superseded"),
+            "revision_candidates": sum(
+                1 for row in rows
+                if row.get("status") == "candidate" and row.get("supersedes")
+            ),
             "execution": "descriptive only; ToolManager/device capability fabric retains execution authority",
         }
 
@@ -326,4 +411,7 @@ class SkillLibrary:
         values.setdefault("confidence", 0.5)
         values.setdefault("last_used_at", None)
         values.setdefault("last_result", "")
+        values.setdefault("supersedes", None)
+        values.setdefault("superseded_by", None)
+        values.setdefault("revision_reason", "")
         return SkillRecord(**values)

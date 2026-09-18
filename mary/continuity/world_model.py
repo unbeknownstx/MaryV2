@@ -335,6 +335,75 @@ class WorldModel:
             raise KeyError(belief_id)
         return self.get_belief(belief_id)
 
+    def reconcile(
+        self,
+        belief_id: str,
+        *,
+        resolved_by: str = "creator",
+        source: str | None = None,
+    ) -> BeliefClaim:
+        """Explicitly select one current belief while preserving competing history.
+
+        Reconciliation is a creator/governed operation. Competing current
+        beliefs with the same subject/predicate are retired, never deleted.
+        """
+
+        winner = self.get_belief(belief_id)
+        when = _now()
+        resolver = _bounded(resolved_by, 160) or "creator"
+        source_override = _bounded(source, 240) if source is not None else ""
+        found = False
+
+        def mutate(data: dict[str, Any]) -> None:
+            nonlocal found
+            rows = list(data.get("beliefs") or [])
+            target = next((row for row in rows if row.get("id") == belief_id), None)
+            if target is None:
+                return
+            subject = str(target.get("subject") or "").casefold()
+            predicate = str(target.get("predicate") or "").casefold()
+            retired_ids: list[str] = []
+            for row in rows:
+                if row is target:
+                    continue
+                if (
+                    str(row.get("subject") or "").casefold() != subject
+                    or str(row.get("predicate") or "").casefold() != predicate
+                    or row.get("valid_to") is not None
+                    or str(row.get("status") or "") == "retired"
+                ):
+                    continue
+                row["valid_to"] = when
+                row["status"] = "retired"
+                row["verification"] = "contradicted"
+                ids = list(row.get("contradiction_ids") or [])
+                if belief_id not in ids:
+                    ids.append(belief_id)
+                row["contradiction_ids"] = ids[-16:]
+                retired_ids.append(str(row.get("id") or ""))
+            target["status"] = "current"
+            target["verification"] = "verified"
+            if source_override:
+                target["source"] = source_override
+            metadata = dict(target.get("metadata") or {})
+            metadata.update({
+                "reconciled_at": when,
+                "reconciled_by": resolver,
+                "retired_competitors": len(retired_ids),
+            })
+            target["metadata"] = self._safe_metadata(metadata)
+            target["contradiction_ids"] = list(_tuple(
+                [*(target.get("contradiction_ids") or []), *retired_ids],
+                limit=16,
+                item_limit=180,
+            ))
+            found = True
+
+        self._store.mutate(mutate)
+        if not found:
+            raise KeyError(belief_id)
+        return self.get_belief(belief_id)
+
     def resolve_entity(self, label_or_alias: str) -> WorldEntity | None:
         """Resolve an exact label/alias without fuzzy identity invention."""
 

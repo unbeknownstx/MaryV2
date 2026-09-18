@@ -1794,6 +1794,9 @@ class MaryCoreService:
             "failure_recovery": list(
                 getattr(skill, "failure_recovery", ()) or ()
             ),
+            "supersedes": str(getattr(skill, "supersedes", "") or ""),
+            "superseded_by": str(getattr(skill, "superseded_by", "") or ""),
+            "revision_reason": str(getattr(skill, "revision_reason", "") or "")[:600],
             "authority": (
                 "approved procedural guidance only; capability/tool permission "
                 "and explicit dispatch remain separate"
@@ -2876,6 +2879,41 @@ class MaryCoreService:
                 return _json_safe({
                     "context": self.application.ecosystem.world.snapshot(),
                     "pulse": self.application.ecosystem.world_pulse.snapshot(),
+                    "beliefs": self.mary.world_model.status(),
+                    "temporal": self.mary.temporal_knowledge.status(),
+                    "contradictions": [
+                        item.to_dict()
+                        for item in self.mary.world_model.contradictions(limit=12)
+                    ],
+                    "authority": "evidence/status projection only",
+                })
+
+            if action.action == "world.reconcile":
+                belief_id = str(values.get("belief_id") or "").strip()
+                if not belief_id:
+                    raise ValueError("world reconciliation requires belief_id")
+                belief = self.mary.world_model.reconcile(
+                    belief_id,
+                    resolved_by=f"protocol:{action.device_id}",
+                    source=str(values.get("source") or "")[:240] or None,
+                )
+                temporal_relation = self.mary.temporal_knowledge.record(
+                    subject=belief.subject,
+                    predicate=belief.predicate,
+                    value=belief.value,
+                    source=f"world_reconcile:{action.device_id}",
+                    confidence=belief.confidence,
+                    authority="creator",
+                    supersede_current=True,
+                )
+                return _json_safe({
+                    "ok": True,
+                    "belief": belief.to_dict(),
+                    "temporal_relation": asdict(temporal_relation),
+                    "policy": (
+                        "explicit reconciliation only; competing beliefs are "
+                        "retired as history rather than deleted"
+                    ),
                 })
 
             if action.action == "world.refresh_plan":
@@ -3017,6 +3055,92 @@ class MaryCoreService:
             if action.action == "continuity.maintenance":
                 self.enforce_execution_policy("continuity.maintenance")
                 return _json_safe(self.mary.experiential_continuity.maintenance())
+
+            if action.action == "continuity.skill.status":
+                candidates = list(self.mary.procedural_skills.candidates())[:50]
+                approved = list(self.mary.procedural_skills.retrieve(
+                    "",
+                    capabilities=tuple(
+                        name
+                        for name in (
+                            "personal_search", "llm.local", "llm.ollama",
+                            "llm.llama_cpp", "knowledge.search"
+                        )
+                    ),
+                    permissions=tuple(
+                        name
+                        for name in (
+                            "personal_search", "llm.local", "llm.ollama",
+                            "llm.llama_cpp", "knowledge.search"
+                        )
+                    ),
+                    limit=50,
+                    approved_only=True,
+                ))
+                return _json_safe({
+                    "status": self.mary.procedural_skills.status(),
+                    "candidates": [self._skill_view(item) for item in candidates],
+                    "approved": [self._skill_view(item) for item in approved],
+                    "execution_performed": False,
+                })
+
+            if action.action == "continuity.skill.revise":
+                skill_id = str(values.get("skill_id") or "").strip()
+                reason = str(values.get("reason") or "").strip()
+                candidate = self.mary.procedural_skills.register_revision(
+                    skill_id,
+                    reason=reason,
+                    description=(
+                        str(values.get("description"))
+                        if values.get("description") is not None
+                        else None
+                    ),
+                    steps=(
+                        tuple(str(item) for item in list(values.get("steps") or [])[:32])
+                        if "steps" in values
+                        else None
+                    ),
+                    verification=(
+                        tuple(str(item) for item in list(values.get("verification") or [])[:24])
+                        if "verification" in values
+                        else None
+                    ),
+                    failure_recovery=(
+                        tuple(str(item) for item in list(values.get("failure_recovery") or [])[:24])
+                        if "failure_recovery" in values
+                        else None
+                    ),
+                    source=f"protocol:{action.device_id}",
+                )
+                return _json_safe({
+                    "ok": True,
+                    "candidate": self._skill_view(candidate),
+                    "promotion_performed": False,
+                    "authority": "review candidate only",
+                })
+
+            if action.action == "continuity.skill.approve":
+                skill_id = str(values.get("skill_id") or "").strip()
+                skill = self.mary.procedural_skills.approve(
+                    skill_id,
+                    approved_by=f"protocol:{action.device_id}",
+                )
+                return _json_safe({
+                    "ok": True,
+                    "skill": self._skill_view(skill),
+                    "execution_performed": False,
+                    "authority": "explicit creator approval",
+                })
+
+            if action.action == "continuity.skill.reject":
+                skill_id = str(values.get("skill_id") or "").strip()
+                skill = self.mary.procedural_skills.reject(skill_id)
+                return _json_safe({
+                    "ok": True,
+                    "skill": self._skill_view(skill),
+                    "execution_performed": False,
+                    "authority": "explicit creator rejection",
+                })
 
             if action.action == "continuity.skill.recommend":
                 plan_id = str(values.get("plan_id") or "").strip()
