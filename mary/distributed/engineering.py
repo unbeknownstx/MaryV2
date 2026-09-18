@@ -606,6 +606,10 @@ class EngineeringWorker:
         changes: list[dict[str, Any]] = []
         for raw_change in raw_changes[:6]:
             change = _sanitize_change(raw_change)
+            if change["content"]:
+                raise RuntimeError(
+                    "Local engineering repair plans must use bounded exact edits, not full-file rewrites."
+                )
             if change["path"] not in evidence_hashes:
                 raise RuntimeError(f"Engineering model attempted an out-of-evidence file: {change['path']}")
             change["expected_sha256"] = evidence_hashes[change["path"]]
