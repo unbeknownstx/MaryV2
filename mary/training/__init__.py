@@ -1,8 +1,10 @@
 """Private opt-in evaluation/training-data helpers for MaryV2."""
 from .feedback import ResponseFeedback, ResponseFeedbackStore
 from .exporter import DatasetExportSummary, MaryTrainingDatasetExporter
+from .dataset_v1 import MaryDatasetV1Exporter, MaryDatasetV1Summary
 
 __all__ = [
     "ResponseFeedback", "ResponseFeedbackStore",
     "DatasetExportSummary", "MaryTrainingDatasetExporter",
+    "MaryDatasetV1Exporter", "MaryDatasetV1Summary",
 ]
