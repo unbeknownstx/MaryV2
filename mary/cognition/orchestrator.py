@@ -1512,6 +1512,31 @@ class CognitiveOrchestrator:
         # Mary's actual connected runtime/tool boundaries, not from a provider's
         # generic assistant identity.
         if any(marker in normalized for marker in (
+            "apply that fix", "apply the fix", "apply that patch", "apply the proposed fix",
+            "write that fix", "use that patch",
+        )):
+            return self_intent("engineering_apply")
+
+        if any(marker in normalized for marker in (
+            "engineering status", "repair status", "check the repair", "check that fix",
+            "how is the fix going", "how's the fix going", "is the repair done",
+        )):
+            return self_intent("engineering_status")
+
+        if any(marker in normalized for marker in (
+            "run tests on that fix", "test that fix", "verify that fix",
+            "run the repo checks", "verify the repair",
+        )):
+            return self_intent("engineering_test")
+
+        if any(marker in normalized for marker in (
+            "fix yourself", "repair yourself", "fix your own code", "repair your own code",
+            "inspect and fix your code", "inspect your code and fix", "find and fix your code",
+            "diagnose and fix yourself", "fix whatever is wrong with your code",
+        )):
+            return self_intent("engineering_repair")
+
+        if any(marker in normalized for marker in (
             "inspect everything", "inspect the current surface", "inspect current surface",
             "check the current surface", "check current surface", "check your runtime",
             "inspect your runtime", "inspect the runtime", "check everything",
