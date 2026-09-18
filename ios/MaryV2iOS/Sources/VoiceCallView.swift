@@ -152,7 +152,7 @@ struct VoiceCallView: View {
     }
 
     private var callSubtitle: String {
-        if !app.voiceServerAvailable { return "Voice unavailable · text still works" }
+        if !app.voiceServerAvailable { return "Core voice unavailable · iPhone voice fallback ready" }
         if app.playback.isPlaying { return "Mary is speaking" }
         if app.voice.isListening { return "Listening to you" }
         if app.voice.isTranscribing { return "Transcribing on iPhone" }
