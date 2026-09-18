@@ -2852,6 +2852,208 @@ class MaryCoreService:
                 self.enforce_execution_policy("continuity.maintenance")
                 return _json_safe(self.mary.experiential_continuity.maintenance())
 
+            if action.action == "continuity.plan.status":
+                self._settle_terminal_continuity_links()
+                plan_id = str(values.get("plan_id") or "").strip()
+                if plan_id:
+                    plan = self.mary.executive_plans.get(plan_id)
+                    return _json_safe({
+                        "plan": self._plan_view(plan),
+                        "status": self.mary.executive_plans.status(),
+                    })
+                plans = list(self.mary.executive_plans.active())[:20]
+                return _json_safe({
+                    "plans": [self._plan_view(plan) for plan in plans],
+                    "status": self.mary.executive_plans.status(),
+                    "task_links": len(self._continuity_task_links),
+                    "policy": (
+                        "durable explicit progress only; plan state does not grant "
+                        "tool/node execution permission"
+                    ),
+                })
+
+            if action.action == "continuity.plan.create":
+                raw_steps = values.get("steps") or []
+                raw_tags = values.get("tags") or []
+                if not isinstance(raw_steps, (list, tuple)):
+                    raise ValueError("plan steps must be a list")
+                if not isinstance(raw_tags, (list, tuple)):
+                    raise ValueError("plan tags must be a list")
+                plan = self.mary.executive_plans.create(
+                    objective=str(values.get("objective") or "")[:1600],
+                    source=f"protocol:{action.device_id}",
+                    steps=[str(item)[:800] for item in list(raw_steps)[:64]],
+                    priority=max(0.0, min(1.0, float(values.get("priority", .5)))),
+                    goal_id=str(values.get("goal_id") or "")[:160],
+                    workflow_id=str(values.get("workflow_id") or "")[:160],
+                    parent_plan_id=str(values.get("parent_plan_id") or "")[:160],
+                    tags=[str(item)[:80] for item in list(raw_tags)[:24]],
+                )
+                return _json_safe({
+                    "ok": True,
+                    "plan": self._plan_view(plan),
+                    "execution_performed": False,
+                })
+
+            if action.action == "continuity.plan.add_step":
+                def bounded_list(name: str, *, limit: int, width: int) -> list[str]:
+                    raw = values.get(name) or []
+                    if not isinstance(raw, (list, tuple)):
+                        raise ValueError(f"{name} must be a list")
+                    return [
+                        str(item).strip()[:width]
+                        for item in list(raw)[:limit]
+                        if str(item).strip()
+                    ]
+
+                step = self.mary.executive_plans.add_step(
+                    str(values.get("plan_id") or ""),
+                    title=str(values.get("title") or "")[:800],
+                    depends_on=bounded_list("depends_on", limit=50, width=180),
+                    blockers=bounded_list("blockers", limit=32, width=240),
+                    required_capabilities=bounded_list(
+                        "required_capabilities", limit=16, width=160
+                    ),
+                    required_approvals=bounded_list(
+                        "required_approvals", limit=16, width=160
+                    ),
+                    verification=bounded_list("verification", limit=24, width=300),
+                    skill_id=str(values.get("skill_id") or "")[:180],
+                )
+                return _json_safe({
+                    "ok": True,
+                    "step": self._plan_step_view(step),
+                    "plan": self._plan_view(
+                        self.mary.executive_plans.get(str(values.get("plan_id") or ""))
+                    ),
+                    "execution_performed": False,
+                })
+
+            if action.action == "continuity.plan.satisfy_approval":
+                plan_id = str(values.get("plan_id") or "")
+                step_id = str(values.get("step_id") or "")
+                approval = str(values.get("approval") or "").strip()[:160]
+                if not approval:
+                    raise ValueError("approval is required")
+                step = self.mary.executive_plans.satisfy_approval(
+                    plan_id, step_id, approval
+                )
+                return _json_safe({
+                    "ok": True,
+                    "step": self._plan_step_view(step),
+                    "execution_performed": False,
+                    "authority": f"explicit runtime action from {action.device_id}",
+                })
+
+            if action.action == "continuity.plan.resolve_blocker":
+                plan_id = str(values.get("plan_id") or "")
+                step_id = str(values.get("step_id") or "")
+                blocker = str(values.get("blocker") or "").strip()[:240]
+                if not blocker:
+                    raise ValueError("blocker is required")
+                step = self.mary.executive_plans.resolve_blocker(
+                    plan_id, step_id, blocker
+                )
+                return _json_safe({
+                    "ok": True,
+                    "step": self._plan_step_view(step),
+                    "plan": self._plan_view(self.mary.executive_plans.get(plan_id)),
+                    "execution_performed": False,
+                })
+
+            if action.action == "continuity.plan.next":
+                self._settle_terminal_continuity_links()
+                return _json_safe({
+                    "next_actions": self.mary.executive_plans.next_actions(
+                        available_capabilities=self._plan_capabilities(),
+                        granted_approvals=(),
+                        limit=max(1, min(32, int(values.get("limit", 8)))),
+                    ),
+                    "policy": (
+                        "readiness only; node execution still requires a separate "
+                        "explicit dispatch and device-local permission"
+                    ),
+                })
+
+            if action.action == "continuity.plan.dispatch":
+                self._settle_terminal_continuity_links()
+                plan_id = str(values.get("plan_id") or "").strip()
+                step_id = str(values.get("step_id") or "").strip()
+                plan = self.mary.executive_plans.get(plan_id)
+                step = self.mary.executive_plans.get_step(plan_id, step_id)
+
+                if plan.status in {"paused", "completed", "failed", "cancelled"}:
+                    raise ValueError(f"plan is not dispatchable: {plan.status}")
+                if step.status not in {"pending", "ready"}:
+                    raise ValueError(f"plan step is not dispatchable: {step.status}")
+                if step.blockers:
+                    raise ValueError("plan step has unresolved blockers")
+                if step.required_approvals:
+                    raise PermissionError(
+                        "plan step still requires explicit approval: "
+                        + ", ".join(step.required_approvals)
+                    )
+                completed_steps = {
+                    item.id for item in plan.steps if item.status == "completed"
+                }
+                if not set(step.depends_on).issubset(completed_steps):
+                    raise ValueError("plan step dependencies are not complete")
+                capabilities = tuple(step.required_capabilities)
+                if len(capabilities) != 1:
+                    raise ValueError(
+                        "dispatchable plan steps must name exactly one typed capability"
+                    )
+                capability = capabilities[0]
+
+                skill_id = str(step.skill_id or "")
+                if skill_id:
+                    skill = self.mary.procedural_skills.get(skill_id)
+                    if skill.status != "approved":
+                        raise PermissionError("linked procedural skill is not creator-approved")
+                    if not set(skill.required_capabilities).issubset({capability}):
+                        raise ValueError(
+                            "linked skill requires capabilities outside this atomic plan step"
+                        )
+
+                task_args = values.get("args") or {}
+                if not isinstance(task_args, dict):
+                    raise ValueError("plan dispatch args must be a JSON object")
+                task = self.device_tasks.enqueue(
+                    self.mary.node_registry,
+                    capability=capability,
+                    intent=step.title,
+                    args=dict(task_args),
+                    requester_device_id=action.device_id,
+                    preferred_node_id=(
+                        str(values.get("preferred_node_id") or "").strip() or None
+                    ),
+                )
+                started = self.mary.executive_plans.start_step(
+                    plan_id,
+                    step_id,
+                    node_id=str(getattr(task, "selected_node_id", "") or ""),
+                )
+                self._continuity_task_links[str(task.task_id)] = {
+                    "plan_id": plan_id,
+                    "step_id": step_id,
+                    "skill_id": skill_id,
+                }
+                return _json_safe({
+                    "ok": True,
+                    "task": task.to_dict(),
+                    "step": self._plan_step_view(started),
+                    "plan": self._plan_view(self.mary.executive_plans.get(plan_id)),
+                    "execution": {
+                        "queued": True,
+                        "authorized_by_core": False,
+                        "device_permission_required": True,
+                        "policy": (
+                            "explicit typed plan dispatch; selected node retains "
+                            "local execution permission"
+                        ),
+                    },
+                })
+
             if action.action == "llm.probe":
                 return _json_safe(self._probe_llm_provider(values))
 
