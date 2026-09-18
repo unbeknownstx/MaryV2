@@ -14,8 +14,8 @@ def _service_with_continuity(tmp_path: Path):
         name="local knowledge lookup",
         description="Use one bounded node-local knowledge search.",
         source="creator",
-        required_capabilities=("knowledge.local.search",),
-        required_permissions=("knowledge.local.search",),
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
         steps=("search local pack",),
         verification=("typed result returns",),
     )
@@ -26,7 +26,7 @@ def _service_with_continuity(tmp_path: Path):
     step = plans.add_step(
         plan.id,
         title="Search the local knowledge pack",
-        required_capabilities=("knowledge.local.search",),
+        required_capabilities=("knowledge.search",),
         verification=("typed result returns",),
         skill_id=skill.id,
     )
@@ -52,7 +52,7 @@ def test_terminal_task_settles_plan_skill_and_skill_specific_competence(tmp_path
     service, plan, step, skill = _service_with_continuity(tmp_path)
     task = SimpleNamespace(
         task_id="task-1",
-        capability="knowledge.local.search",
+        capability="knowledge.search",
         operation="search",
         selected_node_id="mac",
         status="completed",
@@ -71,7 +71,7 @@ def test_terminal_task_settles_plan_skill_and_skill_specific_competence(tmp_path
     assert updated_skill.failure_count == 0
 
     competence = service.mary.competence.find(
-        capability="knowledge.local.search",
+        capability="knowledge.search",
         node_id="mac",
         skill_id=skill.id,
     )[0]
@@ -83,7 +83,7 @@ def test_failed_linked_task_waits_for_creator_recovery_instead_of_erasing_plan(t
     service, plan, step, skill = _service_with_continuity(tmp_path)
     task = SimpleNamespace(
         task_id="task-1",
-        capability="knowledge.local.search",
+        capability="knowledge.search",
         operation="search",
         selected_node_id="mac",
         status="failed",
