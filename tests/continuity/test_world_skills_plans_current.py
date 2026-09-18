@@ -159,3 +159,42 @@ def test_executive_plan_graph_survives_blockers_dependencies_and_approvals(tmp_p
     plans.complete_step(plan.id, patch.id, result="done", evidence_ids=("verify_2",))
     assert plans.get(plan.id).status == "completed"
     assert plans.status()["active_plans"] == 0
+
+
+def test_plan_wait_and_restart_recovery_preserve_unfinished_work(tmp_path: Path):
+    plans = ExecutivePlanGraph(tmp_path / "plans-recovery.json")
+    plan = plans.create(
+        objective="Use a home node without losing progress",
+        source="creator",
+    )
+    step = plans.add_step(
+        plan.id,
+        title="Run local knowledge search",
+        required_capabilities=("knowledge.local.search",),
+        verification=("typed result returns",),
+    )
+    plans.start_step(plan.id, step.id, node_id="mac")
+
+    recovered = plans.recover_running_steps()
+    assert recovered == 1
+    after_restart = plans.get_step(plan.id, step.id)
+    assert after_restart.status == "waiting"
+    assert after_restart.assigned_node_id == ""
+    assert after_restart.blockers
+    assert plans.get(plan.id).status == "waiting"
+
+    blocker = after_restart.blockers[0]
+    ready = plans.resolve_blocker(plan.id, step.id, blocker)
+    assert ready.status == "ready"
+    assert plans.get(plan.id).status == "active"
+
+    plans.start_step(plan.id, step.id, node_id="mac")
+    waiting = plans.wait_step(
+        plan.id,
+        step.id,
+        reason="node timed out before terminal evidence",
+        evidence_ids=("task-timeout",),
+    )
+    assert waiting.status == "waiting"
+    assert "task-timeout" in waiting.evidence_ids
+    assert plans.get(plan.id).status == "waiting"
