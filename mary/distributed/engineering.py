@@ -411,6 +411,15 @@ class EngineeringWorker:
                 "mixes her proposal with unrelated local changes."
             )
 
+    def _require_allowed_branch(self) -> None:
+        branch = self._current_branch()
+        allowed = self._allowed_branch()
+        if branch != allowed:
+            raise RuntimeError(
+                f"Engineering repair is restricted to branch {allowed!r}; "
+                f"current branch is {branch!r}."
+            )
+
     def git_status(self) -> dict[str, Any]:
         run = self._git("status", "--short", "--untracked-files=normal")
         return {
@@ -606,13 +615,17 @@ class EngineeringWorker:
 
         remote = self._allowed_remote()
         remote_ref = self._git("rev-parse", f"refs/remotes/{remote}/{allowed_branch}")
-        if remote_ref.returncode == 0:
-            tracked = remote_ref.stdout.strip().lower()
-            if tracked and tracked != self._last_applied_base_sha:
-                raise RuntimeError(
-                    f"Local {allowed_branch} is not synchronized with {remote}/{allowed_branch}; "
-                    "sync it manually before Mary creates a commit."
-                )
+        if remote_ref.returncode != 0:
+            raise RuntimeError(
+                f"Cannot verify {remote}/{allowed_branch}. Fetch/sync the canonical remote "
+                "manually before Mary creates a publishable commit."
+            )
+        tracked = remote_ref.stdout.strip().lower()
+        if tracked != self._last_applied_base_sha:
+            raise RuntimeError(
+                f"Local {allowed_branch} is not synchronized with {remote}/{allowed_branch}; "
+                "sync it manually before Mary creates a commit."
+            )
 
         dirty = self._git("status", "--porcelain", "--untracked-files=normal")
         if dirty.returncode != 0:
@@ -776,6 +789,7 @@ class EngineeringWorker:
 
     def repair_plan(self, task: str, max_files: int = 6) -> dict[str, Any]:
         self._require_clean_checkout()
+        self._require_allowed_branch()
         inspection = self.inspect(task, max_files=max_files)
         evidence = list(inspection.get("evidence") or [])
         if not evidence:
