@@ -6,6 +6,12 @@ device executor.
 This document defines the intended integration boundary only. No OpenHands
 runtime is added to Mary Core by the 13.4 MCP work.
 
+Mary now also has a native bounded local engineering worker at
+`mary.distributed.engineering`. That worker implements the typed/default-deny
+repair loop without OpenHands. OpenHands remains a future stronger sandbox
+backend and must obey the same Core authority, proposal, secret-isolation and
+explicit repository-write boundaries.
+
 ## Role
 
 OpenHands may later serve as a **separate sandboxed software-engineering
