@@ -196,7 +196,7 @@ def test_typed_test_runner_uses_disposable_sandbox_not_live_checkout(tmp_path, m
     result = worker.run_targeted_tests(["tests/test_sample.py"])
 
     assert result["ok"] is True
-    assert result["sandboxed"] is True
+    assert result["workspace_isolated"] is True
     assert observed["shell"] is False
     assert observed["argv"][:3] == [sys.executable, "-m", "pytest"]
 
