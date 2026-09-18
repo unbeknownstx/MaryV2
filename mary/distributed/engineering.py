@@ -582,7 +582,16 @@ class EngineeringWorker:
         for path, proposed, _rel in prepared:
             path.write_text(proposed, encoding="utf-8")
         self._last_applied_paths = [rel for _path, _proposed, rel in prepared]
-        self._last_applied_base_sha = proposal_base_sha or self._head_sha()
+        if proposal_base_sha:
+            self._last_applied_base_sha = proposal_base_sha
+        else:
+            try:
+                self._last_applied_base_sha = self._head_sha()
+            except RuntimeError:
+                # Direct in-process apply can still be useful in isolated unit
+                # compositions; commit/push remain unavailable without a real
+                # Git base captured by the normal proposal flow.
+                self._last_applied_base_sha = ""
         self._last_commit_sha = ""
         if proposal_id:
             self._proposals.pop(str(proposal_id), None)
