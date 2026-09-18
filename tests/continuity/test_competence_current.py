@@ -46,7 +46,7 @@ def test_competence_accumulates_durable_evidence_without_granting_authority(tmp_
 
     for index in range(10):
         ledger.record(
-            capability="knowledge.local.search",
+            capability="knowledge.search",
             operation="search",
             node_id="mac",
             success=index != 7,
@@ -55,7 +55,7 @@ def test_competence_accumulates_durable_evidence_without_granting_authority(tmp_
         )
 
     row = ledger.find(
-        capability="knowledge.local.search",
+        capability="knowledge.search",
         operation="search",
         node_id="mac",
     )[0]
@@ -67,7 +67,7 @@ def test_competence_accumulates_durable_evidence_without_granting_authority(tmp_
     assert len(row.evidence_ids) == 10
 
     summary = ledger.summary_for(
-        "knowledge.local.search",
+        "knowledge.search",
         node_ids=("mac",),
     )
     assert summary[0]["node_id"] == "mac"
