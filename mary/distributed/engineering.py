@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+from uuid import uuid4
 
 from mary.distributed.capabilities import CapabilityDescriptor
 from mary.llm.interface import (
@@ -149,10 +150,21 @@ def sanitize_engineering_task_args(capability: str, args: dict[str, Any] | None)
         max_files = max(1, min(12, int(values.get("max_files", 6) or 6)))
         return {"task": task, "max_files": max_files}
 
-    if name in {"engineering.patch.propose", "engineering.repo.apply"}:
+    if name == "engineering.patch.propose":
         raw_changes = values.get("changes")
         if not isinstance(raw_changes, list) or not raw_changes:
             raise ValueError(f"{name} requires a non-empty changes array.")
+        if len(raw_changes) > 12:
+            raise ValueError("Engineering task may change at most 12 files.")
+        return {"changes": [_sanitize_change(item) for item in raw_changes]}
+
+    if name == "engineering.repo.apply":
+        proposal_id = _clean_text(values.get("proposal_id"), 120)
+        if proposal_id:
+            return {"proposal_id": proposal_id}
+        raw_changes = values.get("changes")
+        if not isinstance(raw_changes, list) or not raw_changes:
+            raise ValueError("engineering.repo.apply requires proposal_id or exact changes.")
         if len(raw_changes) > 12:
             raise ValueError("Engineering task may change at most 12 files.")
         return {"changes": [_sanitize_change(item) for item in raw_changes]}
@@ -177,7 +189,7 @@ def sanitize_engineering_result(capability: str, result: dict[str, Any] | None) 
     allowed = {
         "ok", "capability", "summary", "base_sha", "files", "changes", "diff",
         "status", "checks", "stdout", "stderr", "returncode", "worker",
-        "model", "runtime", "warnings", "applied",
+        "model", "runtime", "warnings", "applied", "proposal_id",
     }
     output = {key: values[key] for key in allowed if key in values}
     for key in ("summary", "diff", "stdout", "stderr"):
@@ -210,6 +222,8 @@ class EngineeringWorker:
         self.root = root.resolve()
         if not (self.root / ".git").exists():
             raise RuntimeError("Engineering repository must be a Git checkout.")
+        self._proposals: dict[str, list[dict[str, Any]]] = {}
+        self._proposal_order: list[str] = []
 
     def _path(self, relpath: str) -> Path:
         clean = _safe_relpath(relpath)
@@ -350,7 +364,30 @@ class EngineeringWorker:
             "diff": "\n".join(diffs)[:_MAX_RESULT_CHARS],
         }
 
-    def apply(self, changes: list[dict[str, Any]]) -> dict[str, Any]:
+    def _remember_proposal(self, changes: list[dict[str, Any]]) -> str:
+        proposal_id = f"engineering_proposal_{uuid4().hex}"
+        self._proposals[proposal_id] = [dict(item) for item in changes]
+        self._proposal_order.append(proposal_id)
+        while len(self._proposal_order) > 20:
+            stale = self._proposal_order.pop(0)
+            self._proposals.pop(stale, None)
+        return proposal_id
+
+    def apply(
+        self,
+        changes: list[dict[str, Any]] | None = None,
+        *,
+        proposal_id: str = "",
+    ) -> dict[str, Any]:
+        if proposal_id:
+            stored = self._proposals.get(str(proposal_id))
+            if stored is None:
+                raise KeyError("Engineering proposal is unknown or expired on this node.")
+            changes = [dict(item) for item in stored]
+        changes = list(changes or [])
+        if not changes:
+            raise ValueError("No engineering changes were supplied for repository apply.")
+
         prepared: list[tuple[Path, str, str]] = []
         manifest: list[dict[str, str]] = []
         for change in changes:
@@ -373,11 +410,17 @@ class EngineeringWorker:
             })
         for path, proposed, _rel in prepared:
             path.write_text(proposed, encoding="utf-8")
+        if proposal_id:
+            self._proposals.pop(str(proposal_id), None)
+            self._proposal_order = [
+                item for item in self._proposal_order if item != str(proposal_id)
+            ]
         return {
             "ok": True,
             "capability": "engineering.repo.apply",
             "summary": f"Applied exactly {len(prepared)} creator-authorized source files. No commit, push, or deploy was performed.",
             "applied": True,
+            "proposal_id": str(proposal_id or ""),
             "changes": manifest,
         }
 
@@ -478,11 +521,13 @@ class EngineeringWorker:
             "changes": [],
             "diff": "",
         }
+        proposal_id = self._remember_proposal(changes) if changes else ""
         return {
             "ok": True,
             "capability": "engineering.repair.plan",
             "summary": _clean_text(payload.get("summary") or proposal.get("summary"), 1200),
             "base_sha": inspection.get("base_sha", ""),
+            "proposal_id": proposal_id,
             "files": inspection.get("files", []),
             "changes": proposal.get("changes", []),
             "diff": proposal.get("diff", ""),
@@ -505,7 +550,10 @@ class EngineeringWorker:
         if name == "engineering.patch.propose":
             return self.propose(values["changes"])
         if name == "engineering.repo.apply":
-            return self.apply(values["changes"])
+            return self.apply(
+                values.get("changes"),
+                proposal_id=str(values.get("proposal_id") or ""),
+            )
         if name == "engineering.tests.targeted":
             return self.run_targeted_tests(values["paths"])
         if name == "engineering.tests.full":
