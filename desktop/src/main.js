@@ -203,7 +203,9 @@ function projectProductShell() {
     ? providerDisplayName(voice.provider || 'voice')
     : 'Text ready';
   const voiceDetail = voice.enabled
-    ? (voice.local ? 'Local voice' : 'Fast voice + local fallback')
+    ? (voice.local
+      ? 'Local voice'
+      : 'Server voice · text remains available if voice degrades')
     : 'Voice optional · chat remains available';
 
   const presenceState = titleCase(conversationState || 'idle');
@@ -1851,8 +1853,8 @@ function renderDiagnostics() {
     <div class="workspace-panel"><h3>Perception Boundary</h3><div class="data-row"><span>Recent observations</span><strong>${(perception.recent || []).length}</strong></div><p>Perception providers describe objective observations. Mary interprets them through her own represented state; raw media is not stored here.</p></div>
   </div>
   <div class="workspace-grid">
-    <div class="workspace-panel"><h3>Hybrid Memory Retrieval</h3><div class="data-row"><span>Mode</span><strong>${escapeHtml(retrieval.mode || 'auto')}</strong></div><div class="data-row"><span>Embedding model</span><strong>${escapeHtml(retrieval.embedding_model || '—')}</strong></div><div class="data-row"><span>Vector records</span><strong>${vectorIndex.records ?? vectorIndex.count ?? 0}</strong></div><div class="data-row"><span>Last query used vectors</span><strong>${retrieval.last_query_used_vectors ? 'YES' : 'NO'}</strong></div><p>Lexical and semantic similarity retrieve candidates. Existing canonical memory/provenance still decides what is true.</p></div>
-    <div class="workspace-panel"><h3>Compute Nodes</h3>${nodeItems.length ? nodeItems.map((node) => `<div class="data-row"><span>${escapeHtml(node.node_id || 'node')}</span><strong>${node.connected ? 'ONLINE' : 'OFFLINE'}</strong></div><small>${escapeHtml(Object.entries(node.capabilities || {}).filter(([,info]) => info?.available).map(([name]) => name).slice(0,8).join(' · ') || 'No active capabilities')}</small>`).join('') : '<div class="workspace-empty">No compute nodes registered.</div>'}<p>13.1 starts with the current host; future cloud/home agents can register through the same capability model.</p></div>
+    <div class="workspace-panel"><h3>Hybrid Memory Retrieval</h3><div class="data-row"><span>Mode</span><strong>${escapeHtml(retrieval.mode || 'auto')}</strong></div><div class="data-row"><span>Embedding model</span><strong>${escapeHtml(retrieval.embedding_model || '—')}</strong></div><div class="data-row"><span>Vector index</span><strong>${Number(vectorIndex.records ?? vectorIndex.count ?? vectorIndex.vectors ?? 0) > 0 ? `${Number(vectorIndex.records ?? vectorIndex.count ?? vectorIndex.vectors ?? 0)} ready` : 'Not built'}</strong></div><div class="data-row"><span>Last query used vectors</span><strong>${retrieval.last_query_used_vectors ? 'YES' : 'NO'}</strong></div><p>${Number(vectorIndex.records ?? vectorIndex.count ?? vectorIndex.vectors ?? 0) > 0 ? 'Semantic vectors are available as a candidate-retrieval layer.' : 'Structured and lexical recall remain active; vectors are an optional derived index.'} Canonical memory/provenance still decides what is true.</p></div>
+    <div class="workspace-panel"><h3>Compute Nodes</h3>${nodeItems.length ? nodeItems.map((node) => `<div class="data-row"><span>${escapeHtml(node.node_id || 'node')}</span><strong>${node.connected ? 'ONLINE' : 'OFFLINE'}</strong></div><small>${escapeHtml(Object.entries(node.capabilities || {}).filter(([,info]) => info?.available).map(([name]) => name).slice(0,8).join(' · ') || 'No active capabilities')}</small>`).join('') : '<div class="workspace-empty">No external compute connected. Mary continues on the Core provider route.</div>'}<p>Capability nodes are replaceable workers only; identity, memory, relationship state and permissions remain Core-owned.</p></div>
   </div>
   <div class="workspace-panel"><h3>Mary Evaluation Set</h3><div class="data-row"><span>Explicit ratings</span><strong>${feedback.records ?? 0}</strong></div><div class="data-row"><span>Positive / negative</span><strong>${feedback.ratings?.positive ?? 0} / ${feedback.ratings?.negative ?? 0}</strong></div><p>Only explicit creator feedback belongs here. It is private future evaluation/training data and never character-state authority.</p></div>
   <div class="section-title">ROLLING METRICS</div>
