@@ -21,6 +21,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from .context_governor import ContextEvidenceGovernor
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -63,6 +65,7 @@ class CognitiveWorkspace:
 
     def __init__(self, mary: Any) -> None:
         self.mary = mary
+        self.context_governor = ContextEvidenceGovernor()
 
     def build(
         self,
@@ -254,6 +257,34 @@ class CognitiveWorkspace:
             [],
         )
         knowledge_status = _safe_call(lambda: dict(self.mary.knowledge_fabric.status() or {}), {})
+        knowledge_evidence_rows = [
+            {
+                "pack_id": item.pack_id,
+                "title": _clip(item.title, 240),
+                "snippet": _clip(item.snippet, 1200),
+                "source": _clip(item.source, 300),
+                "score": item.score,
+                "locator": _clip(item.locator, 500),
+                "content_hash": _clip(item.content_hash, 128),
+            }
+            for item in knowledge_hits[:knowledge_limit]
+        ]
+
+        # The workspace can retrieve more evidence than a small local model should
+        # see in one prompt.  Govern only model-facing candidate records; owning
+        # stores retain every omitted item and their authority semantics.
+        governed, context_budget_report = self.context_governor.govern({
+            "world": world_rows,
+            "plans": plan_rows,
+            "skills": skill_rows,
+            "compute": demonstrated,
+            "knowledge": knowledge_evidence_rows,
+        })
+        world_rows = governed.get("world", [])
+        plan_rows = governed.get("plans", [])
+        skill_rows = governed.get("skills", [])
+        demonstrated = governed.get("compute", [])
+        knowledge_evidence_rows = governed.get("knowledge", [])
 
         identity = {
             "name": str(getattr(self.mary.identity, "name", "Mary") or "Mary"),
@@ -353,18 +384,7 @@ class CognitiveWorkspace:
             },
             knowledge={
                 "routes": knowledge_routes[:knowledge_limit],
-                "evidence": [
-                    {
-                        "pack_id": item.pack_id,
-                        "title": _clip(item.title, 240),
-                        "snippet": _clip(item.snippet, 1200),
-                        "source": _clip(item.source, 300),
-                        "score": item.score,
-                        "locator": _clip(item.locator, 500),
-                        "content_hash": _clip(item.content_hash, 128),
-                    }
-                    for item in knowledge_hits[:knowledge_limit]
-                ],
+                "evidence": knowledge_evidence_rows,
                 "status": knowledge_status,
                 "authority": (
                     "retrieved evidence substrate only; hits are not memory, "
@@ -380,6 +400,7 @@ class CognitiveWorkspace:
                 "identity_owner": False,
                 "memory_owner": False,
                 "tool_authority": False,
+                "context_budget": context_budget_report,
                 "purpose": "bind the smallest relevant cross-system working set for cognition",
             },
         )

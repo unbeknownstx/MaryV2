@@ -128,3 +128,9 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
     assert snapshot["policy"]["persistent"] is False
     assert snapshot["policy"]["identity_owner"] is False
     assert snapshot["policy"]["tool_authority"] is False
+    budget = snapshot["policy"]["context_budget"]
+    assert budget["authority"].startswith("prompt-context budget only")
+    assert budget["used_characters"] <= budget["total_budget_characters"]
+    assert {row["lane"] for row in budget["lanes"]} == {
+        "world", "plans", "skills", "compute", "knowledge"
+    }

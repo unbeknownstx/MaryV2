@@ -140,21 +140,30 @@ class ContextEvidenceGovernor:
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
         """Apply independent lane budgets plus one cumulative turn budget."""
 
-        rules = dict(lane_rules or {})
+        normalized_lanes: dict[str, list[dict[str, Any]]] = {}
+        for lane, candidates in lanes.items():
+            name = str(lane or "general").strip().casefold()
+            normalized_lanes.setdefault(name, []).extend(
+                dict(item) for item in candidates if isinstance(item, dict)
+            )
+        rules = {
+            str(lane or "general").strip().casefold(): dict(rule or {})
+            for lane, rule in dict(lane_rules or {}).items()
+        }
         selected: dict[str, list[dict[str, Any]]] = {}
         reports: list[ContextLaneReport] = []
         remaining = self.total_characters
         # Authority-bearing operational lanes come before large reference text.
         order = ["world", "plans", "skills", "compute", "knowledge"]
-        order.extend(name for name in lanes if name not in order)
+        order.extend(name for name in normalized_lanes if name not in order)
 
         for lane in order:
-            if lane not in lanes:
+            if lane not in normalized_lanes:
                 continue
             rule = dict(rules.get(lane) or {})
             rows, report = self.govern_lane(
                 lane,
-                lanes[lane],
+                normalized_lanes[lane],
                 score_key=rule.get("score_key"),
                 minimum_score=rule.get("minimum_score"),
                 remaining_total=remaining,
