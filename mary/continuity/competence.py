@@ -50,6 +50,7 @@ class CompetenceRecord:
     successes: int
     failures: int
     verified_successes: int
+    latency_samples: int
     mean_latency_ms: float | None
     reliability: float
     evidence_strength: float
@@ -158,6 +159,7 @@ class CompetenceLedger:
                     "successes": 0,
                     "failures": 0,
                     "verified_successes": 0,
+                    "latency_samples": 0,
                     "mean_latency_ms": None,
                     "reliability": 0.5,
                     "evidence_strength": 0.0,
@@ -179,6 +181,7 @@ class CompetenceLedger:
             )
 
             previous_latency = row.get("mean_latency_ms")
+            latency_samples = int(row.get("latency_samples", 0) or 0)
             clean_latency: float | None = None
             if latency_ms is not None:
                 try:
@@ -186,15 +189,15 @@ class CompetenceLedger:
                 except (TypeError, ValueError):
                     clean_latency = None
             if clean_latency is not None:
-                if previous_latency is None:
+                if previous_latency is None or latency_samples <= 0:
                     mean_latency = clean_latency
                 else:
-                    # Incremental mean across all attempts is acceptable here:
-                    # latency is only an advisory signal, never route authority.
                     mean_latency = (
-                        float(previous_latency) * max(0, attempts - 1) + clean_latency
-                    ) / attempts
+                        float(previous_latency) * latency_samples + clean_latency
+                    ) / (latency_samples + 1)
+                latency_samples += 1
                 row["mean_latency_ms"] = round(mean_latency, 2)
+            row["latency_samples"] = latency_samples
 
             reliability, strength = self._posterior(successes, failures)
             row.update({
@@ -282,6 +285,7 @@ class CompetenceLedger:
                 "verified_successes": item.verified_successes,
                 "reliability": item.reliability,
                 "evidence_strength": item.evidence_strength,
+                "latency_samples": item.latency_samples,
                 "mean_latency_ms": item.mean_latency_ms,
                 "last_success": item.last_success,
                 "last_observed_at": item.last_observed_at,
@@ -312,6 +316,7 @@ class CompetenceLedger:
         values.setdefault("skill_id", "")
         values.setdefault("node_id", "")
         values.setdefault("verified_successes", 0)
+        values.setdefault("latency_samples", 0)
         values.setdefault("mean_latency_ms", None)
         values.setdefault("reliability", 0.5)
         values.setdefault("evidence_strength", 0.0)
