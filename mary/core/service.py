@@ -3118,11 +3118,11 @@ class MaryCoreService:
                     "plan": self._plan_view(self.mary.executive_plans.get(plan_id)),
                     "execution": {
                         "queued": True,
-                        "authorized_by_core": False,
-                        "device_permission_required": True,
+                        "core_execution_gate_passed": True,
+                        "device_permission_enforced": True,
                         "policy": (
-                            "explicit typed plan dispatch; selected node retains "
-                            "local execution permission"
+                            "explicit typed plan dispatch; Core sleep/offline gate "
+                            "and selected-node local permission both passed before queueing"
                         ),
                     },
                 })
