@@ -4,8 +4,9 @@
 
 - Added a default-deny local engineering capability family for repository inspection, local-model repair planning, exact patch proposals, separately authorized repository apply, Git status/diff and workspace-isolated validation.
 - Wired `Fix yourself`, repair status, explicit apply and verification phrases through Mary Core to the selected capability node without adding a generic shell or a second Mary.
-- Repair plans use the node's existing LocalRuntimeProvider, keep exact proposals node-local, bind writes to source SHA-256, and never commit/push/merge/deploy.
-- Sandboxed test/structure runners copy the working tree while excluding Git metadata, credentials, Mary durable data, virtualenvs, caches and generated outputs.
+- Repair plans use the node's existing LocalRuntimeProvider, keep exact proposals node-local, and bind writes to source SHA-256.
+- Added separate verified-commit and non-force-push gates. Push is unavailable by default, requires a local permission plus `MARY_ENGINEERING_PUSH_ENABLED=true`, and may trigger external CI/CD; merge/force-push/direct-deploy remain absent.
+- Workspace-isolated test/structure runners copy the working tree while excluding Git metadata, credentials, Mary durable data, virtualenvs, symlinks, caches and generated outputs; this protects the live checkout but is not claimed as an OS/VM containment boundary.
 - Added Windows/macOS operator instructions and dedicated engineering-worker regression coverage.
 
 ## Unreleased — 2026-09-17 — Cross-surface Core cohesion
