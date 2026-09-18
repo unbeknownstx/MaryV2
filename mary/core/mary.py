@@ -3532,12 +3532,28 @@ class Mary:
 
         repository_map = dict(tools.get("repository_map", {}) or {})
         code_exec = bool(repository_map.get("execution"))
+        node_rows = list(nodes.get("nodes", []) or [])
+        engineering_nodes = [
+            item for item in node_rows
+            if bool(item.get("connected"))
+            and bool(
+                dict(dict(item.get("capabilities", {}) or {}).get(
+                    "engineering.repo.inspect",
+                    {},
+                ) or {}).get("available")
+            )
+        ]
+        engineering_ready = bool(engineering_nodes)
         limitation = (
-            "A repository/code execution capability is connected."
-            if code_exec
+            "A bounded repository engineering worker is connected through the capability fabric."
+            if engineering_ready
             else (
-                "I do not currently have executable repository/file inspection on this Core surface, "
-                "so I cannot truthfully certify source files, hooks, or background threads from here."
+                "A repository/code execution capability is connected."
+                if code_exec
+                else (
+                    "I do not currently have executable repository/file inspection on this Core surface, "
+                    "so I cannot truthfully certify source files, hooks, or background threads from here."
+                )
             )
         )
 
@@ -3549,7 +3565,8 @@ class Mary:
             f"{pending_tools} pending approval; memory has "
             f"{int(counts.get('episodic') or 0)} episodic, "
             f"{int(counts.get('semantic') or 0)} semantic, and "
-            f"{int(counts.get('working') or 0)} working records; realtime phase {phase}. "
+            f"{int(counts.get('working') or 0)} working records; realtime phase {phase}; "
+            f"bounded engineering workers {len(engineering_nodes)}. "
             + limitation
         )
 
