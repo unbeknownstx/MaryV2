@@ -186,16 +186,17 @@ class KnowledgeFabric:
             clean_location = str(resolved)
         if clean_kind == "kiwix":
             self._validate_local_endpoint(clean_location)
-        if clean_kind in {"qdrant", "qdrant_edge"}:
+        qdrant_active = (
+            clean_kind in {"qdrant", "qdrant_edge"}
+            and clean_mode in {"vector", "hybrid"}
+        )
+        if qdrant_active:
             self._validate_qdrant_endpoint(clean_location)
 
         identifier = _text(pack_id, 160) or f"pack_{uuid4().hex}"
         now = _now()
         safe_metadata = self._safe_metadata(metadata)
-        if (
-            clean_kind in {"qdrant", "qdrant_edge"}
-            and clean_mode in {"vector", "hybrid"}
-        ):
+        if qdrant_active:
             self._validate_qdrant_metadata(safe_metadata)
         payload = self._load()
         rows = list(payload.get("packs") or [])
