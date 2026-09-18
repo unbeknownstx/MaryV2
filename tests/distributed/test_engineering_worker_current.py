@@ -201,6 +201,28 @@ def test_typed_test_runner_uses_disposable_sandbox_not_live_checkout(tmp_path, m
     assert observed["argv"][:3] == [sys.executable, "-m", "pytest"]
 
 
+def test_remote_repository_apply_requires_node_local_proposal_id():
+    with pytest.raises(ValueError, match="proposal_id"):
+        sanitize_engineering_task_args(
+            "engineering.repo.apply",
+            {
+                "changes": [
+                    {
+                        "path": "mary/sample.py",
+                        "expected_sha256": "0" * 64,
+                        "edits": [{"old": "x", "new": "y"}],
+                    }
+                ]
+            },
+        )
+
+    sanitized = sanitize_engineering_task_args(
+        "engineering.repo.apply",
+        {"proposal_id": "engineering_proposal_abc123"},
+    )
+    assert sanitized == {"proposal_id": "engineering_proposal_abc123"}
+
+
 def test_engineering_args_reject_arbitrary_paths_and_commands():
     with pytest.raises(ValueError):
         sanitize_engineering_task_args(
