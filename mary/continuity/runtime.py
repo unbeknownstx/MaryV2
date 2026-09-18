@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .cancellation import GenerationCancellationRegistry
+from .competence import CompetenceLedger
 from .experience import ExperienceLedger
 from .lanes import CognitionLaneRouter
 from .memory_lab import MemoryEvaluationSuite
@@ -38,6 +39,7 @@ class ExperientialContinuityRuntime:
         self.replay = ExperienceReplayStore(self.root / "experience_replay.json")
         self.cognition_lanes = CognitionLaneRouter()
         self.cancellation = GenerationCancellationRegistry()
+        self.competence = CompetenceLedger(self.root / "competence.json")
         self.memory_lab = MemoryEvaluationSuite()
         self.temporal = TemporalKnowledgeGraph(self.root / "temporal_knowledge.json")
         self.world_model = WorldModel(self.root / "world_model.json")
@@ -83,6 +85,7 @@ class ExperientialContinuityRuntime:
             "node_recovery": self.node_recovery.status(),
             "cognition_lanes": self.cognition_lanes.status(),
             "cancellation": self.cancellation.status(),
+            "competence": self.competence.status(),
             "memory_lab": {"version": self.memory_lab.VERSION, "cases": len(self.memory_lab.default_cases())},
             "traces": self.traces.status(),
             "authority": {
