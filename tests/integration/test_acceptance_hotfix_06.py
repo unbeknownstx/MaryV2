@@ -165,6 +165,25 @@ def test_engineering_followup_phrases_route_to_status_apply_and_verify(tmp_path,
         assert intent.parameters["self_query_type"] == subtype
 
 
+def test_public_performance_surface_cannot_start_repository_engineering(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _mary()
+    mary = app.mary
+    calls = []
+
+    def dispatcher(action, query):
+        calls.append((action, query))
+        return "should not run"
+
+    mary.engineering_dispatcher = dispatcher
+    mary.performance_context.set_mode("stream")
+
+    result = _run(app, "Fix yourself")
+
+    assert "disabled on public/performance surfaces" in result.final_response
+    assert calls == []
+
+
 def test_engineering_apply_requires_immediately_bound_proposal_context(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     app = _mary()
