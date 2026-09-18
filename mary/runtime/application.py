@@ -604,8 +604,14 @@ def format_nodes_state(application: "MaryApplication") -> str:
     lines = [
         "MARYV2 COMPUTE NODES",
         "────────────────────────────────",
+        f"Connected: {sum(1 for node in nodes if node.get('connected'))}",
         f"Registered: {len(nodes)}",
     ]
+
+    if not nodes:
+        lines.append(
+            "No external compute connected. Mary continues on the Core/provider route."
+        )
 
     for node in nodes:
         caps = [
@@ -671,7 +677,11 @@ def format_retrieval_state(application: "MaryApplication") -> str:
         "────────────────────────────────",
         f"Mode: {state.get('mode', 'unavailable')}",
         f"Embedding model: {state.get('embedding_model', 'n/a')}",
-        f"Vector index records: {vector.get('vectors', 0)}",
+        (
+            f"Vector index: {vector.get('vectors', 0)} ready"
+            if int(vector.get('vectors', 0) or 0) > 0
+            else "Vector index: not built (structured/lexical recall remains active)"
+        ),
         f"Vectors requested now: {'YES' if state.get('vector_requested') else 'NO'}",
         f"Last query used vectors: {'YES' if state.get('last_query_used_vectors') else 'NO'}",
         f"Weights lexical/vector: {weights.get('lexical', 'n/a')} / {weights.get('vector', 'n/a')}",
