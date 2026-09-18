@@ -7,6 +7,10 @@ from mary.training.mlx_bundle import PROFILES, prepare_mlx_bundle
 
 
 def test_mlx_profiles_pin_exact_qwen_lineage():
+    assert PROFILES["m1-smoke"].model == "mlx-community/Qwen3-0.6B-4bit"
+    assert PROFILES["m1-smoke"].upstream_base == "Qwen/Qwen3-0.6B"
+    assert PROFILES["m1-smoke"].experiment_class == "pipeline_smoke"
+    assert PROFILES["m1-smoke"].lora_rank == 4
     assert PROFILES["m1-light"].model == "mlx-community/Qwen3-1.7B-4bit"
     assert PROFILES["m1-light"].upstream_base == "Qwen/Qwen3-1.7B"
     assert PROFILES["m1-4b"].model == "mlx-community/Qwen3-4B-Instruct-2507-4bit"
@@ -47,6 +51,9 @@ def test_prepare_mlx_bundle_uses_only_structured_approved_mary_sft(tmp_path: Pat
     assert manifest["boundaries"]["ordinary_conversation_harvested"] is False
     assert manifest["boundaries"]["exact_base_required"] is True
     assert manifest["examples"]["behavior"] == 24
+    assert manifest["training_readiness"]["dataset_ready"] is True
+    assert manifest["training_readiness"]["ready_for_training"] is False
+    assert manifest["training_readiness"]["manual_creator_gate_required"] is True
     assert manifest["examples"]["train"] > 0
 
     train = [
@@ -66,3 +73,7 @@ def test_prepare_mlx_bundle_uses_only_structured_approved_mary_sft(tmp_path: Pat
     assert "fine_tune_type: lora" in config
     assert "--mask-prompt" in manifest["run"]["train"]
     assert manifest["stack_matrix"]["cross_base_stacking"] == "forbidden"
+    assert [item["profile_id"] for item in manifest["experiment_ladder"]] == [
+        "m1-smoke", "m1-light", "m1-4b"
+    ]
+    assert "mlx_lm.generate" in manifest["run"]["generate_smoke"]

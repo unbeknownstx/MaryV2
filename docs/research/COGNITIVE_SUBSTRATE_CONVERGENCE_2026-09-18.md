@@ -54,7 +54,7 @@ Rules: exact base identity is mandatory; base-only is always a control; generic-
 
 ## Apple Silicon Mary adapter path
 
-mary.training.mlx_bundle prepares approved Mary Dataset v1 examples for MLX-LM without training automatically. Profiles currently target mlx-community/Qwen3-1.7B-4bit for the light first experiment and mlx-community/Qwen3-4B-Instruct-2507-4bit for the stronger experiment. The bundle creates train/valid/test JSONL, keeps MaryBench out, writes a conservative LoRA/QLoRA config, records the exact upstream base lineage and Mary dataset fingerprint, and performs no training until the creator explicitly runs MLX-LM.
+mary.training.mlx_bundle prepares approved Mary Dataset v1 examples for MLX-LM without training automatically. The experiment ladder now starts with mlx-community/Qwen3-0.6B-4bit as a cheap pipeline-smoke adapter, then mlx-community/Qwen3-1.7B-4bit as the light Mary adapter candidate, then mlx-community/Qwen3-4B-Instruct-2507-4bit as the stronger quality candidate. The bundle creates train/valid/test JSONL, keeps MaryBench out, writes a conservative LoRA/QLoRA config, records exact upstream lineage and the Mary dataset fingerprint, and performs no training until the creator explicitly runs MLX-LM. mary.training.mlx_preflight additionally verifies Apple-Silicon host compatibility, local MLX packages, dataset sufficiency, config lineage and (after training) adapter lineage before the experiment is considered runnable/evaluable.
 Upstream: https://github.com/ml-explore/mlx-lm
 
 ## Local knowledge tiers

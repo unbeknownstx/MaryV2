@@ -26,6 +26,8 @@ class MlxTrainingProfile:
     upstream_base: str
     num_layers: int
     max_seq_length: int
+    experiment_class: str = "development"
+    minimum_train_examples: int = 8
     batch_size: int = 1
     grad_accumulation_steps: int = 4
     iters: int = 300
@@ -34,18 +36,39 @@ class MlxTrainingProfile:
     lora_scale: float = 16.0
     lora_dropout: float = 0.05
     grad_checkpoint: bool = True
+    val_batches: int = 25
+    steps_per_eval: int = 50
+    save_every: int = 50
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 PROFILES: dict[str, MlxTrainingProfile] = {
+    "m1-smoke": MlxTrainingProfile(
+        profile_id="m1-smoke",
+        model="mlx-community/Qwen3-0.6B-4bit",
+        upstream_base="Qwen/Qwen3-0.6B",
+        num_layers=2,
+        max_seq_length=768,
+        experiment_class="pipeline_smoke",
+        minimum_train_examples=6,
+        grad_accumulation_steps=2,
+        iters=80,
+        lora_rank=4,
+        lora_scale=8.0,
+        val_batches=10,
+        steps_per_eval=20,
+        save_every=20,
+    ),
     "m1-light": MlxTrainingProfile(
         profile_id="m1-light",
         model="mlx-community/Qwen3-1.7B-4bit",
         upstream_base="Qwen/Qwen3-1.7B",
         num_layers=4,
         max_seq_length=1024,
+        experiment_class="light_adapter_candidate",
+        minimum_train_examples=12,
         grad_accumulation_steps=4,
         iters=300,
     ),
@@ -55,6 +78,8 @@ PROFILES: dict[str, MlxTrainingProfile] = {
         upstream_base="Qwen/Qwen3-4B-Instruct-2507",
         num_layers=4,
         max_seq_length=1024,
+        experiment_class="quality_adapter_candidate",
+        minimum_train_examples=16,
         grad_accumulation_steps=4,
         iters=300,
     ),
@@ -122,14 +147,14 @@ seed: 17
 num_layers: {profile.num_layers}
 batch_size: {profile.batch_size}
 iters: {profile.iters}
-val_batches: 25
+val_batches: {profile.val_batches}
 learning_rate: {profile.learning_rate}
 steps_per_report: 10
-steps_per_eval: 50
+steps_per_eval: {profile.steps_per_eval}
 grad_accumulation_steps: {profile.grad_accumulation_steps}
 resume_adapter_file: null
 adapter_path: "{adapter_dir}"
-save_every: 50
+save_every: {profile.save_every}
 test: false
 test_batches: 100
 max_seq_length: {profile.max_seq_length}
@@ -221,8 +246,17 @@ def prepare_mlx_bundle(
         encoding="utf-8",
     )
 
+    training_example_count = len(splits["train"])
+    dataset_ready = training_example_count >= profile.minimum_train_examples
+    readiness_reasons = []
+    if not dataset_ready:
+        readiness_reasons.append(
+            "approved training rows below profile minimum "
+            f"({training_example_count} < {profile.minimum_train_examples})"
+        )
+
     manifest = {
-        "version": "mary-mlx-adapter-bundle-v1",
+        "version": "mary-mlx-adapter-bundle-v2",
         "profile": profile.to_dict(),
         "mary_dataset": dataset_summary.to_dict(),
         "examples": {
@@ -236,12 +270,29 @@ def prepare_mlx_bundle(
             "config": str(config_path),
             "adapter": str(adapter_dir),
         },
+        "training_readiness": {
+            "dataset_ready": dataset_ready,
+            "ready_for_training": False,
+            "minimum_train_examples": profile.minimum_train_examples,
+            "reasons": readiness_reasons + [
+                "host/package/lineage preflight has not been run"
+            ],
+            "manual_creator_gate_required": True,
+        },
         "run": {
             "install": 'python -m pip install "mlx-lm[train]"',
+            "preflight": (
+                f'python -m scripts.preflight_mary_mlx_lora --bundle "{output}"'
+            ),
             "train": f'mlx_lm.lora --config "{config_path}" --mask-prompt',
             "evaluate": (
                 f'mlx_lm.lora --model "{profile.model}" '
                 f'--adapter-path "{adapter_dir}" --data "{data_dir}" --test'
+            ),
+            "generate_smoke": (
+                f'mlx_lm.generate --model "{profile.model}" '
+                f'--adapter-path "{adapter_dir}" '
+                '--prompt "Respond naturally as Mary to: Hey, how are you doing?"'
             ),
         },
         "boundaries": {
@@ -251,6 +302,27 @@ def prepare_mlx_bundle(
             "fictional_canon_is_lived_memory": False,
             "adapter_is_identity_authority": False,
             "exact_base_required": True,
+        },
+        "experiment_ladder": [
+            {
+                "profile_id": item.profile_id,
+                "model": item.model,
+                "upstream_base": item.upstream_base,
+                "experiment_class": item.experiment_class,
+                "minimum_train_examples": item.minimum_train_examples,
+            }
+            for item in PROFILES.values()
+        ],
+        "deployment_cautions": {
+            "adapter_server_use": (
+                "Do not assume an OpenAI-compatible server loaded the adapter. "
+                "Verify adapter-vs-base behavior explicitly before routing Mary traffic."
+            ),
+            "gguf_export": (
+                "Do not assume MLX GGUF export supports Qwen. Keep MLX adapter "
+                "evaluation native unless a separately verified conversion path is used."
+            ),
+            "promotion": "No trained adapter becomes Mary identity/model authority automatically.",
         },
         "stack_matrix": {
             "required_comparisons": [
