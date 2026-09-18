@@ -50,6 +50,9 @@ Presentation should make canonical state understandable without becoming another
 - Character art/avatar state is presentation evidence, not memory or biography authority.
 - Operational UX telemetry may measure latency/readiness but must remain content-free and non-authoritative.
 - Public/performance mode is a privacy projection of the same Mary, never a second public personality database.
+- Self/runtime inspection is Core-owned evidence. Surfaces may request or render it, but must not invent health claims from local UI state.
+- Degraded capability states use one semantic contract everywhere: text/conversation stays available when optional voice, vectors, local compute, creative services or nodes are unavailable.
+- "Configured", "registered", "available", "connected", "authorized" and "executed" are distinct states and must not be collapsed into a single "working" label.
 
 ## Relational presence rule
 
