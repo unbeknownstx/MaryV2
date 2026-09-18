@@ -413,6 +413,7 @@ class Mary:
         )
         self.experience = self.experiential_continuity.experience
         self.experience_replay = self.experiential_continuity.replay
+        self.competence = self.experiential_continuity.competence
         self.temporal_knowledge = self.experiential_continuity.temporal
         self.world_model = self.experiential_continuity.world_model
         self.procedural_skills = self.experiential_continuity.skills
