@@ -437,6 +437,11 @@ class Mary:
             code=self.tools.code,
         )
 
+        # Mary Core may receive a service-owned dispatcher after composition.
+        # It can queue typed engineering work on a replaceable node, but Mary
+        # never receives host shell access or repository credentials directly.
+        self.engineering_dispatcher: Any | None = None
+
         # ============================================================
         # CONVERSATION
         # ============================================================
@@ -3562,6 +3567,42 @@ class Mary:
                 "identity",
             )
         ).strip().lower()
+
+        if subtype in {
+            "engineering_repair",
+            "engineering_status",
+            "engineering_apply",
+            "engineering_test",
+        }:
+            dispatcher = self.engineering_dispatcher
+            if not callable(dispatcher):
+                return {
+                    "system_response": (
+                        "My bounded engineering dispatcher is not connected on this Core. "
+                        "I can still inspect my runtime, but I cannot queue repository work."
+                    ),
+                    "skip_cognition": True,
+                }
+            action = {
+                "engineering_repair": "plan",
+                "engineering_status": "status",
+                "engineering_apply": "apply",
+                "engineering_test": "test",
+            }[subtype]
+            try:
+                response = dispatcher(
+                    action,
+                    str(intent.parameters.get("query", "") or ""),
+                )
+            except Exception as exc:
+                response = (
+                    "The bounded engineering path failed safely: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+            return {
+                "system_response": str(response),
+                "skip_cognition": True,
+            }
 
         if subtype == "runtime_inspection":
             return {
