@@ -3,6 +3,7 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
+import sys
 
 import pytest
 
@@ -197,7 +198,7 @@ def test_typed_test_runner_uses_disposable_sandbox_not_live_checkout(tmp_path, m
     assert result["ok"] is True
     assert result["sandboxed"] is True
     assert observed["shell"] is False
-    assert observed["argv"][:3] == [pytest.__file__ and __import__("sys").executable, "-m", "pytest"]
+    assert observed["argv"][:3] == [sys.executable, "-m", "pytest"]
 
 
 def test_engineering_args_reject_arbitrary_paths_and_commands():
