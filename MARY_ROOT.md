@@ -53,6 +53,7 @@ Presentation should make canonical state understandable without becoming another
 - Self/runtime inspection is Core-owned evidence. Surfaces may request or render it, but must not invent health claims from local UI state.
 - Degraded capability states use one semantic contract everywhere: text/conversation stays available when optional voice, vectors, local compute, creative services or nodes are unavailable.
 - "Configured", "registered", "available", "connected", "authorized" and "executed" are distinct states and must not be collapsed into a single "working" label.
+- Software-engineering workers are replaceable capabilities beneath Core. Planning/testing may be delegated to local models, but repository mutation is separately permission-gated and never authorizes commit, push, merge, deploy, dependency install or changes to Mary identity/memory.
 
 ## Relational presence rule
 
