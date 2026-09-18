@@ -125,6 +125,46 @@ def test_self_analysis_and_own_code_questions_stay_core_grounded(tmp_path, monke
     assert router.calls == []
 
 
+def test_self_repair_request_queues_bounded_engineering_dispatch_without_llm(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    router = SequenceRouter(["provider answer must not be used"])
+    app = _mary(router)
+    mary = app.mary
+    calls = []
+
+    def dispatcher(action, query):
+        calls.append((action, query))
+        return "bounded engineering task queued"
+
+    mary.engineering_dispatcher = dispatcher
+
+    intent = mary.cognition.detect_intent("Fix yourself")
+    assert intent.intent_type == IntentType.SELF_QUERY
+    assert intent.parameters["self_query_type"] == "engineering_repair"
+
+    result = _run(app, "Fix yourself")
+
+    assert result.final_response == "bounded engineering task queued"
+    assert calls == [("plan", "Fix yourself")]
+    assert router.calls == []
+
+
+def test_engineering_followup_phrases_route_to_status_apply_and_verify(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _mary()
+    mary = app.mary
+
+    cases = {
+        "Check the repair": "engineering_status",
+        "Apply that fix": "engineering_apply",
+        "Verify that fix": "engineering_test",
+    }
+    for text, subtype in cases.items():
+        intent = mary.cognition.detect_intent(text)
+        assert intent.intent_type == IntentType.SELF_QUERY
+        assert intent.parameters["self_query_type"] == subtype
+
+
 def test_runtime_inspection_direct_and_followup_are_deterministic(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     router = SequenceRouter(["provider answer must not be used"])
