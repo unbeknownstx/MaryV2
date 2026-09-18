@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — 2026-09-17 — Bounded self-repair engineering loop
+
+- Added a default-deny local engineering capability family for repository inspection, local-model repair planning, exact patch proposals, separately authorized repository apply, Git status/diff and sandboxed validation.
+- Wired `Fix yourself`, repair status, explicit apply and verification phrases through Mary Core to the selected capability node without adding a generic shell or a second Mary.
+- Repair plans use the node's existing LocalRuntimeProvider, keep exact proposals node-local, bind writes to source SHA-256, and never commit/push/merge/deploy.
+- Sandboxed test/structure runners copy the working tree while excluding Git metadata, credentials, Mary durable data, virtualenvs, caches and generated outputs.
+- Added Windows/macOS operator instructions and dedicated engineering-worker regression coverage.
+
 ## Unreleased — 2026-09-17 — Cross-surface Core cohesion
 
 - Made self-analysis, code-capability answers and confirmed runtime-inspection follow-ups Core-grounded and deterministic across PWA, Desktop, CLI and native clients.
