@@ -138,6 +138,10 @@ def test_repair_plan_uses_local_model_but_keeps_exact_proposal_node_local(tmp_pa
     worker = EngineeringWorker(root)
     source = (root / "mary" / "sample.py").read_text(encoding="utf-8")
     expected = sha256(source.encode("utf-8")).hexdigest()
+    base_sha = "a" * 40
+    monkeypatch.setattr(worker, "_require_clean_checkout", lambda: None)
+    monkeypatch.setattr(worker, "_require_allowed_branch", lambda: None)
+    monkeypatch.setattr(worker, "_head_sha", lambda: base_sha)
 
     class _Response:
         content = (
