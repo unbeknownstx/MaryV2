@@ -81,6 +81,35 @@ def test_mobile_speech_service_synthesizes_and_caches():
     assert voice.calls == 1
 
 
+class _PaymentFailureVoice:
+    def __init__(self):
+        self.status = _Status(True, "elevenlabs", model="eleven_flash_v2_5")
+
+    def synthesize(self, text, *, user_text=None, delivery_plan=None):
+        raise RuntimeError(
+            'ElevenLabs returned HTTP 401. {"detail":{"type":"payment_required",'
+            '"message":"Your subscription has a failed or incomplete payment."}}'
+        )
+
+
+def test_mobile_tts_payment_failure_is_safe_and_device_fallback_ready():
+    service = MobileSpeechService(
+        voice_engine=_PaymentFailureVoice(),
+        stt_engine=_STT(),
+    )
+
+    result = service.synthesize("hello")
+
+    assert result.successful is False
+    assert result.audio == b""
+    assert result.metadata["status"] == "failed"
+    assert result.metadata["fallback"] == "device"
+    assert "requires payment" in result.metadata["reason"]
+    rendered = json.dumps(result.metadata)
+    assert "subscription has a failed" not in rendered
+    assert "payment_required" not in rendered
+
+
 def test_mobile_speech_service_transcribes_temporary_recording():
     stt = _STT()
     service = MobileSpeechService(
