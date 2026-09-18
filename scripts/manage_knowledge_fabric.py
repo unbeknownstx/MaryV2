@@ -43,6 +43,7 @@ def main() -> int:
     register.add_argument("title")
     register.add_argument("directory", type=Path)
     register.add_argument("--topics", default="")
+    register.add_argument("--collection", default="default")
     register.add_argument("--license", default="creator-owned")
 
     kiwix = sub.add_parser("register-kiwix")
@@ -51,6 +52,7 @@ def main() -> int:
     kiwix.add_argument("endpoint")
     kiwix.add_argument("--book", default="")
     kiwix.add_argument("--topics", default="")
+    kiwix.add_argument("--collection", default="default")
     kiwix.add_argument("--license", default="content-specific")
 
     index = sub.add_parser("index")
@@ -59,7 +61,25 @@ def main() -> int:
     search = sub.add_parser("search")
     search.add_argument("query")
     search.add_argument("--pack", action="append", default=[])
+    search.add_argument(
+        "--mode",
+        choices=sorted(KnowledgeFabric.RETRIEVAL_MODES),
+        default="auto",
+    )
     search.add_argument("--limit", type=int, default=8)
+
+    documents = sub.add_parser("documents")
+    documents.add_argument("pack_id")
+    document_enable = sub.add_parser("document-enable")
+    document_enable.add_argument("pack_id")
+    document_enable.add_argument("locator")
+    document_disable = sub.add_parser("document-disable")
+    document_disable.add_argument("pack_id")
+    document_disable.add_argument("locator")
+    collection_enable = sub.add_parser("collection-enable")
+    collection_enable.add_argument("collection")
+    collection_disable = sub.add_parser("collection-disable")
+    collection_disable.add_argument("collection")
 
     enable = sub.add_parser("enable")
     enable.add_argument("pack_id")
@@ -95,6 +115,7 @@ def main() -> int:
             location=str(args.directory),
             query_mode="fts",
             topics=topics,
+            collection=args.collection,
             license=args.license,
             local_only=True,
             source="creator_cli",
@@ -111,6 +132,7 @@ def main() -> int:
             location=args.endpoint,
             query_mode="direct",
             topics=topics,
+            collection=args.collection,
             license=args.license,
             local_only=True,
             source="creator_cli",
@@ -132,9 +154,46 @@ def main() -> int:
             args.query,
             pack_ids=args.pack,
             limit=max(1, min(50, int(args.limit))),
+            retrieval_mode=args.mode,
         )
         print(json.dumps(
             [item.to_dict() for item in hits],
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return 0
+
+    if args.command == "documents":
+        print(json.dumps(fabric.documents(args.pack_id), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "document-enable":
+        print(json.dumps(
+            fabric.enable_document(args.pack_id, args.locator),
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return 0
+
+    if args.command == "document-disable":
+        print(json.dumps(
+            fabric.disable_document(args.pack_id, args.locator),
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return 0
+
+    if args.command == "collection-enable":
+        print(json.dumps(
+            [item.to_dict() for item in fabric.enable_collection(args.collection)],
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return 0
+
+    if args.command == "collection-disable":
+        print(json.dumps(
+            [item.to_dict() for item in fabric.disable_collection(args.collection)],
             indent=2,
             ensure_ascii=False,
         ))

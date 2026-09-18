@@ -266,6 +266,10 @@ class CognitiveWorkspace:
                 "score": item.score,
                 "locator": _clip(item.locator, 500),
                 "content_hash": _clip(item.content_hash, 128),
+                "collection": _clip(getattr(item, "collection", "default"), 160),
+                "source_date": _clip(getattr(item, "source_date", ""), 80),
+                "indexed_at": _clip(getattr(item, "indexed_at", ""), 80),
+                "citation_id": _clip(getattr(item, "citation_id", ""), 220),
             }
             for item in knowledge_hits[:knowledge_limit]
         ]

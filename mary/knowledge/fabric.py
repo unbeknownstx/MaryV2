@@ -62,6 +62,7 @@ def _tuple(values: Iterable[str], *, limit: int = 32, item_limit: int = 120) -> 
 class KnowledgePack:
     id: str
     title: str
+    collection: str
     kind: str
     query_mode: str
     location: str
@@ -74,11 +75,13 @@ class KnowledgePack:
     content_fingerprint: str
     created_at: str
     updated_at: str
+    disabled_documents: tuple[str, ...]
     metadata: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["topics"] = list(self.topics)
+        payload["disabled_documents"] = list(self.disabled_documents)
         payload["metadata"] = dict(self.metadata)
         return payload
 
@@ -92,6 +95,10 @@ class KnowledgeHit:
     score: float
     locator: str = ""
     content_hash: str = ""
+    collection: str = "default"
+    source_date: str = ""
+    indexed_at: str = ""
+    citation_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -100,9 +107,10 @@ class KnowledgeHit:
 class KnowledgeFabric:
     """Registry and read-only retrieval substrate for locally owned knowledge."""
 
-    VERSION = 1
+    VERSION = 2
     KINDS = {"local_files", "kiwix", "qdrant", "qdrant_edge", "kolibri", "notes", "custom"}
     QUERY_MODES = {"fts", "direct", "vector", "hybrid", "catalog_only"}
+    RETRIEVAL_MODES = {"auto", "off", "lexical", "direct", "hybrid"}
 
     def __init__(
         self,
@@ -153,6 +161,7 @@ class KnowledgeFabric:
         location: str,
         query_mode: str,
         topics: Iterable[str] = (),
+        collection: str = "default",
         license: str = "unknown",
         trust: str = "creator_configured",
         source: str = "creator",
@@ -187,6 +196,7 @@ class KnowledgeFabric:
         row = {
             "id": identifier,
             "title": clean_title,
+            "collection": _text(collection, 160) or "default",
             "kind": clean_kind,
             "query_mode": clean_mode,
             "location": clean_location,
@@ -199,6 +209,9 @@ class KnowledgeFabric:
             "content_fingerprint": _text(content_fingerprint, 128),
             "created_at": str(existing.get("created_at")) if existing else now,
             "updated_at": now,
+            # Source activation is creator intent, so it lives in the durable
+            # registry and survives disposable FTS rebuilds.
+            "disabled_documents": list(existing.get("disabled_documents") or []) if existing else [],
             "metadata": safe_metadata,
         }
         if existing is None:
@@ -236,11 +249,140 @@ class KnowledgeFabric:
                 return self._decode_pack(row)
         raise KeyError(pack_id)
 
-    def packs(self, *, enabled_only: bool = False) -> list[KnowledgePack]:
+    def packs(
+        self,
+        *,
+        enabled_only: bool = False,
+        collection: str = "",
+    ) -> list[KnowledgePack]:
         result = [self._decode_pack(row) for row in list(self._load().get("packs") or [])]
         if enabled_only:
             result = [item for item in result if item.enabled]
+        wanted_collection = _text(collection, 160).casefold()
+        if wanted_collection:
+            result = [
+                item for item in result
+                if item.collection.casefold() == wanted_collection
+            ]
         return result
+
+    def enable_collection(self, collection: str) -> list[KnowledgePack]:
+        return self._set_collection_enabled(collection, True)
+
+    def disable_collection(self, collection: str) -> list[KnowledgePack]:
+        return self._set_collection_enabled(collection, False)
+
+    def _set_collection_enabled(
+        self,
+        collection: str,
+        enabled: bool,
+    ) -> list[KnowledgePack]:
+        wanted = _text(collection, 160).casefold()
+        if not wanted:
+            raise ValueError("collection is required")
+        payload = self._load()
+        changed: list[str] = []
+        now = _now()
+        for row in list(payload.get("packs") or []):
+            if str(row.get("collection") or "default").casefold() != wanted:
+                continue
+            row["enabled"] = bool(enabled)
+            row["updated_at"] = now
+            changed.append(str(row.get("id") or ""))
+        if not changed:
+            raise KeyError(collection)
+        self._save(payload)
+        return [self.get(pack_id) for pack_id in changed if pack_id]
+
+    @staticmethod
+    def _document_source(locator: str) -> str:
+        value = str(locator or "").replace("\\", "/").strip()
+        return re.sub(r"#chunk-\d+$", "", value, flags=re.I)[:800]
+
+    def documents(self, pack_id: str) -> list[dict[str, Any]]:
+        pack = self.get(pack_id)
+        if pack.kind != "local_files":
+            return []
+        if not self.index_path.exists():
+            return []
+        rows: list[tuple[Any, ...]] = []
+        try:
+            with self._connect() as db:
+                rows = list(db.execute(
+                    "SELECT locator, indexed_at, source_modified_at "
+                    "FROM documents WHERE pack_id = ? ORDER BY locator",
+                    (pack.id,),
+                ))
+        except sqlite3.Error:
+            return []
+        disabled = set(pack.disabled_documents)
+        grouped: dict[str, dict[str, Any]] = {}
+        for locator, indexed_at, source_modified_at in rows:
+            source_path = self._document_source(str(locator or ""))
+            if not source_path:
+                continue
+            item = grouped.setdefault(source_path, {
+                "pack_id": pack.id,
+                "locator": source_path,
+                "enabled": source_path not in disabled,
+                "chunks": 0,
+                "source_date": _text(source_modified_at, 80),
+                "indexed_at": _text(indexed_at, 80),
+            })
+            item["chunks"] += 1
+            if str(indexed_at or "") > str(item.get("indexed_at") or ""):
+                item["indexed_at"] = _text(indexed_at, 80)
+        return list(grouped.values())
+
+    def enable_document(self, pack_id: str, locator: str) -> dict[str, Any]:
+        return self._set_document_enabled(pack_id, locator, True)
+
+    def disable_document(self, pack_id: str, locator: str) -> dict[str, Any]:
+        return self._set_document_enabled(pack_id, locator, False)
+
+    def _set_document_enabled(
+        self,
+        pack_id: str,
+        locator: str,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        pack = self.get(pack_id)
+        if pack.kind != "local_files":
+            raise ValueError("document activation is available only for local_files packs")
+        source_path = self._document_source(locator)
+        if not source_path or source_path.startswith("/") or ".." in Path(source_path).parts:
+            raise ValueError("document locator must be a safe pack-relative source path")
+        known = {item["locator"] for item in self.documents(pack_id)}
+        if not known:
+            raise RuntimeError("index the local_files pack before changing document activation")
+        if source_path not in known:
+            raise KeyError(source_path)
+
+        payload = self._load()
+        found = False
+        for row in list(payload.get("packs") or []):
+            if str(row.get("id") or "") != pack_id:
+                continue
+            disabled = {
+                self._document_source(item)
+                for item in list(row.get("disabled_documents") or [])
+                if self._document_source(item)
+            }
+            if enabled:
+                disabled.discard(source_path)
+            else:
+                disabled.add(source_path)
+            row["disabled_documents"] = sorted(disabled)[:4096]
+            row["updated_at"] = _now()
+            found = True
+            break
+        if not found:
+            raise KeyError(pack_id)
+        self._save(payload)
+        return next(
+            item for item in self.documents(pack_id)
+            if item["locator"] == source_path
+        )
 
     def plan(self, query: str, *, limit: int = 8) -> list[dict[str, Any]]:
         terms = {
@@ -249,7 +391,9 @@ class KnowledgeFabric:
         }
         scored: list[tuple[float, KnowledgePack]] = []
         for pack in self.packs(enabled_only=True):
-            haystack = f"{pack.title} {' '.join(pack.topics)} {pack.kind}".casefold()
+            haystack = (
+                f"{pack.title} {pack.collection} {' '.join(pack.topics)} {pack.kind}"
+            ).casefold()
             lexical = sum(1.0 for term in terms if term in haystack)
             broad = 0.15 if not pack.topics else 0.0
             local_bonus = 0.15 if pack.local_only else 0.0
@@ -259,6 +403,7 @@ class KnowledgeFabric:
             {
                 "pack_id": pack.id,
                 "title": pack.title,
+                "collection": pack.collection,
                 "kind": pack.kind,
                 "query_mode": pack.query_mode,
                 "local_only": pack.local_only,
@@ -296,7 +441,12 @@ class KnowledgeFabric:
                     if path.stat().st_size > _MAX_FILE_BYTES:
                         skipped += 1
                         continue
+                    stat = path.stat()
                     body = self._read_document(path)
+                    source_modified_at = datetime.fromtimestamp(
+                        stat.st_mtime,
+                        tz=timezone.utc,
+                    ).isoformat()
                 except (OSError, ValueError, zipfile.BadZipFile):
                     skipped += 1
                     continue
@@ -317,7 +467,9 @@ class KnowledgeFabric:
                         else f"{rel.as_posix()}#chunk-{chunk_index + 1}"
                     )
                     db.execute(
-                        "INSERT INTO documents(pack_id, locator, title, body, content_hash, indexed_at) VALUES(?,?,?,?,?,?)",
+                        "INSERT INTO documents("
+                        "pack_id, locator, title, body, content_hash, indexed_at, source_modified_at"
+                        ") VALUES(?,?,?,?,?,?,?)",
                         (
                             pack.id,
                             locator,
@@ -325,6 +477,7 @@ class KnowledgeFabric:
                             chunk,
                             chunk_digest,
                             _now(),
+                            source_modified_at,
                         ),
                     )
                     indexed += 1
@@ -347,9 +500,15 @@ class KnowledgeFabric:
         *,
         pack_ids: Iterable[str] = (),
         limit: int = 12,
+        retrieval_mode: str = "auto",
     ) -> list[KnowledgeHit]:
         query = _text(query, 500)
-        if not query:
+        mode = _text(retrieval_mode, 40).casefold() or "auto"
+        if mode not in self.RETRIEVAL_MODES:
+            raise ValueError(
+                f"retrieval_mode must be one of {sorted(self.RETRIEVAL_MODES)}"
+            )
+        if not query or mode == "off":
             return []
         selected = set(_tuple(pack_ids, limit=64, item_limit=160))
         results: list[KnowledgeHit] = []
@@ -358,9 +517,23 @@ class KnowledgeFabric:
             if not selected or pack.id in selected
         ]
         for pack in packs:
-            if pack.kind == "local_files" and pack.query_mode in {"fts", "hybrid"}:
+            use_lexical = (
+                pack.kind == "local_files"
+                and (
+                    mode in {"lexical", "hybrid"}
+                    or (mode == "auto" and pack.query_mode in {"fts", "hybrid"})
+                )
+            )
+            use_direct = (
+                pack.kind == "kiwix"
+                and (
+                    mode in {"direct", "hybrid"}
+                    or (mode == "auto" and pack.query_mode in {"direct", "hybrid"})
+                )
+            )
+            if use_lexical:
                 results.extend(self._search_fts(pack, query, limit=limit))
-            elif pack.kind == "kiwix" and pack.query_mode in {"direct", "hybrid"}:
+            elif use_direct:
                 results.extend(self._search_kiwix(pack, query, limit=limit))
         results.sort(key=lambda item: item.score, reverse=True)
         return results[: max(1, min(100, int(limit)))]
@@ -388,7 +561,22 @@ class KnowledgeFabric:
                 for kind in sorted({pack.kind for pack in packs})
             },
             "pack_documents": indexed_counts,
-            "vector_backend": "optional qdrant/qdrant-edge pack; not required for lexical/direct retrieval",
+            "collections": {
+                name: {
+                    "packs": sum(1 for pack in packs if pack.collection == name),
+                    "enabled": sum(
+                        1 for pack in packs
+                        if pack.collection == name and pack.enabled
+                    ),
+                }
+                for name in sorted({pack.collection for pack in packs})
+            },
+            "disabled_documents": sum(len(pack.disabled_documents) for pack in packs),
+            "retrieval_modes": sorted(self.RETRIEVAL_MODES),
+            "vector_backend": (
+                "optional node-owned qdrant/qdrant-edge derivative; "
+                "Core lexical/direct retrieval remains sufficient"
+            ),
             "authority": "retrieved evidence only; never implicit memory/identity truth",
         }
 
@@ -459,41 +647,69 @@ class KnowledgeFabric:
             with self._connect() as db:
                 rows = list(db.execute(
                     """
-                    SELECT title,
+                    SELECT d.title,
                            snippet(documents_fts, 2, '[', ']', ' … ', 20),
-                           locator,
-                           content_hash,
-                           bm25(documents_fts)
+                           d.locator,
+                           d.content_hash,
+                           bm25(documents_fts),
+                           d.indexed_at,
+                           d.source_modified_at
                     FROM documents_fts
-                    WHERE documents_fts MATCH ? AND pack_id = ?
+                    JOIN documents AS d ON d.id = documents_fts.rowid
+                    WHERE documents_fts MATCH ? AND documents_fts.pack_id = ?
                     ORDER BY bm25(documents_fts)
                     LIMIT ?
                     """,
-                    (fts_query, pack.id, max(1, min(50, int(limit)))),
+                    (
+                        fts_query,
+                        pack.id,
+                        max(1, min(200, int(limit) * 4)),
+                    ),
                 ))
         except sqlite3.Error:
             with self._connect() as db:
                 rows = list(db.execute(
                     """
-                    SELECT title, substr(body, 1, 500), locator, content_hash, 0.0
+                    SELECT title, substr(body, 1, 500), locator, content_hash,
+                           0.0, indexed_at, source_modified_at
                     FROM documents
                     WHERE pack_id = ? AND lower(body) LIKE ?
                     LIMIT ?
                     """,
-                    (pack.id, f"%{query.casefold()}%", max(1, min(50, int(limit)))),
+                    (
+                        pack.id,
+                        f"%{query.casefold()}%",
+                        max(1, min(200, int(limit) * 4)),
+                    ),
                 ))
         output: list[KnowledgeHit] = []
-        for index, row in enumerate(rows):
+        disabled = set(pack.disabled_documents)
+        for row in rows:
+            source_path = self._document_source(str(row[2] or ""))
+            if source_path in disabled:
+                continue
             rank = float(row[4] or 0.0)
+            content_hash = _text(row[3], 128)
+            locator = _text(row[2], 500)
             output.append(KnowledgeHit(
                 pack_id=pack.id,
                 title=_text(row[0], 240),
                 snippet=_text(row[1], 1200),
                 source=f"{pack.title} / local_files",
-                score=max(0.1, 1.0 / (1.0 + abs(rank))) - index * 0.002,
-                locator=_text(row[2], 500),
-                content_hash=_text(row[3], 128),
+                score=max(0.1, 1.0 / (1.0 + abs(rank))) - len(output) * 0.002,
+                locator=locator,
+                content_hash=content_hash,
+                collection=pack.collection,
+                source_date=_text(row[6], 80),
+                indexed_at=_text(row[5], 80),
+                citation_id=self._citation_id(
+                    pack,
+                    locator=locator,
+                    content_hash=content_hash,
+                ),
             ))
+            if len(output) >= max(1, min(50, int(limit))):
+                break
         return output
 
     def _search_kiwix(self, pack: KnowledgePack, query: str, *, limit: int) -> list[KnowledgeHit]:
@@ -534,13 +750,26 @@ class KnowledgeFabric:
                     locator = str(child.attrib.get("href") or "")
             if not title:
                 continue
+            clean_title = _text(html.unescape(title), 240)
+            clean_locator = _text(locator, 800)
             output.append(KnowledgeHit(
                 pack_id=pack.id,
-                title=_text(html.unescape(title), 240),
+                title=clean_title,
                 snippet=_text(html.unescape(re.sub(r"<[^>]+>", " ", snippet)), 1200),
                 source=f"{pack.title} / Kiwix",
                 score=max(0.1, 1.0 - len(output) * 0.03),
-                locator=_text(locator, 800),
+                locator=clean_locator,
+                collection=pack.collection,
+                source_date=_text(
+                    (pack.metadata or {}).get("source_date"),
+                    80,
+                ),
+                indexed_at="",
+                citation_id=self._citation_id(
+                    pack,
+                    locator=clean_locator,
+                    title=clean_title,
+                ),
             ))
             if len(output) >= max(1, min(50, int(limit))):
                 break
@@ -570,10 +799,20 @@ class KnowledgeFabric:
                     title TEXT NOT NULL,
                     body TEXT NOT NULL,
                     content_hash TEXT NOT NULL,
-                    indexed_at TEXT NOT NULL
+                    indexed_at TEXT NOT NULL,
+                    source_modified_at TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
+            columns = {
+                str(row[1])
+                for row in db.execute("PRAGMA table_info(documents)")
+            }
+            if "source_modified_at" not in columns:
+                db.execute(
+                    "ALTER TABLE documents ADD COLUMN "
+                    "source_modified_at TEXT NOT NULL DEFAULT ''"
+                )
             db.execute("CREATE INDEX IF NOT EXISTS idx_documents_pack ON documents(pack_id)")
             try:
                 db.execute(
@@ -768,6 +1007,21 @@ class KnowledgeFabric:
             raise ValueError("Kiwix endpoint must be local/private")
 
     @staticmethod
+    def _citation_id(
+        pack: KnowledgePack,
+        *,
+        locator: str,
+        content_hash: str = "",
+        title: str = "",
+    ) -> str:
+        digest = _text(content_hash, 128)
+        if not digest:
+            digest = sha256(
+                f"{pack.id}|{locator}|{title}".encode("utf-8")
+            ).hexdigest()
+        return f"knowledge:{pack.id}:{digest[:16]}"
+
+    @staticmethod
     def _safe_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
         denied = {"token", "authorization", "api_key", "secret", "password", "cookie"}
         output: dict[str, Any] = {}
@@ -785,5 +1039,9 @@ class KnowledgeFabric:
     def _decode_pack(row: dict[str, Any]) -> KnowledgePack:
         values = dict(row)
         values["topics"] = tuple(values.get("topics") or [])
+        values.setdefault("collection", "default")
+        values["disabled_documents"] = tuple(
+            values.get("disabled_documents") or []
+        )
         values["metadata"] = dict(values.get("metadata") or {})
         return KnowledgePack(**values)
