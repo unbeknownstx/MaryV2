@@ -173,6 +173,11 @@ def _nodes(application: Any, service: Any | None) -> dict[str, Any]:
             name in advertised
             for name in ("llm.local", "llm.ollama", "llm.llama_cpp")
         ),
+        "engineering_live": sorted(
+            name for name in advertised if name.startswith("engineering.")
+        ),
+        "engineering_repair_live": "engineering.repair.plan" in advertised,
+        "engineering_apply_advertised": "engineering.repo.apply" in advertised,
         "mcp_live": sorted(name for name in advertised if name.startswith("mcp.")),
     }
 
@@ -275,6 +280,14 @@ def _avatar(application: Any) -> dict[str, Any]:
     }
 
 
+def _service_dispatcher_optional(application: Any) -> bool:
+    """Standalone/local compositions may not have a Core-service dispatcher."""
+
+    runtime = getattr(getattr(application, "mary", None), "runtime_environment", None)
+    snapshot = _safe_dict(getattr(runtime, "snapshot", lambda: {}))
+    return str(snapshot.get("runtime_role") or "").strip().lower() != "core"
+
+
 def _actions(application: Any) -> dict[str, Any]:
     manager = getattr(application.mary, "tools", None)
     registry = getattr(manager, "registry", None)
@@ -300,6 +313,10 @@ def _actions(application: Any) -> dict[str, Any]:
     }
     autonomy = getattr(application.mary, "autonomy", None)
     checks["autonomy_connected"] = autonomy is not None
+    checks["engineering_dispatcher_connected"] = (
+        callable(getattr(application.mary, "engineering_dispatcher", None))
+        or _service_dispatcher_optional(application)
+    )
     return {
         "healthy": all(checks.values()),
         "checks": checks,
@@ -347,6 +364,8 @@ def build_runtime_wiring_audit(
         degraded.append("no_live_local_llm_node")
     if service is not None and not sections["nodes"].get("mcp_live"):
         degraded.append("no_live_mcp_node")
+    if service is not None and not sections["nodes"].get("engineering_repair_live"):
+        degraded.append("no_live_engineering_repair_node")
 
     return {
         "healthy": not required_failures,
