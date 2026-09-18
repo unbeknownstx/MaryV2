@@ -30,14 +30,15 @@ struct SettingsView: View {
                     Section("Voice") {
                         Toggle("Speak Mary's responses", isOn: $speakResponses)
                         LabeledContent(
-                            "Core TTS",
+                            "Voice route",
                             value: app.voiceServerAvailable
-                                ? app.voiceProvider
-                                : "Unavailable"
+                                ? "\(app.voiceProvider) → iPhone fallback"
+                                : "iPhone voice fallback"
                         )
                         Text(
                             "Microphone capture and speech recognition stay on this iPhone. "
-                            + "Only the transcript is sent to Mary Core; provider API keys remain server-side."
+                            + "Only the transcript is sent to Mary Core; provider API keys remain server-side. "
+                            + "If Core TTS is unavailable, spoken replies fall back to iPhone system speech."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
