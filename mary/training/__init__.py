@@ -2,9 +2,11 @@
 from .feedback import ResponseFeedback, ResponseFeedbackStore
 from .exporter import DatasetExportSummary, MaryTrainingDatasetExporter
 from .dataset_v1 import MaryDatasetV1Exporter, MaryDatasetV1Summary
+from .novel_miner import NovelSceneCandidate, mine_mary_scenes, read_paragraphs, write_mining_bundle
 
 __all__ = [
     "ResponseFeedback", "ResponseFeedbackStore",
     "DatasetExportSummary", "MaryTrainingDatasetExporter",
     "MaryDatasetV1Exporter", "MaryDatasetV1Summary",
+    "NovelSceneCandidate", "mine_mary_scenes", "read_paragraphs", "write_mining_bundle",
 ]
