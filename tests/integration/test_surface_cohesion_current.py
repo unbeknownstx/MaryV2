@@ -110,6 +110,36 @@ def test_diagnostics_distinguish_configured_from_live_readiness() -> None:
     assert '"DEGRADED" if tts_configured else "OFF"' in doctor
 
 
+def test_bounded_engineering_loop_is_shared_and_has_no_generic_shell() -> None:
+    engineering = _text("mary/distributed/engineering.py")
+    tasks = _text("mary/distributed/tasks.py")
+    permissions = _text("mary/distributed/permissions.py")
+    node = _text("mary/desktop/device_node.py")
+    cognition = _text("mary/cognition/orchestrator.py")
+    mary = _text("mary/core/mary.py")
+    service = _text("mary/core/service.py")
+
+    assert '"engineering.repair.plan"' in engineering
+    assert '"engineering.repo.apply"' in engineering
+    assert '"engineering.tests.targeted"' in engineering
+    assert "shell=False" in engineering
+    assert "TemporaryDirectory" in engineering
+    assert "expected_sha256" in engineering
+    assert "proposal_id" in engineering
+    assert "engineering.shell" not in engineering
+
+    assert "*ENGINEERING_CAPABILITIES" in tasks
+    assert "*ENGINEERING_CAPABILITIES" in permissions
+    assert "engineering_capability_descriptors" in node
+    assert "_execute_engineering" in node
+
+    assert 'return self_intent("engineering_repair")' in cognition
+    assert 'return self_intent("engineering_apply")' in cognition
+    assert "self.engineering_dispatcher" in mary
+    assert "def _engineering_action" in service
+    assert "This does not commit, push, merge, or deploy" in service
+
+
 def test_home_nodes_remain_replaceable_workers_not_shadow_mary_instances() -> None:
     home = _text("scripts/run_home_node.py")
     windows = _text("scripts/run_windows_node.py")
