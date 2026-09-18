@@ -68,6 +68,11 @@ Tier 5 — cold archive: raw books, media transcripts, backups and old corpora, 
 
 Only the smallest relevant evidence set crosses from those tiers into TurnMind.
 
+### Knowledge regression harness
+
+`mary.knowledge.evaluation.KnowledgeFabricEvaluator` provides a NOMAD-inspired but Mary-specific deterministic retrieval gate. JSONL cases can assert expected pack/source recall, excluded or disabled-source non-leakage, complete citation IDs, explicit pack scoping and a bounded model-facing evidence budget. It deliberately avoids an LLM-as-judge score and cannot promote retrieval into memory, truth or model authority. `scripts.evaluate_knowledge_fabric` runs the same checks against a creator-selected local registry/index.
+
+
 ## Current ownership summary
 
 - Identity: Mary Core / canonical identity systems.

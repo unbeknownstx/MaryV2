@@ -305,6 +305,10 @@ class KnowledgeFabric:
             return []
         if not self.index_path.exists():
             return []
+        try:
+            self._ensure_index()
+        except sqlite3.Error:
+            return []
         rows: list[tuple[Any, ...]] = []
         try:
             with self._connect() as db:
