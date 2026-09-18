@@ -104,6 +104,7 @@ from mary.tools.manager import ToolManager
 from mary.tools.registry import PermissionLevel
 
 from mary.knowledge.manager import KnowledgeManager
+from mary.knowledge import KnowledgeFabric
 
 from mary.memory.manager import MemoryManager
 
@@ -147,7 +148,7 @@ from mary.distributed import NodeRegistry, CapabilityInvocationLedger
 from mary.perception import PerceptionDirector, BrowserContextSensor
 from mary.game_control import GameActionRouter
 from mary.runtime.introspection import RuntimeIntrospection, is_personal_runtime_reaction
-from mary.mind import CharacterMind
+from mary.mind import CharacterMind, CognitiveWorkspace
 from mary.continuity import ExperientialContinuityRuntime
 from mary.mind.production_bridge import (
     apply_local_cycle_metadata,
@@ -412,7 +413,9 @@ class Mary:
         )
         self.experience = self.experiential_continuity.experience
         self.temporal_knowledge = self.experiential_continuity.temporal
+        self.world_model = self.experiential_continuity.world_model
         self.procedural_skills = self.experiential_continuity.skills
+        self.executive_plans = self.experiential_continuity.plans
         self.workflow_checkpoints = self.experiential_continuity.workflows
         self.action_verification = self.experiential_continuity.verification
         self.compute_resources = self.experiential_continuity.resources
@@ -423,6 +426,18 @@ class Mary:
         self.node_recovery = self.experiential_continuity.node_recovery
         self.memory_lab = self.experiential_continuity.memory_lab
         self.causal_trace = self.experiential_continuity.traces
+
+        # Locally owned knowledge is a separate evidence substrate. The JSON
+        # registry is durable; its SQLite search index is rebuildable. Neither
+        # becomes Mary memory or identity merely because retrieval found it.
+        self.knowledge_fabric = KnowledgeFabric(
+            self.config.paths.knowledge / "knowledge_fabric.json",
+            index_path=self.config.paths.knowledge / "knowledge_fabric.sqlite3",
+        )
+
+        # Global/cognitive workspace is a disposable cross-system projection.
+        # It binds the relevant pieces for one task but owns none of them.
+        self.cognitive_workspace = CognitiveWorkspace(self)
 
         # ============================================================
         # TOOLS
@@ -1928,6 +1943,33 @@ class Mary:
         model_memory_context = dict(memory_context)
         model_memory_context["relevant_memories"] = model_memories
 
+        combined_workspace = dict(workspace_context or {})
+        try:
+            with observe_turn_stage("cognitive_blackboard"):
+                blackboard = self.cognitive_workspace.build(input_text).to_dict()
+            # Avoid duplicating MemoryManager and CharacterSourcebook payloads
+            # already represented directly in TurnMind. The blackboard adds the
+            # connective state that used to be missing between those owners.
+            combined_workspace["cognitive_blackboard"] = {
+                "world": blackboard.get("world", {}),
+                "skills": blackboard.get("skills", {}),
+                "plans": blackboard.get("plans", {}),
+                "compute": blackboard.get("compute", {}),
+                "knowledge": blackboard.get("knowledge", {}),
+                "epistemic": blackboard.get("epistemic", {}),
+                "policy": blackboard.get("policy", {}),
+            }
+        except Exception as exc:
+            combined_workspace["cognitive_blackboard"] = {
+                "available": False,
+                "error_type": type(exc).__name__,
+                "policy": {
+                    "identity_owner": False,
+                    "memory_owner": False,
+                    "tool_authority": False,
+                },
+            }
+
         mind_state = self.turn_mind.build(
             input_text=input_text,
             intent=intent,
@@ -1935,7 +1977,7 @@ class Mary:
             recent_conversation=conversation,
             context_lifecycle=lifecycle_context,
             incoming_emotion_appraisal=incoming_emotion_appraisal,
-            workspace_context=workspace_context,
+            workspace_context=combined_workspace,
         )
         try:
             runtime_coordination = self.character_runtime.plan_from_turn_state(
