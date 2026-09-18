@@ -3853,7 +3853,11 @@ class Mary:
             "disagreement",
             "priorities",
             "curiosity",
-            "self_understanding",
+            # Broad self-understanding is intentionally open-ended: give the
+            # language cortex grounded local evidence, then validate its answer
+            # against self-provenance. This preserves the hallucination-rejection
+            # path for invented biography while bounded authored self-facts above
+            # remain deterministic/zero-call.
             "capabilities",
         }
         if subtype in deterministic_self_subtypes:
