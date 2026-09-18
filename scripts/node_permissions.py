@@ -3,6 +3,8 @@
 Examples:
     python -m scripts.node_permissions status
     python -m scripts.node_permissions allow mcp.opendesign
+    python -m scripts.node_permissions allow engineering.repair.plan
+    python -m scripts.node_permissions allow engineering.repo.apply
     python -m scripts.node_permissions allow-tool opendesign recommend_references
     python -m scripts.node_permissions deny-tool opendesign recommend_references
 """
