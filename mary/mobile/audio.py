@@ -64,6 +64,34 @@ def _json_safe(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
 
+def _safe_tts_failure_reason(exc: Exception) -> str:
+    """Return a creator-safe, provider-agnostic mobile TTS failure reason."""
+
+    text = str(exc or "").strip()
+    lowered = text.casefold()
+    if any(marker in lowered for marker in (
+        "payment_required",
+        "payment issue",
+        "subscription has failed",
+        "incomplete payment",
+        "complete the latest invoice",
+    )):
+        return "Server voice provider is unavailable because its account requires payment."
+    if any(marker in lowered for marker in (
+        "quota", "credits exhausted", "credit balance", "rate limit",
+    )):
+        return "Server voice provider is temporarily unavailable because its usage limit was reached."
+    if any(marker in lowered for marker in (
+        "unauthorized", "invalid api key", "authentication", "http 401", "http 403",
+    )):
+        return "Server voice provider authentication failed."
+    if any(marker in lowered for marker in (
+        "timed out", "timeout", "network", "connection", "temporarily unavailable",
+    )):
+        return "Server voice provider is temporarily unreachable."
+    return "Server voice synthesis failed safely."
+
+
 @dataclass(frozen=True)
 class MobileSpeechAudio:
     audio: bytes
@@ -326,12 +354,27 @@ class MobileSpeechService:
             return MobileSpeechAudio(b"", "", metadata)
 
         started = monotonic()
-        with self._tts_lock:
-            payload = self.voice_engine.synthesize(
-                value,
-                user_text=str(user_text or "")[:4_000] or None,
-                delivery_plan=dict(delivery_plan or {}),
-            )
+        try:
+            with self._tts_lock:
+                payload = self.voice_engine.synthesize(
+                    value,
+                    user_text=str(user_text or "")[:4_000] or None,
+                    delivery_plan=dict(delivery_plan or {}),
+                )
+        except Exception as exc:
+            elapsed_ms = round((monotonic() - started) * 1000.0, 2)
+            metadata = {
+                **voice_status,
+                "status": "failed",
+                "server_available": False,
+                "fallback": "device",
+                "reason": _safe_tts_failure_reason(exc),
+                "error_type": type(exc).__name__,
+                "mobile_transport_ms": elapsed_ms,
+            }
+            with self._lock:
+                self._last_tts = dict(metadata)
+            return MobileSpeechAudio(b"", "", _json_safe(metadata))
         elapsed_ms = round((monotonic() - started) * 1000.0, 2)
         metadata = dict(payload or {})
         encoded = str(metadata.pop("audio_base64", "") or "")
