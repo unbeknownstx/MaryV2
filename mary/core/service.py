@@ -192,6 +192,9 @@ class MaryCoreService:
         if "execution_policy" in inspect.signature(DeviceTaskBroker).parameters:
             broker_kwargs["execution_policy"] = self.enforce_execution_policy
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
+        self._last_engineering_task_id = ""
+        self._last_engineering_proposal_id = ""
+        self.mary.engineering_dispatcher = self._engineering_action
         self._install_execution_policy()
         self._device_local_provider: DeviceLocalProvider | None = None
         self._device_ollama_provider: DeviceOllamaProvider | None = None
@@ -200,6 +203,172 @@ class MaryCoreService:
         self._attach_device_ollama_provider()
         self._attach_device_llama_cpp_provider()
         self._sync_creator_lifecycle()
+
+    def _engineering_route_ready(self, capability: str) -> tuple[bool, str]:
+        route = dict(
+            self.mary.node_registry.route_preview(
+                capability,
+                prefer_private=True,
+                prefer_local=True,
+            )
+            or {}
+        )
+        if not route.get("available"):
+            return False, f"No connected node advertises {capability}."
+        if not route.get("execution_authorized"):
+            node_id = str(route.get("selected_node_id") or "selected node")
+            return (
+                False,
+                f"{node_id} has {capability} but local device permission is not enabled.",
+            )
+        return True, str(route.get("selected_node_id") or "")
+
+    def _engineering_task_report(self, task: Any | None) -> str:
+        if task is None:
+            return "I do not have an active bounded engineering task."
+        status = str(getattr(task, "status", "") or "unknown")
+        capability = str(getattr(task, "capability", "") or "engineering")
+        if status not in {"completed", "failed", "rejected", "expired"}:
+            return (
+                f"My engineering task {task.task_id} is {status} on "
+                f"{task.selected_node_id}. I have not changed the repository."
+            )
+        if status != "completed":
+            error = str(getattr(task, "error", "") or "no further detail")
+            return f"Engineering task {task.task_id} ended as {status}: {error}"
+
+        result = dict(getattr(task, "result", {}) or {})
+        proposal_id = str(result.get("proposal_id") or "")
+        if proposal_id:
+            self._last_engineering_proposal_id = proposal_id
+        summary = str(result.get("summary") or f"{capability} completed.")
+        diff = str(result.get("diff") or "")
+        if len(diff) > 6000:
+            diff = diff[:6000].rstrip() + "\n...[diff truncated]"
+        if capability == "engineering.repair.plan":
+            if proposal_id:
+                return (
+                    f"{summary}\n\n{diff}\n\n"
+                    "This is a proposal only; nothing has been written. "
+                    "If you want me to apply this exact node-local proposal, say: apply that fix."
+                )
+            return summary
+        if capability == "engineering.repo.apply":
+            return (
+                f"{summary} The repository changed only on the selected engineering node. "
+                "I did not commit, push, merge, or deploy anything. "
+                "You can ask me to verify that fix."
+            )
+        if capability in {
+            "engineering.tests.targeted",
+            "engineering.tests.full",
+            "engineering.structure.verify",
+        }:
+            ok = bool(result.get("ok"))
+            return f"{summary} Validation {'passed' if ok else 'failed'}."
+        return summary
+
+    def _engineering_action(self, action: str, query: str = "") -> str:
+        """Bridge Mary chat intent to typed node engineering tasks.
+
+        Planning is non-mutating. Repository apply requires both an explicit
+        creator phrase and the node-local engineering.repo.apply permission.
+        """
+
+        action = str(action or "").strip().lower()
+        query = str(query or "").strip()
+
+        if action == "status":
+            task = (
+                self.device_tasks.get(self._last_engineering_task_id)
+                if self._last_engineering_task_id
+                else None
+            )
+            return self._engineering_task_report(task)
+
+        if action == "plan":
+            ready, detail = self._engineering_route_ready("engineering.repair.plan")
+            if not ready:
+                return (
+                    detail
+                    + " Start the home node from the MaryV2 checkout, load a local model, "
+                    "and allow engineering.repair.plan on that device."
+                )
+            task = self.device_tasks.enqueue(
+                self.mary.node_registry,
+                capability="engineering.repair.plan",
+                intent=query or "Creator requested a bounded MaryV2 self-repair plan.",
+                args={
+                    "task": query or "Inspect MaryV2 for the issue the creator just described and propose the smallest cohesive fix.",
+                    "max_files": 6,
+                },
+                requester_device_id="creator-chat",
+            )
+            self._last_engineering_task_id = task.task_id
+            self._last_engineering_proposal_id = ""
+            return (
+                f"I queued bounded engineering task {task.task_id} on {task.selected_node_id}. "
+                "The local model may inspect only the bounded repository workspace and return a proposal. "
+                "Nothing can be written, committed, pushed, or deployed by this planning step. "
+                "Ask me for engineering status when you want the result."
+            )
+
+        if action == "apply":
+            plan_task = (
+                self.device_tasks.get(self._last_engineering_task_id)
+                if self._last_engineering_task_id
+                else None
+            )
+            if plan_task is not None and getattr(plan_task, "status", "") == "completed":
+                self._engineering_task_report(plan_task)
+            proposal_id = self._last_engineering_proposal_id
+            if not proposal_id:
+                return (
+                    "I do not have a completed engineering proposal to apply. "
+                    "Ask me to fix myself first, then check engineering status."
+                )
+            ready, detail = self._engineering_route_ready("engineering.repo.apply")
+            if not ready:
+                return (
+                    detail
+                    + " Repository writes stay disabled until you explicitly allow "
+                    "engineering.repo.apply on that device."
+                )
+            task = self.device_tasks.enqueue(
+                self.mary.node_registry,
+                capability="engineering.repo.apply",
+                intent="Creator explicitly approved the exact last engineering proposal in chat.",
+                args={"proposal_id": proposal_id},
+                requester_device_id="creator-chat",
+            )
+            self._last_engineering_task_id = task.task_id
+            return (
+                f"I queued the exact approved proposal as {task.task_id} on {task.selected_node_id}. "
+                "The node will reject it if the source changed since the proposal. "
+                "This does not commit, push, merge, or deploy."
+            )
+
+        if action == "test":
+            ready, detail = self._engineering_route_ready("engineering.structure.verify")
+            if not ready:
+                return (
+                    detail
+                    + " Enable engineering.structure.verify on the node to run the bounded repository gate."
+                )
+            task = self.device_tasks.enqueue(
+                self.mary.node_registry,
+                capability="engineering.structure.verify",
+                intent=query or "Creator requested verification of the last engineering change.",
+                args={},
+                requester_device_id="creator-chat",
+            )
+            self._last_engineering_task_id = task.task_id
+            return (
+                f"I queued repository-structure verification as {task.task_id} on {task.selected_node_id}. "
+                "It uses the typed test runner, not a generic shell."
+            )
+
+        return "I do not recognize that bounded engineering action."
 
     def _attach_device_local_provider(self) -> None:
         """Expose one replaceable host-local runtime through provider local_device.
