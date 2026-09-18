@@ -79,6 +79,35 @@ class CognitiveWorkspace:
 
         node_state = _safe_call(lambda: dict(self.mary.node_registry.snapshot() or {}), {})
         capabilities, permissions, nodes = self._node_capabilities(node_state)
+        connected_node_ids = {
+            str(node.get("node_id") or "")
+            for node in nodes
+            if bool(node.get("connected")) and str(node.get("node_id") or "")
+        }
+        competence_records = _safe_call(
+            lambda: list(self.mary.competence.find(limit=80)),
+            [],
+        )
+        demonstrated = [
+            {
+                "capability": item.capability,
+                "operation": item.operation,
+                "node_id": item.node_id,
+                "skill_id": item.skill_id,
+                "attempts": item.attempts,
+                "successes": item.successes,
+                "failures": item.failures,
+                "verified_successes": item.verified_successes,
+                "reliability": item.reliability,
+                "evidence_strength": item.evidence_strength,
+                "mean_latency_ms": item.mean_latency_ms,
+                "last_success": item.last_success,
+                "last_observed_at": item.last_observed_at,
+            }
+            for item in competence_records
+            if item.capability in capabilities
+            and (not item.node_id or item.node_id in connected_node_ids)
+        ][:16]
 
         memory_hits = _safe_call(
             lambda: list(self.mary.memory.recall(query, limit=max(1, min(12, int(memory_limit))))),
@@ -311,6 +340,15 @@ class CognitiveWorkspace:
                 "registered_nodes": len(nodes),
                 "capabilities": sorted(capabilities)[:120],
                 "authorized_capabilities": sorted(permissions)[:120],
+                "demonstrated": demonstrated,
+                "competence_status": _safe_call(
+                    lambda: dict(self.mary.competence.status() or {}),
+                    {},
+                ),
+                "semantics": (
+                    "capabilities are current advertisements; demonstrated entries "
+                    "are durable measured evidence and remain non-authoritative"
+                ),
                 "authority": "replaceable workers; Mary state remains Core-owned",
             },
             knowledge={
