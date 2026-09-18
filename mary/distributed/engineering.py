@@ -107,7 +107,7 @@ def engineering_capability_descriptors(permissions: Any) -> list[CapabilityDescr
             metadata={
                 "worker": "bounded_engineering",
                 "sandboxed_planning": True,
-                "sandboxed_tests": True,
+                "workspace_isolated_tests": True,
                 "mutates_repository": mutating,
                 "execution_authorized": bool(permissions.is_allowed(name)),
                 "generic_shell": False,
@@ -227,7 +227,7 @@ def sanitize_engineering_result(capability: str, result: dict[str, Any] | None) 
     allowed = {
         "ok", "capability", "summary", "base_sha", "files", "changes", "diff",
         "status", "checks", "stdout", "stderr", "returncode", "worker",
-        "model", "runtime", "warnings", "applied", "proposal_id", "sandboxed",
+        "model", "runtime", "warnings", "applied", "proposal_id", "workspace_isolated",
     }
     output = {key: values[key] for key in allowed if key in values}
     for key in ("summary", "diff", "stdout", "stderr"):
@@ -532,7 +532,7 @@ class EngineeringWorker:
             "returncode": run.returncode,
             "stdout": run.stdout[:_MAX_RESULT_CHARS],
             "stderr": run.stderr[:_MAX_RESULT_CHARS],
-            "sandboxed": True,
+            "workspace_isolated": True,
         }
 
     def run_targeted_tests(self, paths: list[str]) -> dict[str, Any]:
