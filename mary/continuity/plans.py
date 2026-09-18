@@ -218,6 +218,79 @@ class ExecutivePlanGraph:
         self._update_plan(plan_id, status="failed")
         return step
 
+    def wait_step(
+        self,
+        plan_id: str,
+        step_id: str,
+        *,
+        reason: str,
+        evidence_ids: Iterable[str] = (),
+    ) -> PlanStep:
+        """Pause one step after a recoverable failure without killing the plan."""
+
+        current = self.get_step(plan_id, step_id)
+        blockers = _tuple(
+            [*current.blockers, _text(reason, 240)],
+            limit=32,
+            item_limit=240,
+        )
+        evidence = _tuple(
+            [*current.evidence_ids, *list(evidence_ids)],
+            limit=32,
+            item_limit=180,
+        )
+        step = self._update_step(
+            plan_id,
+            step_id,
+            status="waiting",
+            blockers=list(blockers),
+            evidence_ids=list(evidence),
+            last_result=_text(reason, 1600),
+        )
+        self._update_plan(plan_id, status="waiting")
+        return step
+
+    def recover_running_steps(
+        self,
+        *,
+        reason: str = "runtime restarted before terminal task evidence was received",
+    ) -> int:
+        """Move orphanable running steps to waiting on Core reconstruction.
+
+        Device tasks are process-local by design. A durable plan step therefore
+        cannot remain "running" after the process that owned its task broker has
+        disappeared. Recovery preserves the plan and makes the missing terminal
+        evidence explicit instead of pretending the action completed.
+        """
+
+        changed = 0
+        now = _now()
+        clean_reason = _text(reason, 240)
+
+        def mutate(data: dict[str, Any]) -> None:
+            nonlocal changed
+            for plan in list(data.get("plans") or []):
+                plan_changed = False
+                for step in list(plan.get("steps") or []):
+                    if str(step.get("status") or "") != "running":
+                        continue
+                    blockers = list(step.get("blockers") or [])
+                    if clean_reason and clean_reason not in blockers:
+                        blockers.append(clean_reason)
+                    step["blockers"] = blockers[-32:]
+                    step["status"] = "waiting"
+                    step["assigned_node_id"] = ""
+                    step["last_result"] = clean_reason
+                    step["updated_at"] = now
+                    changed += 1
+                    plan_changed = True
+                if plan_changed:
+                    plan["status"] = "waiting"
+                    plan["updated_at"] = now
+
+        self._store.mutate(mutate)
+        return changed
+
     def block_step(self, plan_id: str, step_id: str, *, blocker: str) -> PlanStep:
         current = self.get_step(plan_id, step_id)
         blockers = _tuple([*current.blockers, blocker], limit=32, item_limit=240)
