@@ -72,7 +72,7 @@ Bundled preferred art remains:
 - minimum interactive target: 44 pt;
 - preserve reduced-motion behavior;
 - use haptics for selection/send/voice actions, not for engagement pressure;
-- keep chat functional if TTS/avatar/relationship projection is unavailable;
+- prefer Core TTS, fall back to iPhone system speech when Core voice degrades, and keep text/chat functional even if both voice paths are unavailable;
 - show Core connection failure honestly and keep local presentation stable;
 - do not expose provider keys, backend internals, node permission machinery or diagnostic payloads on normal Home/Talk/Together screens;
 - no relationship streaks, scarcity timers, jealousy mechanics or guilt prompts.
@@ -83,7 +83,7 @@ Bundled preferred art remains:
 - rebuilt Talk around conversation rather than avatar/dashboard chrome;
 - added Together as a first-class destination;
 - added eight shared-life starters;
-- upgraded voice call presentation;
+- upgraded voice call presentation and added Core-voice -> iPhone-system-speech degraded fallback;
 - preserved Work and Focus;
 - added relational projection from the existing 13.8 Core dashboard;
 - added native haptics and accessibility labels;
