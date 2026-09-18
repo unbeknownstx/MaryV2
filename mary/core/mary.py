@@ -800,7 +800,8 @@ class Mary:
         )
 
         intent = self._detect_intent(
-            input_text
+            input_text,
+            recent_conversation=session_history,
         )
 
         # Presence/environment initiative is not creator-authored input. It can
@@ -2046,6 +2047,7 @@ class Mary:
     def _detect_intent(
         self,
         input_text: str,
+        recent_conversation: list[dict[str, str]] | None = None,
     ) -> Intent:
         """
         Ask cognition to classify the user's intent.
@@ -2104,6 +2106,35 @@ class Mary:
                 },
                 source="runtime_route_followup",
             )
+
+        # Resolve tiny confirmations against the immediately preceding Mary
+        # offer only when that offer clearly concerned bounded self/runtime
+        # inspection. This avoids treating every "do it" as a diagnostics command.
+        if normalized in {
+            "do it", "ok do it", "okay do it", "go ahead", "go ahead and do it",
+            "check it", "inspect it", "inspect everything", "yes do it", "yeah do it",
+        }:
+            previous_mary = ""
+            for item in reversed(list(recent_conversation or [])):
+                if str(item.get("role") or "").strip().lower() != "assistant":
+                    continue
+                previous_mary = normalize_for_matching(str(item.get("content") or ""))
+                break
+            if previous_mary and any(marker in previous_mary for marker in (
+                "inspect", "skim the current surface", "skim the live system",
+                "check the runtime", "check the current surface", "flag anything",
+                "point out any", "surface data", "runtime state",
+            )):
+                return Intent(
+                    intent_type=IntentType.SELF_QUERY,
+                    confidence=0.99,
+                    description="Creator confirms Mary's immediately preceding bounded runtime-inspection offer.",
+                    parameters={
+                        "query": input_text,
+                        "self_query_type": "runtime_inspection",
+                    },
+                    source="runtime_inspection_followup",
+                )
 
         return intent
 
@@ -3466,6 +3497,57 @@ class Mary:
     # SELF INTROSPECTION
     # ================================================================
 
+    def _runtime_self_inspection_response(self) -> str:
+        """Return a compact inspection built only from current Core-owned state."""
+
+        runtime = dict(self.runtime_environment.snapshot() or {})
+        providers = dict(runtime.get("providers", {}) or {})
+        available = [
+            str(name)
+            for name, data in providers.items()
+            if bool(dict(data or {}).get("available"))
+        ]
+        route = list(runtime.get("effective_conversation_route", []) or [])
+
+        nodes = dict(self.node_registry.snapshot() or {})
+        tools = dict(self.tools.status() or {})
+        memory = dict(self.memory.status() or {})
+        counts = dict(memory.get("counts", {}) or {})
+        realtime = dict(self.realtime.status() or {})
+
+        host = str(runtime.get("host_type") or "unknown")
+        platform = str(runtime.get("platform") or "unknown")
+        connected_nodes = int(nodes.get("connected") or 0)
+        registered_nodes = int(nodes.get("registered") or 0)
+        pending_tools = int(tools.get("pending") or 0)
+        registered_tools = int(tools.get("registered") or 0)
+        phase = str(realtime.get("phase") or "unknown")
+        route_text = " → ".join(str(item) for item in route) if route else "none"
+        provider_text = ", ".join(available) if available else "none currently available"
+
+        repository_map = dict(tools.get("repository_map", {}) or {})
+        code_exec = bool(repository_map.get("execution"))
+        limitation = (
+            "A repository/code execution capability is connected."
+            if code_exec
+            else (
+                "I do not currently have executable repository/file inspection on this Core surface, "
+                "so I cannot truthfully certify source files, hooks, or background threads from here."
+            )
+        )
+
+        return (
+            "Here is what I can verify from my own runtime right now: "
+            f"host {host}/{platform}; conversation route {route_text}; "
+            f"available providers {provider_text}; capability nodes {connected_nodes} connected "
+            f"out of {registered_nodes} registered; tools {registered_tools} registered with "
+            f"{pending_tools} pending approval; memory has "
+            f"{int(counts.get('episodic') or 0)} episodic, "
+            f"{int(counts.get('semantic') or 0)} semantic, and "
+            f"{int(counts.get('working') or 0)} working records; realtime phase {phase}. "
+            + limitation
+        )
+
     def _handle_self_query(
         self,
         intent: Intent,
@@ -3480,6 +3562,12 @@ class Mary:
                 "identity",
             )
         ).strip().lower()
+
+        if subtype == "runtime_inspection":
+            return {
+                "system_response": self._runtime_self_inspection_response(),
+                "skip_cognition": True,
+            }
 
         if subtype == "runtime_architecture":
             return {
