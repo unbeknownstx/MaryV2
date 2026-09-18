@@ -25,5 +25,14 @@ def test_pwa_and_compatibility_web_bundle_keep_current_surface_files_aligned():
     web = ROOT / "mobile_web"
     compat = ROOT / "mobile_native" / "MaryMobile" / "www"
 
-    for name in ("app.js", "sw.js"):
+    for name in ("app.js", "sw.js", "polish-13-7.css"):
         assert (web / name).read_bytes() == (compat / name).read_bytes()
+
+
+def test_pwa_stage_art_is_full_bleed_and_chat_rail_is_bounded():
+    css = (ROOT / "mobile_web" / "polish-13-7.css").read_text(encoding="utf-8")
+
+    assert "object-fit: cover !important;" in css
+    assert "max-width: none !important;" in css
+    assert "height: 32% !important;" in css
+    assert "max-height: 330px;" in css
