@@ -26,17 +26,18 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
 import xml.etree.ElementTree as ET
+import zipfile
 
 from mary.runtime.persistence import atomic_write_json, load_json_recovering
 
 
 _ALLOWED_FILE_SUFFIXES = {
     ".txt", ".md", ".rst", ".html", ".htm", ".json", ".jsonl",
-    ".csv", ".yaml", ".yml", ".toml",
+    ".csv", ".yaml", ".yml", ".toml", ".docx", ".epub", ".pdf",
 }
 _DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json", "secrets.json"}
 _DENIED_PARTS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".maryv2", "secrets"}
-_MAX_FILE_BYTES = 2 * 1024 * 1024
+_MAX_FILE_BYTES = 64 * 1024 * 1024
 
 
 def _now() -> str:
@@ -295,21 +296,38 @@ class KnowledgeFabric:
                     if path.stat().st_size > _MAX_FILE_BYTES:
                         skipped += 1
                         continue
-                    raw = path.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
+                    body = self._read_document(path)
+                except (OSError, ValueError, zipfile.BadZipFile):
                     skipped += 1
                     continue
-                body = self._normalize_document(raw, path.suffix.casefold())
                 if not body:
                     skipped += 1
                     continue
                 digest = sha256(body.encode("utf-8")).hexdigest()
                 fingerprints.append(f"{rel.as_posix()}:{digest}")
-                db.execute(
-                    "INSERT INTO documents(pack_id, locator, title, body, content_hash, indexed_at) VALUES(?,?,?,?,?,?)",
-                    (pack.id, rel.as_posix(), path.stem[:240], body, digest, _now()),
-                )
-                indexed += 1
+                chunks = self._document_chunks(body)
+                if not chunks:
+                    skipped += 1
+                    continue
+                for chunk_index, chunk in enumerate(chunks):
+                    chunk_digest = sha256(chunk.encode("utf-8")).hexdigest()
+                    locator = (
+                        rel.as_posix()
+                        if len(chunks) == 1
+                        else f"{rel.as_posix()}#chunk-{chunk_index + 1}"
+                    )
+                    db.execute(
+                        "INSERT INTO documents(pack_id, locator, title, body, content_hash, indexed_at) VALUES(?,?,?,?,?,?)",
+                        (
+                            pack.id,
+                            locator,
+                            path.stem[:240],
+                            chunk,
+                            chunk_digest,
+                            _now(),
+                        ),
+                    )
+                    indexed += 1
             db.commit()
         combined = sha256("\n".join(sorted(fingerprints)).encode("utf-8")).hexdigest() if fingerprints else ""
         self._update_fingerprint(pack.id, combined, indexed=indexed)
@@ -317,6 +335,7 @@ class KnowledgeFabric:
             "pack_id": pack.id,
             "files_seen": files,
             "indexed": indexed,
+            "chunks_indexed": indexed,
             "skipped": skipped,
             "content_fingerprint": combined,
             "index": "sqlite_fts5_rebuildable",
@@ -596,6 +615,126 @@ class KnowledgeFabric:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
+
+    @classmethod
+    def _read_document(cls, path: Path) -> str:
+        suffix = path.suffix.casefold()
+        if suffix == ".docx":
+            with zipfile.ZipFile(path) as archive:
+                root = ET.fromstring(archive.read("word/document.xml"))
+            namespace = {
+                "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            }
+            paragraphs = []
+            for paragraph in root.findall(".//w:p", namespace):
+                text = "".join(
+                    node.text or ""
+                    for node in paragraph.findall(".//w:t", namespace)
+                )
+                clean = " ".join(text.split())
+                if clean:
+                    paragraphs.append(clean)
+            return "\n\n".join(paragraphs)[:4_000_000]
+
+        if suffix == ".epub":
+            parts: list[str] = []
+            with zipfile.ZipFile(path) as archive:
+                names = [
+                    name for name in archive.namelist()
+                    if name.casefold().endswith((".html", ".htm", ".xhtml"))
+                    and not name.startswith("__MACOSX/")
+                ][:2000]
+                for name in names:
+                    try:
+                        raw = archive.read(name).decode("utf-8", errors="ignore")
+                    except (KeyError, OSError):
+                        continue
+                    normalized = cls._normalize_document(raw, ".html")
+                    if normalized:
+                        parts.append(normalized)
+                    if sum(len(item) for item in parts) >= 4_000_000:
+                        break
+            return "\n\n".join(parts)[:4_000_000]
+
+        if suffix == ".pdf":
+            try:
+                from pypdf import PdfReader  # type: ignore
+            except Exception:
+                return ""
+            try:
+                reader = PdfReader(str(path))
+                parts = []
+                for page in list(reader.pages)[:2000]:
+                    text = " ".join(str(page.extract_text() or "").split())
+                    if text:
+                        parts.append(text)
+                    if sum(len(item) for item in parts) >= 4_000_000:
+                        break
+                return "\n\n".join(parts)[:4_000_000]
+            except Exception:
+                return ""
+
+        raw = path.read_text(encoding="utf-8", errors="ignore")
+        return cls._normalize_document(raw, suffix)
+
+    @staticmethod
+    def _document_chunks(
+        body: str,
+        *,
+        target_characters: int = 6000,
+        overlap_characters: int = 500,
+    ) -> list[str]:
+        """Create paragraph-aware rebuildable retrieval chunks.
+
+        Chunks are search artifacts only. They never become MemoryManager
+        records and can always be regenerated from the creator-owned source.
+        """
+
+        text = str(body or "").strip()
+        if not text:
+            return []
+        target = max(1200, min(20_000, int(target_characters)))
+        overlap = max(0, min(target // 3, int(overlap_characters)))
+        if len(text) <= target:
+            return [text]
+
+        paragraphs = [
+            paragraph.strip()
+            for paragraph in re.split(r"\n\s*\n|(?<=\.)\s+(?=[A-Z])", text)
+            if paragraph.strip()
+        ]
+        chunks: list[str] = []
+        current = ""
+        for paragraph in paragraphs:
+            if len(paragraph) > target:
+                if current:
+                    chunks.append(current.strip())
+                    current = ""
+                start = 0
+                while start < len(paragraph):
+                    end = min(len(paragraph), start + target)
+                    piece = paragraph[start:end].strip()
+                    if piece:
+                        chunks.append(piece)
+                    if end >= len(paragraph):
+                        break
+                    start = max(start + 1, end - overlap)
+                continue
+
+            candidate = paragraph if not current else f"{current}\n\n{paragraph}"
+            if len(candidate) <= target:
+                current = candidate
+                continue
+            if current:
+                chunks.append(current.strip())
+                tail = current[-overlap:].strip() if overlap else ""
+                current = f"{tail}\n\n{paragraph}".strip() if tail else paragraph
+            else:
+                current = paragraph
+
+        if current:
+            chunks.append(current.strip())
+        return [chunk for chunk in chunks if chunk][:20_000]
 
     @staticmethod
     def _normalize_document(raw: str, suffix: str) -> str:
