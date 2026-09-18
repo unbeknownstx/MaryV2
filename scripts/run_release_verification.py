@@ -120,6 +120,7 @@ OFFLINE_VERIFIERS: tuple[tuple[str, str], ...] = (
     ("natural_conversation_12_12_2", "scripts.verify_natural_conversation_12_12_2"),
     ("production_hybrid_dialogue_12_12_3", "scripts.verify_production_hybrid_dialogue_12_12_3"),
     ("mobile_12_13", "scripts.verify_mobile_12_13"),
+    ("model_stack", "scripts.verify_model_stack"),
     ("connected_development_13_0", "scripts.verify_mary_13"),
     ("realtime_cognitive_infrastructure_13_1", "scripts.verify_mary_13_1"),
     ("developed_self_persistence", "scripts.verify_developed_self_persistence"),
