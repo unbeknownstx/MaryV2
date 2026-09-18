@@ -13,6 +13,15 @@ from .mcp_fabric import (
     sanitize_mcp_task_args,
     server_config_from_environment,
 )
+from .engineering import (
+    ENGINEERING_CAPABILITIES,
+    READ_ONLY_ENGINEERING_CAPABILITIES,
+    EngineeringWorker,
+    discover_engineering_repository,
+    engineering_capability_descriptors,
+    sanitize_engineering_result,
+    sanitize_engineering_task_args,
+)
 from .permissions import DeviceExecutionPermissions, default_permission_path
 from .tasks import (
     CapabilityTaskPlan,
@@ -89,6 +98,13 @@ __all__ = [
     "DeviceCapabilityTask",
     "DeviceTaskBroker",
     "DeviceExecutionPermissions",
+    "ENGINEERING_CAPABILITIES",
+    "READ_ONLY_ENGINEERING_CAPABILITIES",
+    "EngineeringWorker",
+    "discover_engineering_repository",
+    "engineering_capability_descriptors",
+    "sanitize_engineering_result",
+    "sanitize_engineering_task_args",
     "MCP_CAPABILITIES",
     "MCP_SERVER_CAPABILITIES",
     "MCPFabric",
