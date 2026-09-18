@@ -1,5 +1,6 @@
 """Experiential Continuity primitives for MaryV2 13.4."""
 from .cancellation import CancellationHandle, GenerationCancellationRegistry
+from .competence import CompetenceLedger, CompetenceRecord
 from .experience import ConsolidationCandidate, ExperienceEvent, ExperienceLedger
 from .lanes import CognitionLaneDecision, CognitionLaneRouter
 from .memory_lab import MemoryCase, MemoryEvaluationSuite
@@ -19,6 +20,8 @@ from .workflows import DurableWorkflowStore, WorkflowCheckpoint
 __all__ = [
     "CancellationHandle",
     "CognitionLaneDecision",
+    "CompetenceLedger",
+    "CompetenceRecord",
     "CognitionLaneRouter",
     "GenerationCancellationRegistry",
     "MemoryCase",
