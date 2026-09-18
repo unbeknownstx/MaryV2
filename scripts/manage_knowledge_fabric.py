@@ -47,6 +47,13 @@ def main() -> int:
     register.add_argument("--topics", default="")
     register.add_argument("--collection", default="default")
     register.add_argument("--license", default="creator-owned")
+    register.add_argument(
+        "--ingest-policy",
+        choices=sorted(KnowledgeFabric.INGEST_POLICIES),
+        default="manual",
+    )
+    register.add_argument("--include", action="append", default=[])
+    register.add_argument("--exclude", action="append", default=[])
 
     kiwix = sub.add_parser("register-kiwix")
     kiwix.add_argument("pack_id")
@@ -94,6 +101,12 @@ def main() -> int:
 
     index = sub.add_parser("index")
     index.add_argument("pack_id")
+
+    refresh_plan = sub.add_parser("refresh-plan")
+    refresh_plan.add_argument("pack_id")
+
+    refresh = sub.add_parser("refresh")
+    refresh.add_argument("pack_id")
 
     search = sub.add_parser("search")
     search.add_argument("query")
@@ -151,11 +164,16 @@ def main() -> int:
             kind="local_files",
             location=str(args.directory),
             query_mode="fts",
+            ingest_policy=args.ingest_policy,
             topics=topics,
             collection=args.collection,
             license=args.license,
             local_only=True,
             source="creator_cli",
+            metadata={
+                "include_patterns": args.include,
+                "exclude_patterns": args.exclude,
+            },
         )
         print(json.dumps(pack.to_dict(), indent=2, ensure_ascii=False))
         return 0
@@ -242,6 +260,33 @@ def main() -> int:
             indent=2,
             ensure_ascii=False,
         ))
+        return 0
+
+    if args.command == "refresh-plan":
+        print(json.dumps(
+            fabric.local_refresh_plan(args.pack_id),
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return 0
+
+    if args.command == "refresh":
+        plan = fabric.local_refresh_plan(args.pack_id)
+        if not plan["has_changes"]:
+            print(json.dumps({
+                "ok": True,
+                "refreshed": False,
+                "plan": plan,
+                "reason": "source corpus is unchanged",
+            }, indent=2, ensure_ascii=False))
+            return 0
+        result = fabric.index_local_pack(args.pack_id)
+        print(json.dumps({
+            "ok": True,
+            "refreshed": True,
+            "plan": plan,
+            "index": result,
+        }, indent=2, ensure_ascii=False))
         return 0
 
     if args.command == "search":

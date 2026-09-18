@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
+from fnmatch import fnmatchcase
 import html
 import ipaddress
 import json
@@ -65,6 +66,7 @@ class KnowledgePack:
     collection: str
     kind: str
     query_mode: str
+    ingest_policy: str
     location: str
     enabled: bool
     local_only: bool
@@ -107,9 +109,10 @@ class KnowledgeHit:
 class KnowledgeFabric:
     """Registry and read-only retrieval substrate for locally owned knowledge."""
 
-    VERSION = 2
+    VERSION = 3
     KINDS = {"local_files", "kiwix", "qdrant", "qdrant_edge", "kolibri", "notes", "custom"}
     QUERY_MODES = {"fts", "direct", "vector", "hybrid", "catalog_only"}
+    INGEST_POLICIES = {"manual", "on_change"}
     RETRIEVAL_MODES = {"auto", "off", "lexical", "direct", "vector", "hybrid"}
 
     def __init__(
@@ -160,6 +163,7 @@ class KnowledgeFabric:
         kind: str,
         location: str,
         query_mode: str,
+        ingest_policy: str = "manual",
         topics: Iterable[str] = (),
         collection: str = "default",
         license: str = "unknown",
@@ -174,9 +178,14 @@ class KnowledgeFabric:
         clean_title = _text(title, 240)
         clean_kind = _text(kind, 80).casefold()
         clean_mode = _text(query_mode, 80).casefold()
+        clean_ingest = _text(ingest_policy, 40).casefold() or "manual"
         clean_location = str(location or "").strip()[:1000]
         if not clean_title or clean_kind not in self.KINDS or clean_mode not in self.QUERY_MODES:
             raise ValueError("knowledge pack requires valid title, kind and query_mode")
+        if clean_ingest not in self.INGEST_POLICIES:
+            raise ValueError(
+                f"ingest_policy must be one of {sorted(self.INGEST_POLICIES)}"
+            )
         if not clean_location:
             raise ValueError("knowledge pack location is required")
         if clean_kind == "local_files":
@@ -207,6 +216,7 @@ class KnowledgeFabric:
             "collection": _text(collection, 160) or "default",
             "kind": clean_kind,
             "query_mode": clean_mode,
+            "ingest_policy": clean_ingest,
             "location": clean_location,
             "enabled": bool(enabled),
             "local_only": bool(local_only),
@@ -445,6 +455,165 @@ class KnowledgeFabric:
             if item["locator"] == source_path
         )
 
+    @staticmethod
+    def _manifest_locator(pack_id: str) -> str:
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(pack_id or ""))[:180] or "pack"
+
+    def _source_manifest_path(self, pack_id: str) -> Path:
+        return (
+            self.registry_path.parent
+            / "manifests"
+            / f"{self._manifest_locator(pack_id)}.json"
+        )
+
+    def _load_source_manifest(self, pack_id: str) -> dict[str, Any]:
+        path = self._source_manifest_path(pack_id)
+        if not path.exists():
+            return {"version": 1, "pack_id": pack_id, "documents": []}
+        try:
+            payload, _source = load_json_recovering(path, backup_generations=2)
+        except Exception:
+            return {"version": 1, "pack_id": pack_id, "documents": []}
+        return dict(payload) if isinstance(payload, dict) else {
+            "version": 1, "pack_id": pack_id, "documents": []
+        }
+
+    def _save_source_manifest(
+        self,
+        pack: KnowledgePack,
+        documents: list[dict[str, Any]],
+        *,
+        content_fingerprint: str,
+    ) -> None:
+        path = self._source_manifest_path(pack.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            path,
+            {
+                "version": 1,
+                "pack_id": pack.id,
+                "generated_at": _now(),
+                "content_fingerprint": _text(content_fingerprint, 128),
+                "documents": list(documents)[:100_000],
+                "authority": "rebuildable_source_inventory_only",
+            },
+            backup_generations=2,
+            indent=2,
+        )
+
+    @staticmethod
+    def _source_allowed(pack: KnowledgePack, relative: Path) -> bool:
+        if any(part.casefold() in _DENIED_PARTS for part in relative.parts):
+            return False
+        if relative.name.casefold() in _DENIED_NAMES:
+            return False
+        if relative.suffix.casefold() not in _ALLOWED_FILE_SUFFIXES:
+            return False
+        locator = relative.as_posix()
+        metadata = dict(pack.metadata or {})
+        includes = [
+            str(item).strip()
+            for item in list(metadata.get("include_patterns") or [])
+            if str(item).strip()
+        ][:64]
+        excludes = [
+            str(item).strip()
+            for item in list(metadata.get("exclude_patterns") or [])
+            if str(item).strip()
+        ][:64]
+        if includes and not any(fnmatchcase(locator, pattern) for pattern in includes):
+            return False
+        if excludes and any(fnmatchcase(locator, pattern) for pattern in excludes):
+            return False
+        return True
+
+    def local_refresh_plan(self, pack_id: str) -> dict[str, Any]:
+        """Inspect local source changes without mutating registry or indexes."""
+
+        pack = self.get(pack_id)
+        if pack.kind != "local_files":
+            raise ValueError("refresh planning is available only for local_files packs")
+        root = Path(pack.location).resolve()
+        previous = self._load_source_manifest(pack.id)
+        old = {
+            str(item.get("locator") or ""): dict(item)
+            for item in list(previous.get("documents") or [])
+            if isinstance(item, dict) and str(item.get("locator") or "")
+        }
+        current: dict[str, dict[str, Any]] = {}
+        skipped = 0
+        for path in root.rglob("*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            rel = path.relative_to(root)
+            if not self._source_allowed(pack, rel):
+                skipped += 1
+                continue
+            try:
+                stat = path.stat()
+                if stat.st_size > _MAX_FILE_BYTES:
+                    skipped += 1
+                    continue
+                body = self._read_document(path)
+            except (OSError, ValueError, zipfile.BadZipFile):
+                skipped += 1
+                continue
+            if not body:
+                skipped += 1
+                continue
+            locator = rel.as_posix()
+            current[locator] = {
+                "locator": locator,
+                "content_hash": sha256(body.encode("utf-8")).hexdigest(),
+                "size_bytes": int(stat.st_size),
+                "source_modified_at": datetime.fromtimestamp(
+                    stat.st_mtime,
+                    tz=timezone.utc,
+                ).isoformat(),
+            }
+
+        added = sorted(set(current) - set(old))
+        removed = sorted(set(old) - set(current))
+        changed = sorted(
+            locator
+            for locator in set(current).intersection(old)
+            if str(current[locator].get("content_hash") or "")
+            != str(old[locator].get("content_hash") or "")
+        )
+        unchanged = sorted(
+            locator
+            for locator in set(current).intersection(old)
+            if locator not in set(changed)
+        )
+        fingerprint = sha256(
+            "\n".join(
+                sorted(
+                    f"{locator}:{row.get('content_hash', '')}"
+                    for locator, row in current.items()
+                )
+            ).encode("utf-8")
+        ).hexdigest() if current else ""
+        has_changes = bool(added or removed or changed) or (
+            fingerprint != str(previous.get("content_fingerprint") or "")
+        )
+        return {
+            "pack_id": pack.id,
+            "collection": pack.collection,
+            "ingest_policy": pack.ingest_policy,
+            "manifest_present": self._source_manifest_path(pack.id).exists(),
+            "documents_seen": len(current),
+            "added": added[:5000],
+            "changed": changed[:5000],
+            "removed": removed[:5000],
+            "unchanged": len(unchanged),
+            "skipped": skipped,
+            "content_fingerprint": fingerprint,
+            "has_changes": has_changes,
+            "recommended_action": "explicit_index" if has_changes else "none",
+            "automatic_mutation_performed": False,
+            "authority": "source inventory only; retrieval index remains derivative",
+        }
+
     def plan(self, query: str, *, limit: int = 8) -> list[dict[str, Any]]:
         terms = {
             token.casefold()
@@ -485,16 +654,14 @@ class KnowledgeFabric:
         indexed = 0
         skipped = 0
         fingerprints: list[str] = []
+        source_manifest: list[dict[str, Any]] = []
         with self._connect() as db:
             db.execute("DELETE FROM documents WHERE pack_id = ?", (pack.id,))
             for path in root.rglob("*"):
                 if not path.is_file() or path.is_symlink():
                     continue
                 rel = path.relative_to(root)
-                if any(part.casefold() in _DENIED_PARTS for part in rel.parts):
-                    skipped += 1
-                    continue
-                if path.name.casefold() in _DENIED_NAMES or path.suffix.casefold() not in _ALLOWED_FILE_SUFFIXES:
+                if not self._source_allowed(pack, rel):
                     skipped += 1
                     continue
                 files += 1
@@ -515,7 +682,14 @@ class KnowledgeFabric:
                     skipped += 1
                     continue
                 digest = sha256(body.encode("utf-8")).hexdigest()
-                fingerprints.append(f"{rel.as_posix()}:{digest}")
+                locator_source = rel.as_posix()
+                fingerprints.append(f"{locator_source}:{digest}")
+                source_manifest.append({
+                    "locator": locator_source,
+                    "content_hash": digest,
+                    "size_bytes": int(stat.st_size),
+                    "source_modified_at": source_modified_at,
+                })
                 chunks = self._document_chunks(body)
                 if not chunks:
                     skipped += 1
@@ -544,6 +718,11 @@ class KnowledgeFabric:
                     indexed += 1
             db.commit()
         combined = sha256("\n".join(sorted(fingerprints)).encode("utf-8")).hexdigest() if fingerprints else ""
+        self._save_source_manifest(
+            pack,
+            source_manifest,
+            content_fingerprint=combined,
+        )
         self._update_fingerprint(pack.id, combined, indexed=indexed)
         return {
             "pack_id": pack.id,
@@ -633,6 +812,10 @@ class KnowledgeFabric:
                 for name in sorted({pack.collection for pack in packs})
             },
             "disabled_documents": sum(len(pack.disabled_documents) for pack in packs),
+            "ingest_policies": {
+                policy: sum(1 for pack in packs if pack.ingest_policy == policy)
+                for policy in sorted(self.INGEST_POLICIES)
+            },
             "retrieval_modes": sorted(self.RETRIEVAL_MODES),
             "vector_backend": (
                 "optional node-owned qdrant/qdrant-edge derivative; "
@@ -1178,6 +1361,12 @@ class KnowledgeFabric:
                 continue
             if isinstance(value, (str, int, float, bool)) or value is None:
                 output[name] = value if not isinstance(value, str) else _text(value, 500)
+            elif isinstance(value, (list, tuple)):
+                output[name] = [
+                    _text(item, 300)
+                    for item in list(value)[:64]
+                    if _text(item, 300)
+                ]
             else:
                 output[name] = _text(value, 500)
         return output
@@ -1187,6 +1376,7 @@ class KnowledgeFabric:
         values = dict(row)
         values["topics"] = tuple(values.get("topics") or [])
         values.setdefault("collection", "default")
+        values.setdefault("ingest_policy", "manual")
         values["disabled_documents"] = tuple(
             values.get("disabled_documents") or []
         )

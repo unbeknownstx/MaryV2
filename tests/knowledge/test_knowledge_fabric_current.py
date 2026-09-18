@@ -224,3 +224,63 @@ def test_collection_switch_and_request_level_retrieval_mode(tmp_path: Path):
     status = fabric.status()
     assert status["collections"]["manuals"]["packs"] == 1
     assert "off" in status["retrieval_modes"]
+
+
+def test_local_corpus_refresh_plan_is_change_aware_and_policy_scoped(tmp_path: Path):
+    docs = tmp_path / "corpus"
+    docs.mkdir()
+    (docs / "public.md").write_text("version one reference", encoding="utf-8")
+    (docs / "private.md").write_text("must stay excluded", encoding="utf-8")
+    (docs / "notes.txt").write_text("not in include pattern", encoding="utf-8")
+
+    fabric = KnowledgeFabric(
+        tmp_path / "knowledge" / "refresh.json",
+        index_path=tmp_path / "knowledge" / "refresh.sqlite3",
+    )
+    pack = fabric.register(
+        pack_id="curated",
+        title="Curated corpus",
+        kind="local_files",
+        location=str(docs),
+        query_mode="fts",
+        ingest_policy="on_change",
+        metadata={
+            "include_patterns": ["*.md"],
+            "exclude_patterns": ["private*"],
+        },
+    )
+
+    before = fabric.local_refresh_plan(pack.id)
+    assert before["ingest_policy"] == "on_change"
+    assert before["added"] == ["public.md"]
+    assert before["automatic_mutation_performed"] is False
+
+    indexed = fabric.index_local_pack(pack.id)
+    assert indexed["files_seen"] == 1
+    assert [row["locator"] for row in fabric.documents(pack.id)] == ["public.md"]
+    assert fabric.local_refresh_plan(pack.id)["has_changes"] is False
+
+    (docs / "public.md").write_text("version two reference", encoding="utf-8")
+    (docs / "new.md").write_text("new source", encoding="utf-8")
+    changed = fabric.local_refresh_plan(pack.id)
+    assert changed["changed"] == ["public.md"]
+    assert changed["added"] == ["new.md"]
+    assert changed["recommended_action"] == "explicit_index"
+
+    fabric.index_local_pack(pack.id)
+    assert fabric.local_refresh_plan(pack.id)["has_changes"] is False
+    assert fabric.status()["ingest_policies"]["on_change"] == 1
+
+
+def test_legacy_pack_without_ingest_policy_decodes_as_manual(tmp_path: Path):
+    registry = tmp_path / "legacy.json"
+    registry.write_text(
+        '{"version":2,"packs":[{"id":"legacy","title":"Legacy","collection":"default",'
+        '"kind":"custom","query_mode":"catalog_only","location":"legacy","enabled":false,'
+        '"local_only":true,"topics":[],"license":"unknown","trust":"candidate",'
+        '"source":"test","content_fingerprint":"","created_at":"","updated_at":"",'
+        '"disabled_documents":[],"metadata":{}}]}',
+        encoding="utf-8",
+    )
+    pack = KnowledgeFabric(registry).get("legacy")
+    assert pack.ingest_policy == "manual"
