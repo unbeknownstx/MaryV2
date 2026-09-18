@@ -36,9 +36,17 @@ The current node worker advertises:
   disposable isolated workspace.
 - `engineering.git.status` / `engineering.git.diff` — read-only repository
   state.
+- `engineering.git.commit` — create one local commit containing only the
+  last creator-approved, verified engineering apply.
+- `engineering.git.push` — publish only the exact commit Mary just created to
+  the node-controlled remote/branch. This is unavailable unless the node also
+  sets `MARY_ENGINEERING_PUSH_ENABLED=true`.
 
-`git commit`, `git push`, PR merge, production deploy, dependency install,
-root/admin execution and arbitrary shell commands are intentionally absent.
+PR merge, force-push, an independent production-deploy command, dependency
+install, root/admin execution and arbitrary shell commands are intentionally
+absent. A normal push to `main` may still trigger external CI/CD such as
+Railway, which is why push has its own creator phrase, local permission and
+environment opt-in.
 
 ## Local-model requirement
 
@@ -72,6 +80,25 @@ Keep repository mutation disabled until desired:
 ```bash
 python -m scripts.node_permissions allow engineering.repo.apply
 ```
+
+Verified local commit is another permission:
+
+```bash
+python -m scripts.node_permissions allow engineering.git.commit
+```
+
+Publishing remains disabled unless **both** are set:
+
+```bash
+python -m scripts.node_permissions allow engineering.git.push
+# plus in the node environment:
+# MARY_ENGINEERING_PUSH_ENABLED=true
+```
+
+By default the allowed branch/remote are `main` and `origin`. Override only
+with `MARY_ENGINEERING_ALLOWED_BRANCH` / `MARY_ENGINEERING_ALLOWED_REMOTE`.
+The worker refuses a commit if the checkout is on another branch, dirty with
+unrelated changes, or not aligned with the local `origin/main` tracking ref.
 
 Full-suite execution is separately opt-in:
 
@@ -113,10 +140,22 @@ Creator: Apply that fix
 
 Creator: Verify that fix
   -> typed repository verification runs in a disposable copied workspace
+
+Creator: Commit that fix
+  -> requires successful verification + engineering.git.commit
+  -> commits only the exact applied file set on the configured canonical branch
+  -> no push occurs
+
+Creator: Push that fix
+  -> requires the exact just-created commit + engineering.git.push
+  -> also requires MARY_ENGINEERING_PUSH_ENABLED=true
+  -> non-force push to the configured remote/branch
+  -> connected CI/CD may react to that branch update
 ```
 
 Proposal IDs are node-local and short-lived. Restarting the node invalidates
-them. Core treats them as one-shot for apply.
+them. Core treats them as one-shot for apply. Commit/push state is likewise
+node-local and cannot be reconstructed from arbitrary creator text.
 
 ## Workspace isolation and stronger sandboxing
 
@@ -132,10 +171,11 @@ host permissions of the node process. Test capabilities therefore remain
 separately default-deny. For hostile/untrusted code or stronger filesystem and
 network isolation, use the future OpenHands/container worker boundary instead.
 
-Repository apply is the one exception to sandbox-only writes: it modifies the
-selected MaryV2 checkout, but only after the separate node permission and an
+Repository apply is the first live-checkout mutation boundary: it modifies the
+selected MaryV2 checkout only after the separate node permission and an
 explicit creator apply phrase. Every file requires the exact SHA-256 captured
-when the proposal was created.
+when the proposal was created. Commit and push are two additional typed
+boundaries; neither is implied by repository apply or validation.
 
 ## OpenHands relationship
 
