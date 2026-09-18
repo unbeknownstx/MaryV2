@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from mary.relationship.provenance import text_has_test_probe_marker
+from mary.relationship.provenance import is_creator_record_conversation_safe, text_has_test_probe_marker
 from mary.runtime.live_state import build_live_character_state
 
 
@@ -127,7 +127,11 @@ def _memory_highlights(mary) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for item in records:
         value = _clip(item.get("value"))
-        if not value or text_has_test_probe_marker(value):
+        if (
+            not value
+            or text_has_test_probe_marker(value)
+            or not is_creator_record_conversation_safe(item)
+        ):
             continue
         category = str(item.get("category") or "memory").strip().lower()
         key = _clip(item.get("key"), 72)
