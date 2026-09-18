@@ -172,6 +172,12 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "experience_ledger",
     ),
     DurableStateFile(
+        "continuity/experience_replay.json",
+        "experiential_continuity",
+        "ExperienceReplayStore",
+        "experience_replay",
+    ),
+    DurableStateFile(
         "continuity/temporal_knowledge.json",
         "experiential_continuity",
         "TemporalKnowledgeGraph",
