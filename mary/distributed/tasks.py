@@ -303,6 +303,7 @@ class DeviceTaskBroker:
         lifecycle_lock: RLock | None = None,
         live_node: Callable[[str], bool] | None = None,
         execution_policy: ExecutionPolicy | None = None,
+        competence: Any | None = None,
     ) -> None:
         self.max_tasks = max(20, int(max_tasks))
         self.ttl_seconds = max(30.0, float(ttl_seconds))
@@ -313,6 +314,7 @@ class DeviceTaskBroker:
         self._condition = Condition(self._lock)
         self._live_node = live_node
         self._execution_policy = execution_policy
+        self._competence = competence
         self._tasks: dict[str, DeviceCapabilityTask] = {}
         self._order: list[str] = []
         self._benchmark_book = BenchmarkBook()
@@ -352,7 +354,11 @@ class DeviceTaskBroker:
     def _scheduler_for(self, registry: NodeRegistry) -> HomeComputeScheduler:
         if self._compute_scheduler is None or self._scheduler_registry is not registry:
             self._scheduler_registry = registry
-            self._compute_scheduler = HomeComputeScheduler(registry, benchmarks=self._benchmark_book)
+            self._compute_scheduler = HomeComputeScheduler(
+                registry,
+                benchmarks=self._benchmark_book,
+                competence=self._competence,
+            )
         return self._compute_scheduler
 
     def _active_loads(self, node_ids: set[str]) -> dict[str, NodeLoad]:
@@ -398,12 +404,20 @@ class DeviceTaskBroker:
             self._benchmark_book.summary(node.node_id, capability, operation).get("samples", 0) > 0
             for node in candidates
         )
-        if not has_runtime_evidence and not has_live_pressure:
-            return fallback
         scheduler = self._scheduler_for(registry)
+        has_competence_evidence = scheduler.has_competence_evidence(
+            capability,
+            operation,
+            node_ids,
+        )
+        if not has_runtime_evidence and not has_live_pressure and not has_competence_evidence:
+            return fallback
         for load in loads.values():
             scheduler.update_load(load)
-        selected = scheduler.choose(_workload_for(capability, args))
+        selected = scheduler.choose(
+            _workload_for(capability, args),
+            allowed_node_ids=node_ids,
+        )
         if selected is None:
             return fallback
         return selected if selected.node_id in node_ids else fallback

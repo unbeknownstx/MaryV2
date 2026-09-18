@@ -110,11 +110,20 @@ class BenchmarkBook:
         for raw in list(candidates)[:8]:
             item = dict(raw or {})
             benchmark = dict(item.get("benchmark") or {})
+            competence = dict(item.get("competence") or {})
             safe_candidates.append({
                 "node_id": str(item.get("node_id") or "")[:160],
                 "score": round(float(item.get("score") or 0.0), 3),
                 "reason": str(item.get("reason") or "")[:240],
                 "load_pressure": round(max(0.0, min(1.0, float(item.get("load_pressure") or 0.0))), 3),
+                "competence": {
+                    "attempts": max(0, int(competence.get("attempts") or 0)),
+                    "reliability": competence.get("reliability"),
+                    "evidence_strength": competence.get("evidence_strength"),
+                    "freshness": competence.get("freshness"),
+                    "score_delta": competence.get("score_delta"),
+                    "authority": "routing_hint_only",
+                },
                 "benchmark": {
                     "samples": max(0, int(benchmark.get("samples") or 0)),
                     "success_rate": benchmark.get("success_rate"),
@@ -240,9 +249,16 @@ class HomeComputeScheduler:
 
     VERSION = "13.55"
 
-    def __init__(self, registry: NodeRegistry, *, benchmarks: BenchmarkBook | None = None) -> None:
+    def __init__(
+        self,
+        registry: NodeRegistry,
+        *,
+        benchmarks: BenchmarkBook | None = None,
+        competence: Any | None = None,
+    ) -> None:
         self.registry = registry
         self.benchmarks = benchmarks or BenchmarkBook()
+        self.competence = competence
         self._loads: dict[str, NodeLoad] = {}
         self._lock = RLock()
 
@@ -253,6 +269,110 @@ class HomeComputeScheduler:
     def load_for(self, node_id: str) -> NodeLoad:
         with self._lock:
             return self._loads.get(str(node_id), NodeLoad(node_id=str(node_id)))
+
+    def _competence_hint(
+        self,
+        node_id: str,
+        capability: str,
+        operation: str,
+    ) -> dict[str, Any]:
+        """Return a small, decayed routing hint from durable outcome evidence.
+
+        The hint never creates candidates or bypasses readiness, privacy,
+        permission, or resource-fit checks. Sparse evidence is intentionally
+        weak, and old evidence decays because node hardware/runtime can change.
+        """
+        empty = {
+            "attempts": 0,
+            "reliability": None,
+            "evidence_strength": 0.0,
+            "freshness": 0.0,
+            "score_delta": 0.0,
+            "verified_successes": 0,
+            "last_observed_at": "",
+            "authority": "routing_hint_only",
+        }
+        summary = getattr(self.competence, "summary_for", None)
+        if not callable(summary):
+            return empty
+        try:
+            rows = list(summary(
+                capability,
+                operation=operation,
+                node_ids=(node_id,),
+                limit=8,
+            ) or [])
+            exact = [
+                dict(row) for row in rows
+                if str(row.get("node_id") or "") == str(node_id)
+            ]
+            if not exact and str(operation or "general").casefold() != "general":
+                rows = list(summary(
+                    capability,
+                    operation="general",
+                    node_ids=(node_id,),
+                    limit=8,
+                ) or [])
+                exact = [
+                    dict(row) for row in rows
+                    if str(row.get("node_id") or "") == str(node_id)
+                ]
+        except Exception:
+            return empty
+        if not exact:
+            return empty
+        row = max(
+            exact,
+            key=lambda item: (
+                float(item.get("evidence_strength") or 0.0),
+                int(item.get("attempts") or 0),
+                str(item.get("last_observed_at") or ""),
+            ),
+        )
+        try:
+            reliability = max(0.0, min(1.0, float(row.get("reliability") or 0.5)))
+            strength = max(0.0, min(1.0, float(row.get("evidence_strength") or 0.0)))
+        except (TypeError, ValueError):
+            return empty
+
+        freshness = 1.0
+        observed = str(row.get("last_observed_at") or "").strip()
+        if observed:
+            try:
+                parsed = datetime.fromisoformat(observed.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                age_days = max(
+                    0.0,
+                    (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()
+                    / 86400.0,
+                )
+                freshness = 0.5 ** (age_days / 30.0)
+            except (TypeError, ValueError):
+                freshness = 0.5
+        effective_strength = strength * freshness
+        score_delta = 10.0 * (2.0 * (reliability - 0.5)) * effective_strength
+        return {
+            "attempts": max(0, int(row.get("attempts") or 0)),
+            "reliability": round(reliability, 4),
+            "evidence_strength": round(strength, 4),
+            "freshness": round(freshness, 4),
+            "score_delta": round(max(-10.0, min(10.0, score_delta)), 3),
+            "verified_successes": max(0, int(row.get("verified_successes") or 0)),
+            "last_observed_at": observed[:80],
+            "authority": "routing_hint_only",
+        }
+
+    def has_competence_evidence(
+        self,
+        capability: str,
+        operation: str,
+        node_ids: Iterable[str],
+    ) -> bool:
+        return any(
+            int(self._competence_hint(node_id, capability, operation).get("attempts") or 0) > 0
+            for node_id in node_ids
+        )
 
     def _fit_plan(self, node: NodeDescriptor, request: WorkloadRequest, load: NodeLoad):
         cap = node.capabilities[request.capability]
@@ -357,7 +477,12 @@ class HomeComputeScheduler:
 
         return (score, ",".join(reasons))
 
-    def rank(self, request: WorkloadRequest) -> list[dict[str, Any]]:
+    def rank(
+        self,
+        request: WorkloadRequest,
+        *,
+        allowed_node_ids: Iterable[str] | None = None,
+    ) -> list[dict[str, Any]]:
         capability = str(request.capability).strip().lower()
         normalized = WorkloadRequest(
             capability=capability,
@@ -368,11 +493,31 @@ class HomeComputeScheduler:
             cost_sensitive=bool(request.cost_sensitive),
             estimated_seconds=max(0.0, float(request.estimated_seconds)),
         )
+        allowed = (
+            None
+            if allowed_node_ids is None
+            else {str(node_id) for node_id in allowed_node_ids if str(node_id)}
+        )
         ranked = []
         for node in self.registry.candidates(capability):
+            if allowed is not None and node.node_id not in allowed:
+                continue
             score, reason = self._score(node, normalized)
             if score <= -9000:
                 continue
+            competence = self._competence_hint(
+                node.node_id,
+                capability,
+                normalized.operation,
+            )
+            score += float(competence.get("score_delta") or 0.0)
+            delta = float(competence.get("score_delta") or 0.0)
+            if abs(delta) >= 0.05:
+                reason = (
+                    f"{reason},competence={delta:+.2f}"
+                    f"/strength={float(competence.get('evidence_strength') or 0.0):.2f}"
+                    f"/fresh={float(competence.get('freshness') or 0.0):.2f}"
+                )
             load = self.load_for(node.node_id)
             ranked.append({
                 "node_id": node.node_id,
@@ -380,12 +525,18 @@ class HomeComputeScheduler:
                 "reason": reason,
                 "load_pressure": round(load.pressure, 3),
                 "benchmark": self.benchmarks.summary(node.node_id, capability, normalized.operation),
+                "competence": competence,
             })
         ranked.sort(key=lambda item: (-float(item["score"]), str(item["node_id"])))
         return ranked
 
-    def choose(self, request: WorkloadRequest) -> NodeDescriptor | None:
-        ranked = self.rank(request)
+    def choose(
+        self,
+        request: WorkloadRequest,
+        *,
+        allowed_node_ids: Iterable[str] | None = None,
+    ) -> NodeDescriptor | None:
+        ranked = self.rank(request, allowed_node_ids=allowed_node_ids)
         if ranked:
             selected_id = str(ranked[0]["node_id"])
             self.benchmarks.record_adaptive_decision(
@@ -396,7 +547,16 @@ class HomeComputeScheduler:
                 candidates=ranked,
             )
             return self.registry.get(selected_id)
-        candidates = list(self.registry.candidates(str(request.capability).strip().lower()))
+        allowed = (
+            None
+            if allowed_node_ids is None
+            else {str(node_id) for node_id in allowed_node_ids if str(node_id)}
+        )
+        candidates = [
+            node
+            for node in self.registry.candidates(str(request.capability).strip().lower())
+            if allowed is None or node.node_id in allowed
+        ]
         if candidates:
             plans = [self._fit_plan(node, request, self.load_for(node.node_id)) for node in candidates]
             if plans and all(plan is not None and plan.status == "infeasible" for plan in plans):

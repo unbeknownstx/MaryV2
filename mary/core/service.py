@@ -189,8 +189,11 @@ class MaryCoreService:
             "lifecycle_lock": self._node_lifecycle_lock,
             "live_node": self._node_live_validator,
         }
-        if "execution_policy" in inspect.signature(DeviceTaskBroker).parameters:
+        broker_signature = inspect.signature(DeviceTaskBroker).parameters
+        if "execution_policy" in broker_signature:
             broker_kwargs["execution_policy"] = self.enforce_execution_policy
+        if "competence" in broker_signature:
+            broker_kwargs["competence"] = getattr(self.mary, "competence", None)
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
         # Ephemeral links bind process-local device tasks back to durable plan
         # and skill records. Device tasks themselves intentionally do not
