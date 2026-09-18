@@ -304,12 +304,14 @@ class ExecutivePlanGraph:
     def resolve_blocker(self, plan_id: str, step_id: str, blocker: str) -> PlanStep:
         current = self.get_step(plan_id, step_id)
         blockers = tuple(item for item in current.blockers if item != blocker)
-        return self._update_step(
+        step = self._update_step(
             plan_id,
             step_id,
-            status="pending" if blockers else "ready",
+            status="waiting" if blockers else "ready",
             blockers=list(blockers),
         )
+        self._refresh_plan_status(plan_id)
+        return step
 
     def satisfy_approval(self, plan_id: str, step_id: str, approval: str) -> PlanStep:
         current = self.get_step(plan_id, step_id)
