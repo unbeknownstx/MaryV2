@@ -131,6 +131,15 @@ class CognitiveWorkspace:
             for item in beliefs[:belief_limit]
         ]
 
+        replay_episodes = _safe_call(
+            lambda: list(self.mary.experience_replay.similar(query, limit=4)),
+            [],
+        )
+        replay_lessons = _safe_call(
+            lambda: list(self.mary.experience_replay.lessons(limit=4)),
+            [],
+        )
+
         skills = _safe_call(
             lambda: list(self.mary.procedural_skills.retrieve(
                 query,
@@ -244,8 +253,35 @@ class CognitiveWorkspace:
             },
             skills={
                 "eligible": skill_rows,
+                "replay": [
+                    {
+                        "id": item.id,
+                        "capability": item.capability,
+                        "operation": item.operation,
+                        "success": item.success,
+                        "verified": item.verified,
+                        "outcome": _clip(item.outcome_summary, 500),
+                        "tags": list(item.tags),
+                    }
+                    for item in replay_episodes[:4]
+                ],
+                "lessons": [
+                    {
+                        "id": item.id,
+                        "type": item.lesson_type,
+                        "summary": _clip(item.summary, 600),
+                        "success_rate": item.success_rate,
+                        "confidence": item.confidence,
+                        "status": item.status,
+                    }
+                    for item in replay_lessons[:4]
+                ],
                 "status": _safe_call(lambda: dict(self.mary.procedural_skills.status() or {}), {}),
-                "authority": "procedural know-how only; capability fabric executes",
+                "replay_status": _safe_call(lambda: dict(self.mary.experience_replay.status() or {}), {}),
+                "authority": (
+                    "procedural know-how/replay evidence only; "
+                    "capability fabric executes and creator approves skills"
+                ),
             },
             plans={
                 "active": plan_rows,
