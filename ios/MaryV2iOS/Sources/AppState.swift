@@ -234,7 +234,7 @@ final class AppState: ObservableObject {
             isSending = false
             UINotificationFeedbackGenerator().notificationOccurred(.success)
 
-            if AppConfiguration.speakResponses, voiceServerAvailable {
+            if AppConfiguration.speakResponses {
                 await speakMaryResponse(
                     result.response,
                     userText: text
@@ -292,16 +292,33 @@ final class AppState: ObservableObject {
         _ text: String,
         userText: String? = nil
     ) async {
-        guard let client, AppConfiguration.speakResponses else { return }
+        guard AppConfiguration.speakResponses else { return }
+
+        if let client, voiceServerAvailable {
+            do {
+                let audio = try await client.synthesizeVoice(
+                    text: text,
+                    userText: userText
+                )
+                voiceProvider = audio.provider
+                voiceServerAvailable = true
+                try playback.play(audio)
+                lastVoiceError = nil
+                return
+            } catch {
+                voiceServerAvailable = false
+                lastVoiceError = error.localizedDescription
+            }
+        }
+
         do {
-            let audio = try await client.synthesizeVoice(
-                text: text,
-                userText: userText
-            )
-            voiceProvider = audio.provider
-            voiceServerAvailable = true
-            try playback.play(audio)
-            lastVoiceError = nil
+            try playback.speakDevice(text)
+            voiceProvider = "iPhone voice"
+            if let existing = lastVoiceError, !existing.isEmpty {
+                lastVoiceError = existing + " Using iPhone voice fallback."
+            } else {
+                lastVoiceError = nil
+            }
         } catch {
             lastVoiceError = error.localizedDescription
         }
@@ -318,7 +335,7 @@ final class AppState: ObservableObject {
             lastVoiceError = nil
         } catch {
             voiceServerAvailable = false
-            voiceProvider = "Core voice unavailable"
+            voiceProvider = "iPhone voice"
             lastVoiceError = error.localizedDescription
         }
     }
@@ -499,7 +516,15 @@ final class AppState: ObservableObject {
             try playback.play(audio)
             lastVoiceError = nil
         } catch {
+            voiceServerAvailable = false
             lastVoiceError = error.localizedDescription
+            do {
+                try playback.speakDevice(text)
+                voiceProvider = "iPhone voice"
+                lastVoiceError = (lastVoiceError ?? "Core voice unavailable.") + " Using iPhone voice fallback."
+            } catch {
+                lastVoiceError = error.localizedDescription
+            }
         }
     }
 
