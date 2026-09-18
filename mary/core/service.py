@@ -1407,6 +1407,19 @@ class MaryCoreService:
         payload["performance_hardening"] = state.get("performance_hardening", {})
         payload["training"] = state.get("training", {})
         payload["experiential_continuity"] = state.get("experiential_continuity", {})
+        try:
+            from mary.runtime.system_fabric import build_system_fabric_projection
+            payload["system_fabric"] = build_system_fabric_projection(
+                self.application,
+                service=self,
+            )
+        except Exception as exc:
+            payload["system_fabric"] = {
+                "version": "1",
+                "available": False,
+                "error_type": type(exc).__name__,
+                "authority": {"projection": "read_only"},
+            }
         payload["production"] = state.get("production", {})
         payload["integration"] = state.get("integration", {})
         payload["mary_lifecycle"] = state.get("mary_lifecycle", {})

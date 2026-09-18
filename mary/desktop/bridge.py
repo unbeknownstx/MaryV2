@@ -1106,6 +1106,17 @@ class MaryDesktopBridge(QObject):
             self.application.mary.perception_director.snapshot()
         )
 
+        try:
+            from mary.runtime.system_fabric import build_system_fabric_projection
+            payload["system_fabric"] = build_system_fabric_projection(self.application)
+        except Exception as exc:
+            payload["system_fabric"] = {
+                "version": "1",
+                "available": False,
+                "error_type": type(exc).__name__,
+                "authority": {"projection": "read_only"},
+            }
+
         return _json(payload)
 
     @Slot(result=str)
