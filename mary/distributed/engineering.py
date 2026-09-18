@@ -484,11 +484,13 @@ class EngineeringWorker:
         }
 
     def _copy_sandbox(self, destination: Path) -> Path:
-        """Copy the working tree into a disposable test sandbox.
+        """Copy the working tree into a disposable isolated workspace.
 
         Tests may execute repository code, so they never run in Mary's live
-        checkout. Credentials, VCS metadata, virtualenvs, local data and common
-        generated outputs are excluded.
+        checkout. Credentials, VCS metadata, virtualenvs, local data, symlinks
+        and common generated outputs are excluded. This is workspace isolation,
+        not an OS/VM security boundary; test execution remains a separate
+        default-deny device permission.
         """
 
         sandbox_root = destination / "repo"
@@ -498,13 +500,15 @@ class EngineeringWorker:
             "dist", "build", "coverage", "htmlcov",
         }
 
-        def ignore(_directory: str, names: list[str]) -> set[str]:
+        def ignore(directory: str, names: list[str]) -> set[str]:
+            base = Path(directory)
             return {
                 name for name in names
                 if name in denied
                 or name.startswith("output_")
                 or name.endswith(".log")
                 or name in _DENIED_NAMES
+                or (base / name).is_symlink()
             }
 
         shutil.copytree(self.root, sandbox_root, ignore=ignore)
