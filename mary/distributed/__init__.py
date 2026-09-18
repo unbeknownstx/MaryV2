@@ -22,6 +22,15 @@ from .engineering import (
     sanitize_engineering_result,
     sanitize_engineering_task_args,
 )
+from .knowledge import (
+    KNOWLEDGE_NODE_CAPABILITIES,
+    execute_knowledge_search,
+    knowledge_capability_descriptors,
+    node_knowledge_fabric,
+    node_knowledge_paths,
+    sanitize_knowledge_result,
+    sanitize_knowledge_task_args,
+)
 from .permissions import DeviceExecutionPermissions, default_permission_path
 from .tasks import (
     CapabilityTaskPlan,
@@ -101,6 +110,13 @@ __all__ = [
     "ENGINEERING_CAPABILITIES",
     "READ_ONLY_ENGINEERING_CAPABILITIES",
     "EngineeringWorker",
+    "KNOWLEDGE_NODE_CAPABILITIES",
+    "execute_knowledge_search",
+    "knowledge_capability_descriptors",
+    "node_knowledge_fabric",
+    "node_knowledge_paths",
+    "sanitize_knowledge_result",
+    "sanitize_knowledge_task_args",
     "discover_engineering_repository",
     "engineering_capability_descriptors",
     "sanitize_engineering_result",
