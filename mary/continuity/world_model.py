@@ -207,7 +207,7 @@ class WorldModel:
         supersede_current: bool = False,
         metadata: dict[str, Any] | None = None,
     ) -> BeliefClaim:
-        subject = _bounded(subject, 240)
+        subject = self.canonical_label(subject)
         predicate = _bounded(predicate, 160).casefold()
         source = _bounded(source, 240) or "unknown"
         belief_type = _bounded(belief_type, 40).casefold()
@@ -335,6 +335,40 @@ class WorldModel:
             raise KeyError(belief_id)
         return self.get_belief(belief_id)
 
+    def resolve_entity(self, label_or_alias: str) -> WorldEntity | None:
+        """Resolve an exact label/alias without fuzzy identity invention."""
+
+        key = _bounded(label_or_alias, 240).casefold()
+        if not key:
+            return None
+        candidates: list[WorldEntity] = []
+        for row in list(self._store.snapshot().get("entities") or []):
+            entity = self._decode_entity(row)
+            names = {entity.label.casefold()}
+            names.update(alias.casefold() for alias in entity.aliases)
+            if key in names:
+                candidates.append(entity)
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda item: (item.confidence, item.updated_at),
+            reverse=True,
+        )
+        best = candidates[0]
+        if len(candidates) > 1:
+            second = candidates[1]
+            if (
+                second.confidence == best.confidence
+                and second.updated_at == best.updated_at
+                and second.id != best.id
+            ):
+                return None
+        return best
+
+    def canonical_label(self, label_or_alias: str) -> str:
+        entity = self.resolve_entity(label_or_alias)
+        return entity.label if entity is not None else _bounded(label_or_alias, 240)
+
     def get_entity(self, entity_id: str) -> WorldEntity:
         for row in list(self._store.snapshot().get("entities") or []):
             if row.get("id") == entity_id:
@@ -354,6 +388,8 @@ class WorldModel:
         predicate: str | None = None,
         verified_only: bool = False,
     ) -> list[BeliefClaim]:
+        if subject is not None:
+            subject = self.canonical_label(subject)
         output: list[BeliefClaim] = []
         for row in list(self._store.snapshot().get("beliefs") or []):
             if row.get("valid_to") is not None or row.get("status") == "retired":
@@ -392,7 +428,7 @@ class WorldModel:
         return [item[2] for item in scored[: max(1, min(50, int(limit)))]]
 
     def neighborhood(self, entity: str, *, limit: int = 30) -> list[BeliefClaim]:
-        clean = str(entity or "").strip().casefold()
+        clean = self.canonical_label(entity).casefold()
         matches = [
             belief
             for belief in self.current_beliefs()
