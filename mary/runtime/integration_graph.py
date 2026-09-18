@@ -38,6 +38,9 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
     game_router = getattr(mary, "game_action_router", None)
     performance_profiles = getattr(mary, "performance_profiles", None)
     invocation_ledger = getattr(mary, "capability_invocations", None)
+    cognitive_workspace = getattr(mary, "cognitive_workspace", None)
+    continuity = getattr(mary, "experiential_continuity", None)
+    knowledge_fabric = getattr(mary, "knowledge_fabric", None)
 
     contract = {}
     if callable(getattr(system_contract, "snapshot", None)):
@@ -58,6 +61,34 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
             and getattr(reasoning, "llm", None) is router
             and getattr(reflection, "llm", None) is router,
             owner="CognitiveOrchestrator/LLMRouter",
+        ),
+        _edge(
+            "Mary -> shared cognitive workspace",
+            cognitive_workspace is not None and getattr(cognitive_workspace, "mary", None) is mary,
+            owner="CognitiveWorkspace",
+        ),
+        _edge(
+            "Mary -> local knowledge fabric",
+            knowledge_fabric is not None
+            and callable(getattr(knowledge_fabric, "search", None))
+            and callable(getattr(knowledge_fabric, "status", None)),
+            owner="KnowledgeFabric",
+        ),
+        _edge(
+            "Mary -> unified experiential continuity",
+            continuity is not None
+            and getattr(mary, "temporal_knowledge", None) is getattr(continuity, "temporal", None)
+            and getattr(mary, "world_model", None) is getattr(continuity, "world_model", None)
+            and getattr(mary, "procedural_skills", None) is getattr(continuity, "skills", None)
+            and getattr(mary, "executive_plans", None) is getattr(continuity, "plans", None)
+            and getattr(mary, "competence", None) is getattr(continuity, "competence", None),
+            owner="ExperientialContinuityRuntime",
+        ),
+        _edge(
+            "ecosystem -> reviewed model candidate catalog",
+            ecosystem is not None
+            and getattr(ecosystem, "model_candidates", None) is not None,
+            owner="ModelCandidateCatalog",
         ),
         _edge("TurnMind -> character", turn_mind is not None and getattr(turn_mind, "character", None) is getattr(mary, "character", None), owner="CharacterCore"),
         _edge("TurnMind -> authored character sourcebook", turn_mind is not None and getattr(turn_mind, "character_sourcebook", None) is getattr(mary, "character_sourcebook", None), owner="CharacterSourcebook"),
@@ -244,8 +275,22 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
     ]
 
     if service is not None:
+        try:
+            from mary.runtime.system_fabric import build_system_fabric_projection
+            fabric_projection = build_system_fabric_projection(application, service=service)
+            fabric_connected = (
+                str(dict(fabric_projection.get("authority") or {}).get("projection") or "")
+                == "read_only"
+            )
+        except Exception:
+            fabric_connected = False
         edges.extend([
             _edge("Core service -> application", getattr(service, "application", None) is application, owner="MaryCoreService"),
+            _edge(
+                "Core dashboard -> shared read-only system fabric",
+                fabric_connected,
+                owner="SystemFabricProjection",
+            ),
             _edge("Core service -> canonical Mary", getattr(service, "mary", None) is mary, owner="MaryCoreService"),
             _edge("remote Ollama provider -> shared router", getattr(service, "_device_ollama_provider", None) is not None and router is not None, required=False, owner="DeviceOllamaProvider"),
             _edge("device task broker -> Core service", getattr(service, "device_tasks", None) is not None, owner="DeviceTaskBroker"),
