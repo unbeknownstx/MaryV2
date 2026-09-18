@@ -12,11 +12,13 @@ is still required before any promotion.
 from __future__ import annotations
 
 import os
+import socket
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable
 
 from mary.core.config import PathConfig
-from mary.learning import ModelCandidateCatalog
+from mary.learning import ModelCandidateCatalog, ModelExperimentLedger
 
 
 _MANIFEST = (
@@ -87,7 +89,18 @@ def summarize_model_stack(
 
     base = dict(stack.get("base") or {})
     adapter_rows = list(stack.get("adapters") or [])
-    fingerprint = str(base.get("actual_sha256") or "")[:16]
+    verified_parts = [
+        str(base.get("actual_sha256") or ""),
+        *[
+            f"{item.get('candidate_id', '')}:{item.get('actual_sha256', '')}"
+            for item in adapter_rows
+        ],
+    ]
+    fingerprint = (
+        sha256("|".join(verified_parts).encode("utf-8")).hexdigest()[:16]
+        if artifacts_verified and all(verified_parts)
+        else ""
+    )
     return {
         "artifact_evidence_revision": 1,
         "artifact_configuration": "configured",
@@ -110,26 +123,51 @@ def model_artifact_metadata_from_environment(
     catalog: ModelCandidateCatalog | None = None,
 ) -> dict[str, Any]:
     name = str(runtime or "").strip().lower()
+    paths = PathConfig()
+    active_catalog = catalog or node_model_candidate_catalog(paths)
+
     if name != "llama.cpp":
-        return summarize_model_stack(
-            catalog or node_model_candidate_catalog(),
+        stack = summarize_model_stack(
+            active_catalog,
             base_candidate_id="",
         )
-
-    base_id = os.getenv(
-        "MARY_LLAMA_CPP_BASE_CANDIDATE_ID",
-        "",
-    ).strip()
-    adapter_ids = tuple(
-        item.strip()
-        for item in os.getenv(
-            "MARY_LLAMA_CPP_ADAPTER_CANDIDATE_IDS",
+    else:
+        base_id = os.getenv(
+            "MARY_LLAMA_CPP_BASE_CANDIDATE_ID",
             "",
-        ).split(",")
-        if item.strip()
+        ).strip()
+        adapter_ids = tuple(
+            item.strip()
+            for item in os.getenv(
+                "MARY_LLAMA_CPP_ADAPTER_CANDIDATE_IDS",
+                "",
+            ).split(",")
+            if item.strip()
+        )
+        stack = summarize_model_stack(
+            active_catalog,
+            base_candidate_id=base_id,
+            adapter_candidate_ids=adapter_ids,
+        )
+
+    experiment_id = os.getenv("MARY_MODEL_EXPERIMENT_ID", "").strip()
+    if not experiment_id:
+        return stack
+    ledger = ModelExperimentLedger(
+        paths.runtime / "model_experiment_evidence.json"
     )
-    return summarize_model_stack(
-        catalog or node_model_candidate_catalog(),
-        base_candidate_id=base_id,
-        adapter_candidate_ids=adapter_ids,
-    )
+    node_id = (
+        os.getenv("MARY_NODE_ID", "").strip()
+        or os.getenv("COMPUTERNAME", "").strip()
+        or socket.gethostname().strip()
+        or "mary-node"
+    )[:180]
+    return {
+        **stack,
+        **ledger.advertisement_overlay(
+            experiment_id,
+            runtime=name,
+            artifact_fingerprint=str(stack.get("artifact_fingerprint") or ""),
+            node_id=node_id,
+        ),
+    }
