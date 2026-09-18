@@ -110,6 +110,21 @@ def test_diagnostics_distinguish_configured_from_live_readiness() -> None:
     assert '"DEGRADED" if tts_configured else "OFF"' in doctor
 
 
+def test_home_nodes_remain_replaceable_workers_not_shadow_mary_instances() -> None:
+    home = _text("scripts/run_home_node.py")
+    windows = _text("scripts/run_windows_node.py")
+
+    assert "gateway_from_environment" in home
+    assert "DesktopCapabilityNodeAgent" in home
+    assert "DeviceExecutionPermissions" in home
+    assert "create_application(" not in home
+    assert "MaryApplication(" not in home
+    assert "Mary(" not in home
+
+    assert "run_home_node_main" in windows
+    assert "second windows_node" in windows
+
+
 def test_docs_describe_one_mary_across_current_surfaces() -> None:
     registry = _text("docs/architecture/SYSTEM_REGISTRY.md")
     legacy_mobile = _text("mobile_native/README.md")
