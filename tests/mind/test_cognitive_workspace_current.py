@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from mary.continuity import ExecutivePlanGraph, SkillLibrary, WorldModel
+from mary.continuity import CompetenceLedger, ExecutivePlanGraph, SkillLibrary, WorldModel
 from mary.knowledge import KnowledgeFabric
 from mary.mind import CognitiveWorkspace
 
@@ -88,6 +88,16 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
     knowledge = KnowledgeFabric(tmp_path / "knowledge.json")
     knowledge.seed_recommended_candidates()
 
+    competence = CompetenceLedger(tmp_path / "competence.json")
+    competence.record(
+        capability="llm.ollama",
+        operation="conversation",
+        node_id="desktop",
+        success=True,
+        verified=True,
+        evidence_ids=("task-1",),
+    )
+
     mary = SimpleNamespace(
         node_registry=_Nodes(),
         memory=_Memory(),
@@ -96,6 +106,7 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
         procedural_skills=skills,
         executive_plans=plans,
         knowledge_fabric=knowledge,
+        competence=competence,
         identity=SimpleNamespace(name="Mary"),
         lifecycle=SimpleNamespace(state=SimpleNamespace(value="ACTIVE")),
         self_model=SimpleNamespace(to_dict=lambda: {"entity_type": "AI character"}),
@@ -111,6 +122,8 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
     assert snapshot["plans"]["active"][0]["objective"] == "Improve MaryV2"
     assert snapshot["compute"]["connected_nodes"] == 1
     assert "llm.ollama" in snapshot["compute"]["authorized_capabilities"]
+    assert snapshot["compute"]["demonstrated"][0]["capability"] == "llm.ollama"
+    assert snapshot["compute"]["demonstrated"][0]["reliability"] == 0.6667
     assert snapshot["epistemic"]["knowledge_hits_are_evidence_not_memory"] is True
     assert snapshot["policy"]["persistent"] is False
     assert snapshot["policy"]["identity_owner"] is False
