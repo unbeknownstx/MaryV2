@@ -52,6 +52,12 @@ class WorldEntity:
     updated_at: str
     metadata: dict[str, Any]
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["aliases"] = list(self.aliases)
+        payload["metadata"] = dict(self.metadata)
+        return payload
+
 
 @dataclass(frozen=True)
 class BeliefClaim:
@@ -76,6 +82,14 @@ class BeliefClaim:
     @property
     def current(self) -> bool:
         return self.valid_to is None and self.status in {"current", "contested"}
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["evidence_ids"] = list(self.evidence_ids)
+        payload["contradiction_ids"] = list(self.contradiction_ids)
+        payload["metadata"] = dict(self.metadata or {})
+        payload["current"] = self.current
+        return payload
 
 
 class WorldModel:
