@@ -18,8 +18,11 @@ from urllib.request import Request, urlopen
 from mary.distributed import (
     CapabilityDescriptor,
     DeviceExecutionPermissions,
+    ENGINEERING_CAPABILITIES,
+    EngineeringWorker,
     MCP_CAPABILITIES,
     MCPFabric,
+    engineering_capability_descriptors,
     sanitize_mcp_error,
 )
 from mary.llm.interface import (
@@ -333,6 +336,7 @@ def desktop_capabilities(
         items.append(llama_cpp)
     if permissions is not None:
         items.extend(MCPFabric(permissions).capability_descriptors())
+        items.extend(engineering_capability_descriptors(permissions))
     return items
 
 
@@ -373,6 +377,7 @@ def headless_node_capabilities(
     return [
         *local_items,
         *MCPFabric(permissions).capability_descriptors(),
+        *engineering_capability_descriptors(permissions),
     ]
 
 
@@ -410,6 +415,10 @@ class DesktopCapabilityNodeAgent:
         self.task_wait_seconds = max(1.0, min(25.0, float(task_wait_seconds)))
         self.permissions = permissions or DeviceExecutionPermissions()
         self._mcp_fabric = mcp_fabric or MCPFabric(self.permissions)
+        try:
+            self._engineering_worker: EngineeringWorker | None = EngineeringWorker()
+        except Exception:
+            self._engineering_worker = None
         self.display_name = (
             os.getenv("MARY_NODE_NAME", "").strip()
             or os.getenv("COMPUTERNAME", "").strip()
@@ -512,6 +521,14 @@ class DesktopCapabilityNodeAgent:
             "capabilities": [item.to_dict() for item in self._capabilities],
             "allowed_execution_capabilities": sorted(self.permissions.allowed()),
             "mcp": self._mcp_fabric.status(),
+            "engineering": {
+                "configured": self._engineering_worker is not None,
+                "capabilities": sorted(
+                    item.name for item in self._capabilities
+                    if item.name in ENGINEERING_CAPABILITIES
+                ),
+                "policy": "typed repository tasks only; no generic shell; repository apply is separately permission-gated",
+            },
             "execution_authorized": any(
                 self.permissions.is_allowed(name)
                 for name in ("llm.local", "llm.ollama", "llm.llama_cpp")
@@ -568,6 +585,8 @@ class DesktopCapabilityNodeAgent:
                 result_payload = self._execute_ollama(dict(task.get("args") or {}))
             elif capability == "llm.llama_cpp":
                 result_payload = self._execute_llama_cpp(dict(task.get("args") or {}))
+            elif capability in ENGINEERING_CAPABILITIES:
+                result_payload = self._execute_engineering(capability, dict(task.get("args") or {}))
             elif capability in MCP_CAPABILITIES:
                 result_payload = self._execute_mcp(capability, dict(task.get("args") or {}))
             else:
@@ -596,6 +615,14 @@ class DesktopCapabilityNodeAgent:
                 )
             except Exception:
                 return {"ok": False, "error": error}
+
+
+    def _execute_engineering(self, capability: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Run one typed repository task through the bounded local worker."""
+
+        if self._engineering_worker is None:
+            self._engineering_worker = EngineeringWorker()
+        return self._engineering_worker.execute(capability, args)
 
 
     def _execute_mcp(self, capability: str, args: dict[str, Any]) -> dict[str, Any]:
