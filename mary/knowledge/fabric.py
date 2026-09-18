@@ -113,10 +113,8 @@ class KnowledgeFabric:
         self.registry_path = Path(registry_path)
         self.index_path = Path(index_path) if index_path is not None else self.registry_path.with_suffix(".sqlite3")
         self.capacity = max(32, int(capacity))
-        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        self._ensure_registry()
-        self._ensure_index()
+        # Construction is observational. Registry/index files are created only
+        # when the creator registers/indexes a real pack.
 
     def _ensure_registry(self) -> None:
         if self.registry_path.exists():
@@ -129,12 +127,15 @@ class KnowledgeFabric:
         )
 
     def _load(self) -> dict[str, Any]:
+        if not self.registry_path.exists():
+            return {"version": self.VERSION, "packs": []}
         payload, _source = load_json_recovering(self.registry_path, backup_generations=2)
         if not isinstance(payload, dict):
             return {"version": self.VERSION, "packs": []}
         return payload
 
     def _save(self, payload: dict[str, Any]) -> None:
+        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
         payload["version"] = self.VERSION
         atomic_write_json(
             self.registry_path,
@@ -272,6 +273,7 @@ class KnowledgeFabric:
         if pack.kind != "local_files":
             raise ValueError("only local_files packs are indexed by the built-in FTS index")
         root = Path(pack.location).resolve()
+        self._ensure_index()
         files = 0
         indexed = 0
         skipped = 0
@@ -347,14 +349,15 @@ class KnowledgeFabric:
     def status(self) -> dict[str, Any]:
         packs = self.packs()
         indexed_counts: dict[str, int] = {}
-        try:
-            with self._connect() as db:
-                for pack_id, count in db.execute(
-                    "SELECT pack_id, COUNT(*) FROM documents GROUP BY pack_id"
-                ):
-                    indexed_counts[str(pack_id)] = int(count)
-        except sqlite3.Error:
-            indexed_counts = {}
+        if self.index_path.exists():
+            try:
+                with self._connect() as db:
+                    for pack_id, count in db.execute(
+                        "SELECT pack_id, COUNT(*) FROM documents GROUP BY pack_id"
+                    ):
+                        indexed_counts[str(pack_id)] = int(count)
+            except sqlite3.Error:
+                indexed_counts = {}
         return {
             "version": self.VERSION,
             "packs": len(packs),
@@ -424,6 +427,7 @@ class KnowledgeFabric:
         return output
 
     def _search_fts(self, pack: KnowledgePack, query: str, *, limit: int) -> list[KnowledgeHit]:
+        self._ensure_index()
         safe_terms = [
             token for token in re.findall(r"[A-Za-z0-9_'-]{2,}", query)[:12]
             if token
@@ -587,6 +591,7 @@ class KnowledgeFabric:
             db.commit()
 
     def _connect(self) -> sqlite3.Connection:
+        self.index_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.index_path, timeout=5.0)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA foreign_keys=ON")
