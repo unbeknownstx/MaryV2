@@ -46,6 +46,35 @@ def test_dashboard_is_a_view_over_canonical_mary_state(tmp_path, monkeypatch) ->
     assert state["paths"]["data_root"] == str(mary.config.paths.data)
 
 
+def test_dashboard_memory_highlights_hide_test_probe_records(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    mary = Mary()
+    mary.user_model.record_profile(
+        category="fact",
+        key="test_animal",
+        value="a red panda",
+        source="verify_acceptance",
+        confidence=1.0,
+        explicitly_shared=True,
+    )
+    mary.user_model.record_profile(
+        category="preference",
+        key="favorite_color",
+        value="green",
+        source="creator_explicit",
+        confidence=1.0,
+        explicitly_shared=True,
+    )
+
+    state = build_desktop_dashboard_state(mary)
+    titles = [item["title"] for item in state["memory_highlights"]]
+    keys = [item["key"] for item in state["memory_highlights"]]
+
+    assert "green" in titles
+    assert "a red panda" not in titles
+    assert "test_animal" not in keys
+
+
 def test_dashboard_projects_authored_vs_developed_self_provenance(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     mary = Mary()
