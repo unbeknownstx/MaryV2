@@ -26,13 +26,25 @@ from uuid import uuid4
 from .compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, NodeLoad, WorkloadRequest
 from .nodes import NodeRegistry
 from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
+from .engineering import (
+    ENGINEERING_CAPABILITIES,
+    READ_ONLY_ENGINEERING_CAPABILITIES,
+    sanitize_engineering_result,
+    sanitize_engineering_task_args,
+)
 from .resource_telemetry import ResourceTelemetry, merge_resource_load, sanitize_resource_telemetry
 from .sensors import SENSOR_CAPABILITIES, sanitize_sensor_result, sanitize_sensor_task_args
 
 
-_ALLOWED_EXECUTION_CAPABILITIES = {"personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", *MCP_CAPABILITIES, *SENSOR_CAPABILITIES}
+_ALLOWED_EXECUTION_CAPABILITIES = {
+    "personal_search", "llm.local", "llm.ollama", "llm.llama_cpp",
+    *MCP_CAPABILITIES, *SENSOR_CAPABILITIES, *ENGINEERING_CAPABILITIES,
+}
 _TERMINAL_STATUSES = {"completed", "rejected", "failed", "expired"}
-_REPLAY_SAFE_CAPABILITIES = {"personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", *SENSOR_CAPABILITIES}
+_REPLAY_SAFE_CAPABILITIES = {
+    "personal_search", "llm.local", "llm.ollama", "llm.llama_cpp",
+    *SENSOR_CAPABILITIES, *READ_ONLY_ENGINEERING_CAPABILITIES,
+}
 _REALTIME_OPERATIONS = {"conversation", "quick_answer", "stt", "vision"}
 ExecutionPolicy = Callable[[str], None]
 
@@ -64,6 +76,12 @@ def _operation_for(capability: str, args: dict[str, Any] | None) -> str:
         return "vision"
     if name.startswith("mcp."):
         return "tool"
+    if name.startswith("engineering.tests.") or name == "engineering.structure.verify":
+        return "test"
+    if name == "engineering.repair.plan":
+        return "engineering_plan"
+    if name.startswith("engineering."):
+        return "engineering"
     return "general"
 
 
@@ -128,6 +146,8 @@ def _sanitize_task_args(capability: str, args: dict[str, Any] | None) -> dict[st
         return sanitize_mcp_task_args(capability, values)
     if capability in SENSOR_CAPABILITIES:
         return sanitize_sensor_task_args(capability, values)
+    if capability in ENGINEERING_CAPABILITIES:
+        return sanitize_engineering_task_args(capability, values)
     raise ValueError(f"Capability execution is not supported: {capability}")
 
 
@@ -137,6 +157,8 @@ def _sanitize_task_result(capability: str, result: dict[str, Any] | None) -> dic
         return sanitize_mcp_result(capability, values)
     if capability in SENSOR_CAPABILITIES:
         return sanitize_sensor_result(capability, values)
+    if capability in ENGINEERING_CAPABILITIES:
+        return sanitize_engineering_result(capability, values)
     if capability not in {"llm.local", "llm.ollama", "llm.llama_cpp"}:
         return values
     content = str(values.get("content") or "").strip()
