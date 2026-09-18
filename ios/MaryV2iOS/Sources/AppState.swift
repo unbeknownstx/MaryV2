@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import Combine
+import CryptoKit
 import UIKit
 
 @MainActor
@@ -539,6 +540,120 @@ final class AppState: ObservableObject {
             } catch {
                 lastVoiceError = error.localizedDescription
             }
+        }
+    }
+
+    private func boundedCreatorImage(_ source: Data) -> Data? {
+        guard var image = UIImage(data: source) else { return nil }
+
+        func resized(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+            let width = image.size.width
+            let height = image.size.height
+            let longest = max(width, height)
+            guard longest > maxDimension, longest > 0 else { return image }
+            let scale = maxDimension / longest
+            let size = CGSize(width: max(1, width * scale), height: max(1, height * scale))
+            let renderer = UIGraphicsImageRenderer(size: size)
+            return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        }
+
+        image = resized(image, maxDimension: 1600)
+        var quality: CGFloat = 0.78
+        var encoded = image.jpegData(compressionQuality: quality)
+        while let data = encoded, data.count > 1_350_000, quality > 0.42 {
+            quality -= 0.08
+            encoded = image.jpegData(compressionQuality: quality)
+        }
+        if let data = encoded, data.count <= 1_350_000 { return data }
+
+        image = resized(image, maxDimension: 1200)
+        quality = 0.66
+        encoded = image.jpegData(compressionQuality: quality)
+        while let data = encoded, data.count > 1_350_000, quality > 0.38 {
+            quality -= 0.07
+            encoded = image.jpegData(compressionQuality: quality)
+        }
+        guard let data = encoded, data.count <= 1_350_000 else { return nil }
+        return data
+    }
+
+    func describeCreatorImage(_ source: Data) async -> String? {
+        guard let client else {
+            lastError = "Connect Mary Core in Settings first."
+            return nil
+        }
+        guard let image = boundedCreatorImage(source) else {
+            lastError = "That image could not be prepared within Mary's bounded vision limit."
+            return nil
+        }
+
+        let digest = SHA256.hash(data: image)
+            .map { String(format: "%02x", $0) }
+            .joined()
+
+        do {
+            try? await client.renewSurface(foreground: true)
+            let registered = try await client.runtimeAction(
+                "perception.asset.register",
+                args: [
+                    "kind": "image",
+                    "mime_type": "image/jpeg",
+                    "content_sha256": digest,
+                    "byte_count": image.count,
+                ]
+            )
+            let asset = CoreProjection.dict(registered["asset"])
+            let assetID = CoreProjection.string(asset["asset_id"])
+            guard !assetID.isEmpty else {
+                throw MaryClientError.invalidResponse
+            }
+
+            let dispatched = try await client.dispatchCapability(
+                "sensor.image_describe",
+                intent: "Describe one creator-selected image as factual creative evidence for Mary.",
+                args: [
+                    "image_base64": image.base64EncodedString(),
+                    "mime_type": "image/jpeg",
+                    "mode": "creative",
+                    "asset_id": assetID,
+                ]
+            )
+            let initialTask = CoreProjection.dict(dispatched["task"])
+            let taskID = CoreProjection.string(initialTask["task_id"])
+            guard !taskID.isEmpty else {
+                throw MaryClientError.invalidResponse
+            }
+
+            for _ in 0..<90 {
+                let statusPayload = try await client.capabilityTaskStatus(taskID)
+                let task = CoreProjection.dict(statusPayload["task"])
+                let status = CoreProjection.string(task["status"]).lowercased()
+                if status == "completed" {
+                    let result = CoreProjection.dict(task["result"])
+                    let description = CoreProjection.string(result["description"])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !description.isEmpty else {
+                        lastError = "The vision node completed without a usable description."
+                        return nil
+                    }
+                    lastError = nil
+                    return description
+                }
+                if ["failed", "rejected", "expired"].contains(status) {
+                    let detail = CoreProjection.string(task["error"])
+                    lastError = detail.isEmpty
+                        ? "Mary's configured vision node could not describe this image."
+                        : detail
+                    return nil
+                }
+                try await Task.sleep(nanoseconds: 500_000_000)
+            }
+
+            lastError = "Mary's vision task did not finish within the bounded wait."
+            return nil
+        } catch {
+            lastError = error.localizedDescription
+            return nil
         }
     }
 

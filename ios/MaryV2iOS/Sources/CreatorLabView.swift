@@ -35,7 +35,7 @@ struct CreatorLabView: View {
                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(MaryTheme.hairline))
                 }
 
-                TextField("What is in the image? (temporary grounding until Core vision upload is live)", text: $sceneSummary, axis: .vertical)
+                TextField("What Mary sees (you can edit this)", text: $sceneSummary, axis: .vertical)
                     .lineLimit(2...5).padding(12)
                     .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
                 TextField("What should Mary do with it?", text: $intent, axis: .vertical)
@@ -44,10 +44,40 @@ struct CreatorLabView: View {
                 TextField("Tone", text: $tone).padding(12)
                     .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
 
+                if imageData != nil {
+                    Button {
+                        guard let imageData else { return }
+                        working = true
+                        Task {
+                            if let description = await app.describeCreatorImage(imageData) {
+                                sceneSummary = description
+                            }
+                            working = false
+                        }
+                    } label: {
+                        Label("Let Mary look at the image", systemImage: "eye.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(MarySecondaryButtonStyle())
+                    .disabled(working)
+                }
+
                 Button {
                     working = true
                     Task {
-                        _ = await app.proposeSocial(kind: "caption", brief: intent, mediaSummary: sceneSummary, tone: tone)
+                        var grounded = sceneSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if grounded.isEmpty, let imageData {
+                            grounded = await app.describeCreatorImage(imageData) ?? ""
+                            if !grounded.isEmpty { sceneSummary = grounded }
+                        }
+                        if !grounded.isEmpty {
+                            _ = await app.proposeSocial(
+                                kind: "caption",
+                                brief: intent,
+                                mediaSummary: grounded,
+                                tone: tone
+                            )
+                        }
                         working = false
                     }
                 } label: {
@@ -55,7 +85,7 @@ struct CreatorLabView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(MaryPrimaryButtonStyle())
-                .disabled(working || sceneSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(working || (imageData == nil && sceneSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
 
                 if !app.socialProposalData.isEmpty {
                     let text = CoreProjection.string(app.socialProposalData["content"])
@@ -70,7 +100,7 @@ struct CreatorLabView: View {
                     }
                 }
 
-                Text("Image bytes are not silently uploaded. The next transport step is a bounded authenticated Core asset endpoint feeding vision.describe; until then the description above is explicit grounding.")
+                Text("A picked image is compressed on-device and sent only after you explicitly ask Mary to look or create. Raw pixels are ephemeral task input; Core retains bounded asset metadata and the grounded visual description, not the image bytes.")
                     .font(.caption2).foregroundStyle(MaryTheme.muted)
             }
         }
