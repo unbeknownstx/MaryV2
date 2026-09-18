@@ -158,3 +158,52 @@ def test_remote_core_voice_prefers_core_and_falls_back_locally():
     assert fallback["provider"] == "local-test"
     assert fallback["authority"] == "desktop_local_fallback"
 
+def test_remote_core_voice_treats_configured_but_unavailable_as_degraded():
+    from mary.desktop.voice import (
+        DesktopVoiceEngine,
+        DesktopVoiceStatus,
+        RemoteCoreVoiceEngine,
+    )
+
+    class Gateway:
+        def voice_status(self):
+            return {
+                "tts": {
+                    "enabled": True,
+                    "configured": True,
+                    "server_available": False,
+                    "degraded": True,
+                    "provider": "elevenlabs",
+                }
+            }
+
+        def voice_synthesize(self, *args, **kwargs):
+            raise AssertionError("degraded Core voice should not be called")
+
+    class LocalFallback(DesktopVoiceEngine):
+        def __init__(self):
+            super().__init__(
+                status=DesktopVoiceStatus(
+                    True,
+                    "local-test",
+                    model="local",
+                    local=True,
+                )
+            )
+
+        def synthesize(self, text, **kwargs):
+            return {
+                **self.status.to_dict(),
+                "status": "success",
+                "spoken_text": text,
+            }
+
+    engine = RemoteCoreVoiceEngine(Gateway(), fallback=LocalFallback())
+
+    assert engine.status.provider == "local-test"
+    assert engine._core_enabled is False
+
+    result = engine.synthesize("hello")
+    assert result["provider"] == "local-test"
+    assert result["authority"] == "desktop_local_fallback"
+
