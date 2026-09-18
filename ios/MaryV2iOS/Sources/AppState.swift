@@ -397,6 +397,18 @@ final class AppState: ObservableObject {
                 liveData = try await client.runtimeAction("integration.status")
             case .world:
                 liveData = try await client.runtimeAction("world.status")
+            case .knowledge:
+                let dashboard = try await client.dashboard()
+                dashboardData = dashboard
+                liveData = CoreProjection.dict(CoreProjection.dict(dashboard["system_fabric"])["knowledge"])
+            case .procedures:
+                let dashboard = try await client.dashboard()
+                dashboardData = dashboard
+                liveData = CoreProjection.dict(CoreProjection.dict(dashboard["system_fabric"])["continuity"])
+            case .modelLab:
+                let dashboard = try await client.dashboard()
+                dashboardData = dashboard
+                liveData = CoreProjection.dict(CoreProjection.dict(dashboard["system_fabric"])["models"])
             case .training:
                 liveData = try await client.runtimeAction("training.feedback.status")
             case .advanced:

@@ -6,7 +6,7 @@ struct MoreView: View {
 
     private let companion: [WorkspaceKind] = [.memories, .growth, .personality, .presence]
     private let create: [WorkspaceKind] = [.social, .gallery, .voiceAvatar, .media]
-    private let system: [WorkspaceKind] = [.devices, .integrations, .world, .training]
+    private let system: [WorkspaceKind] = [.devices, .integrations, .world, .knowledge, .procedures, .modelLab, .training]
 
     var body: some View {
         ScrollView {

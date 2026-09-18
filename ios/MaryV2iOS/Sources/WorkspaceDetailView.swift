@@ -84,10 +84,52 @@ struct WorkspaceDetailView: View {
         case .media: statusCard(eyebrow: "Media", title: "Connected media", body: "YouTube, OBS, Twitch, and other media capabilities appear here only when Core reports them as available.")
         case .voiceAvatar: MaryStageView(compact: true)
         case .world: statusCard(eyebrow: "World", title: "Current context", body: CoreProjection.string(app.liveData["summary"]).isEmpty ? "No bounded world-context summary is available yet." : CoreProjection.string(app.liveData["summary"]))
+        case .knowledge: knowledgeCard
+        case .procedures: proceduresCard
+        case .modelLab: modelLabCard
         case .training: statusCard(eyebrow: "Feedback", title: "Training signals", body: "Explicit feedback can improve future behavior without exposing internal training mechanics on the main app surface.")
         case .advanced: advancedCard
         case .gallery: EmptyView()
         }
+    }
+
+    private var knowledgeCard: some View {
+        GlassCard { VStack(alignment: .leading, spacing: 9) {
+            Eyebrow(text: "Local knowledge")
+            Text("\(CoreProjection.int(app.liveData["enabled"])) of \(CoreProjection.int(app.liveData["packs"])) packs enabled").font(.title2.bold())
+            DataRow(label: "Indexed chunks", value: "\(CoreProjection.int(app.liveData["indexed_documents"]))")
+            DataRow(label: "Disabled documents", value: "\(CoreProjection.int(app.liveData["disabled_documents"]))")
+            Text("Local documents, Kiwix and optional vector indexes are evidence sources. They never become memory or truth just because retrieval found them.").font(.caption).foregroundStyle(MaryTheme.muted)
+        }}
+    }
+
+    private var proceduresCard: some View {
+        let skills = CoreProjection.dict(app.liveData["skills"])
+        let plans = CoreProjection.dict(app.liveData["plans"])
+        let replay = CoreProjection.dict(app.liveData["replay"])
+        let competence = CoreProjection.dict(app.liveData["competence"])
+        return GlassCard { VStack(alignment: .leading, spacing: 9) {
+            Eyebrow(text: "Procedural continuity")
+            Text("\(CoreProjection.int(skills["approved"])) approved skills").font(.title2.bold())
+            DataRow(label: "Skill candidates", value: "\(CoreProjection.int(skills["candidates"]))")
+            DataRow(label: "Active plans", value: "\(CoreProjection.int(plans["active_plans"]))")
+            DataRow(label: "Replay lessons", value: "\(CoreProjection.int(replay["lessons"]))")
+            DataRow(label: "Competence records", value: "\(CoreProjection.int(competence["records"]))")
+            Text("Replay may suggest procedures, but approval and execution permissions remain explicit.").font(.caption).foregroundStyle(MaryTheme.muted)
+        }}
+    }
+
+    private var modelLabCard: some View {
+        let lab = CoreProjection.dict(app.liveData["adapter_lab"])
+        let candidates = CoreProjection.dict(app.liveData["candidates"])
+        return GlassCard { VStack(alignment: .leading, spacing: 9) {
+            Eyebrow(text: "Model lab")
+            Text("\(CoreProjection.int(candidates["count"])) reviewed candidates").font(.title2.bold())
+            DataRow(label: "Configurations", value: "\(CoreProjection.array(lab["configurations"]).count)")
+            DataRow(label: "Evaluations", value: "\(CoreProjection.array(lab["evaluations"]).count)")
+            DataRow(label: "Promotion", value: "Creator-reviewed")
+            Text("Models and LoRAs are replaceable capabilities. Exact lineage, held-out MaryBench and runtime evidence are required before routing changes.").font(.caption).foregroundStyle(MaryTheme.muted)
+        }}
     }
 
     private var memoryCard: some View {

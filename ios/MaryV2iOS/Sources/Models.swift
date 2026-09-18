@@ -215,7 +215,7 @@ struct RelationalSnapshot {
 enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
     case memories, growth, personality, presence, study, search, research
     case studio, social, gallery, media, voiceAvatar, devices, integrations
-    case world, training, advanced
+    case world, knowledge, procedures, modelLab, training, advanced
 
     var id: String { rawValue }
     var title: String {
@@ -235,6 +235,9 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .devices: return "Devices"
         case .integrations: return "Integrations"
         case .world: return "World"
+        case .knowledge: return "Knowledge"
+        case .procedures: return "Procedures"
+        case .modelLab: return "Model Lab"
         case .training: return "Training"
         case .advanced: return "Advanced"
         }
@@ -256,6 +259,9 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .devices: return "Mac and PC capabilities"
         case .integrations: return "Connected services"
         case .world: return "Current world context"
+        case .knowledge: return "Local evidence libraries"
+        case .procedures: return "Plans and learned skills"
+        case .modelLab: return "Models, adapters and benchmarks"
         case .training: return "Feedback and adaptation"
         case .advanced: return "Core diagnostics"
         }
@@ -277,6 +283,9 @@ enum WorkspaceKind: String, Identifiable, CaseIterable, Hashable {
         case .devices: return "desktopcomputer"
         case .integrations: return "link.circle.fill"
         case .world: return "globe.americas.fill"
+        case .knowledge: return "books.vertical.fill"
+        case .procedures: return "point.3.connected.trianglepath.dotted"
+        case .modelLab: return "cpu.fill"
         case .training: return "checkmark.seal.fill"
         case .advanced: return "gearshape.2.fill"
         }
