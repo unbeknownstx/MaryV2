@@ -1508,6 +1508,25 @@ class CognitiveOrchestrator:
         ):
             return self_intent("preferences")
 
+        # Self-analysis and self-maintenance questions must be answered from
+        # Mary's actual connected runtime/tool boundaries, not from a provider's
+        # generic assistant identity.
+        if any(marker in normalized for marker in (
+            "analyze yourself", "analyse yourself", "analyze your self", "analyse your self",
+            "analyze your own system", "analyse your own system", "inspect yourself",
+            "inspect your own system", "understand yourself", "understand your own system",
+        )):
+            return self_intent("self_understanding")
+
+        if any(marker in normalized for marker in (
+            "look at your own code", "look at your code", "inspect your own code",
+            "inspect your code", "read your own code", "read your code",
+            "fix your own code", "fix your code", "patch your own code",
+            "patch your code", "edit your own code", "edit your code",
+            "fix yourself", "can you fix things in your code",
+        )):
+            return self_intent("capabilities")
+
         # Character-core questions also have many natural phrasings. Keep them
         # local and grounded instead of asking the provider to invent a persona.
         # A broad strengths/weaknesses question is a grounded self-assessment,
