@@ -8,11 +8,13 @@ from typing import Any
 
 from .mcp_fabric import MCP_CAPABILITIES, MCP_SERVER_CAPABILITIES, normalize_mcp_tool_name
 from .engineering import ENGINEERING_CAPABILITIES
+from .knowledge import KNOWLEDGE_NODE_CAPABILITIES
 from .sensors import SENSOR_CAPABILITIES
 
 _SAFE_CAPABILITIES = {
     "personal_search", "llm.local", "llm.ollama", "llm.llama_cpp",
     *MCP_CAPABILITIES, *SENSOR_CAPABILITIES, *ENGINEERING_CAPABILITIES,
+    *KNOWLEDGE_NODE_CAPABILITIES,
 }
 
 
