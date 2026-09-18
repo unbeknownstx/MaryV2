@@ -198,3 +198,29 @@ def test_plan_wait_and_restart_recovery_preserve_unfinished_work(tmp_path: Path)
     assert waiting.status == "waiting"
     assert "task-timeout" in waiting.evidence_ids
     assert plans.get(plan.id).status == "waiting"
+
+
+def test_world_entity_aliases_converge_without_fuzzy_merging(tmp_path: Path):
+    world = WorldModel(tmp_path / "world-aliases.json")
+    entity = world.upsert_entity(
+        label="DESKTOP-ATS5OPV",
+        entity_type="compute_node",
+        source="creator",
+        authority="creator",
+        confidence=1.0,
+        aliases=("desktop", "my pc"),
+    )
+    belief = world.observe(
+        subject="my pc",
+        predicate="connected",
+        value=True,
+        source="runtime",
+        authority="runtime",
+        verification="verified",
+    )
+
+    assert world.resolve_entity("desktop").id == entity.id
+    assert belief.subject == "DESKTOP-ATS5OPV"
+    assert world.current_beliefs(subject="my pc")[0].id == belief.id
+    assert world.neighborhood("desktop")[0].id == belief.id
+    assert world.resolve_entity("unknown alias") is None
