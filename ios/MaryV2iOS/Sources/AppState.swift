@@ -329,7 +329,9 @@ final class AppState: ObservableObject {
         do {
             let status = try await client.voiceStatus()
             let tts = CoreProjection.dict(status["tts"])
-            voiceServerAvailable = CoreProjection.bool(tts["enabled"])
+            voiceServerAvailable = CoreProjection.bool(
+                tts["server_available"] ?? tts["enabled"]
+            )
             voiceProvider = CoreProjection.string(tts["provider"])
             if voiceProvider.isEmpty { voiceProvider = "Core voice" }
             lastVoiceError = nil
