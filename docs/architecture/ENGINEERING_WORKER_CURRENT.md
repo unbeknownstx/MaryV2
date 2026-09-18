@@ -29,11 +29,11 @@ The current node worker advertises:
   this is a separate local permission and requires an explicit creator apply
   request.
 - `engineering.structure.verify` — run repository-structure verification in a
-  disposable sandbox.
+  disposable isolated workspace.
 - `engineering.tests.targeted` — run explicitly named `tests/*.py` files in a
-  disposable sandbox.
+  disposable isolated workspace.
 - `engineering.tests.full` — run the deterministic pytest suite in a
-  disposable sandbox.
+  disposable isolated workspace.
 - `engineering.git.status` / `engineering.git.diff` — read-only repository
   state.
 
@@ -112,21 +112,25 @@ Creator: Apply that fix
   -> no commit/push/merge/deploy occurs
 
 Creator: Verify that fix
-  -> typed repository verification runs in a disposable copied sandbox
+  -> typed repository verification runs in a disposable copied workspace
 ```
 
 Proposal IDs are node-local and short-lived. Restarting the node invalidates
 them. Core treats them as one-shot for apply.
 
-## Sandboxing
+## Workspace isolation and stronger sandboxing
 
 Planning never writes source. Test/structure commands execute only in a
 disposable copy of the working tree. The copy excludes Git metadata,
-virtualenvs, Mary durable data, common credential files, caches and generated
-outputs.
+virtualenvs, Mary durable data, common credential files, symlinks, caches and
+generated outputs.
 
 The test executor uses fixed argv arrays with `shell=False`. Core cannot send
-a command string.
+a command string. This protects the live checkout from normal test writes, but
+it is **not an OS/VM containment boundary**: Python tests can still exercise the
+host permissions of the node process. Test capabilities therefore remain
+separately default-deny. For hostile/untrusted code or stronger filesystem and
+network isolation, use the future OpenHands/container worker boundary instead.
 
 Repository apply is the one exception to sandbox-only writes: it modifies the
 selected MaryV2 checkout, but only after the separate node permission and an
