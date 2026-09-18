@@ -46,6 +46,14 @@ Repository mutation remains a separate opt-in:
 .venv/bin/python -m scripts.node_permissions allow engineering.repo.apply
 ```
 
+After a repair passes verification, optional Git publication remains separately gated:
+
+```bash
+.venv/bin/python -m scripts.node_permissions allow engineering.git.commit
+.venv/bin/python -m scripts.node_permissions allow engineering.git.push
+export MARY_ENGINEERING_PUSH_ENABLED=true  # only if you want explicit Push-that-fix support
+```
+
 Tests run in disposable copied workspaces and no generic shell, commit, push, merge or
 deploy task exists. See `docs/architecture/ENGINEERING_WORKER_CURRENT.md`.
 
