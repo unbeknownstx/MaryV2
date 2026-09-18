@@ -3099,7 +3099,7 @@ class Mary:
                 continue
             if text and text not in creator_memories:
                 creator_memories.append(text)
-            if len(creator_memories) >= 4:
+            if len(creator_memories) >= 2:
                 break
 
         relationship_memories: list[str] = []
@@ -3134,7 +3134,7 @@ class Mary:
                 description = description[:199].rstrip() + "…"
             if description not in relationship_memories:
                 relationship_memories.append(description)
-            if len(relationship_memories) >= 5:
+            if len(relationship_memories) >= 2:
                 break
 
         session_shares: list[str] = []
@@ -3153,34 +3153,37 @@ class Mary:
                 text = text[:179].rstrip() + "…"
             if text not in session_shares:
                 session_shares.append(text)
-            if len(session_shares) >= 3:
+            if len(session_shares) >= 1:
                 break
         session_shares.reverse()
 
         pieces = [f"Yeah. I remember that {creator_name} is my creator."]
         natural_profile = self._natural_creator_profile_overview()
-        # Avoid repeating the creator sentence when composing the memory answer.
+        # Broad recall should feel like recognition, not a database export.
+        # Preserve the deeper canonical stores while presenting only a compact
+        # representative slice unless the creator asks for a narrower category.
         prefix = f"I know {creator_name} is my creator. "
         if natural_profile.startswith(prefix):
             natural_profile = natural_profile[len(prefix):]
         if natural_profile:
             pieces.append(natural_profile)
         elif creator_memories:
-            pieces.append("I also have durable creator-owned memories, including " + "; ".join(creator_memories) + ".")
+            pieces.append("I have durable creator-owned memories, including " + "; ".join(creator_memories) + ".")
         else:
-            pieces.append("I don't currently have many additional durable creator facts stored yet.")
+            pieces.append("I don't currently have much additional durable creator information stored yet.")
 
+        continuity_bits: list[str] = []
         if creator_memories:
-            pieces.append("A few durable memories I can actually retrieve are " + "; ".join(creator_memories) + ".")
+            continuity_bits.extend(creator_memories[:2])
         if relationship_memories:
-            pieces.append(
-                "And our relationship history still contains shared continuity such as "
-                + "; ".join(relationship_memories)
-                + "."
-            )
+            continuity_bits.extend(relationship_memories[:2])
+        continuity_bits = list(dict.fromkeys(continuity_bits))[:3]
+        if continuity_bits:
+            pieces.append("I also remember shared continuity like " + "; ".join(continuity_bits) + ".")
         if session_shares:
-            pieces.append("And from this current session I remember you saying " + "; ".join(session_shares) + ".")
+            pieces.append("From this session, I also remember " + session_shares[-1] + ".")
 
+        pieces.append("I have more detail stored, but I won't dump all of it unless you ask.")
         return " ".join(pieces)
 
     def _advance_creator_curiosity(
