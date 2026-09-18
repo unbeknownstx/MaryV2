@@ -1512,6 +1512,14 @@ class CognitiveOrchestrator:
         # Mary's actual connected runtime/tool boundaries, not from a provider's
         # generic assistant identity.
         if any(marker in normalized for marker in (
+            "inspect everything", "inspect the current surface", "inspect current surface",
+            "check the current surface", "check current surface", "check your runtime",
+            "inspect your runtime", "inspect the runtime", "check everything",
+            "point anything out", "point out anything wrong", "point out what looks wrong",
+        )):
+            return self_intent("runtime_inspection")
+
+        if any(marker in normalized for marker in (
             "analyze yourself", "analyse yourself", "analyze your self", "analyse your self",
             "analyze your own system", "analyse your own system", "inspect yourself",
             "inspect your own system", "understand yourself", "understand your own system",
