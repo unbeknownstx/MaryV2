@@ -227,11 +227,12 @@ class WorldModel:
                 ):
                     continue
                 same_value = self._value_key(row.get("value")) == self._value_key(value)
+                if supersede_current:
+                    row["valid_to"] = started
+                    row["status"] = "retired"
+                    superseded = str(row.get("id") or "") or superseded
+                    continue
                 if same_value:
-                    if supersede_current:
-                        row["valid_to"] = started
-                        row["status"] = "retired"
-                        superseded = str(row.get("id") or "") or None
                     continue
                 contradiction_ids.append(str(row.get("id") or ""))
                 row["status"] = "contested"
