@@ -1725,6 +1725,57 @@ class MaryCoreService:
                     output.add(str(name))
         return output
 
+    @staticmethod
+    def _plan_step_view(step: Any) -> dict[str, Any]:
+        return {
+            "id": str(getattr(step, "id", "") or ""),
+            "title": str(getattr(step, "title", "") or ""),
+            "status": str(getattr(step, "status", "") or ""),
+            "order": int(getattr(step, "order", 0) or 0),
+            "depends_on": list(getattr(step, "depends_on", ()) or ()),
+            "blockers": list(getattr(step, "blockers", ()) or ()),
+            "required_capabilities": list(
+                getattr(step, "required_capabilities", ()) or ()
+            ),
+            "required_approvals": list(
+                getattr(step, "required_approvals", ()) or ()
+            ),
+            "verification": list(getattr(step, "verification", ()) or ()),
+            "evidence_ids": list(getattr(step, "evidence_ids", ()) or ()),
+            "assigned_node_id": str(
+                getattr(step, "assigned_node_id", "") or ""
+            ),
+            "skill_id": str(getattr(step, "skill_id", "") or ""),
+            "last_result": str(getattr(step, "last_result", "") or "")[:1200],
+            "created_at": str(getattr(step, "created_at", "") or ""),
+            "updated_at": str(getattr(step, "updated_at", "") or ""),
+        }
+
+    @classmethod
+    def _plan_view(cls, plan: Any) -> dict[str, Any]:
+        steps = list(getattr(plan, "steps", ()) or ())
+        return {
+            "id": str(getattr(plan, "id", "") or ""),
+            "objective": str(getattr(plan, "objective", "") or ""),
+            "source": str(getattr(plan, "source", "") or ""),
+            "status": str(getattr(plan, "status", "") or ""),
+            "priority": float(getattr(plan, "priority", 0.0) or 0.0),
+            "goal_id": str(getattr(plan, "goal_id", "") or ""),
+            "workflow_id": str(getattr(plan, "workflow_id", "") or ""),
+            "parent_plan_id": str(getattr(plan, "parent_plan_id", "") or ""),
+            "tags": list(getattr(plan, "tags", ()) or ()),
+            "created_at": str(getattr(plan, "created_at", "") or ""),
+            "updated_at": str(getattr(plan, "updated_at", "") or ""),
+            "progress": {
+                "completed": sum(
+                    1 for step in steps
+                    if str(getattr(step, "status", "") or "") == "completed"
+                ),
+                "total": len(steps),
+            },
+            "steps": [cls._plan_step_view(step) for step in steps],
+        }
+
     def node_status(self) -> dict[str, Any]:
         return _json_safe(self.mary.node_registry.snapshot())
 
