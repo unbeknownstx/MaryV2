@@ -207,6 +207,23 @@ class CognitiveWorkspace:
             lambda: list(self.mary.knowledge_fabric.plan(query, limit=knowledge_limit)),
             [],
         )
+        route_pack_ids = [
+            str(item.get("pack_id") or "")
+            for item in knowledge_routes[:knowledge_limit]
+            if str(item.get("pack_id") or "")
+        ]
+        knowledge_hits = _safe_call(
+            lambda: list(
+                self.mary.knowledge_fabric.search(
+                    query,
+                    pack_ids=route_pack_ids,
+                    limit=knowledge_limit,
+                )
+            )
+            if route_pack_ids
+            else [],
+            [],
+        )
         knowledge_status = _safe_call(lambda: dict(self.mary.knowledge_fabric.status() or {}), {})
 
         identity = {
@@ -298,8 +315,23 @@ class CognitiveWorkspace:
             },
             knowledge={
                 "routes": knowledge_routes[:knowledge_limit],
+                "evidence": [
+                    {
+                        "pack_id": item.pack_id,
+                        "title": _clip(item.title, 240),
+                        "snippet": _clip(item.snippet, 1200),
+                        "source": _clip(item.source, 300),
+                        "score": item.score,
+                        "locator": _clip(item.locator, 500),
+                        "content_hash": _clip(item.content_hash, 128),
+                    }
+                    for item in knowledge_hits[:knowledge_limit]
+                ],
                 "status": knowledge_status,
-                "authority": "local/external evidence substrate only",
+                "authority": (
+                    "retrieved evidence substrate only; hits are not memory, "
+                    "identity, relationship facts or automatic world truth"
+                ),
             },
             epistemic=epistemic,
             policy={
