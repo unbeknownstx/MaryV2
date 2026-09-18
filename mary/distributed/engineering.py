@@ -127,14 +127,34 @@ def _sanitize_change(raw: Any) -> dict[str, Any]:
         raise ValueError("Engineering change must be an object.")
     path = _safe_relpath(raw.get("path"))
     content = str(raw.get("content") or raw.get("proposed_content") or "")
-    if not content:
-        raise ValueError("Engineering change requires non-empty content.")
+    raw_edits = raw.get("edits")
+    edits: list[dict[str, str]] = []
+    if isinstance(raw_edits, list):
+        if len(raw_edits) > 12:
+            raise ValueError("Engineering change may contain at most 12 exact edits.")
+        for item in raw_edits:
+            if not isinstance(item, dict):
+                raise ValueError("Engineering edit must be an object.")
+            old = str(item.get("old") or "")
+            new = str(item.get("new") or "")
+            if not old:
+                raise ValueError("Engineering exact edit requires non-empty old text.")
+            if len(old) > 20_000 or len(new) > 40_000:
+                raise ValueError("Engineering exact edit exceeds bounded size.")
+            edits.append({"old": old, "new": new})
+    if not content and not edits:
+        raise ValueError("Engineering change requires full content or exact edits.")
     if len(content) > 300_000:
         raise ValueError("Engineering change exceeds bounded content size.")
     expected = str(raw.get("expected_sha256") or "").strip().lower()
     if expected and not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise ValueError("expected_sha256 must be a SHA-256 hex digest.")
-    return {"path": path, "content": content, "expected_sha256": expected}
+    return {
+        "path": path,
+        "content": content,
+        "edits": edits,
+        "expected_sha256": expected,
+    }
 
 
 def sanitize_engineering_task_args(capability: str, args: dict[str, Any] | None) -> dict[str, Any]:
@@ -237,6 +257,27 @@ class EngineeringWorker:
     @staticmethod
     def _sha(text: str) -> str:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _materialize_change(change: dict[str, Any], original: str) -> str:
+        content = str(change.get("content") or "")
+        if content:
+            return content
+        proposed = original
+        edits = list(change.get("edits") or [])
+        if not edits:
+            raise ValueError("Engineering change has no materialized content or edits.")
+        for edit in edits:
+            old = str(dict(edit or {}).get("old") or "")
+            new = str(dict(edit or {}).get("new") or "")
+            count = proposed.count(old)
+            if count != 1:
+                raise RuntimeError(
+                    "Engineering exact edit is stale or ambiguous "
+                    f"(expected one match, found {count})."
+                )
+            proposed = proposed.replace(old, new, 1)
+        return proposed
 
     def _read(self, relpath: str) -> str:
         path = self._path(relpath)
@@ -342,7 +383,7 @@ class EngineeringWorker:
             expected = str(change.get("expected_sha256") or "")
             if expected and expected != self._sha(original):
                 raise RuntimeError(f"Source changed since engineering evidence was gathered: {rel}")
-            proposed = str(change["content"])
+            proposed = self._materialize_change(change, original)
             if rel.endswith(".py"):
                 ast.parse(proposed, filename=rel)
             diffs.append("".join(difflib.unified_diff(
@@ -399,7 +440,7 @@ class EngineeringWorker:
                 raise ValueError("Repository apply requires expected_sha256 for every file.")
             if expected != self._sha(original):
                 raise RuntimeError(f"Refusing stale engineering patch: {rel}")
-            proposed = str(change["content"])
+            proposed = self._materialize_change(change, original)
             if rel.endswith(".py"):
                 ast.parse(proposed, filename=rel)
             prepared.append((path, proposed, rel))
@@ -477,8 +518,11 @@ class EngineeringWorker:
         prompt = (
             "You are a bounded software-engineering worker. Return ONLY valid JSON, no markdown. "
             "Schema: {\"summary\":\"...\",\"changes\":[{\"path\":\"...\","
-            "\"expected_sha256\":\"...\",\"content\":\"full replacement file text\"}]}. "
-            "Use only files shown below. Make the smallest cohesive fix. Do not invent credentials, "
+            "\"expected_sha256\":\"...\",\"edits\":[{\"old\":\"exact existing text\","
+            "\"new\":\"replacement text\"}]}]}. "
+            "Prefer small exact edits over full-file rewrites. Every old string must occur exactly once "
+            "in the supplied source evidence. Use only files shown below. Make the smallest cohesive fix. "
+            "Do not invent credentials, "
             "shell commands, commits, pushes, deployments, or changes to Mary identity/memory. "
             "If no safe fix is supported by the evidence, return an empty changes array.\n\n"
             f"TASK: {task}\n\n{evidence_text}"
