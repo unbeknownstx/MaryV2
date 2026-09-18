@@ -43,6 +43,11 @@ def _fabric(tmp_path: Path):
         collection="manuals",
     )
     fabric.index_local_pack(source.id)
+    # KnowledgePack values are immutable registry snapshots. Refresh after
+    # indexing so downstream vector-build assertions compare against the
+    # durable source fingerprint that was actually written.
+    source = fabric.get(source.id)
+    assert source.content_fingerprint
     vector = fabric.register(
         pack_id="vector",
         title="Semantic index",
