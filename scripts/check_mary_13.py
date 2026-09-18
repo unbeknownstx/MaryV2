@@ -43,8 +43,20 @@ def main() -> int:
     print(f"Growth engine: {growth.get('version', 'unknown')}")
     print(f"Realtime phase: {realtime.get('phase', 'unknown')} / anti-echo={'ON' if realtime.get('anti_echo') else 'OFF'}")
     print(f"Attention pending: {dict(realtime.get('attention', {}) or {}).get('pending', 0)}")
-    print(f"Compute nodes: {len(nodes.get('nodes', []) or [])}")
-    print(f"Retrieval: {retrieval.get('mode', 'unknown')} / vectors={dict(retrieval.get('vector_index', {}) or {}).get('vectors', 0)} / model={retrieval.get('embedding_model', 'n/a')}")
+    node_rows = list(nodes.get("nodes", []) or [])
+    connected_nodes = sum(1 for node in node_rows if bool(dict(node or {}).get("connected")))
+    vector_count = int(dict(retrieval.get("vector_index", {}) or {}).get("vectors", 0) or 0)
+    vector_state = (
+        f"{vector_count} ready"
+        if vector_count > 0
+        else "not built (structured/lexical recall active)"
+    )
+    print(f"Compute nodes: {connected_nodes} connected / {len(node_rows)} registered")
+    print(
+        f"Retrieval: {retrieval.get('mode', 'unknown')} / "
+        f"vector index={vector_state} / "
+        f"model={retrieval.get('embedding_model', 'n/a')}"
+    )
     print(f"Groq key: {yn(os.getenv('GROQ_API_KEY'))}")
     print(f"Gemini key: {yn(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY'))}")
     print(f"OpenRouter key: {yn(os.getenv('OPENROUTER_API_KEY'))}")
@@ -52,8 +64,16 @@ def main() -> int:
     try:
         from mary.mobile.audio import MobileSpeechService
         speech = MobileSpeechService().status()
-        print(f"TTS: {'READY' if speech.get('tts', {}).get('enabled') else 'OFF'} / {speech.get('tts', {}).get('provider', 'off')}")
-        print(f"STT: {'READY' if speech.get('stt', {}).get('enabled') else 'OFF'} / {speech.get('stt', {}).get('provider', 'off')}")
+        tts = dict(speech.get("tts", {}) or {})
+        stt = dict(speech.get("stt", {}) or {})
+        tts_configured = bool(tts.get("configured", tts.get("enabled", False)))
+        tts_ready = bool(tts.get("server_available", tts.get("enabled", False)))
+        stt_configured = bool(stt.get("configured", stt.get("enabled", False)))
+        stt_ready = bool(stt.get("server_available", stt.get("enabled", False)))
+        tts_state = "READY" if tts_ready else ("DEGRADED" if tts_configured else "OFF")
+        stt_state = "READY" if stt_ready else ("DEGRADED" if stt_configured else "OFF")
+        print(f"TTS: {tts_state} / {tts.get('provider', 'off')}")
+        print(f"STT: {stt_state} / {stt.get('provider', 'off')}")
     except Exception as exc:
         print(f"Voice check: unavailable ({type(exc).__name__})")
     print("Secrets were not displayed.")
