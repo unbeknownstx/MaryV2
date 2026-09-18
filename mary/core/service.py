@@ -520,7 +520,6 @@ class MaryCoreService:
                 preferred_node_id=self._last_engineering_node_id or None,
             )
             self._last_engineering_task_id = task.task_id
-            self._last_engineering_commit_sha = ""
             return (
                 f"I queued publishing commit {commit_sha[:12]} as {task.task_id} on {task.selected_node_id}. "
                 "The node allows only its configured remote/branch, never force-pushes, and requires a clean tree. "
