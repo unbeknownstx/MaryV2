@@ -52,10 +52,14 @@ class MaryEcosystem:
         self.action_windows = ActionWindowRegistry(
             decision_trace=getattr(getattr(mary, "realtime", None), "decision_trace", None),
         )
+        paths = mary.config.paths
+        data_root = Path(paths.data)
+        model_root = Path(getattr(paths, "models", data_root / "models"))
+        runtime_root = Path(getattr(paths, "runtime", data_root / "runtime"))
         self.model_candidates = ModelCandidateCatalog(
-            Path(mary.config.paths.root) / "assets" / "models" / "candidates" / "model_candidates.json",
-            asset_root=Path(mary.config.paths.models),
-            verification_path=Path(mary.config.paths.runtime) / "model_artifact_evidence.json",
+            Path(paths.root) / "assets" / "models" / "candidates" / "model_candidates.json",
+            asset_root=model_root,
+            verification_path=runtime_root / "model_artifact_evidence.json",
         )
         self.youtube = YouTubeSearch()
         # Creator-selected workspace gets priority over the repository itself.
