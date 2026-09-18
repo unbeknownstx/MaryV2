@@ -150,3 +150,54 @@ def test_mary_dataset_v1_without_feedback_still_builds_repo_baseline(tmp_path, m
     assert summary.feedback_records == 0
     assert (output / "explicit_feedback" / "mary_sft.jsonl").read_text(encoding="utf-8") == ""
     assert len(summary.fingerprint) == 24
+
+
+def test_mary_dataset_accepts_only_creator_approved_novel_behavior_abstractions(tmp_path, monkeypatch):
+    monkeypatch.delenv("MARY_CHARACTER_SOURCES", raising=False)
+    monkeypatch.delenv("MARY_CHARACTER_EVALS", raising=False)
+    _write_sources(tmp_path)
+
+    review = tmp_path / "novel_review.json"
+    review.write_text(json.dumps({
+        "version": "mary-novel-behavior-review-v1",
+        "source": {"file": "Unbeknownst.docx", "sha256": "a" * 64},
+        "reviews": [
+            {
+                "candidate_id": "novel_scene_1",
+                "chapter": "CHAPTER 9",
+                "status": "approved",
+                "situation": "Someone challenges an assumption Mary was confident about.",
+                "mary_behavior": "She pushes back once, checks the evidence, then owns the correction without becoming generic.",
+                "avoid": "pretending the fictional event literally happened to AI Mary",
+                "tags": ["reaction", "correction"],
+            },
+            {
+                "candidate_id": "novel_scene_2",
+                "status": "pending",
+                "situation": "Pending scene",
+                "mary_behavior": "Must not export",
+            },
+        ],
+    }), encoding="utf-8")
+
+    output = tmp_path / "dataset-with-novel"
+    summary = MaryDatasetV1Exporter().export(
+        root=tmp_path,
+        output_dir=output,
+        novel_review_path=review,
+    )
+
+    assert summary.novel_behavior_sft == 1
+    rows = [
+        json.loads(line)
+        for line in (output / "mary_behavior_sft.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    novel = [row for row in rows if row["example_id"].startswith("novel_behavior_")]
+    assert len(novel) == 1
+    assert novel[0]["boundary"] == "fictional_reference_derived_behavior_not_lived_memory"
+    assert "fictional event as AI-Mary lived memory" in novel[0]["messages"][0]["content"]
+    assert all("Pending scene" not in json.dumps(row) for row in rows)
+
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["boundaries"]["raw_novel_excerpt_used_as_sft"] is False
+    assert manifest["sources"]["reviewed_novel_behavior"]["approved"] == 1

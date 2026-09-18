@@ -30,6 +30,15 @@ def main() -> int:
         default=None,
         help="Optional explicit response_feedback.json. Defaults to configured Mary data root if present.",
     )
+    parser.add_argument(
+        "--novel-review",
+        type=Path,
+        default=None,
+        help=(
+            "Optional creator-reviewed novel behavior JSON. Only approved "
+            "abstract situation/behavior rows enter SFT."
+        ),
+    )
     args = parser.parse_args()
 
     config = Config.from_environment()
@@ -42,6 +51,7 @@ def main() -> int:
         root=args.root,
         output_dir=args.output,
         feedback_path=feedback,
+        novel_review_path=args.novel_review,
     )
 
     print("MARY DATASET V1")
@@ -50,6 +60,7 @@ def main() -> int:
     print(f"sourcebook records:            {summary.sourcebook_records}")
     print(f"character training candidates: {summary.character_training_candidates}")
     print(f"structured behavior SFT:       {summary.behavior_sft}")
+    print(f"reviewed novel behavior SFT:   {summary.novel_behavior_sft}")
     print(f"negative examples:             {summary.negative_examples}")
     print(f"held-out MaryBench cases:      {summary.marybench_eval}")
     print(f"explicit feedback records:     {summary.feedback_records}")

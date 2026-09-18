@@ -39,6 +39,7 @@ class MaryDatasetV1Summary:
     sourcebook_records: int
     character_training_candidates: int
     behavior_sft: int
+    novel_behavior_sft: int
     negative_examples: int
     marybench_eval: int
     feedback_records: int
@@ -144,6 +145,90 @@ def _behavior_sft_row(record: Any) -> dict[str, Any] | None:
     }
 
 
+def _reviewed_novel_behaviors(
+    path: str | Path | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load only creator-approved fictional-canon behavior abstractions.
+
+    Raw novel excerpts are never emitted as SFT. The review file must contain
+    an abstract situation plus an abstract Mary behavior written/approved by
+    the creator. Plot events remain provenance, not AI-Mary lived memory.
+    """
+
+    if path is None:
+        return [], {"included": False, "approved": 0, "sha256": ""}
+    source = Path(path).expanduser().resolve()
+    if not source.exists():
+        return [], {"included": False, "approved": 0, "sha256": ""}
+
+    raw_bytes = source.read_bytes()
+    payload = json.loads(raw_bytes.decode("utf-8"))
+    if isinstance(payload, dict):
+        reviews = list(payload.get("reviews") or [])
+        source_meta = dict(payload.get("source") or {})
+    elif isinstance(payload, list):
+        reviews = list(payload)
+        source_meta = {}
+    else:
+        raise ValueError("novel behavior review must be a JSON object or array")
+
+    rows: list[dict[str, Any]] = []
+    for raw in reviews[:5000]:
+        if not isinstance(raw, dict):
+            continue
+        if str(raw.get("status") or "").strip().casefold() != "approved":
+            continue
+        candidate_id = str(raw.get("candidate_id") or "").strip()[:160]
+        situation = " ".join(str(raw.get("situation") or "").split())[:3000]
+        behavior = " ".join(str(raw.get("mary_behavior") or raw.get("behavior") or "").split())[:3000]
+        if not candidate_id or not situation or not behavior:
+            continue
+        avoid = " ".join(str(raw.get("avoid") or "").split())[:1600]
+        tags = [
+            str(item).strip()[:100]
+            for item in list(raw.get("tags") or [])[:24]
+            if str(item).strip()
+        ]
+        source_sha = str(
+            raw.get("source_sha256")
+            or source_meta.get("sha256")
+            or ""
+        ).strip()[:64]
+        rows.append({
+            "dataset_version": _DATASET_VERSION,
+            "example_id": f"novel_behavior_{candidate_id}",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Respond as Mary using this creator-approved behavior abstraction. "
+                        "It was derived from fictional canon for character calibration only; "
+                        "never claim the fictional event as AI-Mary lived memory."
+                    ),
+                },
+                {"role": "user", "content": situation},
+                {"role": "assistant", "content": behavior},
+            ],
+            "avoid": avoid or None,
+            "labels": ["DNA", "FC-DERIVED", *tags],
+            "source_name": str(raw.get("source_file") or source_meta.get("file") or "Unbeknownst")[:240],
+            "source_kind": "creator_owned_fiction_review",
+            "source_candidate_id": candidate_id,
+            "source_sha256": source_sha,
+            "chapter": str(raw.get("chapter") or "")[:120],
+            "provenance": "creator_approved_fiction_derived_behavior",
+            "boundary": "fictional_reference_derived_behavior_not_lived_memory",
+            "training_eligible": True,
+            "split": _stable_split(f"novel_behavior_{candidate_id}"),
+        })
+    return rows, {
+        "included": True,
+        "approved": len(rows),
+        "sha256": sha256(raw_bytes).hexdigest(),
+        "file": source.name,
+    }
+
+
 def _marybench_row(case: Any) -> dict[str, Any]:
     return {
         "dataset_version": _DATASET_VERSION,
@@ -174,6 +259,7 @@ class MaryDatasetV1Exporter:
         root: str | Path,
         output_dir: str | Path,
         feedback_path: str | Path | None = None,
+        novel_review_path: str | Path | None = None,
     ) -> MaryDatasetV1Summary:
         base = Path(root).expanduser().resolve()
         target = Path(output_dir).expanduser().resolve()
@@ -193,11 +279,15 @@ class MaryDatasetV1Exporter:
             row for row in character_rows
             if row["boundary"] == "negative_example_only"
         ]
-        behavior_rows = [
+        authored_behavior_rows = [
             row
             for record in sourcebook.records
             if (row := _behavior_sft_row(record)) is not None
         ]
+        novel_behavior_rows, novel_review = _reviewed_novel_behaviors(
+            novel_review_path
+        )
+        behavior_rows = [*authored_behavior_rows, *novel_behavior_rows]
         eval_rows = [_marybench_row(case) for case in evaluation.cases]
 
         _jsonl(target / "mary_character_corpus.jsonl", character_rows)
@@ -241,6 +331,9 @@ class MaryDatasetV1Exporter:
             "sourcebook_records": len(character_rows),
             "character_training_candidates": len(training_candidates),
             "behavior_sft": len(behavior_rows),
+            "authored_behavior_sft": len(authored_behavior_rows),
+            "novel_behavior_sft": len(novel_behavior_rows),
+            "novel_review_sha256": str(novel_review.get("sha256") or ""),
             "negative_examples": len(negative_rows),
             "marybench_fingerprint": evaluation.fingerprint,
             "marybench_eval": len(eval_rows),
@@ -255,6 +348,7 @@ class MaryDatasetV1Exporter:
             sourcebook_records=len(character_rows),
             character_training_candidates=len(training_candidates),
             behavior_sft=len(behavior_rows),
+            novel_behavior_sft=len(novel_behavior_rows),
             negative_examples=len(negative_rows),
             marybench_eval=len(eval_rows),
             feedback_records=int(feedback_summary["source_records"]),
@@ -288,6 +382,11 @@ class MaryDatasetV1Exporter:
                     "path_included": bool(feedback_source and feedback_source.exists()),
                     **feedback_summary,
                 },
+                "reviewed_novel_behavior": {
+                    **novel_review,
+                    "raw_novel_excerpt_exported": False,
+                    "fiction_becomes_ai_memory": False,
+                },
             },
             "files": {
                 "character_corpus": "mary_character_corpus.jsonl",
@@ -311,6 +410,8 @@ class MaryDatasetV1Exporter:
                 "negative_examples_are_sft_targets": False,
                 "marybench_used_for_training_by_default": False,
                 "third_party_dataset_included": False,
+                "raw_novel_excerpt_used_as_sft": False,
+                "novel_behavior_requires_creator_approval": True,
                 "training_performed": False,
             },
             "recommended_uses": {
