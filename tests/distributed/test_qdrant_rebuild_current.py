@@ -126,7 +126,8 @@ def test_qdrant_create_collection_uses_configured_dimensions(tmp_path: Path) -> 
 
 
 def test_qdrant_reconciliation_detects_stale_or_mismatched_vector_accounting(tmp_path: Path):
-    fabric, source_pack, vector_pack, embed = _fabric(tmp_path)
+    fabric, source_pack, vector_pack = _fabric(tmp_path)
+    embed = _EmbeddingClient()
 
     indexer = QdrantKnowledgeIndexer(
         embedding_client_factory=lambda _model: embed,
@@ -163,7 +164,8 @@ def test_qdrant_reconciliation_detects_stale_or_mismatched_vector_accounting(tmp
 
 
 def test_qdrant_reconciliation_reports_healthy_exact_generation(tmp_path: Path):
-    fabric, source_pack, vector_pack, embed = _fabric(tmp_path)
+    fabric, source_pack, vector_pack = _fabric(tmp_path)
+    embed = _EmbeddingClient()
 
     indexer = QdrantKnowledgeIndexer(
         embedding_client_factory=lambda _model: embed,
