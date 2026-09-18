@@ -62,5 +62,7 @@ def test_native_iphone_voice_has_local_input_and_core_output_paths() -> None:
     assert "requiresOnDeviceRecognition = true" in capture
     assert "SFSpeechURLRecognitionRequest" in capture
     assert "AVAudioPlayer(data: audio.data)" in playback
+    assert "AVSpeechSynthesizer" in playback
+    assert "speakDevice" in playback
     assert "voiceServerAvailable" in call
-    assert "Voice unavailable · text still works" in call
+    assert "Core voice unavailable · iPhone voice fallback ready" in call
