@@ -20,9 +20,12 @@ from mary.distributed import (
     DeviceExecutionPermissions,
     ENGINEERING_CAPABILITIES,
     EngineeringWorker,
+    KNOWLEDGE_NODE_CAPABILITIES,
     MCP_CAPABILITIES,
     MCPFabric,
     engineering_capability_descriptors,
+    execute_knowledge_search,
+    knowledge_capability_descriptors,
     sanitize_mcp_error,
 )
 from mary.llm.interface import (
@@ -342,6 +345,7 @@ def desktop_capabilities(
     if permissions is not None:
         items.extend(MCPFabric(permissions).capability_descriptors())
         items.extend(engineering_capability_descriptors(permissions))
+        items.extend(knowledge_capability_descriptors(permissions))
     return items
 
 
@@ -383,6 +387,7 @@ def headless_node_capabilities(
         *local_items,
         *MCPFabric(permissions).capability_descriptors(),
         *engineering_capability_descriptors(permissions),
+        *knowledge_capability_descriptors(permissions),
     ]
 
 
@@ -592,6 +597,10 @@ class DesktopCapabilityNodeAgent:
                 result_payload = self._execute_llama_cpp(dict(task.get("args") or {}))
             elif capability in ENGINEERING_CAPABILITIES:
                 result_payload = self._execute_engineering(capability, dict(task.get("args") or {}))
+            elif capability in KNOWLEDGE_NODE_CAPABILITIES:
+                result_payload = self._execute_knowledge(
+                    dict(task.get("args") or {})
+                )
             elif capability in MCP_CAPABILITIES:
                 result_payload = self._execute_mcp(capability, dict(task.get("args") or {}))
             else:
@@ -621,6 +630,11 @@ class DesktopCapabilityNodeAgent:
             except Exception:
                 return {"ok": False, "error": error}
 
+
+    def _execute_knowledge(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Run one bounded read-only search over node-local knowledge packs."""
+
+        return execute_knowledge_search(args)
 
     def _execute_engineering(self, capability: str, args: dict[str, Any]) -> dict[str, Any]:
         """Run one typed repository task through the bounded local worker."""

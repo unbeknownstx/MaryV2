@@ -1,6 +1,7 @@
 """Typed locally-owned knowledge capability for MaryV2 nodes."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,12 @@ KNOWLEDGE_NODE_CAPABILITIES = frozenset({"knowledge.search"})
 
 
 def node_knowledge_paths() -> tuple[Path, Path]:
-    root = Path.home() / ".maryv2" / "knowledge-node"
+    configured = os.getenv("MARY_KNOWLEDGE_NODE_ROOT", "").strip()
+    root = (
+        Path(configured).expanduser().resolve()
+        if configured
+        else Path.home() / ".maryv2" / "knowledge-node"
+    )
     return root / "knowledge_fabric.json", root / "knowledge_fabric.sqlite3"
 
 
@@ -65,7 +71,26 @@ def sanitize_knowledge_task_args(
     if not query:
         raise ValueError("knowledge.search requires a query")
     limit = max(1, min(20, int(values.get("limit", 8) or 8)))
-    return {"query": query, "limit": limit}
+    retrieval_mode = str(values.get("retrieval_mode") or "auto").strip().lower()
+    if retrieval_mode not in KnowledgeFabric.RETRIEVAL_MODES:
+        raise ValueError(
+            "knowledge.search retrieval_mode must be one of "
+            + ", ".join(sorted(KnowledgeFabric.RETRIEVAL_MODES))
+        )
+    raw_pack_ids = values.get("pack_ids") or []
+    if not isinstance(raw_pack_ids, (list, tuple)):
+        raise ValueError("knowledge.search pack_ids must be a list")
+    pack_ids = list(dict.fromkeys(
+        str(item or "").strip()[:160]
+        for item in list(raw_pack_ids)[:32]
+        if str(item or "").strip()
+    ))
+    return {
+        "query": query,
+        "limit": limit,
+        "retrieval_mode": retrieval_mode,
+        "pack_ids": pack_ids,
+    }
 
 
 def sanitize_knowledge_result(
@@ -87,11 +112,16 @@ def sanitize_knowledge_result(
             "score": max(0.0, min(1000.0, float(raw.get("score", 0.0) or 0.0))),
             "locator": str(raw.get("locator") or "")[:500],
             "content_hash": str(raw.get("content_hash") or "")[:128],
+            "collection": str(raw.get("collection") or "default")[:160],
+            "source_date": str(raw.get("source_date") or "")[:80],
+            "indexed_at": str(raw.get("indexed_at") or "")[:80],
+            "citation_id": str(raw.get("citation_id") or "")[:220],
         })
     return {
         "ok": bool(values.get("ok", True)),
         "hits": hits,
         "pack_count": max(0, int(values.get("pack_count", 0) or 0)),
+        "retrieval_mode": str(values.get("retrieval_mode") or "auto")[:40],
         "authority": "node-local knowledge evidence only",
     }
 
@@ -99,7 +129,12 @@ def sanitize_knowledge_result(
 def execute_knowledge_search(args: dict[str, Any]) -> dict[str, Any]:
     values = sanitize_knowledge_task_args("knowledge.search", args)
     fabric = node_knowledge_fabric()
-    hits = fabric.search(values["query"], limit=values["limit"])
+    hits = fabric.search(
+        values["query"],
+        pack_ids=values["pack_ids"],
+        limit=values["limit"],
+        retrieval_mode=values["retrieval_mode"],
+    )
     return {
         "ok": True,
         "hits": [
@@ -111,8 +146,13 @@ def execute_knowledge_search(args: dict[str, Any]) -> dict[str, Any]:
                 "score": item.score,
                 "locator": item.locator,
                 "content_hash": item.content_hash,
+                "collection": item.collection,
+                "source_date": item.source_date,
+                "indexed_at": item.indexed_at,
+                "citation_id": item.citation_id,
             }
             for item in hits
         ],
         "pack_count": len(fabric.packs(enabled_only=True)),
+        "retrieval_mode": values["retrieval_mode"],
     }
