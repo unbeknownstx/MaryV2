@@ -35,6 +35,7 @@ from mary.llm.interface import (
 )
 from mary.llm.providers.ollama import OllamaProvider
 from mary.distributed.hardware_profiles import SAFE_LOCAL_MODEL, SAFE_LOCAL_NUM_CTX
+from mary.distributed.model_artifacts import model_artifact_metadata_from_environment
 from mary.llm.providers.llama_cpp import LlamaCppProvider
 from mary.llm.providers.local_runtime import LocalRuntimeProvider
 from mary.runtime.gateway import RemoteMaryGateway
@@ -151,6 +152,9 @@ def _llama_cpp_capability() -> CapabilityDescriptor | None:
     provider = LlamaCppProvider()
     if not provider.is_available():
         return None
+    artifact_metadata = model_artifact_metadata_from_environment(
+        runtime="llama.cpp",
+    )
     return CapabilityDescriptor(
         name="llm.llama_cpp",
         available=True,
@@ -162,6 +166,7 @@ def _llama_cpp_capability() -> CapabilityDescriptor | None:
             "configured_model": provider.model_name(),
             "runtime": "llama.cpp",
             "adapter_scales": bool(provider._lora_scales()),
+            **artifact_metadata,
         },
     )
 

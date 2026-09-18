@@ -55,7 +55,7 @@ class MaryEcosystem:
         self.model_candidates = ModelCandidateCatalog(
             Path(mary.config.paths.root) / "assets" / "models" / "candidates" / "model_candidates.json",
             asset_root=Path(mary.config.paths.models),
-            verification_path=self.root / "model_artifact_evidence.json",
+            verification_path=Path(mary.config.paths.runtime) / "model_artifact_evidence.json",
         )
         self.youtube = YouTubeSearch()
         # Creator-selected workspace gets priority over the repository itself.
