@@ -8,6 +8,36 @@ The canonical Windows home node lets remote Mary Core use approved local capabil
 python -m scripts.node_permissions allow llm.ollama
 ```
 
+## Optional Mary self-repair worker
+
+When this checkout has a local model available through Ollama/llama.cpp/LM Studio,
+the same home node can act as Mary's bounded software-engineering worker.
+
+Enable proposal/inspection first:
+
+```powershell
+python -m scripts.node_permissions allow engineering.repo.inspect
+python -m scripts.node_permissions allow engineering.repair.plan
+python -m scripts.node_permissions allow engineering.patch.propose
+python -m scripts.node_permissions allow engineering.git.status
+python -m scripts.node_permissions allow engineering.git.diff
+python -m scripts.node_permissions allow engineering.structure.verify
+python -m scripts.node_permissions allow engineering.tests.targeted
+```
+
+Repository writes stay separately disabled until you choose:
+
+```powershell
+python -m scripts.node_permissions allow engineering.repo.apply
+```
+
+Then Mary can use the creator-facing flow `Fix yourself` -> `Check the repair`
+-> `Apply that fix` -> `Verify that fix`. Planning never writes, validation
+runs in a disposable sandbox, and the worker has no generic shell/commit/push/deploy
+capability.
+
+See `docs/architecture/ENGINEERING_WORKER_CURRENT.md`.
+
 ## Manual launch
 
 ```powershell
