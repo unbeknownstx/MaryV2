@@ -2828,6 +2828,75 @@ class MaryCoreService:
                     "pulse": self.application.ecosystem.world_pulse.snapshot(),
                 })
 
+            if action.action == "world.accept_evidence":
+                item_id = str(values.get("item_id") or "").strip()
+                item = self.application.ecosystem.world.get(item_id)
+                if item is None:
+                    raise KeyError("world context item is missing or expired")
+                subject = " ".join(str(values.get("subject") or "").split())[:240]
+                predicate = " ".join(str(values.get("predicate") or "").split())[:160]
+                if not subject or not predicate:
+                    raise ValueError("world evidence acceptance requires subject and predicate")
+
+                raw_value = values.get("value")
+                if isinstance(raw_value, str):
+                    accepted_value: Any = " ".join(raw_value.split())[:2000]
+                elif isinstance(raw_value, (int, float, bool)) or raw_value is None:
+                    accepted_value = raw_value
+                elif isinstance(raw_value, (list, tuple)):
+                    accepted_value = [
+                        (
+                            " ".join(str(entry).split())[:300]
+                            if not isinstance(entry, (int, float, bool)) and entry is not None
+                            else entry
+                        )
+                        for entry in list(raw_value)[:32]
+                    ]
+                elif isinstance(raw_value, dict):
+                    accepted_value = {
+                        str(key)[:80]: (
+                            " ".join(str(entry).split())[:300]
+                            if not isinstance(entry, (int, float, bool)) and entry is not None
+                            else entry
+                        )
+                        for key, entry in list(raw_value.items())[:24]
+                    }
+                else:
+                    accepted_value = " ".join(str(raw_value).split())[:2000]
+
+                requested_confidence = max(
+                    0.0,
+                    min(1.0, float(values.get("confidence", item.confidence))),
+                )
+                belief = self.mary.world_model.observe(
+                    subject=subject,
+                    predicate=predicate,
+                    value=accepted_value,
+                    source=item.source,
+                    belief_type=str(values.get("belief_type") or "fact")[:40],
+                    confidence=min(float(item.confidence), requested_confidence),
+                    authority="verified_external",
+                    evidence_ids=(f"world_context:{item.id}",),
+                    verification="verified",
+                    observed_at=item.observed_at,
+                    supersede_current=bool(values.get("supersede_current", False)),
+                    metadata={
+                        "world_context_id": item.id,
+                        "lane": item.lane,
+                        "url": item.url,
+                        "accepted_by": action.device_id,
+                    },
+                )
+                return _json_safe({
+                    "ok": True,
+                    "belief": belief.to_dict(),
+                    "source_context": item.to_dict(),
+                    "policy": (
+                        "explicit evidence acceptance only; external context does "
+                        "not become durable belief automatically"
+                    ),
+                })
+
             if action.action == "model.adapter.status":
                 return _json_safe({
                     **self.application.ecosystem.adapter_lab.snapshot(),
