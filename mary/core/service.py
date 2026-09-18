@@ -194,6 +194,9 @@ class MaryCoreService:
         self.device_tasks = DeviceTaskBroker(**broker_kwargs)
         self._last_engineering_task_id = ""
         self._last_engineering_proposal_id = ""
+        self._last_engineering_node_id = ""
+        self._last_engineering_validation_ok = False
+        self._last_engineering_commit_sha = ""
         self.mary.engineering_dispatcher = self._engineering_action
         self._install_execution_policy()
         self._device_local_provider: DeviceLocalProvider | None = None
@@ -247,6 +250,11 @@ class MaryCoreService:
             diff = diff[:6000].rstrip() + "\n...[diff truncated]"
         if capability == "engineering.repair.plan":
             if proposal_id:
+                self._last_engineering_node_id = str(
+                    getattr(task, "selected_node_id", "") or ""
+                )
+                self._last_engineering_validation_ok = False
+                self._last_engineering_commit_sha = ""
                 return (
                     f"{summary}\n\n{diff}\n\n"
                     "This is a proposal only; nothing has been written. "
@@ -254,10 +262,12 @@ class MaryCoreService:
                 )
             return summary
         if capability == "engineering.repo.apply":
+            self._last_engineering_validation_ok = False
+            self._last_engineering_commit_sha = ""
             return (
                 f"{summary} The repository changed only on the selected engineering node. "
                 "I did not commit, push, merge, or deploy anything. "
-                "You can ask me to verify that fix."
+                "Verify it before committing by saying: verify that fix."
             )
         if capability in {
             "engineering.tests.targeted",
@@ -265,7 +275,28 @@ class MaryCoreService:
             "engineering.structure.verify",
         }:
             ok = bool(result.get("ok"))
-            return f"{summary} Validation {'passed' if ok else 'failed'}."
+            self._last_engineering_validation_ok = ok
+            if ok:
+                return (
+                    f"{summary} Validation passed. "
+                    "If you want one local commit containing only this verified repair, "
+                    "say: commit that fix."
+                )
+            return f"{summary} Validation failed. I will not offer a commit for this repair."
+        if capability == "engineering.git.commit":
+            commit_sha = str(result.get("commit_sha") or "")
+            if commit_sha:
+                self._last_engineering_commit_sha = commit_sha
+            return (
+                f"{summary} Commit {commit_sha[:12] if commit_sha else 'created'} is local only. "
+                "If you explicitly want me to publish this exact commit to main, say: push that fix. "
+                "Pushing may trigger connected CI or production deployment."
+            )
+        if capability == "engineering.git.push":
+            self._last_engineering_commit_sha = ""
+            return (
+                f"{summary} I did not force-push, merge, or run a separate deployment command."
+            )
         return summary
 
     def _engineering_action(self, action: str, query: str = "") -> str:
@@ -306,6 +337,9 @@ class MaryCoreService:
             )
             self._last_engineering_task_id = task.task_id
             self._last_engineering_proposal_id = ""
+            self._last_engineering_node_id = str(task.selected_node_id or "")
+            self._last_engineering_validation_ok = False
+            self._last_engineering_commit_sha = ""
             return (
                 f"I queued bounded engineering task {task.task_id} on {task.selected_node_id}. "
                 "The local model may inspect only the bounded repository workspace and return a proposal. "
@@ -340,6 +374,7 @@ class MaryCoreService:
                 intent="Creator explicitly approved the exact last engineering proposal in chat.",
                 args={"proposal_id": proposal_id},
                 requester_device_id="creator-chat",
+                preferred_node_id=self._last_engineering_node_id or None,
             )
             self._last_engineering_task_id = task.task_id
             # Proposal IDs are one-shot from Core's perspective. The node also
@@ -352,23 +387,101 @@ class MaryCoreService:
             )
 
         if action == "test":
-            ready, detail = self._engineering_route_ready("engineering.structure.verify")
+            full = "full" in query.casefold()
+            capability = (
+                "engineering.tests.full"
+                if full
+                else "engineering.structure.verify"
+            )
+            ready, detail = self._engineering_route_ready(capability)
             if not ready:
                 return (
                     detail
-                    + " Enable engineering.structure.verify on the node to run the bounded repository gate."
+                    + f" Enable {capability} on the same engineering node to run this verification."
                 )
             task = self.device_tasks.enqueue(
                 self.mary.node_registry,
-                capability="engineering.structure.verify",
+                capability=capability,
                 intent=query or "Creator requested verification of the last engineering change.",
                 args={},
                 requester_device_id="creator-chat",
+                preferred_node_id=self._last_engineering_node_id or None,
             )
             self._last_engineering_task_id = task.task_id
             return (
-                f"I queued repository-structure verification as {task.task_id} on {task.selected_node_id}. "
-                "It uses the typed test runner, not a generic shell."
+                f"I queued {'the full deterministic test suite' if full else 'repository-structure verification'} "
+                f"as {task.task_id} on {task.selected_node_id}. "
+                "The node uses a typed runner in a disposable copied workspace, not a Core-supplied shell command."
+            )
+
+        if action == "commit":
+            if not self._last_engineering_validation_ok:
+                return (
+                    "I will not create an engineering commit until the last applied repair "
+                    "has passed verification. Say: verify that fix."
+                )
+            ready, detail = self._engineering_route_ready("engineering.git.commit")
+            if not ready:
+                return (
+                    detail
+                    + " Enable engineering.git.commit on the same node if you want Mary "
+                    "to create a local commit from the verified repair."
+                )
+            task = self.device_tasks.enqueue(
+                self.mary.node_registry,
+                capability="engineering.git.commit",
+                intent="Creator explicitly requested one commit for the verified bounded repair.",
+                args={"message": "MaryV2 bounded verified repair"},
+                requester_device_id="creator-chat",
+                preferred_node_id=self._last_engineering_node_id or None,
+            )
+            self._last_engineering_task_id = task.task_id
+            return (
+                f"I queued a local commit as {task.task_id} on {task.selected_node_id}. "
+                "It may include only the exact applied repair files and will refuse unrelated changes. "
+                "Nothing is pushed yet."
+            )
+
+        if action == "push":
+            commit_sha = self._last_engineering_commit_sha
+            if not commit_sha:
+                commit_task = (
+                    self.device_tasks.get(self._last_engineering_task_id)
+                    if self._last_engineering_task_id
+                    else None
+                )
+                if commit_task is not None and getattr(commit_task, "status", "") == "completed":
+                    self._engineering_task_report(commit_task)
+                    commit_sha = self._last_engineering_commit_sha
+            if not commit_sha:
+                return (
+                    "I do not have an immediately verified Mary engineering commit ready to publish. "
+                    "Check engineering status after the commit finishes."
+                )
+            ready, detail = self._engineering_route_ready("engineering.git.push")
+            if not ready:
+                return (
+                    detail
+                    + " Publishing also requires engineering.git.push permission and "
+                    "MARY_ENGINEERING_PUSH_ENABLED=true on that same node."
+                )
+            task = self.device_tasks.enqueue(
+                self.mary.node_registry,
+                capability="engineering.git.push",
+                intent=(
+                    "Creator explicitly authorized publishing the exact last Mary engineering "
+                    "commit to the node-controlled main remote."
+                ),
+                args={"commit_sha": commit_sha},
+                requester_device_id="creator-chat",
+                preferred_node_id=self._last_engineering_node_id or None,
+            )
+            self._last_engineering_task_id = task.task_id
+            self._last_engineering_commit_sha = ""
+            return (
+                f"I queued publishing commit {commit_sha[:12]} as {task.task_id} on {task.selected_node_id}. "
+                "The node allows only its configured remote/branch, never force-pushes, and requires a clean tree. "
+                "A successful push may trigger connected CI or Railway deployment."
             )
 
         return "I do not recognize that bounded engineering action."
