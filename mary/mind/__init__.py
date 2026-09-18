@@ -10,6 +10,7 @@ from .character_mind import CharacterMind, LocalMindResult
 from .behavior import CharacterBehaviorAction, CharacterBehaviorDecision, CharacterBehaviorEngine
 from .dialogue_acts import DialogueAct, DialoguePlan
 from .hot_state import HotMindState
+from .cognitive_workspace import CognitiveWorkspace, CognitiveWorkspaceSnapshot
 from .reservoir import CognitiveReservoir, ReservoirHit, ReservoirRecord
 from .retrieval_benchmark import (
     RetrievalCase,
@@ -28,6 +29,8 @@ __all__ = [
     "DialogueAct",
     "DialoguePlan",
     "HotMindState",
+    "CognitiveWorkspace",
+    "CognitiveWorkspaceSnapshot",
     "CognitiveReservoir",
     "ReservoirHit",
     "ReservoirRecord",
