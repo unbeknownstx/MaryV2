@@ -1518,6 +1518,18 @@ class CognitiveOrchestrator:
             return self_intent("engineering_apply")
 
         if any(marker in normalized for marker in (
+            "commit that fix", "commit the fix", "commit that patch",
+            "commit the repair", "create a commit for that fix",
+        )):
+            return self_intent("engineering_commit")
+
+        if any(marker in normalized for marker in (
+            "push that fix", "push the fix", "push that commit",
+            "push it to main", "push this to main", "publish that commit",
+        )):
+            return self_intent("engineering_push")
+
+        if any(marker in normalized for marker in (
             "engineering status", "repair status", "check the repair", "check that fix",
             "how is the fix going", "how's the fix going", "is the repair done",
         )):
@@ -1525,7 +1537,8 @@ class CognitiveOrchestrator:
 
         if any(marker in normalized for marker in (
             "run tests on that fix", "test that fix", "verify that fix",
-            "run the repo checks", "verify the repair",
+            "run the repo checks", "verify the repair", "run the full tests",
+            "run full tests", "run the full test suite",
         )):
             return self_intent("engineering_test")
 
