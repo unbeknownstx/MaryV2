@@ -52,6 +52,29 @@ def main() -> int:
         else "not built (structured/lexical recall active)"
     )
     print(f"Compute nodes: {connected_nodes} connected / {len(node_rows)} registered")
+    live_engineering = sorted({
+        str(name)
+        for node in node_rows
+        if bool(dict(node or {}).get("connected"))
+        for name, descriptor in dict(dict(node or {}).get("capabilities", {}) or {}).items()
+        if str(name).startswith("engineering.")
+        and bool(dict(descriptor or {}).get("available"))
+    })
+    repair_ready = "engineering.repair.plan" in live_engineering
+    apply_advertised = "engineering.repo.apply" in live_engineering
+    print(
+        "Engineering worker: "
+        + (
+            f"READY / {len(live_engineering)} typed capabilities"
+            if repair_ready
+            else (
+                "INSPECT/VERIFY ONLY"
+                if live_engineering
+                else "OFF / no connected engineering node"
+            )
+        )
+        + (" / repo-apply advertised" if apply_advertised else " / repo-apply not advertised")
+    )
     print(
         f"Retrieval: {retrieval.get('mode', 'unknown')} / "
         f"vector index={vector_state} / "
