@@ -174,6 +174,41 @@ def test_durable_goal_can_answer_shared_work_without_assistant_history(tmp_path,
     assert "durable" in lowered or "goal" in lowered or "working" in lowered
 
 
+def test_broad_creator_memory_overview_is_compact_but_preserves_deeper_state(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = _mary()
+    mary = app.mary
+
+    mary.relationship.learn_explicit(
+        "my favorite color is green",
+        source="creator_explicit",
+        evidence_id=None,
+    )
+    for number in range(6):
+        mary.remember(
+            f"creator continuity item {number}",
+            memory_type="episodic",
+            importance=0.7,
+            metadata={
+                "owner": "creator",
+                "event_type": "user_statement",
+            },
+        )
+        mary.relationship_history.record_shared_experience(
+            f"shared continuity event {number}",
+            importance=0.8,
+            metadata={"kind": "shared_work"},
+        )
+
+    response = mary._creator_memory_overview(recent_conversation=[])
+
+    assert "green" in response.lower()
+    assert "I have more detail stored" in response
+    assert response.count("shared continuity event") <= 2
+    assert response.count("creator continuity item") <= 2
+    assert len(mary.memory.episodic.all()) >= 6
+
+
 def test_probe_profile_stays_auditable_but_is_hidden_from_normal_creator_overview(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     app = _mary()
