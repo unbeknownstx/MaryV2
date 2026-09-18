@@ -1,6 +1,6 @@
 # MaryV2 mobile surface convergence — 13.4 candidate
 
-Production identity remains **13.3 Connected Presence** until live acceptance passes.
+This document records the 13.4 convergence milestone. Current authority and active surface status are defined by `MARY_ROOT.md` and `docs/architecture/SYSTEM_REGISTRY.md`; the `13.3` Core architecture field is a compatibility/handshake identifier, not a statement that the current product surface is stale.
 
 ## One Mary, several surfaces
 
@@ -42,7 +42,7 @@ The projection is available to conversation context and mobile/workspace status 
 
 Native iOS:
 
-`Core /v1/voice/synthesize -> rendered Mary audio -> iPhone playback`
+`Core /v1/voice/synthesize -> rendered Mary audio -> iPhone playback -> iPhone system speech fallback when Core TTS degrades`
 
 PWA/compatibility client:
 
