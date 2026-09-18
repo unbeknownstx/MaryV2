@@ -96,6 +96,10 @@ def main() -> int:
     qdrant_rebuild.add_argument("--limit", type=int, default=20_000)
     qdrant_rebuild.add_argument("--batch-size", type=int, default=32)
 
+    qdrant_reconcile = sub.add_parser("qdrant-reconcile")
+    qdrant_reconcile.add_argument("pack_id")
+    qdrant_reconcile.add_argument("--source-pack", default="")
+
     embedding_identity = sub.add_parser("embedding-identity")
     embedding_identity.add_argument("--model", default="")
 
@@ -235,6 +239,16 @@ def main() -> int:
             source_pack_id=args.source_pack,
             limit=max(1, min(20_000, int(args.limit))),
             batch_size=max(1, min(128, int(args.batch_size))),
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["ok"] else 2
+
+    if args.command == "qdrant-reconcile":
+        pack = fabric.get(args.pack_id)
+        result = QdrantKnowledgeIndexer().reconcile(
+            pack,
+            fabric,
+            source_pack_id=args.source_pack,
         )
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0 if result["ok"] else 2

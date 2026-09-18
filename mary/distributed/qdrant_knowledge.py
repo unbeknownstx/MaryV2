@@ -329,6 +329,138 @@ class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
             "authority": "derived local vector index only",
         }
 
+    def reconcile(
+        self,
+        pack: KnowledgePack,
+        fabric: KnowledgeFabric,
+        *,
+        source_pack_id: str = "",
+    ) -> dict[str, Any]:
+        """Compare source/index/build accounting without mutating Qdrant."""
+
+        KnowledgeFabric._validate_qdrant_endpoint(pack.location)
+        collection, _model, _dimensions, _vector_name = self._metadata(pack)
+        source_id = (
+            str(source_pack_id or "").strip()
+            or str((pack.metadata or {}).get("source_pack_id") or "").strip()
+        )
+        if not source_id:
+            raise ValueError(
+                "Qdrant reconciliation requires source_pack_id metadata or argument"
+            )
+        source_pack = fabric.get(source_id)
+        if source_pack.kind != "local_files":
+            raise ValueError("Qdrant reconciliation source must be local_files")
+        active_chunks = fabric.indexed_chunks(
+            source_id,
+            enabled_only=True,
+            limit=20_000,
+        )
+        build = dict((pack.metadata or {}).get("vector_build") or {})
+        recorded_vectors = max(0, int(build.get("vectors") or 0))
+        recorded_source_fingerprint = str(
+            build.get("source_fingerprint") or ""
+        ).strip()
+        rebuild_id = str(build.get("rebuild_id") or "").strip()
+
+        endpoint = (
+            pack.location.rstrip("/")
+            + "/collections/"
+            + quote(collection, safe="")
+            + "/points/count"
+        )
+        count_all = self.request_json(
+            endpoint,
+            {
+                "filter": {
+                    "must": [{
+                        "key": "mary_vector_pack_id",
+                        "match": {"value": pack.id},
+                    }],
+                },
+                "exact": True,
+            },
+        )
+        actual_vectors = max(
+            0,
+            int(dict(count_all.get("result") or {}).get("count") or 0),
+        )
+        generation_vectors = 0
+        if rebuild_id:
+            count_generation = self.request_json(
+                endpoint,
+                {
+                    "filter": {
+                        "must": [
+                            {
+                                "key": "mary_vector_pack_id",
+                                "match": {"value": pack.id},
+                            },
+                            {
+                                "key": "mary_rebuild_id",
+                                "match": {"value": rebuild_id},
+                            },
+                        ],
+                    },
+                    "exact": True,
+                },
+            )
+            generation_vectors = max(
+                0,
+                int(dict(count_generation.get("result") or {}).get("count") or 0),
+            )
+
+        source_current = bool(
+            source_pack.content_fingerprint
+            and recorded_source_fingerprint
+            and source_pack.content_fingerprint == recorded_source_fingerprint
+        )
+        expected = len(active_chunks)
+        generation_complete = bool(
+            rebuild_id
+            and generation_vectors == expected
+            and recorded_vectors == expected
+        )
+        stale_vectors = max(0, actual_vectors - generation_vectors)
+        healthy = bool(
+            source_current
+            and generation_complete
+            and actual_vectors == generation_vectors
+        )
+        if healthy:
+            state = "healthy"
+        elif not build:
+            state = "not_built"
+        elif not source_current:
+            state = "source_changed"
+        elif generation_vectors < expected:
+            state = "incomplete"
+        elif stale_vectors > 0 or actual_vectors != recorded_vectors:
+            state = "stale_or_mismatched_vectors"
+        else:
+            state = "mismatch"
+
+        return {
+            "ok": healthy,
+            "state": state,
+            "pack_id": pack.id,
+            "source_pack_id": source_id,
+            "source_chunks_expected": expected,
+            "recorded_vectors": recorded_vectors,
+            "actual_vectors": actual_vectors,
+            "current_generation_vectors": generation_vectors,
+            "stale_or_other_generation_vectors": stale_vectors,
+            "source_fingerprint_current": source_current,
+            "generation_complete": generation_complete,
+            "repair": (
+                "none"
+                if healthy
+                else "explicit qdrant-rebuild after reviewing source refresh state"
+            ),
+            "mutation_performed": False,
+            "authority": "derived index reconciliation only",
+        }
+
     def rebuild(
         self,
         pack: KnowledgePack,

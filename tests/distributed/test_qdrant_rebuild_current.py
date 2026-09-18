@@ -123,3 +123,71 @@ def test_qdrant_create_collection_uses_configured_dimensions(tmp_path: Path) -> 
             "on_disk_payload": True,
         },
     )]
+
+
+def test_qdrant_reconciliation_detects_stale_or_mismatched_vector_accounting(tmp_path: Path):
+    fabric, source_pack, vector_pack, embed = _fabric(tmp_path)
+
+    indexer = QdrantKnowledgeIndexer(
+        embedding_client_factory=lambda _model: embed,
+        write_json=lambda _method, _url, _payload: {"status": "ok"},
+        request_json=lambda _url, _payload: {"result": {"count": 0}},
+    )
+    built = indexer.rebuild(
+        vector_pack,
+        fabric,
+        source_pack_id=source_pack.id,
+        batch_size=8,
+    )
+    assert built["ok"] is True
+
+    refreshed_pack = fabric.get(vector_pack.id)
+    expected = len(fabric.indexed_chunks(source_pack.id))
+    responses = iter([
+        {"result": {"count": expected + 2}},
+        {"result": {"count": expected}},
+    ])
+    checker = QdrantKnowledgeIndexer(
+        embedding_client_factory=lambda _model: embed,
+        request_json=lambda _url, _payload: next(responses),
+    )
+    report = checker.reconcile(
+        refreshed_pack,
+        fabric,
+        source_pack_id=source_pack.id,
+    )
+    assert report["ok"] is False
+    assert report["state"] == "stale_or_mismatched_vectors"
+    assert report["stale_or_other_generation_vectors"] == 2
+    assert report["mutation_performed"] is False
+
+
+def test_qdrant_reconciliation_reports_healthy_exact_generation(tmp_path: Path):
+    fabric, source_pack, vector_pack, embed = _fabric(tmp_path)
+
+    indexer = QdrantKnowledgeIndexer(
+        embedding_client_factory=lambda _model: embed,
+        write_json=lambda _method, _url, _payload: {"status": "ok"},
+        request_json=lambda _url, _payload: {"result": {"count": 0}},
+    )
+    assert indexer.rebuild(
+        vector_pack,
+        fabric,
+        source_pack_id=source_pack.id,
+    )["ok"] is True
+
+    refreshed_pack = fabric.get(vector_pack.id)
+    expected = len(fabric.indexed_chunks(source_pack.id))
+    checker = QdrantKnowledgeIndexer(
+        embedding_client_factory=lambda _model: embed,
+        request_json=lambda _url, _payload: {"result": {"count": expected}},
+    )
+    report = checker.reconcile(
+        refreshed_pack,
+        fabric,
+        source_pack_id=source_pack.id,
+    )
+    assert report["ok"] is True
+    assert report["state"] == "healthy"
+    assert report["actual_vectors"] == expected
+    assert report["repair"] == "none"
