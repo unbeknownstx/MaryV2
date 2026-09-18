@@ -35,8 +35,12 @@ def test_full_runtime_wiring_audit_boots_real_composition(tmp_path, monkeypatch)
     assert sections["memory"]["healthy"] is True
     assert sections["providers"]["healthy"] is True
     assert sections["nodes"]["healthy"] is True
+    assert isinstance(sections["nodes"]["engineering_live"], list)
+    assert isinstance(sections["nodes"]["engineering_repair_live"], bool)
+    assert isinstance(sections["nodes"]["engineering_apply_advertised"], bool)
     assert sections["protocol"]["healthy"] is True
     assert sections["actions"]["healthy"] is True
+    assert sections["actions"]["checks"]["engineering_dispatcher_connected"] is True
 
     # Runtime readiness stays truthful without turning optional hardware,
     # credentials, voice or VRM files into architecture failures.
