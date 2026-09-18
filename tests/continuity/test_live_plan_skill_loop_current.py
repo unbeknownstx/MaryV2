@@ -106,6 +106,8 @@ def test_plan_runtime_actions_are_typed_but_arbitrary_execution_is_still_rejecte
         "continuity.plan.status",
         "continuity.plan.create",
         "continuity.plan.add_step",
+        "continuity.plan.bind_skill",
+        "continuity.skill.recommend",
         "continuity.plan.satisfy_approval",
         "continuity.plan.resolve_blocker",
         "continuity.plan.next",
@@ -117,3 +119,71 @@ def test_plan_runtime_actions_are_typed_but_arbitrary_execution_is_still_rejecte
             "device_id": "iphone",
         })
         assert parsed.action == name
+
+
+
+def test_plan_skill_binding_is_mutable_only_before_execution(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-bind.json")
+    skill = skills.approve(skills.register_candidate(
+        name="knowledge procedure",
+        description="bounded local lookup",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search selected local collection",),
+    ).id)
+    plans = ExecutivePlanGraph(tmp_path / "plans-bind.json")
+    plan = plans.create(objective="look up local fact", source="creator")
+    step = plans.add_step(
+        plan.id,
+        title="Search local knowledge",
+        required_capabilities=("knowledge.search",),
+    )
+
+    bound = plans.bind_skill(plan.id, step.id, skill.id)
+    assert bound.skill_id == skill.id
+
+    plans.start_step(plan.id, step.id, node_id="mac")
+    try:
+        plans.bind_skill(plan.id, step.id, skill.id)
+    except ValueError as exc:
+        assert "cannot change procedural binding" in str(exc)
+    else:
+        raise AssertionError("running step accepted a changed procedural binding")
+
+
+def test_skill_recommendation_helper_returns_only_approved_matching_guidance(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-recommend.json")
+    approved = skills.approve(skills.register_candidate(
+        name="local knowledge lookup",
+        description="search local knowledge for project references",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local knowledge pack",),
+        verification=("typed result returns",),
+    ).id)
+    skills.register_candidate(
+        name="unreviewed knowledge shortcut",
+        description="search local knowledge",
+        source="replay",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search without review",),
+    )
+    plans = ExecutivePlanGraph(tmp_path / "plans-recommend.json")
+    plan = plans.create(objective="Answer from local knowledge", source="creator")
+    step = plans.add_step(
+        plan.id,
+        title="Search the local knowledge pack",
+        required_capabilities=("knowledge.search",),
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        procedural_skills=skills,
+        executive_plans=plans,
+    )
+
+    rows = service._recommend_skills_for_plan_step(plan, step, limit=3)
+    assert [row["id"] for row in rows] == [approved.id]
+    assert rows[0]["authority"].startswith("approved procedural guidance")

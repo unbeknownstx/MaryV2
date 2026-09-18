@@ -182,6 +182,22 @@ class ExecutivePlanGraph:
         self._store.mutate(mutate)
         return self.get_step(plan_id, step_id)
 
+    def bind_skill(self, plan_id: str, step_id: str, skill_id: str) -> PlanStep:
+        """Bind reviewed procedural guidance without granting execution authority."""
+        current = self.get_step(plan_id, step_id)
+        if current.status in {"running", "completed", "failed", "cancelled"}:
+            raise ValueError(
+                f"cannot change procedural binding for {current.status} step"
+            )
+        clean_skill_id = _text(skill_id, 180)
+        if not clean_skill_id:
+            raise ValueError("skill_id is required")
+        return self._update_step(
+            plan_id,
+            step_id,
+            skill_id=clean_skill_id,
+        )
+
     def start_step(self, plan_id: str, step_id: str, *, node_id: str = "") -> PlanStep:
         return self._update_step(
             plan_id,

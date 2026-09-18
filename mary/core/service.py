@@ -1758,6 +1758,66 @@ class MaryCoreService:
             "updated_at": str(getattr(step, "updated_at", "") or ""),
         }
 
+    @staticmethod
+    def _skill_view(skill: Any) -> dict[str, Any]:
+        return {
+            "id": str(getattr(skill, "id", "") or ""),
+            "name": str(getattr(skill, "name", "") or "")[:240],
+            "version": int(getattr(skill, "version", 0) or 0),
+            "status": str(getattr(skill, "status", "") or ""),
+            "description": str(getattr(skill, "description", "") or "")[:1200],
+            "confidence": float(getattr(skill, "confidence", 0.0) or 0.0),
+            "success_count": int(getattr(skill, "success_count", 0) or 0),
+            "failure_count": int(getattr(skill, "failure_count", 0) or 0),
+            "required_capabilities": list(
+                getattr(skill, "required_capabilities", ()) or ()
+            ),
+            "required_permissions": list(
+                getattr(skill, "required_permissions", ()) or ()
+            ),
+            "preconditions": list(getattr(skill, "preconditions", ()) or ()),
+            "steps": list(getattr(skill, "steps", ()) or ()),
+            "verification": list(getattr(skill, "verification", ()) or ()),
+            "failure_recovery": list(
+                getattr(skill, "failure_recovery", ()) or ()
+            ),
+            "authority": (
+                "approved procedural guidance only; capability/tool permission "
+                "and explicit dispatch remain separate"
+            ),
+        }
+
+    def _recommend_skills_for_plan_step(
+        self,
+        plan: Any,
+        step: Any,
+        *,
+        limit: int = 3,
+    ) -> list[dict[str, Any]]:
+        capabilities = tuple(getattr(step, "required_capabilities", ()) or ())
+        if len(capabilities) != 1:
+            return []
+        capability = str(capabilities[0] or "").strip()
+        if not capability:
+            return []
+        query = " ".join((
+            str(getattr(plan, "objective", "") or ""),
+            str(getattr(step, "title", "") or ""),
+        )).strip()
+        try:
+            records = self.mary.procedural_skills.retrieve(
+                query,
+                capabilities=(capability,),
+                # This is matching-only. The device broker still enforces actual
+                # local permission at dispatch/execution time.
+                permissions=(capability,),
+                limit=max(1, min(8, int(limit))),
+                approved_only=True,
+            )
+        except Exception:
+            return []
+        return [self._skill_view(item) for item in records[:limit]]
+
     @classmethod
     def _plan_view(cls, plan: Any) -> dict[str, Any]:
         steps = list(getattr(plan, "steps", ()) or ())
@@ -2928,6 +2988,65 @@ class MaryCoreService:
                 self.enforce_execution_policy("continuity.maintenance")
                 return _json_safe(self.mary.experiential_continuity.maintenance())
 
+            if action.action == "continuity.skill.recommend":
+                plan_id = str(values.get("plan_id") or "").strip()
+                step_id = str(values.get("step_id") or "").strip()
+                plan = self.mary.executive_plans.get(plan_id)
+                step = self.mary.executive_plans.get_step(plan_id, step_id)
+                return _json_safe({
+                    "ok": True,
+                    "plan_id": plan_id,
+                    "step_id": step_id,
+                    "linked_skill_id": str(getattr(step, "skill_id", "") or ""),
+                    "recommendations": self._recommend_skills_for_plan_step(
+                        plan,
+                        step,
+                        limit=max(1, min(8, int(values.get("limit", 3)))),
+                    ),
+                    "execution_performed": False,
+                    "authority": (
+                        "recommendation only; only creator-approved procedures "
+                        "are visible and no capability permission is granted"
+                    ),
+                })
+
+            if action.action == "continuity.plan.bind_skill":
+                plan_id = str(values.get("plan_id") or "").strip()
+                step_id = str(values.get("step_id") or "").strip()
+                skill_id = str(values.get("skill_id") or "").strip()
+                step = self.mary.executive_plans.get_step(plan_id, step_id)
+                skill = self.mary.procedural_skills.get(skill_id)
+                if skill.status != "approved":
+                    raise PermissionError(
+                        "only a creator-approved procedural skill may be bound"
+                    )
+                capabilities = tuple(step.required_capabilities)
+                if len(capabilities) != 1:
+                    raise ValueError(
+                        "skill binding requires one atomic typed capability"
+                    )
+                if not set(skill.required_capabilities).issubset(
+                    {capabilities[0]}
+                ):
+                    raise ValueError(
+                        "skill capabilities do not fit this atomic plan step"
+                    )
+                bound = self.mary.executive_plans.bind_skill(
+                    plan_id,
+                    step_id,
+                    skill_id,
+                )
+                return _json_safe({
+                    "ok": True,
+                    "step": self._plan_step_view(bound),
+                    "procedure": self._skill_view(skill),
+                    "execution_performed": False,
+                    "authority": (
+                        f"explicit procedural binding from {action.device_id}; "
+                        "execution permission remains separate"
+                    ),
+                })
+
             if action.action == "continuity.plan.status":
                 self._settle_terminal_continuity_links()
                 plan_id = str(values.get("plan_id") or "").strip()
@@ -3039,15 +3158,43 @@ class MaryCoreService:
 
             if action.action == "continuity.plan.next":
                 self._settle_terminal_continuity_links()
+                next_actions = self.mary.executive_plans.next_actions(
+                    available_capabilities=self._plan_capabilities(),
+                    granted_approvals=(),
+                    limit=max(1, min(32, int(values.get("limit", 8)))),
+                )
+                enriched = []
+                for item in next_actions:
+                    row = dict(item)
+                    try:
+                        plan = self.mary.executive_plans.get(
+                            str(row.get("plan_id") or "")
+                        )
+                        step = self.mary.executive_plans.get_step(
+                            str(row.get("plan_id") or ""),
+                            str(row.get("step_id") or ""),
+                        )
+                        if str(getattr(step, "skill_id", "") or ""):
+                            skill = self.mary.procedural_skills.get(step.skill_id)
+                            if skill.status == "approved":
+                                row["linked_procedure"] = self._skill_view(skill)
+                        else:
+                            row["skill_recommendations"] = (
+                                self._recommend_skills_for_plan_step(
+                                    plan,
+                                    step,
+                                    limit=3,
+                                )
+                            )
+                    except Exception:
+                        pass
+                    enriched.append(row)
                 return _json_safe({
-                    "next_actions": self.mary.executive_plans.next_actions(
-                        available_capabilities=self._plan_capabilities(),
-                        granted_approvals=(),
-                        limit=max(1, min(32, int(values.get("limit", 8)))),
-                    ),
+                    "next_actions": enriched,
                     "policy": (
-                        "readiness only; node execution still requires a separate "
-                        "explicit dispatch and device-local permission"
+                        "readiness plus approved procedural guidance only; node "
+                        "execution still requires a separate explicit dispatch "
+                        "and device-local permission"
                     ),
                 })
 
@@ -3082,6 +3229,7 @@ class MaryCoreService:
                 capability = capabilities[0]
 
                 skill_id = str(step.skill_id or "")
+                skill = None
                 if skill_id:
                     skill = self.mary.procedural_skills.get(skill_id)
                     if skill.status != "approved":
@@ -3119,6 +3267,11 @@ class MaryCoreService:
                     "task": task.to_dict(),
                     "step": self._plan_step_view(started),
                     "plan": self._plan_view(self.mary.executive_plans.get(plan_id)),
+                    "procedure": (
+                        self._skill_view(skill)
+                        if skill is not None
+                        else None
+                    ),
                     "execution": {
                         "queued": True,
                         "core_execution_gate_passed": True,
