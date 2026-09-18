@@ -51,12 +51,16 @@ def test_pwa_and_legacy_wrapper_share_current_surface_contract() -> None:
 
 def test_desktop_and_cli_use_same_degraded_state_vocabulary() -> None:
     desktop = _text("desktop/src/main.js")
+    desktop_voice = _text("mary/desktop/voice.py")
     cli = _text("mary/runtime/application.py")
 
     assert "Vector index" in desktop
     assert "Not built" in desktop
     assert "No external compute connected. Mary continues on the Core provider route." in desktop
     assert "Server voice · text remains available if voice degrades" in desktop
+    assert 'tts.get("server_available", tts.get("enabled", False))' in desktop_voice
+    assert "self._core_enabled = False" in desktop_voice
+    assert '"desktop_local_fallback"' in desktop_voice
 
     assert "Vector index: not built (structured/lexical recall remains active)" in cli
     assert "No external compute connected. Mary continues on the Core/provider route." in cli
