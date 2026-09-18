@@ -9,4 +9,7 @@ __all__ = [
     "DatasetExportSummary", "MaryTrainingDatasetExporter",
     "MaryDatasetV1Exporter", "MaryDatasetV1Summary",
     "NovelSceneCandidate", "mine_mary_scenes", "read_paragraphs", "write_mining_bundle",
+    "MlxTrainingProfile", "MLX_TRAINING_PROFILES", "prepare_mlx_bundle",
 ]
+
+from .mlx_bundle import MlxTrainingProfile, PROFILES as MLX_TRAINING_PROFILES, prepare_mlx_bundle
