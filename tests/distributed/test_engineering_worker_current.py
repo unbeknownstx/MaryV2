@@ -51,7 +51,12 @@ def test_engineering_capabilities_are_deny_by_default_and_never_include_shell(tm
     assert all(item.metadata["execution_authorized"] is False for item in descriptors)
     assert all("shell" not in item.name for item in descriptors)
     assert "engineering.repair.plan" in {item.name for item in descriptors}
+    push = next(item for item in descriptors if item.name == "engineering.git.push")
+    assert push.available is False
+    assert push.metadata["push_requires_environment_opt_in"] is True
     assert permissions.is_allowed("engineering.repo.apply") is False
+    assert permissions.is_allowed("engineering.git.commit") is False
+    assert permissions.is_allowed("engineering.git.push") is False
 
     permissions.allow("engineering.repair.plan")
     refreshed = engineering_capability_descriptors(permissions)
@@ -181,7 +186,7 @@ def test_repair_plan_uses_local_model_but_keeps_exact_proposal_node_local(tmp_pa
     assert 'return "hi"' in (root / "mary" / "sample.py").read_text(encoding="utf-8")
 
 
-def test_typed_test_runner_uses_disposable_sandbox_not_live_checkout(tmp_path, monkeypatch):
+def test_typed_test_runner_uses_disposable_workspace_not_live_checkout(tmp_path, monkeypatch):
     root = _repo(tmp_path)
     worker = EngineeringWorker(root)
     observed = {}
@@ -203,6 +208,97 @@ def test_typed_test_runner_uses_disposable_sandbox_not_live_checkout(tmp_path, m
     assert result["workspace_isolated"] is True
     assert observed["shell"] is False
     assert observed["argv"][:3] == [sys.executable, "-m", "pytest"]
+
+
+def test_verified_commit_and_push_are_separate_exact_gates(tmp_path, monkeypatch):
+    root = _repo(tmp_path)
+    worker = EngineeringWorker(root)
+    base_sha = "a" * 40
+    commit_sha = "b" * 40
+    state = {"committed": False, "pushed": False}
+
+    worker._last_applied_paths = ["mary/sample.py"]
+    worker._last_applied_base_sha = base_sha
+
+    monkeypatch.setattr(worker, "_current_branch", lambda: "main")
+    monkeypatch.setattr(
+        worker,
+        "_head_sha",
+        lambda: commit_sha if state["committed"] else base_sha,
+    )
+
+    def fake_git(*args, timeout=20.0):
+        if args[:2] == ("rev-parse", "refs/remotes/origin/main"):
+            return SimpleNamespace(returncode=0, stdout=base_sha + "\n", stderr="")
+        if args[:2] == ("status", "--porcelain"):
+            return SimpleNamespace(
+                returncode=0,
+                stdout="" if state["committed"] else " M mary/sample.py\n",
+                stderr="",
+            )
+        if args[:2] == ("add", "--"):
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if args[:3] == ("diff", "--cached", "--name-only"):
+            return SimpleNamespace(returncode=0, stdout="mary/sample.py\n", stderr="")
+        if args and args[0] == "commit":
+            state["committed"] = True
+            return SimpleNamespace(returncode=0, stdout="[main test] repair", stderr="")
+        if args and args[0] == "push":
+            state["pushed"] = True
+            return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+        if args and args[0] == "reset":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected git call: {args}")
+
+    monkeypatch.setattr(worker, "_git", fake_git)
+
+    committed = worker.commit_last_applied("MaryV2 verified repair")
+    assert committed["commit_sha"] == commit_sha
+    assert committed["branch"] == "main"
+    assert worker._last_commit_sha == commit_sha
+    assert state["pushed"] is False
+
+    with pytest.raises(PermissionError, match="MARY_ENGINEERING_PUSH_ENABLED"):
+        worker.push_last_commit(commit_sha)
+
+    monkeypatch.setenv("MARY_ENGINEERING_PUSH_ENABLED", "true")
+    pushed = worker.push_last_commit(commit_sha)
+    assert pushed["pushed"] is True
+    assert pushed["commit_sha"] == commit_sha
+    assert state["pushed"] is True
+    assert worker._last_commit_sha == ""
+
+
+def test_push_capability_needs_environment_opt_in_even_when_permission_exists(tmp_path, monkeypatch):
+    root = _repo(tmp_path)
+    monkeypatch.setenv("MARY_ENGINEERING_REPO_ROOT", str(root))
+
+    class _Local:
+        def __init__(self, role="general"):
+            self.role = role
+
+        def runtime_status(self):
+            return {"available": True, "runtime": "ollama", "model": "qwen-coder"}
+
+    monkeypatch.setattr("mary.distributed.engineering.LocalRuntimeProvider", _Local)
+
+    permissions = DeviceExecutionPermissions(tmp_path / "permissions.json")
+    permissions.allow("engineering.git.push")
+    push = next(
+        item
+        for item in engineering_capability_descriptors(permissions)
+        if item.name == "engineering.git.push"
+    )
+    assert push.metadata["execution_authorized"] is True
+    assert push.available is False
+
+    monkeypatch.setenv("MARY_ENGINEERING_PUSH_ENABLED", "true")
+    enabled = next(
+        item
+        for item in engineering_capability_descriptors(permissions)
+        if item.name == "engineering.git.push"
+    )
+    assert enabled.available is True
 
 
 def test_remote_repository_apply_requires_node_local_proposal_id():
@@ -235,3 +331,15 @@ def test_engineering_args_reject_arbitrary_paths_and_commands():
         )
 
     assert "engineering.shell" not in ENGINEERING_CAPABILITIES
+
+    with pytest.raises(ValueError, match="commit SHA"):
+        sanitize_engineering_task_args(
+            "engineering.git.push",
+            {"commit_sha": "not-a-sha"},
+        )
+
+    commit = sanitize_engineering_task_args(
+        "engineering.git.commit",
+        {"message": "  verified   repair  "},
+    )
+    assert commit == {"message": "verified repair"}
