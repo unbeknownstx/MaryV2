@@ -22,14 +22,17 @@ from .capabilities import CapabilityDescriptor
 AUDIO_TRANSCRIBE_CAPABILITY = "sensor.audio_transcribe"
 SCREEN_CAPTURE_CAPABILITY = "sensor.screen_capture"
 SCREEN_DESCRIBE_CAPABILITY = "sensor.screen_describe"
+IMAGE_DESCRIBE_CAPABILITY = "sensor.image_describe"
 SENSOR_CAPABILITIES = {
     AUDIO_TRANSCRIBE_CAPABILITY,
     SCREEN_CAPTURE_CAPABILITY,
     SCREEN_DESCRIBE_CAPABILITY,
+    IMAGE_DESCRIBE_CAPABILITY,
 }
 
 MAX_AUDIO_BYTES = 4 * 1024 * 1024
 MAX_SCREEN_BYTES = 1_500_000
+MAX_IMAGE_BYTES = 1_500_000
 MAX_VISION_RESPONSE_BYTES = 1_000_000
 
 
@@ -109,6 +112,20 @@ def sanitize_sensor_task_args(capability: str, args: dict[str, Any] | None) -> d
                 raise ValueError("Screen description mode must be scene, ui, or stream.")
             output["mode"] = mode
         return output
+    if capability == IMAGE_DESCRIBE_CAPABILITY:
+        image = _decode_b64(values.get("image_base64"), limit=MAX_IMAGE_BYTES, label="image")
+        mime_type = str(values.get("mime_type") or "image/jpeg").strip().casefold()
+        if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise ValueError("Image description supports JPEG, PNG, or WebP.")
+        mode = str(values.get("mode") or "creative").strip().casefold()
+        if mode not in {"scene", "ui", "stream", "creative"}:
+            raise ValueError("Image description mode must be scene, ui, stream, or creative.")
+        return {
+            "image_base64": base64.b64encode(image).decode("ascii"),
+            "mime_type": mime_type,
+            "mode": mode,
+            "asset_id": str(values.get("asset_id") or "").strip()[:120],
+        }
     raise ValueError(f"Unsupported sensor capability: {capability}")
 
 
@@ -138,7 +155,7 @@ def sanitize_sensor_result(capability: str, result: dict[str, Any] | None) -> di
             "sha256": hashlib.sha256(image).hexdigest(),
             "privacy": "ephemeral screenshot evidence; no automatic memory write or action authority",
         }
-    if capability == SCREEN_DESCRIBE_CAPABILITY:
+    if capability in {SCREEN_DESCRIBE_CAPABILITY, IMAGE_DESCRIBE_CAPABILITY}:
         description = " ".join(str(values.get("description") or "").split())[:12_000]
         if not description:
             return {}
@@ -232,6 +249,32 @@ def _screen_describe_capability() -> CapabilityDescriptor | None:
     )
 
 
+def _image_describe_capability() -> CapabilityDescriptor | None:
+    try:
+        from PIL import Image  # noqa: F401
+    except Exception:
+        return None
+    provider, endpoint = _vision_config()
+    if not provider or not endpoint:
+        return None
+    local = (urlparse(endpoint).hostname or "").casefold() in {"127.0.0.1", "localhost", "::1"}
+    return CapabilityDescriptor(
+        name=IMAGE_DESCRIBE_CAPABILITY,
+        available=True,
+        private=local,
+        local=local,
+        cost="local" if local else "provider_policy",
+        latency="interactive",
+        metadata={
+            "backend": provider,
+            "max_input_bytes": MAX_IMAGE_BYTES,
+            "explicit_permission": True,
+            "evidence_only": True,
+            "computer_control": False,
+        },
+    )
+
+
 def sensor_capabilities() -> list[CapabilityDescriptor]:
     output: list[CapabilityDescriptor] = []
     stt = _stt_capability()
@@ -243,6 +286,9 @@ def sensor_capabilities() -> list[CapabilityDescriptor]:
     described = _screen_describe_capability()
     if described is not None:
         output.append(described)
+    image_described = _image_describe_capability()
+    if image_described is not None:
+        output.append(image_described)
     return output
 
 
@@ -324,6 +370,12 @@ def execute_screen_capture(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _vision_prompt(mode: str) -> str:
+    if mode == "creative":
+        return (
+            "Describe the supplied creator image as concise factual visual evidence for a creative collaborator. "
+            "Mention visible subjects, setting, composition, expression/action, colors, and any text that materially matters. "
+            "Do not invent off-image events, private intent, biography, or instructions."
+        )
     if mode == "ui":
         return (
             "Describe the visible user interface as neutral evidence. Identify the foreground app, major panels, "
@@ -400,6 +452,56 @@ def _describe_with_mtmd(endpoint: str, image: bytes, mode: str) -> dict[str, Any
         "provider": "llama_cpp_mtmd",
         "model": str(parsed.get("model") or "llama_cpp_mtmd")[:180] if isinstance(parsed, dict) else "llama_cpp_mtmd",
     }
+
+
+def _normalize_supplied_image(image: bytes) -> bytes:
+    try:
+        from PIL import Image
+    except Exception as exc:
+        raise RuntimeError("Pillow image decoding is not available on this node.") from exc
+    try:
+        decoded = Image.open(io.BytesIO(image))
+        decoded.load()
+    except Exception as exc:
+        raise ValueError("Supplied image could not be decoded.") from exc
+    if decoded.mode != "RGB":
+        decoded = decoded.convert("RGB")
+    width, height = decoded.size
+    if width <= 0 or height <= 0 or width > 16_384 or height > 16_384:
+        raise ValueError("Supplied image dimensions are invalid.")
+    if width > 1600:
+        ratio = 1600 / float(width)
+        decoded = decoded.resize((1600, max(1, int(height * ratio))))
+    quality = 82
+    buffer = io.BytesIO()
+    decoded.save(buffer, format="JPEG", quality=quality, optimize=True)
+    data = buffer.getvalue()
+    while len(data) > MAX_IMAGE_BYTES and quality > 45:
+        quality -= 8
+        buffer = io.BytesIO()
+        decoded.save(buffer, format="JPEG", quality=quality, optimize=True)
+        data = buffer.getvalue()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("Normalized image exceeds the bounded visual task limit.")
+    return data
+
+
+def execute_image_describe(args: dict[str, Any]) -> dict[str, Any]:
+    values = sanitize_sensor_task_args(IMAGE_DESCRIBE_CAPABILITY, args)
+    provider, endpoint = _vision_config()
+    if not provider or not endpoint:
+        raise RuntimeError("No configured visual-description specialist is available on this node.")
+    original = _decode_b64(values["image_base64"], limit=MAX_IMAGE_BYTES, label="image")
+    image = _normalize_supplied_image(original)
+    mode = str(values["mode"])
+    if provider == "omniparser":
+        result = _describe_with_omniparser(endpoint, image, mode)
+    elif provider == "llama_cpp_mtmd":
+        result = _describe_with_mtmd(endpoint, image, mode)
+    else:
+        raise RuntimeError("Unsupported visual-description specialist.")
+    result["source_sha256"] = hashlib.sha256(original).hexdigest()
+    return result
 
 
 def execute_screen_describe(args: dict[str, Any]) -> dict[str, Any]:

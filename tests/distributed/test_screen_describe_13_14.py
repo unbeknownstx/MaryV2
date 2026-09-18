@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import json
 
 from mary.distributed.sensors import (
+    IMAGE_DESCRIBE_CAPABILITY,
     SCREEN_DESCRIBE_CAPABILITY,
     _safe_endpoint,
     _vision_config,
@@ -53,3 +55,43 @@ def test_visual_result_is_description_only_and_sanitized() -> None:
     assert safe["elements"] == [{"label": "Terminal", "kind": "panel", "confidence": 1.0}]
     assert "token" not in safe
     assert "control" in safe["privacy"]
+
+
+
+def test_image_describe_accepts_only_bounded_visual_payload_and_drops_commands() -> None:
+    raw = b"tiny-image-placeholder"
+    args = sanitize_sensor_task_args(
+        IMAGE_DESCRIBE_CAPABILITY,
+        {
+            "image_base64": base64.b64encode(raw).decode("ascii"),
+            "mime_type": "image/jpeg",
+            "mode": "creative",
+            "asset_id": "asset_test",
+            "url": "http://evil",
+            "command": "click",
+        },
+    )
+    assert base64.b64decode(args["image_base64"]) == raw
+    assert args["mime_type"] == "image/jpeg"
+    assert args["mode"] == "creative"
+    assert args["asset_id"] == "asset_test"
+    assert "url" not in args
+    assert "command" not in args
+
+
+def test_image_describe_result_uses_same_evidence_only_boundary() -> None:
+    safe = sanitize_sensor_result(
+        IMAGE_DESCRIBE_CAPABILITY,
+        {
+            "description": "Mary stands beneath warm lanterns in a floral kimono.",
+            "provider": "llama_cpp_mtmd",
+            "model": "vision-test",
+            "source_sha256": "b" * 64,
+            "command": "post this",
+        },
+    )
+    assert "warm lanterns" in safe["description"]
+    assert safe["provider"] == "llama_cpp_mtmd"
+    assert safe["source_sha256"] == "b" * 64
+    assert "command" not in safe
+    assert "memory truth" in safe["privacy"]

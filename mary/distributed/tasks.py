@@ -79,7 +79,7 @@ def _operation_for(capability: str, args: dict[str, Any] | None) -> str:
         return "search"
     if "audio" in name and "transcrib" in name:
         return "stt"
-    if name.startswith("sensor.screen"):
+    if name.startswith("sensor.screen") or name == "sensor.image_describe":
         return "vision"
     if name.startswith("mcp."):
         return "tool"

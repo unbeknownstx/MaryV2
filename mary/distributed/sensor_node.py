@@ -9,10 +9,12 @@ from .sensors import (
     AUDIO_TRANSCRIBE_CAPABILITY,
     SCREEN_CAPTURE_CAPABILITY,
     SCREEN_DESCRIBE_CAPABILITY,
+    IMAGE_DESCRIBE_CAPABILITY,
     SENSOR_CAPABILITIES,
     execute_audio_transcribe,
     execute_screen_capture,
     execute_screen_describe,
+    execute_image_describe,
 )
 
 
@@ -43,6 +45,8 @@ class SensorCapabilityNodeAgent(DesktopCapabilityNodeAgent):
                 result_payload = execute_screen_capture(args)
             elif capability == SCREEN_DESCRIBE_CAPABILITY:
                 result_payload = execute_screen_describe(args)
+            elif capability == IMAGE_DESCRIBE_CAPABILITY:
+                result_payload = execute_image_describe(args)
             else:
                 raise ValueError(f"No bounded sensor executor exists for {capability}.")
             result = self.gateway.complete_capability_task(
