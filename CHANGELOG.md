@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — 2026-09-17 — Cross-surface Core cohesion
+
+- Made self-analysis, code-capability answers and confirmed runtime-inspection follow-ups Core-grounded and deterministic across PWA, Desktop, CLI and native clients.
+- Routed ordinary release-date/current-information phrasing through freshness/web grounding instead of stale provider knowledge.
+- Kept broad creator-memory recall compact while preserving the deeper canonical stores, and filtered verification probes from shared dashboard memory highlights.
+- Sanitized ElevenLabs provider HTTP failures at the shared provider boundary and separated voice `configured` from live `server_available` state.
+- Kept PWA server-only voice explicit, preserved Auto device fallback, and added native iPhone system-speech fallback when Core TTS degrades.
+- Humanized vector-index and compute-node degraded states on PWA, Desktop and CLI without treating optional derived indexes/nodes as Mary authority.
+- Added a repository-wide surface-cohesion regression gate covering Core authority, PWA compatibility, Desktop/CLI status semantics, native iPhone fallback and provider-error sanitization.
+
 ## 13.66 — 2026-09-14 — Desktop Product Shell
 
 - Rebuilt the Desktop visual hierarchy around Mary + Talk first, with grouped navigation, a dedicated character/presence side, and a clear context inspector.
