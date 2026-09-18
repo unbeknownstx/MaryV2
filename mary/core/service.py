@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from collections import OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import inspect
