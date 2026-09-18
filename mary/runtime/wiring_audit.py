@@ -211,8 +211,12 @@ def _voice(service: Any | None) -> dict[str, Any]:
         return {
             "healthy": True,
             "applicable": False,
+            "tts_configured": False,
             "tts_ready": False,
+            "tts_degraded": False,
+            "stt_configured": False,
             "stt_ready": False,
+            "stt_degraded": False,
         }
     status = _safe_dict(getattr(service, "voice_status", lambda: {}))
     tts = dict(status.get("tts", {}) or {})
