@@ -532,7 +532,7 @@ class RemoteCoreVoiceEngine:
         try:
             payload = dict(self.gateway.voice_status() or {})
             tts = dict(payload.get("tts", payload) or {})
-            enabled = bool(tts.get("enabled") or tts.get("server_available"))
+            enabled = bool(tts.get("server_available", tts.get("enabled", False)))
             self._core_enabled = enabled
             if enabled:
                 self.status = DesktopVoiceStatus(
@@ -588,9 +588,16 @@ class RemoteCoreVoiceEngine:
                 )
                 return payload
             except Exception:
-                # A transient Core TTS failure must not suppress speech if this
-                # device has an explicitly configured local engine.
-                pass
+                # A Core TTS failure is a live readiness change, not proof that
+                # the configured provider disappeared. Stop advertising Core
+                # voice for this engine instance and immediately use the
+                # explicitly configured local fallback when available.
+                self._core_enabled = False
+                self.status = (
+                    self.fallback.status
+                    if self.fallback.status.enabled
+                    else DesktopVoiceStatus(False, "mary_core")
+                )
 
         if self.fallback.status.enabled:
             payload = self.fallback.synthesize(
