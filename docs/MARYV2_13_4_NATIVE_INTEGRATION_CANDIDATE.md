@@ -1,6 +1,6 @@
 # MaryV2 13.4 Native Integration Candidate
 
-Status: **candidate, not a release declaration**. Production identity remains 13.3 Connected Presence until live acceptance is complete.
+Status: **historical integration candidate**. Current authority and product status are defined by `MARY_ROOT.md` and the system registry; the Core `13.3` architecture value is retained as a compatibility/handshake identifier rather than a product-freshness label.
 
 ## Invariants
 
@@ -30,7 +30,7 @@ Core exposes authenticated `/v1/voice/status` and `/v1/voice/synthesize` routes 
 
 ### Native iOS voice
 
-The SwiftUI app keeps microphone audio local, records a bounded push-to-talk file, uses required on-device Apple speech recognition, deletes the temporary recording, sends only the transcript through the canonical turn API, then plays Mary's Core-synthesized response audio.
+The SwiftUI app keeps microphone audio local, records a bounded push-to-talk file, uses required on-device Apple speech recognition, deletes the temporary recording, sends only the transcript through the canonical turn API, then prefers Mary's Core-synthesized response audio and falls back to iPhone system speech when Core TTS is unavailable.
 
 ### Repository hygiene
 
@@ -40,12 +40,12 @@ Installer-created iOS backup directories are ignored, and accidental zero-byte s
 
 1. Full Python suite passes in the configured Mary development environment.
 2. Native iOS project regenerates with XcodeGen and builds for `iphoneos` without code-signing.
-3. Physical iPhone confirms canonical text continuity and Core voice playback.
+3. Physical iPhone confirms canonical text continuity, Core voice playback when available, and device-speech fallback when Core TTS is degraded.
 4. `What are we working on?` recalls current shared-work continuity without LLM guessing.
 5. iPhone Private and another device Stream remain isolated at the presentation/privacy layer.
 6. Provider secrets never appear in iOS source, app storage outside Keychain Core credential, response payloads, or logs.
 
-Only after these live gates pass should the production version label advance beyond 13.3.
+These were the acceptance gates for the 13.4 candidate milestone; current release/product state is tracked by the active registry and current test gates.
 
 ## Cohesive surface convergence additions
 
@@ -59,4 +59,4 @@ Native iOS uses local generated Mary artwork for its stage until a native live-V
 
 ### Mobile voice compatibility
 
-The PWA/mobile shell still prefers its legacy `/api/tts` route when served through `MaryMobileServer`, but now safely falls back to authenticated Core `/v1/voice/synthesize`. Native SwiftUI talks directly to the Core voice route. Provider credentials remain server-side in both cases.
+The PWA/mobile shell still prefers its legacy `/api/tts` route when served through `MaryMobileServer`, but now safely falls back to authenticated Core `/v1/voice/synthesize`. Native SwiftUI talks directly to the Core voice route and uses iPhone system speech only as a presentation fallback. Provider credentials remain server-side in both cases.
