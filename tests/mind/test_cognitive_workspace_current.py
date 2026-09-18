@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from mary.continuity import CompetenceLedger, ExecutivePlanGraph, SkillLibrary, WorldModel
+from mary.continuity import (
+    CompetenceLedger,
+    ExecutivePlanGraph,
+    SkillLibrary,
+    TemporalKnowledgeGraph,
+    WorldModel,
+)
 from mary.knowledge import KnowledgeFabric
 from mary.mind import CognitiveWorkspace
 
@@ -65,6 +71,25 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
         confidence=1.0,
     )
 
+    temporal = TemporalKnowledgeGraph(tmp_path / "temporal.json")
+    old_relation = temporal.record(
+        subject="Mary Core",
+        predicate="deployment",
+        value="instance-a",
+        source="runtime",
+        authority="runtime",
+        valid_from="2026-09-01T00:00:00+00:00",
+    )
+    current_relation = temporal.record(
+        subject="Mary Core",
+        predicate="deployment",
+        value="instance-b",
+        source="runtime",
+        authority="runtime",
+        valid_from="2026-09-18T00:00:00+00:00",
+    )
+    assert current_relation.supersedes == old_relation.id
+
     skills = SkillLibrary(tmp_path / "skills.json")
     skill = skills.register_candidate(
         name="repair MaryV2",
@@ -103,6 +128,7 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
         memory=_Memory(),
         character_sourcebook=_Sourcebook(),
         world_model=world,
+        temporal_knowledge=temporal,
         procedural_skills=skills,
         executive_plans=plans,
         knowledge_fabric=knowledge,
@@ -118,6 +144,15 @@ def test_cognitive_workspace_binds_existing_authorities_without_owning_them(tmp_
     assert snapshot["memory"]["relevant"][0]["id"] == "memory_1"
     assert snapshot["character"]["records"][0]["record_id"] == "char_1"
     assert snapshot["world"]["beliefs"][0]["predicate"] == "canonical_branch"
+    temporal_rows = snapshot["world"]["temporal_relations"]
+    assert any(row["value"] == "instance-b" and row["current"] for row in temporal_rows)
+    assert any(
+        row["value"] == "instance-a"
+        and not row["current"]
+        and row["valid_to"] is not None
+        for row in temporal_rows
+    )
+    assert snapshot["epistemic"]["temporal_history_is_not_current_truth"] is True
     assert snapshot["skills"]["eligible"][0]["name"] == "repair MaryV2"
     assert snapshot["plans"]["active"][0]["objective"] == "Improve MaryV2"
     assert snapshot["compute"]["connected_nodes"] == 1

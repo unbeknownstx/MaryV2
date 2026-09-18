@@ -146,6 +146,36 @@ class CognitiveWorkspace:
             lambda: list(self.mary.world_model.relevant(query, limit=belief_limit)),
             [],
         )
+        temporal_relations = _safe_call(
+            lambda: list(
+                self.mary.temporal_knowledge.relevant(
+                    query,
+                    limit=belief_limit,
+                    include_history=True,
+                )
+            ),
+            [],
+        )
+        temporal_rows = [
+            {
+                "id": item.id,
+                "subject": item.subject,
+                "predicate": item.predicate,
+                "value": item.value,
+                "valid_from": item.valid_from,
+                "valid_to": item.valid_to,
+                "current": item.current,
+                "source": item.source,
+                "confidence": item.confidence,
+                "authority": item.authority,
+                "supersedes": item.supersedes,
+                "temporal_role": (
+                    "current" if item.current else "historical_or_superseded"
+                ),
+            }
+            for item in temporal_relations[:belief_limit]
+        ]
+
         world_rows = [
             {
                 "id": item.id,
@@ -278,13 +308,22 @@ class CognitiveWorkspace:
         # see in one prompt.  Govern only model-facing candidate records; owning
         # stores retain every omitted item and their authority semantics.
         governed, context_budget_report = self.context_governor.govern({
-            "world": world_rows,
+            "world": [*world_rows, *temporal_rows],
             "plans": plan_rows,
             "skills": skill_rows,
             "compute": demonstrated,
             "knowledge": knowledge_evidence_rows,
         })
-        world_rows = governed.get("world", [])
+        governed_world = governed.get("world", [])
+        temporal_ids = {row["id"] for row in temporal_rows}
+        world_rows = [
+            row for row in governed_world
+            if str(row.get("id") or "") not in temporal_ids
+        ]
+        temporal_rows = [
+            row for row in governed_world
+            if str(row.get("id") or "") in temporal_ids
+        ]
         plan_rows = governed.get("plans", [])
         skill_rows = governed.get("skills", [])
         demonstrated = governed.get("compute", [])
@@ -306,6 +345,9 @@ class CognitiveWorkspace:
             "character_sourcebook_is_authored_authority": True,
             "world_beliefs_may_be_contested": any(
                 row.get("status") == "contested" for row in world_rows
+            ),
+            "temporal_history_is_not_current_truth": any(
+                not bool(row.get("current")) for row in temporal_rows
             ),
             "knowledge_hits_are_evidence_not_memory": True,
             "plans_do_not_authorize_actions": True,
@@ -329,8 +371,16 @@ class CognitiveWorkspace:
             },
             world={
                 "beliefs": world_rows,
+                "temporal_relations": temporal_rows,
                 "status": _safe_call(lambda: dict(self.mary.world_model.status() or {}), {}),
-                "authority": "WorldModel evidence layer",
+                "temporal_status": _safe_call(
+                    lambda: dict(self.mary.temporal_knowledge.status() or {}),
+                    {},
+                ),
+                "authority": (
+                    "WorldModel plus temporal evidence layer; historical rows "
+                    "remain distinguishable from current truth"
+                ),
             },
             skills={
                 "eligible": skill_rows,

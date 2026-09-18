@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -149,6 +150,58 @@ class TemporalKnowledgeGraph:
             and (predicate is None or row.get("predicate") == predicate)
         ]
         return selected[-max(1, int(limit)) :]
+
+    def relevant(
+        self,
+        query: str,
+        *,
+        limit: int = 12,
+        include_history: bool = True,
+    ) -> list[TemporalRelation]:
+        """Return query-relevant temporal facts without collapsing history."""
+        terms = {
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9_.-]{3,}", str(query or ""))
+        }
+        rows = [
+            TemporalRelation(**row)
+            for row in self._store.snapshot().get("relations", [])
+            if include_history or row.get("valid_to") is None
+        ]
+        if not terms:
+            rows.sort(
+                key=lambda item: (
+                    item.current,
+                    item.valid_from,
+                    item.confidence,
+                ),
+                reverse=True,
+            )
+            return rows[: max(1, min(100, int(limit)))]
+
+        scored: list[tuple[float, TemporalRelation]] = []
+        for item in rows:
+            haystack = " ".join((
+                item.subject,
+                item.predicate,
+                str(item.value),
+                item.source,
+                item.authority,
+            )).casefold()
+            lexical = sum(1.0 for term in terms if term in haystack)
+            if lexical <= 0:
+                continue
+            score = lexical + (0.35 if item.current else 0.0) + 0.2 * float(item.confidence)
+            scored.append((score, item))
+        scored.sort(
+            key=lambda pair: (
+                pair[0],
+                pair[1].current,
+                pair[1].valid_from,
+            ),
+            reverse=True,
+        )
+        return [item for _, item in scored[: max(1, min(100, int(limit)))]]
 
     def status(self) -> dict[str, Any]:
         rows = list(self._store.snapshot().get("relations") or [])
