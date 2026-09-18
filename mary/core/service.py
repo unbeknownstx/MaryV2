@@ -3058,25 +3058,7 @@ class MaryCoreService:
 
             if action.action == "continuity.skill.status":
                 candidates = list(self.mary.procedural_skills.candidates())[:50]
-                approved = list(self.mary.procedural_skills.retrieve(
-                    "",
-                    capabilities=tuple(
-                        name
-                        for name in (
-                            "personal_search", "llm.local", "llm.ollama",
-                            "llm.llama_cpp", "knowledge.search"
-                        )
-                    ),
-                    permissions=tuple(
-                        name
-                        for name in (
-                            "personal_search", "llm.local", "llm.ollama",
-                            "llm.llama_cpp", "knowledge.search"
-                        )
-                    ),
-                    limit=50,
-                    approved_only=True,
-                ))
+                approved = list(self.mary.procedural_skills.approved())[:50]
                 return _json_safe({
                     "status": self.mary.procedural_skills.status(),
                     "candidates": [self._skill_view(item) for item in candidates],
