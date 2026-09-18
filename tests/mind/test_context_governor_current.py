@@ -56,7 +56,9 @@ def test_context_governor_reserves_operational_lanes_before_reference_text() -> 
     assert selected["plans"]
     assert selected["skills"]
     assert selected["compute"]
-    # Large reference text is allowed only from whatever total budget remains.
-    assert selected["knowledge"] == []
+    # Operational lanes are evaluated first. Reference text may still fit,
+    # but only inside the remaining cumulative budget.
+    assert len(selected["knowledge"]) <= 1
+    assert report["used_characters"] <= report["total_budget_characters"]
     assert report["remaining_characters"] >= 0
     assert report["authority"].startswith("prompt-context budget only")

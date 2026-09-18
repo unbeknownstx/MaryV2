@@ -3853,14 +3853,26 @@ class Mary:
             "disagreement",
             "priorities",
             "curiosity",
-            # Broad self-understanding is intentionally open-ended: give the
-            # language cortex grounded local evidence, then validate its answer
-            # against self-provenance. This preserves the hallucination-rejection
-            # path for invented biography while bounded authored self-facts above
-            # remain deterministic/zero-call.
             "capabilities",
         }
-        if subtype in deterministic_self_subtypes:
+        self_query_text = str(intent.parameters.get("query", "") or "").casefold()
+        self_understanding_needs_synthesis = (
+            subtype == "self_understanding"
+            and any(
+                marker in self_query_text
+                for marker in (
+                    "what parts of yourself",
+                    "which parts of yourself",
+                    "currently understand",
+                    "how well do you understand yourself",
+                )
+            )
+        )
+        deterministic_self_understanding = (
+            subtype == "self_understanding"
+            and not self_understanding_needs_synthesis
+        )
+        if subtype in deterministic_self_subtypes or deterministic_self_understanding:
             response = str(evidence.get("fallback_response", "")).strip()
             if response:
                 return {
