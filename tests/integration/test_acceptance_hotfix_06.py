@@ -99,6 +99,32 @@ def test_imperfect_creator_questions_stay_local(tmp_path, monkeypatch):
     assert strengths.parameters["self_query_type"] == "self_assessment"
 
 
+def test_self_analysis_and_own_code_questions_stay_core_grounded(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    router = SequenceRouter([
+        "generic provider identity answer that must not be used",
+        "another generic provider answer that must not be used",
+    ])
+    app = _mary(router)
+    mary = app.mary
+
+    analyze = mary.cognition.detect_intent("Can you analyze yourself?")
+    code = mary.cognition.detect_intent("Can you look at your own code and fix things?")
+
+    assert analyze.intent_type == IntentType.SELF_QUERY
+    assert analyze.parameters["self_query_type"] == "self_understanding"
+    assert code.intent_type == IntentType.SELF_QUERY
+    assert code.parameters["self_query_type"] == "capabilities"
+
+    analyze_result = _run(app, "Can you analyze yourself?")
+    code_result = _run(app, "Can you look at your own code and fix things?")
+
+    assert "Core state" in analyze_result.final_response
+    assert "bounded software self-inspection" in analyze_result.final_response
+    assert "cannot silently rewrite or redeploy myself" in code_result.final_response
+    assert router.calls == []
+
+
 def test_relational_compliment_is_feedback_not_speech_query(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     app = _mary()
