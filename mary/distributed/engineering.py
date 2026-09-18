@@ -209,7 +209,7 @@ def sanitize_engineering_result(capability: str, result: dict[str, Any] | None) 
     allowed = {
         "ok", "capability", "summary", "base_sha", "files", "changes", "diff",
         "status", "checks", "stdout", "stderr", "returncode", "worker",
-        "model", "runtime", "warnings", "applied", "proposal_id",
+        "model", "runtime", "warnings", "applied", "proposal_id", "sandboxed",
     }
     output = {key: values[key] for key in allowed if key in values}
     for key in ("summary", "diff", "stdout", "stderr"):
@@ -465,22 +465,52 @@ class EngineeringWorker:
             "changes": manifest,
         }
 
+    def _copy_sandbox(self, destination: Path) -> Path:
+        """Copy the working tree into a disposable test sandbox.
+
+        Tests may execute repository code, so they never run in Mary's live
+        checkout. Credentials, VCS metadata, virtualenvs, local data and common
+        generated outputs are excluded.
+        """
+
+        sandbox_root = destination / "repo"
+        denied = {
+            ".git", ".venv", "venv", "node_modules", "__pycache__", ".maryv2",
+            "data", "secrets", ".secrets", ".pytest_cache", ".mypy_cache",
+            "dist", "build", "coverage", "htmlcov",
+        }
+
+        def ignore(_directory: str, names: list[str]) -> set[str]:
+            return {
+                name for name in names
+                if name in denied
+                or name.startswith("output_")
+                or name.endswith(".log")
+                or name in _DENIED_NAMES
+            }
+
+        shutil.copytree(self.root, sandbox_root, ignore=ignore)
+        return sandbox_root
+
     def _run_check(self, argv: list[str], timeout: float) -> dict[str, Any]:
-        run = subprocess.run(
-            argv,
-            cwd=self.root,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            shell=False,
-            env=self._safe_env(),
-        )
+        with tempfile.TemporaryDirectory(prefix="mary-engineering-") as temp:
+            sandbox = self._copy_sandbox(Path(temp))
+            run = subprocess.run(
+                argv,
+                cwd=sandbox,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+                shell=False,
+                env=self._safe_env(),
+            )
         return {
             "ok": run.returncode == 0,
             "returncode": run.returncode,
             "stdout": run.stdout[:_MAX_RESULT_CHARS],
             "stderr": run.stderr[:_MAX_RESULT_CHARS],
+            "sandboxed": True,
         }
 
     def run_targeted_tests(self, paths: list[str]) -> dict[str, Any]:
