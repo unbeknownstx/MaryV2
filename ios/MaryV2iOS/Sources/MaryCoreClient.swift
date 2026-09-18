@@ -9,7 +9,7 @@ enum MaryClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Mary Core returned an invalid response."
-        case let .http(code, body): return "Mary Core returned HTTP \(code): \(body)"
+        case let .http(code, body): return "Mary Core request failed (HTTP \(code)). \(body)"
         case .notConfigured: return "Mary Core is not configured."
         case .emptyVoiceAudio: return "Mary Core returned no voice audio."
         }
@@ -57,12 +57,41 @@ final class MaryCoreClient {
         return req
     }
 
+    private func safeHTTPErrorMessage(_ data: Data, statusCode: Int) -> String {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["error", "message", "detail"] {
+                if let value = object[key] as? String {
+                    let compact = value
+                        .components(separatedBy: .whitespacesAndNewlines)
+                        .filter { !$0.isEmpty }
+                        .joined(separator: " ")
+                    if !compact.isEmpty {
+                        return String(compact.prefix(240))
+                    }
+                }
+            }
+        }
+
+        switch statusCode {
+        case 401, 403:
+            return "Authentication or authorization was rejected."
+        case 429:
+            return "The service is temporarily rate limited."
+        case 500...599:
+            return "Mary Core is temporarily unavailable."
+        default:
+            return "The request could not be completed."
+        }
+    }
+
     private func sendResponse(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw MaryClientError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw MaryClientError.http(http.statusCode, body)
+            throw MaryClientError.http(
+                http.statusCode,
+                safeHTTPErrorMessage(data, statusCode: http.statusCode)
+            )
         }
         return (data, http)
     }
