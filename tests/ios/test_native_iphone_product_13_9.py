@@ -54,7 +54,7 @@ def test_native_voice_call_exposes_relationship_and_private_public_projection():
     voice = _text("VoiceCallView.swift")
     assert "app.relationship.title" in voice
     assert "app.performanceMode.isPublic" in voice
-    assert "Voice unavailable · text still works" in voice
+    assert "Core voice unavailable · iPhone voice fallback ready" in voice
     assert "tap the mic" in voice
 
 
