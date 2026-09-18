@@ -80,23 +80,41 @@ def engineering_capability_descriptors(permissions: Any) -> list[CapabilityDescr
     root = discover_engineering_repository()
     if root is None:
         return []
+
+    model_status: dict[str, Any] = {}
+    try:
+        provider = LocalRuntimeProvider(role="general")
+        model_status = dict(provider.runtime_status() or {})
+    except Exception:
+        model_status = {}
+    model_ready = bool(model_status.get("available"))
+    runtime = str(model_status.get("runtime") or "")[:64]
+    model = str(model_status.get("model") or "")[:160]
+
     output: list[CapabilityDescriptor] = []
     for name in sorted(ENGINEERING_CAPABILITIES):
         mutating = name == "engineering.repo.apply"
+        needs_model = name == "engineering.repair.plan"
+        available = bool(model_ready if needs_model else True)
         output.append(CapabilityDescriptor(
             name=name,
-            available=True,
+            available=available,
             private=True,
             local=True,
             cost="local",
-            latency="background" if "tests." in name or name == "engineering.repair.plan" else "interactive",
+            latency="background" if "tests." in name or needs_model else "interactive",
+            readiness="ready" if available else "unavailable",
             metadata={
                 "worker": "bounded_engineering",
                 "sandboxed_planning": True,
+                "sandboxed_tests": True,
                 "mutates_repository": mutating,
                 "execution_authorized": bool(permissions.is_allowed(name)),
                 "generic_shell": False,
                 "network_default": "deny",
+                "local_model_required": needs_model,
+                "runtime": runtime if needs_model else "",
+                "model": model if needs_model else "",
             },
         ))
     return output
