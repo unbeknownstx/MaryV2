@@ -2112,6 +2112,59 @@ class Mary:
                 source="runtime_route_followup",
             )
 
+        previous_mary = ""
+        for item in reversed(list(recent_conversation or [])):
+            if str(item.get("role") or "").strip().lower() != "assistant":
+                continue
+            previous_mary = normalize_for_matching(str(item.get("content") or ""))
+            break
+
+        # Repository mutation is context-bound. A generic "apply that fix"
+        # cannot reach an old proposal unless Mary's immediately preceding
+        # message actually presented/offered that exact bounded proposal.
+        if (
+            intent.intent_type == IntentType.SELF_QUERY
+            and str(intent.parameters.get("self_query_type") or "") == "engineering_apply"
+            and not any(marker in previous_mary for marker in (
+                "apply this exact",
+                "apply the exact",
+                "apply that fix",
+                "proposal only",
+                "nothing has been written",
+            ))
+        ):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description="Creator referenced a fix without an immediately bound engineering proposal.",
+                parameters={
+                    "query": input_text,
+                    "self_query_type": "engineering_status",
+                },
+                source="engineering_apply_context_guard",
+            )
+
+        # Resolve a tiny confirmation as repository apply only when Mary's
+        # immediately previous response explicitly offered the exact proposal.
+        if normalized in {
+            "do it", "ok do it", "okay do it", "go ahead", "go ahead and do it",
+            "yes do it", "yeah do it",
+        } and any(marker in previous_mary for marker in (
+            "apply this exact",
+            "apply the exact",
+            "apply that fix",
+        )):
+            return Intent(
+                intent_type=IntentType.SELF_QUERY,
+                confidence=0.99,
+                description="Creator confirms Mary's immediately preceding exact engineering proposal.",
+                parameters={
+                    "query": input_text,
+                    "self_query_type": "engineering_apply",
+                },
+                source="engineering_apply_followup",
+            )
+
         # Resolve tiny confirmations against the immediately preceding Mary
         # offer only when that offer clearly concerned bounded self/runtime
         # inspection. This avoids treating every "do it" as a diagnostics command.
@@ -2119,12 +2172,6 @@ class Mary:
             "do it", "ok do it", "okay do it", "go ahead", "go ahead and do it",
             "check it", "inspect it", "inspect everything", "yes do it", "yeah do it",
         }:
-            previous_mary = ""
-            for item in reversed(list(recent_conversation or [])):
-                if str(item.get("role") or "").strip().lower() != "assistant":
-                    continue
-                previous_mary = normalize_for_matching(str(item.get("content") or ""))
-                break
             if previous_mary and any(marker in previous_mary for marker in (
                 "inspect", "skim the current surface", "skim the live system",
                 "check the runtime", "check the current surface", "flag anything",
