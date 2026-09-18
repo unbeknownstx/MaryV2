@@ -373,6 +373,13 @@ class SkillLibrary:
             if row.get("status") == "candidate"
         ]
 
+    def approved(self) -> list[SkillRecord]:
+        return [
+            self._decode(row)
+            for row in self._store.snapshot().get("skills", [])
+            if row.get("status") == "approved"
+        ]
+
     def status(self) -> dict[str, Any]:
         rows = list(self._store.snapshot().get("skills") or [])
         return {
