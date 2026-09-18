@@ -410,11 +410,13 @@ class SelfIntrospection:
             "connected_self_systems": connected,
             "agency_status": self.agency.status(),
             "fallback_response": (
-                "I currently understand myself through structured systems for my "
-                "identity, biography, personality, values, character, relationship "
-                "with my creator, memory, agency, autonomy boundaries, and tools. "
-                "Those are representations in my software; I shouldn't pretend they "
-                "give me experiences or capabilities that aren't actually present."
+                "Yes—within my actual represented runtime I can analyze parts of myself. "
+                "I can inspect my Core state, identity/self systems, memory and growth state, "
+                "relationship model, realtime/attention state, routing, and registered tool "
+                "status, then reason about patterns or inconsistencies I can observe. "
+                "That is bounded software self-inspection, not unrestricted access to every "
+                "host file. Reading source code requires a connected and permitted workspace/"
+                "code capability."
             ),
         }
 
@@ -828,10 +830,12 @@ class SelfIntrospection:
             "tool_status": self.tools.status(),
             "autonomy_type": type(self.autonomy).__name__,
             "fallback_response": (
-                "I can reason through my configured language model, use persistent memory, "
-                "inspect my bounded workspace, perform approved web research, and propose "
-                "controlled changes through my registered tools. External or mutating actions "
-                "remain bounded by creator approval, and I should not claim capabilities that "
-                "aren't connected to my runtime."
+                "I can inspect my own Core/runtime state and analyze problems directly. "
+                "When a permitted workspace or code capability is connected, I can also read "
+                "bounded source files, diagnose them, and prepare controlled code-change "
+                "proposals. I cannot silently rewrite or redeploy myself: applying a source "
+                "change still needs the registered mutation path, the required creator "
+                "approval, and a host/node that actually has file access. If those capabilities "
+                "are not connected, I should say so instead of pretending I edited anything."
             ),
         }
