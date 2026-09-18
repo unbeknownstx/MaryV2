@@ -5,6 +5,7 @@ from .lanes import CognitionLaneDecision, CognitionLaneRouter
 from .memory_lab import MemoryCase, MemoryEvaluationSuite
 from .prosody import ProsodyObservation, TurnTakingAdvisor
 from .recovery import NodeRecoveryManager, NodeRecoveryState
+from .replay import ExperienceReplayStore, ReplayEpisode, ReplayLesson
 from .resources import ActionAffordance, AffordanceScorer, ComputeResourceGovernor, ResourceSnapshot
 from .runtime import ExperientialContinuityRuntime
 from .skills import SkillLibrary, SkillRecord
@@ -33,6 +34,9 @@ __all__ = [
     "DurableWorkflowStore",
     "ExperienceEvent",
     "ExperienceLedger",
+    "ExperienceReplayStore",
+    "ReplayEpisode",
+    "ReplayLesson",
     "ExperientialContinuityRuntime",
     "ProsodyObservation",
     "ResourceSnapshot",
