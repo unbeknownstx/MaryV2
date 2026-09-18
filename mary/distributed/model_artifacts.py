@@ -89,6 +89,7 @@ def summarize_model_stack(
 
     base = dict(stack.get("base") or {})
     adapter_rows = list(stack.get("adapters") or [])
+    artifacts_verified = bool(stack.get("artifacts_verified"))
     verified_parts = [
         str(base.get("actual_sha256") or ""),
         *[
