@@ -395,7 +395,16 @@ class DeviceTaskBroker:
             return fallback
         return selected if selected.node_id in node_ids else fallback
 
-    def enqueue(self, registry: NodeRegistry, *, capability: str, intent: str, args: dict[str, Any] | None, requester_device_id: str) -> DeviceCapabilityTask:
+    def enqueue(
+        self,
+        registry: NodeRegistry,
+        *,
+        capability: str,
+        intent: str,
+        args: dict[str, Any] | None,
+        requester_device_id: str,
+        preferred_node_id: str | None = None,
+    ) -> DeviceCapabilityTask:
         normalized = str(capability or "").strip().lower()
         if normalized not in _ALLOWED_EXECUTION_CAPABILITIES:
             raise ValueError(f"Capability execution is not supported: {normalized}")
@@ -403,7 +412,28 @@ class DeviceTaskBroker:
         with self._condition:
             self._enforce_execution_policy("device_task.enqueue")
             self._expire_locked()
-            selected = self._select_node(registry, normalized, sanitized_args)
+            selected = None
+            clean_preferred = str(preferred_node_id or "").strip()
+            if clean_preferred:
+                candidates_fn = getattr(registry, "executable_candidates", None)
+                candidates = (
+                    list(candidates_fn(normalized))
+                    if callable(candidates_fn)
+                    else []
+                )
+                selected = next(
+                    (
+                        node for node in candidates
+                        if str(getattr(node, "node_id", "")) == clean_preferred
+                    ),
+                    None,
+                )
+                if selected is None:
+                    raise LookupError(
+                        f"Preferred node {clean_preferred} is not live/authorized for capability: {normalized}"
+                    )
+            else:
+                selected = self._select_node(registry, normalized, sanitized_args)
             if selected is None:
                 raise LookupError(f"No connected node supports capability: {normalized}")
             task = DeviceCapabilityTask(
