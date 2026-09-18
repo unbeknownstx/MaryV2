@@ -34,6 +34,7 @@ See:
 - `docs/architecture/MARYOS_LINUX_SUBSTRATE_13_36.md` — Linux/systemd host substrate and future MaryOS boundary
 - `docs/architecture/RESEARCH_CONVERGENCE_13_29_13_32.md` — cognitive research convergence and promotion boundary
 - `docs/architecture/COGNITIVE_EXECUTION_13_33.md` — bounded pass/verify/branch execution and proposal-only strategy evidence
+- `docs/architecture/ENGINEERING_WORKER_CURRENT.md` — bounded local-model repository inspection/repair/test worker with separate write permission
 - `docs/architecture/HOME_SENSOR_WORKERS_13_12.md` — bounded STT/screen sensor-worker contracts
 - `docs/architecture/HOME_COMPUTE_FABRIC_13_11.md` — benchmark-aware Mac/Windows home compute architecture
 - `docs/architecture/STREAM_COHOST_13_10.md` — live Twitch/OBS cohost architecture
@@ -52,6 +53,7 @@ Key boundaries:
 
 - models generate; they do not become Mary;
 - nodes compute; they do not own identity/state;
+- engineering workers may inspect/propose/test; repository writes are separate creator/device permissions and never imply commit/push/deploy;
 - provider catalogs describe routes; they do not authorize them;
 - health, quota, latency, benchmarks and resource fit are operational evidence, not Mary state;
 - renderers present; they do not define identity;
