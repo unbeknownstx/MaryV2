@@ -56,6 +56,7 @@ def main() -> int:
         "version": "mary-training-execution-plan-v1",
         "corpus": corpus.to_dict(),
         "dataset_fingerprint": manifest["dataset_fingerprint"],
+        "bundle_lineage": dict(manifest.get("bundle_lineage") or {}),
         "profile": manifest["profile"],
         "examples": manifest["examples"],
         "dataset_audit": manifest["dataset_audit"],
@@ -105,6 +106,9 @@ def main() -> int:
             "profile_dataset_ready": bool(
                 manifest["training_readiness"]["dataset_ready"]
             ),
+            "reproducibility_lineage_pinned": bool(
+                preflight.bundle_lineage_matches is True
+            ),
             "host_ready_for_training": preflight.ready_for_training,
             "adapter_present": preflight.adapter_present,
             "host_ready_for_adapter_evaluation": preflight.ready_for_evaluation,
@@ -139,6 +143,10 @@ def main() -> int:
     print(f"structured behavior:  {corpus.structured_behavior_records}")
     print(f"held-out MaryBench:   {corpus.marybench_cases}")
     print(f"dataset fingerprint:  {manifest['dataset_fingerprint']}")
+    print(
+        "bundle lineage:       "
+        + str(dict(manifest.get("bundle_lineage") or {}).get("bundle_fingerprint") or "missing")
+    )
     print(f"profile:              {manifest['profile']['profile_id']}")
     print(f"train rows:           {manifest['examples']['train']}")
     print(
