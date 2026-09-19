@@ -34,6 +34,10 @@ class SelfIntrospection:
         tools: Any,
         emotion: Any,
         node_registry: Any | None = None,
+        competence: Any | None = None,
+        knowledge_fabric: Any | None = None,
+        procedural_skills: Any | None = None,
+        world_model: Any | None = None,
     ) -> None:
         self.identity = identity
         self.self_model = self_model
@@ -49,6 +53,10 @@ class SelfIntrospection:
         self.tools = tools
         self.emotion = emotion
         self.node_registry = node_registry
+        self.competence = competence
+        self.knowledge_fabric = knowledge_fabric
+        self.procedural_skills = procedural_skills
+        self.world_model = world_model
 
     def build(
         self,
@@ -882,6 +890,62 @@ class SelfIntrospection:
                 "capabilities": compact_caps,
             })
 
+        connected_node_ids = [
+            str(item.get("node_id") or "")
+            for item in live_nodes
+            if str(item.get("node_id") or "")
+        ]
+
+        competence_status: dict[str, Any] = {}
+        competence_owner = getattr(self, "competence", None)
+        status_fn = getattr(competence_owner, "status", None)
+        if callable(status_fn):
+            try:
+                competence_status = dict(status_fn() or {})
+            except Exception:
+                competence_status = {}
+
+        demonstrated: dict[str, list[dict[str, Any]]] = {}
+        summary_fn = getattr(competence_owner, "summary_for", None)
+        if callable(summary_fn):
+            for capability in sorted(capability_names)[:32]:
+                try:
+                    rows = list(summary_fn(
+                        capability,
+                        node_ids=connected_node_ids,
+                        limit=4,
+                    ) or [])
+                except Exception:
+                    rows = []
+                if rows:
+                    demonstrated[capability] = [
+                        {
+                            "node_id": str(item.get("node_id") or "")[:120],
+                            "attempts": int(item.get("attempts") or 0),
+                            "verified_successes": int(item.get("verified_successes") or 0),
+                            "reliability": float(item.get("reliability") or 0.0),
+                            "evidence_strength": float(item.get("evidence_strength") or 0.0),
+                            "mean_latency_ms": item.get("mean_latency_ms"),
+                            "last_success": item.get("last_success"),
+                            "last_observed_at": str(item.get("last_observed_at") or "")[:80],
+                        }
+                        for item in rows[:4]
+                        if isinstance(item, dict)
+                    ]
+
+        def safe_status(owner: Any) -> dict[str, Any]:
+            fn = getattr(owner, "status", None)
+            if not callable(fn):
+                return {}
+            try:
+                return dict(fn() or {})
+            except Exception:
+                return {}
+
+        knowledge_status = safe_status(getattr(self, "knowledge_fabric", None))
+        skills_status = safe_status(getattr(self, "procedural_skills", None))
+        world_status = safe_status(getattr(self, "world_model", None))
+
         web_search = bool(tool_status.get("web_search_configured"))
         repository_map = dict(tool_status.get("repository_map") or {})
         facts = {
@@ -905,6 +969,26 @@ class SelfIntrospection:
                 "live": live_nodes,
                 "advertised_capabilities": sorted(capability_names),
                 "execution_ready_capabilities": sorted(execution_ready),
+                "demonstrated_competence": demonstrated,
+                "competence_records": int(competence_status.get("records") or 0),
+            },
+            "knowledge_substrate": {
+                "packs": int(knowledge_status.get("packs") or 0),
+                "enabled": int(knowledge_status.get("enabled") or 0),
+                "indexed_documents": int(knowledge_status.get("indexed_documents") or 0),
+                "available": bool(
+                    int(knowledge_status.get("enabled") or 0)
+                    or int(knowledge_status.get("indexed_documents") or 0)
+                ),
+            },
+            "procedural_memory": {
+                "approved": int(skills_status.get("approved") or 0),
+                "candidates": int(skills_status.get("candidates") or 0),
+                "revision_attention": int(skills_status.get("revision_attention") or 0),
+            },
+            "world_model": {
+                "current_beliefs": int(world_status.get("current_beliefs") or 0),
+                "reconciliation_groups": int(world_status.get("reconciliation_groups") or 0),
             },
         }
 
@@ -927,13 +1011,14 @@ class SelfIntrospection:
             "live_capabilities": facts,
             "autonomy_type": type(self.autonomy).__name__,
             "authority": (
-                "live Core/tool/node state is authoritative for capability claims; "
-                "provider model priors are not capability evidence"
+                "live Core/tool/node state plus bounded competence/knowledge/procedure evidence "
+                "is authoritative for capability claims; provider model priors are not capability evidence"
             ),
             "fallback_response": (
                 "I can inspect my own Core/runtime state and analyze problems directly. "
                 + search_sentence + " " + node_sentence + " "
-                "A capability being present is separate from permission to execute it. "
+                "A capability being present is separate from permission to execute it, and "
+                "advertised capability is separate from demonstrated competence. "
                 "I cannot silently rewrite or redeploy myself, and I should never claim "
                 "a tool, device action, browse, file, vision, voice, or model capability "
                 "unless the live capability graph says it is available."
