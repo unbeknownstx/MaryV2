@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { createVRMAnimationClip, VRMAnimationLoaderPlugin, VRMLookAtQuaternionProxy } from '@pixiv/three-vrm-animation';
 import './style.css';
 import './uplift.css';
 import './presence.css';
@@ -93,6 +94,15 @@ let currentMotionCue = null;
 let semanticMotionLastCue = null;
 let semanticMotionId = '';
 let semanticMotionBlend = 0;
+let motionManifest = new Map();
+let motionManifestStatus = { loaded: false, count: 0, error: '' };
+let vrmaMixer = null;
+let vrmaAction = null;
+let vrmaActiveMotionId = '';
+let vrmaRequestedMotionId = '';
+let vrmaRequestGeneration = 0;
+const vrmaClipCache = new Map();
+const vrmaFailedMotions = new Set();
 let ambientAvatarState = { expression: 'neutral', emotion_intensity: 0 };
 let preReactionCue = null;
 let preReactionUntil = 0;
@@ -628,6 +638,166 @@ function applyPerformanceExpression(beat) {
   const beatEnergy = clamp(beat.energy ?? currentDeliveryPlan.energy ?? .4);
   const intensity = Math.max(.08, Math.min(.82, .18 + beatEnergy * .62));
   try { manager.setValue(preset, intensity); } catch (_) { /* optional preset */ }
+}
+
+async function loadMotionManifest() {
+  try {
+    const response = await fetch('./motions/manifest.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`motion manifest HTTP ${response.status}`);
+    const payload = await response.json();
+    const next = new Map();
+    for (const raw of Array.isArray(payload?.motions) ? payload.motions.slice(0, 128) : []) {
+      const motionId = String(raw?.motion_id || '').trim();
+      const uri = String(raw?.uri || '').trim();
+      if (!motionId || !uri.toLowerCase().endsWith('.vrma')) continue;
+      let parsed;
+      try { parsed = new URL(uri, window.location.href); } catch (_) { continue; }
+      if (parsed.origin !== window.location.origin || !parsed.pathname.includes('/motions/')) continue;
+      next.set(motionId, {
+        motion_id: motionId,
+        uri: parsed.href,
+        loop: Boolean(raw?.loop),
+        fade_in_ms: Math.max(60, Math.min(1500, Number(raw?.fade_in_ms) || 180)),
+        fade_out_ms: Math.max(60, Math.min(1500, Number(raw?.fade_out_ms) || 240)),
+        source: String(raw?.source || 'local').slice(0, 120),
+        license: String(raw?.license || 'unknown').slice(0, 120),
+      });
+    }
+    motionManifest = next;
+    motionManifestStatus = { loaded: true, count: next.size, error: '' };
+  } catch (error) {
+    motionManifest = new Map();
+    motionManifestStatus = {
+      loaded: false,
+      count: 0,
+      error: String(error?.message || error || 'motion manifest unavailable').slice(0, 220),
+    };
+  }
+  if (currentScreen === 'voice') renderWorkspace('voice');
+  return motionManifestStatus;
+}
+
+function resetVrmaRuntime() {
+  vrmaRequestGeneration += 1;
+  vrmaRequestedMotionId = '';
+  vrmaActiveMotionId = '';
+  if (vrmaAction) {
+    try { vrmaAction.stop(); } catch (_) { /* best effort */ }
+  }
+  vrmaAction = null;
+  if (vrmaMixer) {
+    try { vrmaMixer.stopAllAction(); } catch (_) { /* best effort */ }
+  }
+  vrmaMixer = null;
+  vrmaClipCache.clear();
+  vrmaFailedMotions.clear();
+}
+
+function ensureVrmLookAtAnimationProxy(vrm) {
+  if (!vrm?.lookAt || vrm.scene.getObjectByName?.('lookAtQuaternionProxy')) return;
+  try {
+    const proxy = new VRMLookAtQuaternionProxy(vrm.lookAt);
+    proxy.name = 'lookAtQuaternionProxy';
+    vrm.scene.add(proxy);
+  } catch (error) {
+    console.warn('VRMA look-at proxy unavailable:', error);
+  }
+}
+
+async function ensureVrmaClip(motionId) {
+  if (!currentVrm || !motionManifest.has(motionId) || vrmaFailedMotions.has(motionId)) return null;
+  if (vrmaClipCache.has(motionId)) return vrmaClipCache.get(motionId);
+
+  const asset = motionManifest.get(motionId);
+  try {
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+    const gltf = await loader.loadAsync(asset.uri);
+    const vrmAnimation = Array.isArray(gltf.userData?.vrmAnimations)
+      ? gltf.userData.vrmAnimations[0]
+      : null;
+    if (!vrmAnimation) throw new Error('VRMA file contained no VRM animation.');
+    const clip = createVRMAnimationClip(vrmAnimation, currentVrm);
+    const resolved = { clip, asset };
+    vrmaClipCache.set(motionId, resolved);
+    return resolved;
+  } catch (error) {
+    vrmaFailedMotions.add(motionId);
+    console.warn(`VRMA motion ${motionId} could not load; procedural fallback remains active:`, error);
+    if (currentScreen === 'voice') renderWorkspace('voice');
+    return null;
+  }
+}
+
+function ensureVrmaMixer() {
+  if (!currentVrm) return null;
+  if (vrmaMixer) return vrmaMixer;
+  vrmaMixer = new THREE.AnimationMixer(currentVrm.scene);
+  vrmaMixer.addEventListener('finished', (event) => {
+    if (event.action !== vrmaAction) return;
+    vrmaAction = null;
+    vrmaActiveMotionId = '';
+  });
+  return vrmaMixer;
+}
+
+async function requestVrmaMotion(cue) {
+  const motionId = String(cue?.motion_id || '');
+  if (!motionId || !motionManifest.has(motionId) || vrmaFailedMotions.has(motionId)) return false;
+  if (vrmaActiveMotionId === motionId && vrmaAction) return true;
+  if (vrmaRequestedMotionId === motionId) return Boolean(vrmaAction);
+
+  const generation = ++vrmaRequestGeneration;
+  vrmaRequestedMotionId = motionId;
+  const resolved = await ensureVrmaClip(motionId);
+  if (generation !== vrmaRequestGeneration || vrmaRequestedMotionId !== motionId || !resolved || !currentVrm) {
+    return false;
+  }
+
+  const mixer = ensureVrmaMixer();
+  if (!mixer) return false;
+  const previous = vrmaAction;
+  const next = mixer.clipAction(resolved.clip);
+  const fadeSeconds = Math.max(.06, resolved.asset.fade_in_ms / 1000);
+  next.reset();
+  next.enabled = true;
+  next.clampWhenFinished = !resolved.asset.loop;
+  next.setLoop(resolved.asset.loop ? THREE.LoopRepeat : THREE.LoopOnce, resolved.asset.loop ? Infinity : 1);
+  next.setEffectiveWeight(1);
+  next.play();
+
+  if (previous && previous !== next) {
+    try { previous.crossFadeTo(next, fadeSeconds, false); } catch (_) { next.fadeIn(fadeSeconds); }
+  } else {
+    next.fadeIn(fadeSeconds);
+  }
+
+  vrmaAction = next;
+  vrmaActiveMotionId = motionId;
+  vrmaRequestedMotionId = '';
+  semanticMotionBlend = 0;
+  return true;
+}
+
+function releaseVrmaMotion() {
+  vrmaRequestGeneration += 1;
+  vrmaRequestedMotionId = '';
+  vrmaActiveMotionId = '';
+  if (!vrmaAction) return;
+  const action = vrmaAction;
+  vrmaAction = null;
+  try { action.fadeOut(.24); } catch (_) { try { action.stop(); } catch (_) {} }
+}
+
+function syncVrmaMotion(cue) {
+  const motionId = String(cue?.motion_id || '');
+  const hasAsset = Boolean(motionId && motionManifest.has(motionId) && !vrmaFailedMotions.has(motionId));
+  if (!hasAsset) {
+    if (vrmaAction || vrmaRequestedMotionId) releaseVrmaMotion();
+    return false;
+  }
+  void requestVrmaMotion(cue);
+  return Boolean(vrmaAction || vrmaRequestedMotionId);
 }
 
 function motionCueForSegment(index) {
