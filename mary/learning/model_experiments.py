@@ -490,6 +490,7 @@ class ModelExperimentLedger:
         if supplied_id and supplied_id != expected_id:
             raise ValueError("portable model experiment id does not match exact artifact lineage")
 
+        registered_now = False
         try:
             current = self.get(expected_id)
             immutable = {
@@ -524,6 +525,7 @@ class ModelExperimentLedger:
                 )[:160],
                 notes=_tuple(experiment.get("notes") or (), limit=12, item_limit=300),
             )
+            registered_now = True
 
         scores = dict(benchmark.get("scores") or {})
         node_id = _text(benchmark.get("node_id"), 180)
@@ -556,7 +558,7 @@ class ModelExperimentLedger:
                 )
                 benchmark_changed = True
 
-        if benchmark_changed or current.status == "reviewed":
+        if benchmark_changed or registered_now:
             self._record_event(
                 expected_id,
                 "evidence_imported",
