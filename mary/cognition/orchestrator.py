@@ -1462,6 +1462,31 @@ class CognitiveOrchestrator:
         if looks_like_question(text) and host_subject and host_change_context:
             return self_intent("runtime_architecture")
 
+        # Concrete questions about Mary's own tools/sensors should use the live
+        # capability graph rather than provider priors. Keep this narrow enough
+        # that figurative phrases such as "can you see why" remain conversation.
+        capability_subject_markers = (
+            "my screen", "the screen", "screen right now", "my desktop",
+            "see my app", "see the app", "an image", "images", "a picture",
+            "pictures", "a photo", "photos", "my microphone", "microphone",
+            "audio", "hear me", "listen to me", "browse the web",
+            "search the web", "use the internet", "local knowledge",
+            "knowledge search", "offline library", "your tools", "your nodes",
+            "capability nodes",
+        )
+        capability_action_context = bool(
+            runtime_tokens.intersection({
+                "can", "could", "do", "does", "have", "use", "access",
+                "see", "hear", "browse", "search", "read",
+            })
+        )
+        if (
+            looks_like_question(text)
+            and capability_action_context
+            and any(marker in normalized for marker in capability_subject_markers)
+        ):
+            return self_intent("capabilities")
+
         # Physical self-questions have too many natural phrasings to maintain
         # as a brittle exact-phrase list. Route them to Mary's canonical
         # appearance evidence instead of letting a provider answer from its own
