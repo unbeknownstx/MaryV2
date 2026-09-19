@@ -76,7 +76,11 @@ def _core(registry):
     core=object.__new__(MaryCoreService)
     core._closed=False
     core._turn_lock=RLock()
-    core.mary=SimpleNamespace(node_registry=registry)
+    ledger=_Ledger()
+    core.mary=SimpleNamespace(
+        node_registry=registry,
+        model_experiments=ledger,
+    )
     core.device_tasks=_Broker()
     core._model_experiment_tasks={}
     core._model_experiment_terminal_recorded=set()
@@ -84,8 +88,6 @@ def _core(registry):
     core._continuity_task_links={}
     core.perception_assets=SimpleNamespace(get=lambda _asset_id: None)
     core._settle_continuity_task_link=lambda _task: None
-    ledger=_Ledger()
-    core._model_experiment_ledger=lambda: ledger
     core._test_ledger=ledger
     return core
 
