@@ -67,7 +67,7 @@ struct MaryStageView: View {
                 .scaleEffect(
                     reduceMotion
                         ? 1
-                        : (breath ? 1.012 + energy * 0.008 : 1.0)
+                        : CGFloat(breath ? 1.012 + energy * 0.008 : 1.0)
                 )
                 .rotationEffect(
                     .degrees(
