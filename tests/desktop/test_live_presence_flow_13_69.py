@@ -16,7 +16,7 @@ def test_desktop_exposes_live_presence_flow_without_new_state_authority():
     assert "Agency" in source
     assert "Embodiment" in source
     assert "Presence" in source
-    assert "yellow" not in source.lower()  # visual semantics stay presentation-only
+    assert "ephemeral telemetry only" in source
     assert "#ffd84d" in css
     assert ".pf-wire.active" in css
     assert "presence-current" in css
