@@ -74,23 +74,44 @@ class MaryClient:
     def lifecycle_status(self) -> dict[str, Any]:
         return self._request("GET", "/v1/creator-surfaces/status")
 
-    def surface_register(self, surface_id: str | None = None, *, visible: bool = True, foreground: bool = True, lease_seconds: float | None = None) -> dict[str, Any]:
+    def surface_register(
+        self,
+        surface_id: str | None = None,
+        *,
+        visible: bool = True,
+        foreground: bool = True,
+        lease_seconds: float | None = None,
+        presentation_capabilities: dict[str, bool] | None = None,
+    ) -> dict[str, Any]:
         model = CreatorSurfaceRequest.from_dict({
             "surface_id": surface_id or self.device_id,
             "visible": visible,
             "foreground": foreground,
             "lease_seconds": lease_seconds,
+            "presentation_capabilities": presentation_capabilities or {},
         })
         return self._request("POST", "/v1/creator-surfaces/register", model.to_dict())
 
-    def surface_renew(self, surface_id: str | None = None, *, visible: bool | None = None, foreground: bool | None = None, activity: bool = False, lease_seconds: float | None = None) -> dict[str, Any]:
-        model = CreatorSurfaceRequest.from_dict({
+    def surface_renew(
+        self,
+        surface_id: str | None = None,
+        *,
+        visible: bool | None = None,
+        foreground: bool | None = None,
+        activity: bool = False,
+        lease_seconds: float | None = None,
+        presentation_capabilities: dict[str, bool] | None = None,
+    ) -> dict[str, Any]:
+        payload = {
             "surface_id": surface_id or self.device_id,
             "visible": visible,
             "foreground": foreground,
             "activity": activity,
             "lease_seconds": lease_seconds,
-        })
+        }
+        if presentation_capabilities is not None:
+            payload["presentation_capabilities"] = presentation_capabilities
+        model = CreatorSurfaceRequest.from_dict(payload)
         return self._request("POST", "/v1/creator-surfaces/renew", model.to_dict())
 
     def surface_visibility(
@@ -441,6 +462,7 @@ class MaryClient:
         requested_mode: str | None = None,
         voice_input: bool = False,
         client_local_time: str | None = None,
+        surface_id: str | None = None,
     ) -> TurnResponse:
         payload = TurnRequest.from_dict({
             "text": text,
@@ -448,6 +470,7 @@ class MaryClient:
             "conversation_id": conversation_id,
             "device_id": self.device_id,
             "surface": self.surface,
+            "surface_id": surface_id,
             "voice_input": bool(voice_input),
             "requested_mode": requested_mode,
             "client_local_time": client_local_time,
