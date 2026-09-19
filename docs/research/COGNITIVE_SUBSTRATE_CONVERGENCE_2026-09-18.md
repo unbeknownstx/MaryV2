@@ -73,6 +73,38 @@ Only the smallest relevant evidence set crosses from those tiers into TurnMind.
 `mary.knowledge.evaluation.KnowledgeFabricEvaluator` provides a NOMAD-inspired but Mary-specific deterministic retrieval gate. JSONL cases can assert expected pack/source recall, excluded or disabled-source non-leakage, complete citation IDs, explicit pack scoping and a bounded model-facing evidence budget. It deliberately avoids an LLM-as-judge score and cannot promote retrieval into memory, truth or model authority. `scripts.evaluate_knowledge_fabric` runs the same checks against a creator-selected local registry/index.
 
 
+## Closed learning-loop extensions in this pass
+
+Mary Dataset v1 now has two read-only pre-training lenses: a corpus inventory
+that measures source/label/behavior/negative/fiction/MaryBench coverage, and a
+deterministic exported-dataset audit that blocks split leakage, held-out prompt
+contamination and training-boundary violations. MLX bundle preparation enforces
+the structural audit while keeping profile sufficiency, host preflight, training
+and promotion as separate explicit gates.
+
+Model/adapter experiments now preserve append-only content-free lineage across
+review registration, benchmark evidence, explicit trial dispatch and terminal
+trial outcome. Prompts and generated experimental text are deliberately excluded
+from the durable experiment ledger.
+
+Approved procedures now surface repeated failure pressure through a read-only
+revision queue. The approved predecessor remains active until a creator-reviewed
+revision candidate is explicitly approved. World-model contradictions are
+grouped into reconciliation units so competing current claims can be reviewed
+together; reconciliation still retires losing claims as history rather than
+deleting evidence.
+
+Node intelligence now projects live advertisement, readiness, device-local
+authorization and demonstrated competence as separate states. Capability
+self-awareness consumes this evidence together with local knowledge, procedures
+and world-model state rather than relying on provider priors.
+
+KnowledgeFabric now exposes a cheap substrate profile over registry/index
+metadata: active local sources, offline reference libraries, semantic
+derivatives and catalog candidates. Missing/stale derivative lineage is review
+evidence only; the profile performs no corpus scan, retrieval or automatic
+rebuild.
+
 ## Current ownership summary
 
 - Identity: Mary Core / canonical identity systems.
