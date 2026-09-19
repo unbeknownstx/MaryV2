@@ -74,11 +74,8 @@ def knowledge_capability_descriptors(permissions: Any) -> list[CapabilityDescrip
                     "execution_authorized": bool(
                         permissions.is_allowed("knowledge.search")
                     ),
-                    "implementation_version": str(
-                        getattr(fabric, "VERSION", "")
-                    )[:80],
-                    "ingestion_pipeline_fingerprint": (
-                        fabric.local_index_pipeline_fingerprint()
+                    "implementation_fingerprint": (
+                        fabric.local_index_pipeline_fingerprint()[:16]
                     ),
                     "packs": len(enabled_packs),
                     "indexed_documents": int(
@@ -110,12 +107,6 @@ def knowledge_capability_descriptors(permissions: Any) -> list[CapabilityDescrip
                 metadata={
                     "execution_authorized": bool(
                         permissions.is_allowed("knowledge.curation")
-                    ),
-                    "implementation_version": str(
-                        getattr(fabric, "VERSION", "")
-                    )[:80],
-                    "ingestion_pipeline_fingerprint": (
-                        fabric.local_index_pipeline_fingerprint()
                     ),
                     "local_file_packs": len(local_packs),
                     "enabled_local_file_packs": sum(
