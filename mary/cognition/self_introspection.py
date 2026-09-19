@@ -1000,6 +1000,9 @@ class SelfIntrospection:
                 "stale_derivatives": len(
                     list(knowledge_substrate.get("stale_derivatives") or [])
                 ),
+                "stale_local_indexes": len(
+                    list(knowledge_substrate.get("stale_local_indexes") or [])
+                ),
             },
             "procedural_memory": {
                 "approved": int(skills_status.get("approved") or 0),
@@ -1041,8 +1044,10 @@ class SelfIntrospection:
                 "local model inference",
                 ("llm.local", "llm.ollama", "llm.llama_cpp", "llm.mlx_lm"),
             ))
-        if any(term in lowered_query for term in ("local knowledge", "knowledge search", "corpus", "offline library")):
-            requested_groups.append(("local knowledge search", ("knowledge.search",)))
+        asks_local_knowledge = any(
+            term in lowered_query
+            for term in ("local knowledge", "knowledge search", "corpus", "offline library")
+        )
         if any(term in lowered_query for term in ("web", "browse", "internet")):
             requested_groups.append(("web search", ()))
 
@@ -1080,6 +1085,60 @@ class SelfIntrospection:
                 requested_sentences.append(
                     "None of those advertised node capabilities is currently both ready "
                     "and execution-authorized."
+                )
+
+        if asks_local_knowledge:
+            local_state = facts["knowledge_substrate"]
+            modes = ", ".join(local_state["enabled_retrieval_modes"])
+            stale_local = int(local_state["stale_local_indexes"])
+            stale_semantic = int(local_state["stale_derivatives"])
+            knowledge_node_represented = "knowledge.search" in capability_names
+            knowledge_node_ready = "knowledge.search" in execution_ready
+
+            if local_state["available"]:
+                sentence = "My local knowledge substrate is available"
+                if modes:
+                    sentence += f" through {modes}"
+                sentence += "."
+                if stale_local:
+                    sentence += (
+                        f" {stale_local} local index"
+                        f"{'es' if stale_local != 1 else ''} "
+                        "is stale and needs explicit reindexing before I should describe "
+                        "all local retrieval as current."
+                    )
+                if stale_semantic:
+                    sentence += (
+                        f" {stale_semantic} semantic derivative"
+                        f"{'s' if stale_semantic != 1 else ''} "
+                        "also needs refresh/review."
+                    )
+                if knowledge_node_ready:
+                    sentence += (
+                        " A connected knowledge.search node is also ready and "
+                        "execution-authorized."
+                    )
+                elif knowledge_node_represented:
+                    sentence += (
+                        " A connected knowledge.search node is advertised, but it is "
+                        "not presently execution-authorized."
+                    )
+                requested_sentences.append(sentence)
+            elif knowledge_node_ready:
+                requested_sentences.append(
+                    "My Core local knowledge substrate is not currently available, "
+                    "but a connected knowledge.search node is ready and execution-authorized."
+                )
+            elif knowledge_node_represented:
+                requested_sentences.append(
+                    "My Core local knowledge substrate is not currently available. "
+                    "A connected knowledge.search node is advertised, but it is not "
+                    "presently execution-authorized."
+                )
+            else:
+                requested_sentences.append(
+                    "I do not currently have an available Core local knowledge substrate "
+                    "or a connected knowledge.search route to claim."
                 )
 
         for label, names in requested_groups[:6]:
