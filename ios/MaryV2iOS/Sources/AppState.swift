@@ -28,6 +28,9 @@ final class AppState: ObservableObject {
     @Published var searchResult: [String: Any] = [:]
     @Published var socialStatusData: [String: Any] = [:]
     @Published var socialProposalData: [String: Any] = [:]
+    @Published var lastDeliveryPlan: [String: Any] = [:]
+    @Published var lastPerformancePacket: [String: Any] = [:]
+    @Published var surfacePerformanceData: [String: Any] = [:]
 
     let voice = VoiceCapture()
     let playback = VoicePlayback()
@@ -71,6 +74,53 @@ final class AppState: ObservableObject {
 
     var relationship: RelationalSnapshot {
         CoreProjection.relationalSnapshot(dashboardData)
+    }
+
+    var presentationExpression: String {
+        let reaction = CoreProjection.dict(lastPerformancePacket["pre_reaction"])
+        let delivery = CoreProjection.dict(lastPerformancePacket["delivery"])
+        let value = CoreProjection.string(
+            reaction["expression"]
+            ?? delivery["avatar_expression"]
+            ?? lastDeliveryPlan["avatar_expression"]
+        )
+        return value.isEmpty ? "neutral" : value.lowercased()
+    }
+
+    var presentationGaze: String {
+        let reaction = CoreProjection.dict(lastPerformancePacket["pre_reaction"])
+        let delivery = CoreProjection.dict(lastPerformancePacket["delivery"])
+        let value = CoreProjection.string(
+            reaction["gaze_style"]
+            ?? delivery["gaze_style"]
+            ?? lastDeliveryPlan["gaze_style"]
+        )
+        return value.isEmpty ? "engaged" : value.lowercased()
+    }
+
+    var presentationHeadStyle: String {
+        let reaction = CoreProjection.dict(lastPerformancePacket["pre_reaction"])
+        let delivery = CoreProjection.dict(lastPerformancePacket["delivery"])
+        let value = CoreProjection.string(
+            reaction["head_style"]
+            ?? delivery["head_style"]
+            ?? lastDeliveryPlan["head_style"]
+        )
+        return value.isEmpty ? "natural" : value.lowercased()
+    }
+
+    var presentationEnergy: Double {
+        let delivery = CoreProjection.dict(lastPerformancePacket["delivery"])
+        let raw = delivery["energy"] ?? lastDeliveryPlan["energy"]
+        if let value = raw as? Double { return min(1, max(0, value)) }
+        if let value = raw as? NSNumber { return min(1, max(0, value.doubleValue)) }
+        return 0.4
+    }
+
+    private func applyTurnPresentation(_ result: TurnResponse) {
+        lastDeliveryPlan = result.deliveryPlan
+        lastPerformancePacket = result.performancePacket
+        surfacePerformanceData = result.surfacePerformance
     }
 
     func start() async {
@@ -299,6 +349,7 @@ final class AppState: ObservableObject {
             messages.append(
                 MaryMessage(role: .mary, text: result.response)
             )
+            applyTurnPresentation(result)
             isConnected = true
             statusText = "Online"
             lastError = nil
@@ -308,7 +359,8 @@ final class AppState: ObservableObject {
             if AppConfiguration.speakResponses {
                 await speakMaryResponse(
                     result.response,
-                    userText: text
+                    userText: text,
+                    deliveryPlan: result.deliveryPlan
                 )
             }
 
@@ -361,7 +413,8 @@ final class AppState: ObservableObject {
 
     func speakMaryResponse(
         _ text: String,
-        userText: String? = nil
+        userText: String? = nil,
+        deliveryPlan: [String: Any] = [:]
     ) async {
         guard AppConfiguration.speakResponses else { return }
 
@@ -369,7 +422,8 @@ final class AppState: ObservableObject {
             do {
                 let audio = try await client.synthesizeVoice(
                     text: text,
-                    userText: userText
+                    userText: userText,
+                    deliveryPlan: deliveryPlan
                 )
                 voiceProvider = audio.provider
                 voiceServerAvailable = true
