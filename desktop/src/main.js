@@ -98,6 +98,12 @@ let modelBaseY = 0;
 let modelBounds = null;
 let avatarFraming = 'portrait';
 let avatarPresentation = localStorage.getItem('mary.avatarPresentation') === 'art' ? 'art' : 'live';
+let studioMotionCue = null;
+let stageLighting = {
+  key: Number(localStorage.getItem('mary.stageLight.key') || 2.35),
+  fill: Number(localStorage.getItem('mary.stageLight.fill') || 1.25),
+  rim: Number(localStorage.getItem('mary.stageLight.rim') || 1.05),
+};
 
 function parsePayload(value) {
   if (typeof value === 'object' && value !== null) return value;
@@ -324,6 +330,72 @@ const rimLight = new THREE.DirectionalLight(0xff4fa6, 1.05);
 rimLight.position.set(1.7, 1.5, -1.5);
 scene.add(rimLight);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x171124, 1.65));
+
+function applyStageLighting(values = stageLighting) {
+  stageLighting = {
+    key: Math.max(0, Math.min(5, Number(values.key ?? stageLighting.key) || 0)),
+    fill: Math.max(0, Math.min(5, Number(values.fill ?? stageLighting.fill) || 0)),
+    rim: Math.max(0, Math.min(5, Number(values.rim ?? stageLighting.rim) || 0)),
+  };
+  keyLight.intensity = stageLighting.key;
+  fillLight.intensity = stageLighting.fill;
+  rimLight.intensity = stageLighting.rim;
+  localStorage.setItem('mary.stageLight.key', String(stageLighting.key));
+  localStorage.setItem('mary.stageLight.fill', String(stageLighting.fill));
+  localStorage.setItem('mary.stageLight.rim', String(stageLighting.rim));
+}
+
+function applyStageLightingPreset(name = 'balanced') {
+  const presets = {
+    balanced: { key: 2.35, fill: 1.25, rim: 1.05 },
+    soft: { key: 1.65, fill: 1.45, rim: .65 },
+    neon: { key: 2.0, fill: 1.8, rim: 1.65 },
+    dramatic: { key: 2.9, fill: .48, rim: 1.9 },
+  };
+  applyStageLighting(presets[name] || presets.balanced);
+}
+
+function captureAvatarPng() {
+  if (!currentVrm) {
+    toast('Live VRM is not loaded, so there is no 3D frame to capture.', 'error');
+    return;
+  }
+  try {
+    renderer.render(scene, camera);
+    const dataUrl = renderer.domElement.toDataURL('image/png');
+    const anchor = document.createElement('a');
+    anchor.href = dataUrl;
+    anchor.download = `Mary-${new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')}.png`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    toast('Mary stage PNG captured.');
+  } catch (error) {
+    toast(`Could not capture the Mary stage: ${error?.message || error}`, 'error');
+  }
+}
+
+function copyStageSetup() {
+  const payload = {
+    version: 1,
+    body: 'MaryCosma.vrm',
+    framing: avatarFraming,
+    lighting: { ...stageLighting },
+    expression: String(ambientAvatarState.expression || 'neutral'),
+    motion_preview: studioMotionCue?.motion_id || '',
+    authority: 'presentation_only',
+  };
+  const text = JSON.stringify(payload, null, 2);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('Stage setup copied.'))
+      .catch(() => window.prompt('Copy Mary stage setup:', text));
+  } else {
+    window.prompt('Copy Mary stage setup:', text);
+  }
+}
+
+applyStageLighting();
 
 let previousFrameMs = performance.now();
 let blinkAt = performance.now() + 1800;
@@ -705,7 +777,9 @@ function animate(now = performance.now()) {
     // Semantic motion is a presentation projection from Mary's established
     // PerformancePacket. These procedural poses are placeholders for future
     // licensed/local VRMA/FBX clips resolved by the same motion IDs.
-    const semanticCue = currentMotionCue || (conversationState === 'listening' ? { motion_id: 'listen_attentive' } : null);
+    const semanticCue = currentMotionCue
+      || ((!activeSpeechAudio && currentScreen === 'voice' && studioMotionCue) ? studioMotionCue : null)
+      || (conversationState === 'listening' ? { motion_id: 'listen_attentive' } : null);
     if (semanticCue) applySemanticMotionPose(semanticCue, elapsed, gestureEnergy);
 
     const speakingBoost = conversationState === 'speaking' ? .55 + gestureEnergy * .65 : .45;
@@ -2066,6 +2140,48 @@ function renderVoice() {
       <div class="section-title" style="margin-top:14px">CAMERA</div>
       <div class="action-grid"><button class="action-button" data-avatar-frame="full"><strong>Full</strong><small>Whole-character framing</small></button><button class="action-button" data-avatar-frame="portrait"><strong>Portrait</strong><small>Default companion framing</small></button><button class="action-button" data-avatar-frame="close"><strong>Close</strong><small>Face / upper body</small></button></div>
     </div>
+    <div class="section-title">CHARACTER STUDIO</div>
+    <div class="workspace-grid">
+      <div class="workspace-panel">
+        <h3>Performance preview</h3>
+        <p>Preview presentation locally without changing Mary's canonical emotion, memory, identity, or relationship state.</p>
+        <div class="action-grid">
+          <button class="action-button" data-stage-expression="neutral"><strong>Neutral</strong><small>Relaxed face</small></button>
+          <button class="action-button" data-stage-expression="happy"><strong>Happy</strong><small>Warm expression</small></button>
+          <button class="action-button" data-stage-expression="surprised"><strong>Surprised</strong><small>Reactive expression</small></button>
+          <button class="action-button" data-stage-expression="angry"><strong>Firm</strong><small>Stronger expression</small></button>
+        </div>
+        <div class="section-title" style="margin-top:12px">POSE / MOTION SLOT</div>
+        <div class="action-grid">
+          <button class="action-button" data-stage-motion="talk_neutral"><strong>Talk</strong><small>Neutral semantic pose</small></button>
+          <button class="action-button" data-stage-motion="warm_acknowledge"><strong>Warm</strong><small>Acknowledgement pose</small></button>
+          <button class="action-button" data-stage-motion="teasing_point"><strong>Tease</strong><small>Playful point pose</small></button>
+          <button class="action-button" data-stage-motion="thinking_pause"><strong>Think</strong><small>Thinking pose</small></button>
+          <button class="action-button" data-stage-motion=""><strong>Reset pose</strong><small>Return to ambient body state</small></button>
+        </div>
+      </div>
+      <div class="workspace-panel">
+        <h3>Lighting sandbox</h3>
+        <p>Renderer-only lighting. Values are local presentation settings and never become Mary state.</p>
+        <label class="form-field"><span>Key · <b id="stage-key-value">${stageLighting.key.toFixed(2)}</b></span><input id="stage-key-light" type="range" min="0" max="5" step="0.05" value="${stageLighting.key}"></label>
+        <label class="form-field"><span>Fill · <b id="stage-fill-value">${stageLighting.fill.toFixed(2)}</b></span><input id="stage-fill-light" type="range" min="0" max="5" step="0.05" value="${stageLighting.fill}"></label>
+        <label class="form-field"><span>Rim · <b id="stage-rim-value">${stageLighting.rim.toFixed(2)}</b></span><input id="stage-rim-light" type="range" min="0" max="5" step="0.05" value="${stageLighting.rim}"></label>
+        <div class="action-grid" style="margin-top:10px">
+          <button class="action-button" data-stage-lighting="balanced"><strong>Balanced</strong><small>Default companion light</small></button>
+          <button class="action-button" data-stage-lighting="soft"><strong>Soft</strong><small>Gentle portrait light</small></button>
+          <button class="action-button" data-stage-lighting="neon"><strong>Neon</strong><small>More fill and rim</small></button>
+          <button class="action-button" data-stage-lighting="dramatic"><strong>Dramatic</strong><small>High contrast stage light</small></button>
+        </div>
+      </div>
+    </div>
+    <div class="workspace-panel">
+      <h3>Capture / handoff</h3>
+      <p>Use the same body, pose, framing and lighting as the live presentation. Captures remain creator-directed artifacts.</p>
+      <div class="action-grid">
+        <button class="action-button" id="stage-capture" ${currentVrm ? '' : 'disabled'}><strong>Capture transparent PNG</strong><small>Current WebGL avatar frame</small></button>
+        <button class="action-button" id="stage-copy-setup"><strong>Copy stage setup</strong><small>Portable presentation-only JSON</small></button>
+      </div>
+    </div>
   `;
 }
 
@@ -2476,10 +2592,38 @@ function bindWorkspaceActions() {
     setScreen('chat');
     submitPrompt(button.dataset.prompt);
   }));
-  $$('#workspace-body [data-avatar-frame]').forEach((button) => button.addEventListener('click', () => {
+  $('#workspace-body [data-avatar-frame]').forEach((button) => button.addEventListener('click', () => {
     setAvatarFraming(button.dataset.avatarFrame);
     toast(`Avatar framing: ${titleCase(button.dataset.avatarFrame)}`);
   }));
+  $('#workspace-body [data-stage-expression]').forEach((button) => button.addEventListener('click', () => {
+    const expression = String(button.dataset.stageExpression || 'neutral');
+    applyAvatarState({ expression, emotion_intensity: expression === 'neutral' ? .08 : .56 });
+    toast(`Stage preview: ${titleCase(expression)}`);
+  }));
+  $('#workspace-body [data-stage-motion]').forEach((button) => button.addEventListener('click', () => {
+    const motionId = String(button.dataset.stageMotion || '');
+    studioMotionCue = motionId ? { motion_id: motionId } : null;
+    if (!motionId && currentVrm) applyRelaxedStandingPose(currentVrm);
+    toast(motionId ? `Motion preview: ${titleCase(motionId)}` : 'Motion preview reset.');
+  }));
+  $('#workspace-body [data-stage-lighting]').forEach((button) => button.addEventListener('click', () => {
+    applyStageLightingPreset(button.dataset.stageLighting);
+    renderWorkspace('voice');
+    toast(`Lighting: ${titleCase(button.dataset.stageLighting)}`);
+  }));
+  const bindLightSlider = (selector, key, valueSelector) => {
+    $(selector)?.addEventListener('input', (event) => {
+      applyStageLighting({ ...stageLighting, [key]: Number(event.target.value) });
+      const valueNode = $(valueSelector);
+      if (valueNode) valueNode.textContent = stageLighting[key].toFixed(2);
+    });
+  };
+  bindLightSlider('#stage-key-light', 'key', '#stage-key-value');
+  bindLightSlider('#stage-fill-light', 'fill', '#stage-fill-value');
+  bindLightSlider('#stage-rim-light', 'rim', '#stage-rim-value');
+  $('#stage-capture')?.addEventListener('click', captureAvatarPng);
+  $('#stage-copy-setup')?.addEventListener('click', copyStageSetup);
   $$('#workspace-body [data-launch-app]').forEach((button) => button.addEventListener('click', () => {
     if (!bridge?.launchCreativeApp) return;
     bridge.launchCreativeApp(button.dataset.launchApp, selectedCreativeFile || '', (ok) => {
