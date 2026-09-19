@@ -277,9 +277,6 @@ class ModelExperimentLedger:
             == current.artifact_fingerprint.lower()
         )
         mary_fit = round(evaluation.mary_fit, 4)
-        trial_ready = bool(
-            exact_artifact and not missing and not failed and mary_fit >= 0.80
-        )
         clean_latency = None
         if latency_ms is not None:
             clean_latency = round(max(0.0, min(3_600_000.0, float(latency_ms))), 2)
@@ -288,6 +285,14 @@ class ModelExperimentLedger:
             clean_case_count = max(0, min(100_000, int(benchmark_case_count or 0)))
         except (TypeError, ValueError):
             clean_case_count = 0
+        benchmark_pinned = bool(clean_benchmark_fingerprint and clean_case_count > 0)
+        trial_ready = bool(
+            exact_artifact
+            and benchmark_pinned
+            and not missing
+            and not failed
+            and mary_fit >= 0.80
+        )
         updates = {
             "status": "benchmarked" if exact_artifact else "benchmark_mismatch",
             "node_id": _text(node_id, 180),
@@ -312,6 +317,7 @@ class ModelExperimentLedger:
                 "benchmark_fingerprint": clean_benchmark_fingerprint,
                 "benchmark_case_count": clean_case_count,
                 "artifact_match": exact_artifact,
+                "benchmark_pinned": benchmark_pinned,
                 "artifact_fingerprint": _text(artifact_fingerprint, 64).lower(),
                 "mary_fit": mary_fit,
                 "latency_ms": clean_latency,
