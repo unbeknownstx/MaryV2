@@ -48,6 +48,10 @@ def test_prepare_mlx_bundle_uses_only_structured_approved_mary_sft(tmp_path: Pat
 
     assert manifest["boundaries"]["training_performed"] is False
     assert manifest["boundaries"]["marybench_in_training_data"] is False
+    assert manifest["boundaries"]["dataset_quality_gate_passed"] is True
+    assert manifest["dataset_audit"]["training_ready"] is True
+    assert manifest["dataset_audit"]["marybench_prompt_leaks"] == 0
+    assert manifest["dataset_audit"]["split_leakage_groups"] == 0
     assert manifest["boundaries"]["ordinary_conversation_harvested"] is False
     assert manifest["boundaries"]["exact_base_required"] is True
     assert manifest["examples"]["behavior"] == 24
