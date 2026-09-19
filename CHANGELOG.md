@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — 2026-09-19 — Presence & presentation convergence
+
+- Mined current official public Riko V2 presentation patterns without using redistributed/private Patreon source code.
+- Added a truthful surface-performance capability contract so one canonical PerformancePacket can degrade cleanly across Desktop, PWA, native iPhone, stream and future VR bodies without making a renderer another Mary.
+- Exposed the current surface projection through Core display hints while preserving Core identity/state authority.
+- Wired native iPhone to the same DeliveryPlan/PerformancePacket used by Desktop/PWA; normal iPhone voice synthesis now receives Mary's canonical delivery direction and the stage visibly reacts to expression, gaze, head style and energy.
+- Added the first Desktop Character Studio pass: local expression and semantic-pose previews, camera framing, key/fill/rim lighting sandbox/presets, transparent WebGL PNG capture and presentation-only stage JSON handoff.
+- Expanded mary doctor with presentation readiness checks for packet/projection/motion contracts, Three-VRM, optional local Mary VRM, PWA performance consumption and native iPhone stage linkage.
+- Added regression coverage and updated the AI-character research/adoption ledger. Real VRMA/FBX playback, imported rooms, locomotion and full VR remain explicit renderer/world milestones rather than falsely advertised capabilities.
+
+
 ## Unreleased — Mary Dataset v1
 
 - Added a provenance-bearing Mary Dataset v1 exporter spanning approved character corpus, structured behavior SFT seeds, NEG anti-examples, held-out MaryBench cases and explicit creator feedback.
