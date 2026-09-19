@@ -778,6 +778,90 @@ class KnowledgeFabric:
         results.sort(key=lambda item: item.score, reverse=True)
         return results[: max(1, min(100, int(limit)))]
 
+    def curation_report(self, pack_id: str = "") -> dict[str, Any]:
+        """Inspect corpus hygiene without mutating source, registry, or indexes."""
+
+        selected = [
+            pack for pack in self.packs()
+            if pack.kind == "local_files" and (not pack_id or pack.id == pack_id)
+        ]
+        if pack_id and not selected:
+            raise KeyError(pack_id)
+
+        packs: list[dict[str, Any]] = []
+        hash_owners: dict[str, list[dict[str, str]]] = {}
+        for pack in selected:
+            documents = self.documents(pack.id)
+            manifest = self._load_source_manifest(pack.id)
+            manifest_rows = {
+                str(item.get("locator") or ""): dict(item)
+                for item in list(manifest.get("documents") or [])
+                if isinstance(item, dict) and str(item.get("locator") or "")
+            }
+            indexed_sources = {str(item.get("locator") or "") for item in documents}
+            manifest_sources = set(manifest_rows)
+            disabled = set(pack.disabled_documents)
+
+            for locator, row in manifest_rows.items():
+                digest = str(row.get("content_hash") or "").strip()
+                if digest:
+                    hash_owners.setdefault(digest, []).append({
+                        "pack_id": pack.id,
+                        "locator": locator,
+                    })
+
+            refresh = self.local_refresh_plan(pack.id)
+            drift = {
+                "manifest_only": sorted(manifest_sources - indexed_sources)[:5000],
+                "index_only": sorted(indexed_sources - manifest_sources)[:5000],
+                "disabled_missing": sorted(disabled - manifest_sources)[:5000],
+            }
+            recommendations: list[str] = []
+            if refresh["has_changes"]:
+                recommendations.append("explicit_refresh")
+            if drift["manifest_only"] or drift["index_only"]:
+                recommendations.append("rebuild_derivative_index")
+            if drift["disabled_missing"]:
+                recommendations.append("review_stale_disabled_locators")
+
+            packs.append({
+                "pack_id": pack.id,
+                "title": pack.title,
+                "collection": pack.collection,
+                "enabled": pack.enabled,
+                "documents": len(manifest_sources),
+                "indexed_sources": len(indexed_sources),
+                "disabled_documents": len(disabled),
+                "refresh": {
+                    "added": len(refresh["added"]),
+                    "changed": len(refresh["changed"]),
+                    "removed": len(refresh["removed"]),
+                    "skipped": refresh["skipped"],
+                    "has_changes": refresh["has_changes"],
+                },
+                "drift": drift,
+                "recommendations": recommendations or ["none"],
+            })
+
+        duplicates = [
+            {"content_hash": digest, "copies": owners}
+            for digest, owners in sorted(hash_owners.items())
+            if len(owners) > 1
+        ][:2000]
+        return {
+            "version": 1,
+            "pack_id": pack_id or None,
+            "packs": packs,
+            "duplicate_content_groups": duplicates,
+            "duplicate_content_group_count": len(duplicates),
+            "automatic_mutation_performed": False,
+            "recommended_policy": (
+                "review duplicate and stale sources explicitly; refresh/rebuild only "
+                "after creator or operator approval"
+            ),
+            "authority": "curation evidence only; never implicit corpus mutation",
+        }
+
     def status(self) -> dict[str, Any]:
         packs = self.packs()
         indexed_counts: dict[str, int] = {}
