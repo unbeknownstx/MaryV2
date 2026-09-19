@@ -157,8 +157,33 @@ final class MaryCoreClient {
         return PerformanceMode(rawValue: CoreProjection.string(json["mode"])) ?? mode
     }
 
+    private var presentationCapabilities: [String: Bool] {
+        [
+            "expression_cues": true,
+            "gaze_cues": true,
+            "head_motion": true,
+            "semantic_motion": false,
+            "motion_assets": false,
+            "lip_sync": false,
+            "voice_direction": true,
+            "scene_context": false,
+            "lighting_control": false,
+            "transparent_overlay": false,
+            "capture": false,
+            "locomotion": false,
+            "vr": false,
+        ]
+    }
+
     private func surfacePayload(foreground: Bool, visible: Bool, activity: Bool, leaseSeconds: Int = 120) -> [String: Any] {
-        ["surface_id": deviceID, "visible": visible, "foreground": foreground, "activity": activity, "lease_seconds": leaseSeconds]
+        [
+            "surface_id": deviceID,
+            "visible": visible,
+            "foreground": foreground,
+            "activity": activity,
+            "lease_seconds": leaseSeconds,
+            "presentation_capabilities": presentationCapabilities,
+        ]
     }
     func registerSurface(foreground: Bool = true) async throws { _ = try await post("/v1/creator-surfaces/register", json: surfacePayload(foreground: foreground, visible: foreground, activity: true)) }
     func renewSurface(foreground: Bool = true) async throws { _ = try await post("/v1/creator-surfaces/renew", json: surfacePayload(foreground: foreground, visible: foreground, activity: false)) }
