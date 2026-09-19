@@ -12,7 +12,7 @@ from .knowledge import KNOWLEDGE_NODE_CAPABILITIES
 from .sensors import SENSOR_CAPABILITIES
 
 _SAFE_CAPABILITIES = {
-    "personal_search", "llm.local", "llm.ollama", "llm.llama_cpp",
+    "personal_search", "llm.local", "llm.ollama", "llm.llama_cpp", "llm.mlx_lm",
     *MCP_CAPABILITIES, *SENSOR_CAPABILITIES, *ENGINEERING_CAPABILITIES,
     *KNOWLEDGE_NODE_CAPABILITIES,
 }
