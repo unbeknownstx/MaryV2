@@ -327,6 +327,10 @@ def test_skill_revision_queue_surfaces_failure_pressure_without_mutation(tmp_pat
     assert len(queue) == 1
     assert queue[0]["skill_id"] == approved.id
     assert queue[0]["failures"] == 2
+    assert queue[0]["evidence_count"] == 3
+    assert queue[0]["evidence_diversity"] == 1.0
+    assert queue[0]["revision_pressure"] > 0.0
+    assert "3 distinct evidence record(s)" in queue[0]["review_reason"]
     assert queue[0]["mutation_performed"] is False
     assert skills.get(approved.id).status == "approved"
     assert skills.status()["revision_attention"] == 1
