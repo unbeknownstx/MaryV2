@@ -46,6 +46,8 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
         artifact_fingerprint="wrong",
         scores=_scores(),
         latency_ms=500,
+        benchmark_fingerprint="marybench-test-v1",
+        benchmark_case_count=60,
     )
     assert mismatch.benchmark_verified is False
     assert mismatch.trial_ready is False
@@ -56,6 +58,8 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
         artifact_fingerprint=reviewed.artifact_fingerprint,
         scores=_scores(),
         latency_ms=500,
+        benchmark_fingerprint="marybench-test-v1",
+        benchmark_case_count=60,
     )
     assert exact.benchmark_verified is True
     assert exact.trial_ready is True
@@ -168,6 +172,8 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
         artifact_fingerprint=reviewed.artifact_fingerprint,
         scores=_scores(),
         latency_ms=321.5,
+        benchmark_fingerprint="marybench-portable-v1",
+        benchmark_case_count=60,
     )
 
     evidence = local.export_portable_evidence(benchmarked.id)
@@ -187,6 +193,8 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
     assert imported.dataset_fingerprint == "mary-dataset-exact"
     assert imported.node_id == "MAC-MARY"
     assert imported.benchmark_verified is True
+    assert imported.benchmark_fingerprint == "marybench-portable-v1"
+    assert imported.benchmark_case_count == 60
     assert imported.trial_ready is True
     assert any(
         event["event_type"] == "evidence_imported"
