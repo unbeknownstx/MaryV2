@@ -727,6 +727,73 @@ final class AppState: ObservableObject {
         }
     }
 
+    func runModelExperiment(
+        experimentID: String,
+        prompt: String
+    ) async -> [String: Any]? {
+        guard let client else {
+            lastError = "Connect Mary Core in Settings first."
+            return nil
+        }
+        let experiment = experimentID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !experiment.isEmpty, !cleanPrompt.isEmpty else {
+            lastError = "Choose a trial-ready experiment and enter a prompt."
+            return nil
+        }
+
+        do {
+            let dispatched = try await client.runtimeAction(
+                "model.experiment.dispatch",
+                args: [
+                    "experiment_id": experiment,
+                    "prompt": String(cleanPrompt.prefix(12_000)),
+                    "max_tokens": 512,
+                    "temperature": 0.7,
+                ]
+            )
+            let initialTask = CoreProjection.dict(dispatched["task"])
+            let taskID = CoreProjection.string(initialTask["task_id"])
+            guard !taskID.isEmpty else {
+                throw MaryClientError.invalidResponse
+            }
+
+            for _ in 0..<120 {
+                let statusPayload = try await client.capabilityTaskStatus(taskID)
+                let task = CoreProjection.dict(statusPayload["task"])
+                let status = CoreProjection.string(task["status"]).lowercased()
+
+                if status == "completed" {
+                    let result = CoreProjection.dict(task["result"])
+                    let content = CoreProjection.string(result["content"])
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !content.isEmpty else {
+                        lastError = "The model experiment completed without usable output."
+                        return nil
+                    }
+                    lastError = nil
+                    return result
+                }
+
+                if ["failed", "rejected", "expired"].contains(status) {
+                    let detail = CoreProjection.string(task["error"])
+                    lastError = detail.isEmpty
+                        ? "The model experiment ended as \(status)."
+                        : detail
+                    return nil
+                }
+
+                try await Task.sleep(nanoseconds: 500_000_000)
+            }
+
+            lastError = "The model experiment is still running on the selected node."
+            return nil
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
     func personalSearch(_ query: String) async {
         guard let client else { return }
         let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
