@@ -58,6 +58,35 @@ The manifest contains sourcebook/MaryBench fingerprints, counts, file roles and
 the dataset fingerprint so later LoRA experiments can record exactly which data
 version they used.
 
+
+## Corpus inventory and quality gate
+
+Before expanding or training, inspect the active creator-owned corpus:
+
+```bash
+python -m scripts.inspect_mary_corpus --root .
+```
+
+The inventory is read-only. It reports source/label balance, structured
+Situation/Mary-behavior coverage, NEG/FC/ALT boundaries, exact duplicate groups,
+and MaryBench category coverage. It does not create examples or promote records.
+
+Audit an exported Dataset v1 bundle with:
+
+```bash
+python -m scripts.audit_mary_dataset_v1
+```
+
+The deterministic audit blocks malformed artifacts, cross-split example
+leakage, held-out MaryBench prompt contamination, and fiction/negative records
+crossing training boundaries. Duplicate groups, empty held-out splits and heavy
+single-source dominance are surfaced for review.
+
+`prepare_mary_mlx_lora` now enforces this structural audit before preparing
+MLX train/valid/test files. Passing the audit still does not mean a profile has
+enough examples, that the host/runtime is ready, or that training/promotion has
+been authorized.
+
 ## Recommended first uses
 
 1. Keep MaryBench held out for regression evaluation.
@@ -84,3 +113,9 @@ record:
 A third-party reasoning/dialogue/vision adapter is a replaceable capability.
 Mary-specific adapters remain subordinate to Mary Core and must be benchmarked
 against the no-adapter base before promotion.
+
+
+Model/adapter experiments use an append-only content-free lineage ledger. Review,
+benchmark, explicit trial dispatch and terminal trial outcome are retained with
+artifact/dataset/node identifiers and bounded operational metadata. Held-out
+prompts and generated trial text are not written to that lineage ledger.
