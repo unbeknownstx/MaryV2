@@ -200,18 +200,19 @@ def _mlx_lm_capability() -> CapabilityDescriptor | None:
         proposal = build_mlx_adapter_candidate_proposal(bundle)
         ledger_path = os.getenv("MARY_MODEL_EXPERIMENT_LEDGER", "").strip()
         experiment_id = os.getenv("MARY_MLX_EXPERIMENT_ID", "").strip()[:160]
-        artifact_fingerprint = ""
-        overlay: dict[str, Any] = {}
-        if ledger_path and experiment_id:
-            ledger = ModelExperimentLedger(Path(ledger_path).expanduser())
-            record = ledger.get(experiment_id)
-            artifact_fingerprint = record.artifact_fingerprint
-            overlay = ledger.advertisement_overlay(
-                experiment_id,
-                runtime="mlx_lm",
-                artifact_fingerprint=artifact_fingerprint,
-                node_id=os.getenv("MARY_NODE_ID", "").strip()[:180],
-            )
+        if not ledger_path or not experiment_id:
+            return None
+        ledger = ModelExperimentLedger(Path(ledger_path).expanduser())
+        record = ledger.get(experiment_id)
+        if record.runtime != "mlx_lm" or record.model != proposal.model:
+            return None
+        artifact_fingerprint = record.artifact_fingerprint
+        overlay = ledger.advertisement_overlay(
+            experiment_id,
+            runtime="mlx_lm",
+            artifact_fingerprint=artifact_fingerprint,
+            node_id=os.getenv("MARY_NODE_ID", "").strip()[:180],
+        )
         return CapabilityDescriptor(
             name="llm.mlx_lm",
             available=True,
