@@ -925,6 +925,10 @@ class SelfIntrospection:
                     demonstrated[capability] = [
                         {
                             "node_id": str(item.get("node_id") or "")[:120],
+                            "skill_id": str(item.get("skill_id") or "")[:180],
+                            "implementation_fingerprint": str(
+                                item.get("implementation_fingerprint") or ""
+                            )[:64],
                             "attempts": int(item.get("attempts") or 0),
                             "verified_successes": int(item.get("verified_successes") or 0),
                             "reliability": float(item.get("reliability") or 0.0),
@@ -955,8 +959,186 @@ class SelfIntrospection:
                 knowledge_substrate = dict(substrate_fn() or {})
             except Exception:
                 knowledge_substrate = {}
-        skills_status = safe_status(getattr(self, "procedural_skills", None))
+        procedural_owner = getattr(self, "procedural_skills", None)
+        skills_status = safe_status(procedural_owner)
         world_status = safe_status(getattr(self, "world_model", None))
+
+        revision_rows: list[dict[str, Any]] = []
+        revision_fn = getattr(procedural_owner, "revision_queue", None)
+        if callable(revision_fn):
+            try:
+                revision_rows = [
+                    dict(item)
+                    for item in list(revision_fn(limit=200) or [])
+                    if isinstance(item, dict)
+                ]
+            except Exception:
+                revision_rows = []
+        revision_by_skill = {
+            str(item.get("skill_id") or ""): item
+            for item in revision_rows
+            if str(item.get("skill_id") or "")
+        }
+
+        procedure_rows: list[dict[str, Any]] = []
+        approved_fn = getattr(procedural_owner, "approved", None)
+        skill_summary_fn = getattr(competence_owner, "skill_summary", None)
+        if callable(approved_fn):
+            try:
+                approved_skills = list(approved_fn() or [])[:64]
+            except Exception:
+                approved_skills = []
+            for skill in approved_skills:
+                skill_id = str(getattr(skill, "id", "") or "")[:180]
+                if not skill_id:
+                    continue
+                required_capabilities = [
+                    str(item)[:160]
+                    for item in list(
+                        getattr(skill, "required_capabilities", ()) or ()
+                    )[:8]
+                    if str(item)
+                ]
+                primary_capability = (
+                    required_capabilities[0]
+                    if len(required_capabilities) == 1
+                    else ""
+                )
+                competence_view: dict[str, Any] = {}
+                if callable(skill_summary_fn):
+                    try:
+                        competence_view = dict(skill_summary_fn(
+                            skill_id,
+                            capability=primary_capability,
+                            node_ids=connected_node_ids,
+                        ) or {})
+                    except Exception:
+                        competence_view = {}
+
+                attempts = int(competence_view.get("attempts") or 0)
+                verified_successes = int(
+                    competence_view.get("verified_successes") or 0
+                )
+                evidence_strength = float(
+                    competence_view.get("evidence_strength") or 0.0
+                )
+                demonstrated_skill = bool(
+                    competence_view.get("demonstrated")
+                )
+                pressure_row = revision_by_skill.get(skill_id, {})
+                revision_pressure = float(
+                    pressure_row.get("revision_pressure") or 0.0
+                )
+                evidence_needed: list[str] = []
+                if attempts == 0:
+                    evidence_needed.append(
+                        "bounded typed terminal outcome for this approved procedure"
+                    )
+                elif verified_successes == 0:
+                    evidence_needed.append(
+                        "at least one verified successful terminal outcome"
+                    )
+                if attempts < 4 or evidence_strength < 0.35:
+                    evidence_needed.append(
+                        "additional independent outcomes to strengthen competence confidence"
+                    )
+                if revision_pressure > 0.0:
+                    evidence_needed.append(
+                        "creator review of failure evidence before any replacement procedure is approved"
+                    )
+
+                procedure_rows.append({
+                    "skill_id": skill_id,
+                    "name": str(getattr(skill, "name", "") or "")[:240],
+                    "version": int(getattr(skill, "version", 0) or 0),
+                    "required_capabilities": required_capabilities,
+                    "state": (
+                        "degrading"
+                        if revision_pressure > 0.0
+                        else (
+                            "demonstrated"
+                            if demonstrated_skill
+                            else (
+                                "observed_unverified"
+                                if attempts > 0
+                                else "approved_untested"
+                            )
+                        )
+                    ),
+                    "demonstrated": demonstrated_skill,
+                    "degrading": bool(revision_pressure > 0.0),
+                    "revision_pressure": revision_pressure,
+                    "attempts": attempts,
+                    "successes": int(competence_view.get("successes") or 0),
+                    "failures": int(competence_view.get("failures") or 0),
+                    "verified_successes": verified_successes,
+                    "reliability": float(
+                        competence_view.get("reliability") or 0.5
+                    ),
+                    "evidence_strength": evidence_strength,
+                    "last_success": competence_view.get("last_success"),
+                    "last_observed_at": str(
+                        competence_view.get("last_observed_at") or ""
+                    )[:80],
+                    "evidence_needed": evidence_needed,
+                })
+
+        procedure_rows.sort(
+            key=lambda item: (
+                bool(item.get("degrading")),
+                float(item.get("revision_pressure") or 0.0),
+                bool(item.get("demonstrated")),
+                float(item.get("evidence_strength") or 0.0),
+            ),
+            reverse=True,
+        )
+
+        capability_improvement: dict[str, dict[str, Any]] = {}
+        for capability in sorted(capability_names)[:32]:
+            rows = list(demonstrated.get(capability) or [])
+            attempts = sum(int(item.get("attempts") or 0) for item in rows)
+            verified_successes = sum(
+                int(item.get("verified_successes") or 0) for item in rows
+            )
+            strongest_evidence = max(
+                [float(item.get("evidence_strength") or 0.0) for item in rows]
+                or [0.0]
+            )
+            evidence_needed: list[str] = []
+            if not rows:
+                evidence_needed.append(
+                    "a bounded typed task with a terminal outcome on a connected node"
+                )
+            elif verified_successes == 0:
+                evidence_needed.append(
+                    "at least one verified successful terminal outcome"
+                )
+            if attempts < 4 or strongest_evidence < 0.35:
+                evidence_needed.append(
+                    "additional independent outcomes to strengthen the competence estimate"
+                )
+            degrading_for_capability = [
+                item["skill_id"]
+                for item in procedure_rows
+                if capability in list(item.get("required_capabilities") or [])
+                and bool(item.get("degrading"))
+            ]
+            if degrading_for_capability:
+                evidence_needed.append(
+                    "creator-reviewed comparison of a revision candidate against the failing procedure"
+                )
+            capability_improvement[capability] = {
+                "demonstrated": bool(rows and verified_successes > 0),
+                "attempts": attempts,
+                "verified_successes": verified_successes,
+                "strongest_evidence_strength": round(strongest_evidence, 4),
+                "degrading_procedure_ids": degrading_for_capability[:12],
+                "evidence_needed": evidence_needed,
+                "execution_authorized": capability in execution_ready,
+                "authority": (
+                    "evidence guidance only; permission and execution remain separate"
+                ),
+            }
 
         experiment_snapshot: dict[str, Any] = {}
         experiment_owner = getattr(self, "model_experiments", None)
@@ -975,6 +1157,65 @@ class SelfIntrospection:
             str(item.get("status") or "").strip().casefold()
             for item in experiment_records
         ]
+        experiment_views: list[dict[str, Any]] = []
+        for item in experiment_records[-8:]:
+            missing_scores = [
+                str(value)[:80]
+                for value in list(item.get("missing_scores") or [])[:12]
+                if str(value)
+            ]
+            failed_scores = [
+                str(value)[:80]
+                for value in list(item.get("failed_scores") or [])[:12]
+                if str(value)
+            ]
+            status = str(item.get("status") or "")[:80]
+            benchmark_verified = bool(item.get("benchmark_verified"))
+            trial_ready = bool(item.get("trial_ready"))
+            evidence_needed: list[str] = []
+            if missing_scores:
+                evidence_needed.append(
+                    "creator-reviewed semantic scores for: "
+                    + ", ".join(missing_scores)
+                )
+            if failed_scores:
+                evidence_needed.append(
+                    "improved result and held-out retest for failed dimensions: "
+                    + ", ".join(failed_scores)
+                )
+            if status == "benchmark_mismatch":
+                evidence_needed.append(
+                    "rerun against the exact pinned MaryBench fingerprint and case count"
+                )
+            elif not benchmark_verified:
+                evidence_needed.append(
+                    "exact held-out MaryBench benchmark lineage for this artifact"
+                )
+            if not trial_ready:
+                evidence_needed.append(
+                    "all semantic score floors plus exact artifact, dataset, bundle and node benchmark matches"
+                )
+            else:
+                evidence_needed.append(
+                    "bounded explicit trial outcomes before any production-routing decision"
+                )
+            experiment_views.append({
+                "id": str(item.get("id") or "")[:160],
+                "candidate_id": str(item.get("candidate_id") or "")[:160],
+                "status": status,
+                "runtime": str(item.get("runtime") or "")[:80],
+                "model": str(item.get("model") or "")[:240],
+                "node_id": str(item.get("node_id") or "")[:160],
+                "benchmark_verified": benchmark_verified,
+                "trial_ready": trial_ready,
+                "mary_fit": item.get("mary_fit"),
+                "missing_scores": missing_scores,
+                "failed_scores": failed_scores,
+                "experimental": True,
+                "production_authority": False,
+                "evidence_needed": evidence_needed,
+            })
+
         experiment_view = {
             "count": int(
                 experiment_snapshot.get("count", len(experiment_records)) or 0
@@ -996,22 +1237,8 @@ class SelfIntrospection:
                 if bool(item.get("benchmark_verified"))
             ),
             "trial_ready": int(experiment_snapshot.get("trial_ready") or 0),
-            "records": [
-                {
-                    "id": str(item.get("id") or "")[:160],
-                    "candidate_id": str(item.get("candidate_id") or "")[:160],
-                    "status": str(item.get("status") or "")[:80],
-                    "runtime": str(item.get("runtime") or "")[:80],
-                    "model": str(item.get("model") or "")[:240],
-                    "node_id": str(item.get("node_id") or "")[:160],
-                    "benchmark_verified": bool(item.get("benchmark_verified")),
-                    "trial_ready": bool(item.get("trial_ready")),
-                    "mary_fit": item.get("mary_fit"),
-                    "missing_scores": list(item.get("missing_scores") or [])[:12],
-                    "failed_scores": list(item.get("failed_scores") or [])[:12],
-                }
-                for item in experiment_records[-8:]
-            ],
+            "experimental_records": len(experiment_views),
+            "records": experiment_views,
             "training_readiness_claimed": False,
             "automatic_training": False,
             "automatic_promotion": False,
@@ -1070,7 +1297,17 @@ class SelfIntrospection:
                 "approved": int(skills_status.get("approved") or 0),
                 "candidates": int(skills_status.get("candidates") or 0),
                 "revision_attention": int(skills_status.get("revision_attention") or 0),
+                "demonstrated": sum(
+                    1 for item in procedure_rows
+                    if bool(item.get("demonstrated"))
+                ),
+                "degrading": sum(
+                    1 for item in procedure_rows
+                    if bool(item.get("degrading"))
+                ),
+                "procedures": procedure_rows[:16],
             },
+            "capability_improvement": capability_improvement,
             "world_model": {
                 "current_beliefs": int(world_status.get("current_beliefs") or 0),
                 "reconciliation_groups": int(world_status.get("reconciliation_groups") or 0),
@@ -1110,6 +1347,21 @@ class SelfIntrospection:
         asks_local_knowledge = any(
             term in lowered_query
             for term in ("local knowledge", "knowledge search", "corpus", "offline library")
+        )
+        asks_procedure_evidence = any(
+            term in lowered_query
+            for term in (
+                "procedure",
+                "procedural",
+                "skill",
+                "learned",
+                "good at",
+                "demonstrated",
+                "degrading",
+                "improve",
+                "improvement evidence",
+                "evidence do you need",
+            )
         )
         asks_model_experiments = any(
             term in lowered_query
@@ -1219,6 +1471,35 @@ class SelfIntrospection:
                 requested_sentences.append(
                     "I do not currently have an available Core local knowledge substrate "
                     "or a connected knowledge.search route to claim."
+                )
+
+        if asks_procedure_evidence:
+            procedure_state = facts["procedural_memory"]
+            demonstrated_count = int(procedure_state.get("demonstrated") or 0)
+            degrading_count = int(procedure_state.get("degrading") or 0)
+            requested_sentences.append(
+                "My approved procedures and demonstrated competence are separate evidence layers. "
+                f"I currently project {demonstrated_count} approved procedure"
+                f"{'s' if demonstrated_count != 1 else ''} with verified successful evidence "
+                f"and {degrading_count} procedure"
+                f"{'s' if degrading_count != 1 else ''} under degradation/revision review. "
+                "Plans may rank demonstrated approved procedures more highly, but competence "
+                "never approves, binds, authorizes, or executes a procedure by itself."
+            )
+            missing = [
+                item
+                for item in list(procedure_state.get("procedures") or [])
+                if list(item.get("evidence_needed") or [])
+            ][:3]
+            if missing:
+                requested_sentences.append(
+                    "The highest-priority procedure evidence gaps are: "
+                    + "; ".join(
+                        f"{str(item.get('name') or item.get('skill_id') or 'procedure')}: "
+                        + ", ".join(list(item.get("evidence_needed") or [])[:2])
+                        for item in missing
+                    )
+                    + "."
                 )
 
         if asks_model_experiments:
