@@ -69,6 +69,7 @@ let lastTurnTrace = {};
 let currentScreen = 'chat';
 let selectedCreativeFile = '';
 let creatorLabState = { previewDataUrl: '', description: '', draft: '', busy: false };
+let modelExperimentTrialState = { experimentId: '', prompt: 'Give a concise character-consistent response to this held-out trial prompt.', taskId: '', status: '', result: '', provider: '', model: '', busy: false };
 let busy = false;
 let conversationState = 'idle';
 let activeSpeechAudio = null;
@@ -1778,9 +1779,6 @@ function renderFabric() {
   const f = dashboardState.system_fabric || {};
   const k = f.knowledge || {};
   const w = f.world || {};
-  const worldContext = ecosystemState.world_context || {};
-  const worldPulse = ecosystemState.world_pulse || {};
-  const dueWorld = worldPulse.due || [];
   const c = f.continuity || {};
   const skills = c.skills || {};
   const plans = c.plans || {};
@@ -1789,14 +1787,33 @@ function renderFabric() {
   const lab = models.adapter_lab || {};
   const candidates = models.candidates || {};
   const experiments = models.experiments || {};
+  const experimentRows = Array.isArray(experiments.records) ? experiments.records : [];
+  const readyExperiments = experimentRows.filter((item) => item?.trial_ready);
+  if (!modelExperimentTrialState.experimentId && readyExperiments.length) {
+    modelExperimentTrialState.experimentId = String(readyExperiments[0].id || '');
+  }
   const compute = f.compute || {};
   const nodes = compute.nodes || {};
   const integration = f.integration || {};
+  const selectedExperiment = experimentRows.find((item) => String(item?.id || '') === modelExperimentTrialState.experimentId) || {};
+  const experimentOptions = readyExperiments.map((item) => `<option value="${escapeHtml(item.id || '')}" ${String(item.id || '') === modelExperimentTrialState.experimentId ? 'selected' : ''}>${escapeHtml(item.candidate_id || item.id || 'experiment')} · ${Math.round(Number(item.mary_fit || 0) * 100)}%</option>`).join('');
+  const trialResult = modelExperimentTrialState.result
+    ? `<div class="workspace-panel" style="margin-top:10px"><div class="data-row"><span>Provider</span><strong>${escapeHtml(modelExperimentTrialState.provider || 'local')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(modelExperimentTrialState.model || selectedExperiment.model || 'reviewed experiment')}</strong></div><p>${escapeHtml(modelExperimentTrialState.result)}</p><small>Experimental output only · never injected into Mary's production response or memory.</small></div>`
+    : '';
   return `
     <div class="workspace-grid three">
       <div class="workspace-panel accent"><h3>One Mary Core</h3><div class="data-row"><span>Architecture</span><strong>${integration.healthy ? 'Connected' : 'Degraded'}</strong></div><div class="data-row"><span>Operational</span><strong>${integration.operational ? 'Yes' : 'No'}</strong></div><div class="data-row"><span>Connected nodes</span><strong>${nodes.connected ?? nodes.connected_nodes ?? 0}</strong></div><p>PC, Mac, PWA and iPhone are surfaces or workers around the same canonical identity and state.</p></div>
-      <div class="workspace-panel"><h3>Knowledge + World</h3><div class="data-row"><span>Enabled packs</span><strong>${k.enabled ?? 0}/${k.packs ?? 0}</strong></div><div class="data-row"><span>Indexed chunks</span><strong>${k.indexed_documents ?? 0}</strong></div><div class="data-row"><span>External context</span><strong>${worldContext.count ?? 0}</strong></div><div class="data-row"><span>Refresh lanes due</span><strong>${dueWorld.length}</strong></div><div class="data-row"><span>Current beliefs</span><strong>${w.beliefs?.current_beliefs ?? 0}</strong></div><div class="data-row"><span>Temporal relations</span><strong>${w.temporal?.relations ?? 0}</strong></div><p>World Pulse plans refreshes only. Retrieved material stays evidence, and superseded history never becomes current truth.</p></div>
+      <div class="workspace-panel"><h3>Knowledge + World</h3><div class="data-row"><span>Enabled packs</span><strong>${k.enabled ?? 0}/${k.packs ?? 0}</strong></div><div class="data-row"><span>Indexed chunks</span><strong>${k.indexed_documents ?? 0}</strong></div><div class="data-row"><span>Current beliefs</span><strong>${w.beliefs?.current_beliefs ?? 0}</strong></div><div class="data-row"><span>Temporal relations</span><strong>${w.temporal?.relations ?? 0}</strong></div><p>Retrieval is evidence, and superseded history never becomes current truth.</p></div>
       <div class="workspace-panel"><h3>Procedures + Models</h3><div class="data-row"><span>Approved skills</span><strong>${skills.approved ?? 0}</strong></div><div class="data-row"><span>Active plans</span><strong>${plans.active_plans ?? 0}</strong></div><div class="data-row"><span>Competence evidence</span><strong>${competence.records ?? 0}</strong></div><div class="data-row"><span>Model candidates</span><strong>${candidates.count ?? 0}</strong></div><div class="data-row"><span>Trial-ready experiments</span><strong>${experiments.trial_ready ?? 0}</strong></div><div class="data-row"><span>Adapter configs</span><strong>${(lab.configurations || []).length}</strong></div><p>Skills require creator approval. Benchmarks and competence cannot grant permission or auto-promote a model.</p></div>
+    </div>
+    <div class="workspace-panel" style="margin-top:12px">
+      <h3>Explicit Model Trial</h3>
+      <p>Run one already-reviewed, benchmarked experiment on the exact authorized llama.cpp node. The output stays in the lab and cannot replace Mary's production route.</p>
+      <label class="field-label"><span>TRIAL-READY EXPERIMENT</span><select id="model-exp-select" ${readyExperiments.length ? '' : 'disabled'}>${experimentOptions || '<option>No trial-ready experiment</option>'}</select></label>
+      <label class="field-label"><span>HELD-OUT PROMPT</span><textarea id="model-exp-prompt" rows="3" ${readyExperiments.length ? '' : 'disabled'}>${escapeHtml(modelExperimentTrialState.prompt)}</textarea></label>
+      <button class="action-button primary" id="model-exp-run" ${readyExperiments.length && !modelExperimentTrialState.busy ? '' : 'disabled'}><strong>${modelExperimentTrialState.busy ? 'Experiment running…' : 'Run bounded trial'}</strong><small>Exact lineage + benchmark + node permission required</small></button>
+      <p id="model-exp-status"><small>${escapeHtml(modelExperimentTrialState.status || (readyExperiments.length ? 'Ready for an explicit trial.' : 'No reviewed experiment currently satisfies the trial gate.'))}</small></p>
+      ${trialResult}
     </div>`;
 }
 
@@ -2110,8 +2127,88 @@ function bindCreatorLabActions() {
   });
 }
 
+function pollModelExperimentTask(taskId, attempt = 0) {
+  if (!taskId || !bridge?.getCapabilityTaskStatus) return;
+  if (attempt >= 120) {
+    modelExperimentTrialState.busy = false;
+    modelExperimentTrialState.status = 'Trial is still running on the selected node. Reopen System Fabric to inspect updated state.';
+    if (currentScreen === 'fabric') renderWorkspace('fabric');
+    return;
+  }
+  bridge.getCapabilityTaskStatus(taskId, (raw) => {
+    const payload = parsePayload(raw);
+    const task = payload.task || {};
+    const status = String(task.status || '').toLowerCase();
+    if (status === 'completed') {
+      const result = task.result || {};
+      modelExperimentTrialState.busy = false;
+      modelExperimentTrialState.status = 'Trial completed · experimental output only.';
+      modelExperimentTrialState.result = String(result.content || '').trim();
+      modelExperimentTrialState.provider = String(result.provider || '');
+      modelExperimentTrialState.model = String(result.model || '');
+      if (currentScreen === 'fabric') renderWorkspace('fabric');
+      return;
+    }
+    if (['failed', 'rejected', 'expired'].includes(status)) {
+      modelExperimentTrialState.busy = false;
+      modelExperimentTrialState.status = String(task.error || `Trial ended as ${status}.`);
+      if (currentScreen === 'fabric') renderWorkspace('fabric');
+      return;
+    }
+    modelExperimentTrialState.status = status ? `Trial ${status} on the selected node…` : 'Waiting for the selected node…';
+    if (currentScreen === 'fabric') {
+      const statusNode = $('#model-exp-status');
+      if (statusNode) statusNode.innerHTML = `<small>${escapeHtml(modelExperimentTrialState.status)}</small>`;
+    }
+    setTimeout(() => pollModelExperimentTask(taskId, attempt + 1), 500);
+  });
+}
+
 function bindWorkspaceActions() {
   if (currentScreen === 'gallery') bindCreatorLabActions();
+  if (currentScreen === 'fabric') {
+    $('#model-exp-select')?.addEventListener('change', (event) => {
+      modelExperimentTrialState.experimentId = String(event.target.value || '');
+    });
+    $('#model-exp-prompt')?.addEventListener('input', (event) => {
+      modelExperimentTrialState.prompt = String(event.target.value || '').slice(0, 12000);
+    });
+    $('#model-exp-run')?.addEventListener('click', () => {
+      const experimentId = String($('#model-exp-select')?.value || modelExperimentTrialState.experimentId || '').trim();
+      const prompt = String($('#model-exp-prompt')?.value || modelExperimentTrialState.prompt || '').trim();
+      if (!experimentId || !prompt || !bridge?.runModelExperiment) {
+        toast('A trial-ready experiment, prompt, and remote Mary Core are required.', 'error');
+        return;
+      }
+      modelExperimentTrialState.experimentId = experimentId;
+      modelExperimentTrialState.prompt = prompt;
+      modelExperimentTrialState.busy = true;
+      modelExperimentTrialState.result = '';
+      modelExperimentTrialState.status = 'Core is verifying exact experiment and node readiness…';
+      renderWorkspace('fabric');
+      bridge.runModelExperiment(experimentId, prompt, (raw) => {
+        const result = parsePayload(raw);
+        if (result.ok === false) {
+          modelExperimentTrialState.busy = false;
+          modelExperimentTrialState.status = result.error || 'Experiment dispatch was rejected.';
+          renderWorkspace('fabric');
+          return;
+        }
+        const task = result.task || {};
+        const taskId = String(task.task_id || '').trim();
+        if (!taskId) {
+          modelExperimentTrialState.busy = false;
+          modelExperimentTrialState.status = 'Core returned no experiment task ID.';
+          renderWorkspace('fabric');
+          return;
+        }
+        modelExperimentTrialState.taskId = taskId;
+        modelExperimentTrialState.status = `Queued on ${result.node?.node_id || task.selected_node_id || 'authorized node'}…`;
+        renderWorkspace('fabric');
+        pollModelExperimentTask(taskId);
+      });
+    });
+  }
   $('#resident-hearing-toggle')?.addEventListener('click', () => {
     if (!bridge?.setResidentHearing) return;
     const current = runtimeStatus.resident_hearing || residentHearingState || {};
