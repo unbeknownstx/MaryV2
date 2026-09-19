@@ -4862,6 +4862,7 @@ class MaryCoreService:
         return _json_safe({
             "delivery_plan": cycle_metadata.get("delivery_plan", {}) or result_metadata.get("delivery_plan", {}),
             "performance_packet": cycle_metadata.get("performance_packet", {}) or result_metadata.get("performance_packet", {}),
+            "surface_performance": cycle_metadata.get("surface_performance", {}) or result_metadata.get("surface_performance", {}),
             "performance_context": cycle_metadata.get("performance_context", {}) or result_metadata.get("performance_context", {}),
             "dialogue_plan": safe_dialogue_plan,
             "timings": timings,
