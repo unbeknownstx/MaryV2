@@ -7,6 +7,12 @@ struct WorkspaceDetailView: View {
     @State private var studyName = ""
     @State private var researchTitle = ""
     @State private var searchQuery = ""
+    @State private var modelTrialPrompt = "Give a concise character-consistent response to this held-out trial prompt."
+    @State private var modelTrialStatus = ""
+    @State private var modelTrialOutput = ""
+    @State private var modelTrialProvider = ""
+    @State private var modelTrialModel = ""
+    @State private var modelTrialRunning = false
 
     var body: some View {
         ScrollView {
@@ -183,15 +189,123 @@ struct WorkspaceDetailView: View {
         let lab = CoreProjection.dict(app.liveData["adapter_lab"])
         let candidates = CoreProjection.dict(app.liveData["candidates"])
         let experiments = CoreProjection.dict(app.liveData["experiments"])
-        return GlassCard { VStack(alignment: .leading, spacing: 9) {
-            Eyebrow(text: "Model lab")
-            Text("\(CoreProjection.int(candidates["count"])) reviewed candidates").font(.title2.bold())
-            DataRow(label: "Trial-ready experiments", value: "\(CoreProjection.int(experiments["trial_ready"]))")
-            DataRow(label: "Configurations", value: "\(CoreProjection.array(lab["configurations"]).count)")
-            DataRow(label: "Evaluations", value: "\(CoreProjection.array(lab["evaluations"]).count)")
-            DataRow(label: "Promotion", value: "Creator-reviewed")
-            Text("Models and LoRAs are replaceable capabilities. Exact lineage, held-out MaryBench and runtime evidence are required before routing changes.").font(.caption).foregroundStyle(MaryTheme.muted)
-        }}
+        let records = CoreProjection.array(experiments["records"]).map {
+            CoreProjection.dict($0)
+        }
+        let ready = records.filter {
+            CoreProjection.bool($0["trial_ready"])
+        }
+        let selected = ready.first ?? [:]
+        let experimentID = CoreProjection.string(selected["id"])
+        let candidateID = CoreProjection.string(
+            selected["candidate_id"] ?? selected["id"]
+        )
+
+        return VStack(spacing: 12) {
+            GlassCard { VStack(alignment: .leading, spacing: 9) {
+                Eyebrow(text: "Model lab")
+                Text("\(CoreProjection.int(candidates["count"])) reviewed candidates").font(.title2.bold())
+                DataRow(label: "Trial-ready experiments", value: "\(CoreProjection.int(experiments["trial_ready"]))")
+                DataRow(label: "Configurations", value: "\(CoreProjection.array(lab["configurations"]).count)")
+                DataRow(label: "Evaluations", value: "\(CoreProjection.array(lab["evaluations"]).count)")
+                DataRow(label: "Promotion", value: "Creator-reviewed")
+                Text("Models and LoRAs are replaceable capabilities. Exact lineage, held-out MaryBench and runtime evidence are required before routing changes.").font(.caption).foregroundStyle(MaryTheme.muted)
+            }}
+
+            GlassCard { VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "Explicit model trial")
+                Text(candidateID.isEmpty ? "No trial-ready experiment" : candidateID)
+                    .font(.headline)
+                Text("Runs only an already-reviewed, benchmarked experiment on the exact authorized llama.cpp node. The output never becomes Mary's production response, memory, or routing policy.")
+                    .font(.caption)
+                    .foregroundStyle(MaryTheme.muted)
+
+                TextField("Held-out prompt", text: $modelTrialPrompt, axis: .vertical)
+                    .lineLimit(2...5)
+                    .padding(12)
+                    .background(
+                        MaryTheme.panel2,
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
+                    .disabled(experimentID.isEmpty || modelTrialRunning)
+
+                Button {
+                    Task {
+                        modelTrialRunning = true
+                        modelTrialOutput = ""
+                        modelTrialStatus = "Core is verifying exact experiment and node readiness…"
+
+                        if let result = await app.runModelExperiment(
+                            experimentID: experimentID,
+                            prompt: modelTrialPrompt
+                        ) {
+                            modelTrialOutput = CoreProjection.string(
+                                result["content"]
+                            )
+                            modelTrialProvider = CoreProjection.string(
+                                result["provider"]
+                            )
+                            modelTrialModel = CoreProjection.string(
+                                result["model"]
+                            )
+                            modelTrialStatus = "Trial completed · experimental output only."
+                            UINotificationFeedbackGenerator()
+                                .notificationOccurred(.success)
+                        } else {
+                            modelTrialStatus =
+                                app.lastError ?? "The bounded trial did not complete."
+                            UINotificationFeedbackGenerator()
+                                .notificationOccurred(.error)
+                        }
+
+                        modelTrialRunning = false
+                    }
+                } label: {
+                    Label(
+                        modelTrialRunning
+                            ? "Experiment running…"
+                            : "Run bounded trial",
+                        systemImage: "flask.fill"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(MaryPrimaryButtonStyle())
+                .disabled(
+                    experimentID.isEmpty
+                    || modelTrialRunning
+                    || modelTrialPrompt.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                )
+
+                if !modelTrialStatus.isEmpty {
+                    Text(modelTrialStatus)
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
+                }
+
+                if !modelTrialOutput.isEmpty {
+                    Divider().overlay(MaryTheme.hairline)
+                    DataRow(
+                        label: "Provider",
+                        value: modelTrialProvider.isEmpty
+                            ? "Local experiment"
+                            : modelTrialProvider
+                    )
+                    DataRow(
+                        label: "Model",
+                        value: modelTrialModel.isEmpty
+                            ? CoreProjection.string(selected["model"])
+                            : modelTrialModel
+                    )
+                    Text(modelTrialOutput)
+                        .font(.body)
+                    Text("LAB OUTPUT · not written to memory or production routing")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(MaryTheme.pink2)
+                }
+            }}
+        }
     }
 
     private var memoryCard: some View {
