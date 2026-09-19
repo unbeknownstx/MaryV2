@@ -330,3 +330,34 @@ def test_skill_revision_queue_surfaces_failure_pressure_without_mutation(tmp_pat
     assert queue[0]["mutation_performed"] is False
     assert skills.get(approved.id).status == "approved"
     assert skills.status()["revision_attention"] == 1
+
+
+def test_world_reconciliation_queue_groups_conflicts_without_resolving(tmp_path: Path):
+    world = WorldModel(tmp_path / "world-queue.json")
+    first = world.observe(
+        subject="Desktop",
+        predicate="connected",
+        value=True,
+        source="runtime-a",
+        authority="runtime",
+        verification="verified",
+    )
+    second = world.observe(
+        subject="Desktop",
+        predicate="connected",
+        value=False,
+        source="runtime-b",
+        authority="runtime",
+        verification="unverified",
+    )
+
+    queue = world.reconciliation_queue()
+
+    assert len(queue) == 1
+    assert queue[0]["subject"] == "Desktop"
+    assert queue[0]["predicate"] == "connected"
+    assert set(queue[0]["belief_ids"]) == {first.id, second.id}
+    assert queue[0]["resolution_performed"] is False
+    assert world.get_belief(first.id).valid_to is None
+    assert world.get_belief(second.id).valid_to is None
+    assert world.status()["reconciliation_groups"] == 1
