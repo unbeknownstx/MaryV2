@@ -85,3 +85,38 @@ def test_candidate_proposal_refuses_unready_adapter(tmp_path: Path):
             mlx_available=True,
             mlx_lm_available=True,
         )
+
+
+def test_candidate_proposal_reads_nested_mary_dataset_fingerprint(tmp_path: Path):
+    root = _ready_bundle(tmp_path)
+    manifest_path = root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("dataset_fingerprint", None)
+    manifest["mary_dataset"] = {"fingerprint": "dataset-nested-xyz"}
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    proposal = build_mlx_adapter_candidate_proposal(
+        root,
+        host_system="Darwin",
+        host_machine="arm64",
+        mlx_available=True,
+        mlx_lm_available=True,
+    )
+    assert proposal.dataset_fingerprint == "dataset-nested-xyz"
+
+
+def test_candidate_proposal_refuses_missing_dataset_lineage(tmp_path: Path):
+    root = _ready_bundle(tmp_path)
+    manifest_path = root / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("dataset_fingerprint", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Dataset fingerprint lineage"):
+        build_mlx_adapter_candidate_proposal(
+            root,
+            host_system="Darwin",
+            host_machine="arm64",
+            mlx_available=True,
+            mlx_lm_available=True,
+        )
