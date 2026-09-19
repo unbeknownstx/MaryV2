@@ -3115,10 +3115,7 @@ class MaryCoreService:
                     "ok": True,
                     "belief": belief.to_dict(),
                     "temporal_relation": asdict(temporal_relation),
-                    "policy": (
-                        "explicit reconciliation only; competing beliefs are "
-                        "retired as history rather than deleted"
-                    ),
+                    "policy": "explicit reconciliation only; competing beliefs are retired as history rather than deleted",
                 })
 
             if action.action == "world.refresh_plan":
