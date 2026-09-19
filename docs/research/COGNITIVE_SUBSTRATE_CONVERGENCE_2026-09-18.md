@@ -99,6 +99,14 @@ authorization and demonstrated competence as separate states. Capability
 self-awareness consumes this evidence together with local knowledge, procedures
 and world-model state rather than relying on provider priors.
 
+Durable competence and process-local benchmark evidence are now additionally
+bound to a stable capability implementation fingerprint when the node can
+advertise one. Model/runtime/tool/index implementation changes do not delete
+older evidence, but that evidence becomes historical and cannot bias the
+replacement implementation's routing hint. Device tasks capture this lineage at
+selection time so a node reconfiguration during execution cannot misattribute
+the completed run to a newer implementation.
+
 KnowledgeFabric now exposes a cheap substrate profile over registry/index
 metadata: active local sources, offline reference libraries, semantic
 derivatives and catalog candidates. Missing/stale derivative lineage is review
