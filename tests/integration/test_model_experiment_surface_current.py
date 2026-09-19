@@ -22,6 +22,7 @@ def test_all_frontends_surface_exact_model_trial_readiness_and_explicit_executio
         assert "Trial-ready experiments" in surface
         assert "Run bounded trial" in surface
         assert "experimental output" in surface.lower()
+        assert "Lineage events" in surface or "Experiment lineage events" in surface
 
     assert "model.experiment.dispatch" in desktop_bridge
     assert "getCapabilityTaskStatus" in desktop_bridge
@@ -37,3 +38,16 @@ def test_all_frontends_surface_exact_model_trial_readiness_and_explicit_executio
     assert "production response" in desktop
     assert "production response" in web
     assert "production response" in ios
+
+
+def test_frontends_distinguish_node_authorization_from_demonstrated_competence():
+    desktop = _text("desktop/src/main.js")
+    web = _text("mobile_web/app.js")
+    ios = _text("ios/MaryV2iOS/Sources/WorkspaceDetailView.swift")
+
+    for surface in (desktop, web, ios):
+        assert "Authorized node capabilities" in surface
+        assert "Demonstrated capabilities" in surface
+
+    assert "node_intelligence" in web
+    assert 'app.liveData["node_intelligence"]' in ios
