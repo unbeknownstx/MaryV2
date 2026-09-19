@@ -40,6 +40,8 @@ def test_explicit_runtime_import_makes_external_evidence_canonical_without_promo
         artifact_fingerprint=reviewed.artifact_fingerprint,
         scores=_scores(),
         latency_ms=250,
+        benchmark_fingerprint="marybench-core-sync-v1",
+        benchmark_case_count=60,
     )
     evidence = local.export_portable_evidence(reviewed.id)
 
