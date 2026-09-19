@@ -275,11 +275,17 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
     ]
 
     if service is not None:
+        # Verify the projection contract without feeding the Core service back
+        # into it.  Passing service here would make:
+        # integration_status -> integration_graph -> system_fabric ->
+        # integration_status, turning a healthy read-only projection into a
+        # recursion-driven degraded state.
         try:
             from mary.runtime.system_fabric import build_system_fabric_projection
-            fabric_projection = build_system_fabric_projection(application, service=service)
+            fabric_projection = build_system_fabric_projection(application)
             fabric_connected = (
-                str(dict(fabric_projection.get("authority") or {}).get("projection") or "")
+                callable(getattr(service, "dashboard_status", None))
+                and str(dict(fabric_projection.get("authority") or {}).get("projection") or "")
                 == "read_only"
             )
         except Exception:
