@@ -21,6 +21,8 @@ def test_system_fabric_surfaces_knowledge_substrate_health_without_auto_rebuild(
     for surface in (desktop, web, ios):
         assert "Knowledge tiers" in surface
         assert "Knowledge attention" in surface
+        assert "Stale local indexes" in surface
+        assert "Stale semantic derivatives" in surface
 
     assert "automatic_rebuild_performed" in _text("mary/knowledge/fabric.py")
     assert "automatic_scan_performed" in _text("mary/knowledge/fabric.py")
