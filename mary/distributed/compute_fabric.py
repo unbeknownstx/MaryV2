@@ -48,7 +48,7 @@ class BenchmarkBook:
     """
 
     VERSION = "13.11"
-    ROUTING_REVISION = "13.56"
+    ROUTING_REVISION = "13.55"
 
     def __init__(self, *, max_samples_per_key: int = 12) -> None:
         self.max_samples_per_key = max(3, min(50, int(max_samples_per_key)))
