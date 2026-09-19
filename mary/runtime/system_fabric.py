@@ -117,6 +117,12 @@ def _model_experiment_summary(mary: Any) -> dict[str, Any]:
                     "missing_scores",
                     "failed_scores",
                     "score_keys",
+                    "task_id",
+                    "capability",
+                    "status",
+                    "provider",
+                    "model",
+                    "error_class",
                 }
             },
         })
