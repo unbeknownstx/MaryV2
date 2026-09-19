@@ -174,6 +174,7 @@ def prepare_mlx_bundle(
     output_dir: str | Path,
     profile_id: str = "m1-light",
     feedback_path: str | Path | None = None,
+    novel_review_path: str | Path | None = None,
 ) -> dict[str, Any]:
     profile = PROFILES.get(str(profile_id))
     if profile is None:
@@ -192,6 +193,7 @@ def prepare_mlx_bundle(
         root=root_path,
         output_dir=dataset_dir,
         feedback_path=feedback_path,
+        novel_review_path=novel_review_path,
     )
     dataset_audit = MaryDatasetV1Auditor().audit(
         dataset_dir,
@@ -271,6 +273,7 @@ def prepare_mlx_bundle(
     manifest = {
         "version": "mary-mlx-adapter-bundle-v2",
         "profile": profile.to_dict(),
+        "dataset_fingerprint": dataset_summary.fingerprint,
         "mary_dataset": dataset_summary.to_dict(),
         "dataset_audit": dataset_audit.to_dict(),
         "examples": {
