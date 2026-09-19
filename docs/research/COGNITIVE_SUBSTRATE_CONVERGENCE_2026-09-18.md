@@ -130,3 +130,24 @@ rebuild.
 - Models/LoRAs: replaceable generation/specialist capabilities.
 - Device actions: typed capability node plus local permission.
 - Training: offline lab, explicit creator command.
+
+## Model-experiment self-awareness convergence — 2026-09-19
+
+Mary Core now owns one shared `ModelExperimentLedger` handle. Core service,
+System Fabric and self-introspection read that same durable experiment evidence
+instead of independently constructing parallel readers. Compatibility fallbacks
+remain for partial fixtures and older composition paths.
+
+Capability self-awareness can now distinguish reviewed, benchmarked,
+benchmark-mismatched and trial-ready model/adapter experiments from production
+model authority. Trial-ready means an exact reviewed artifact has sufficient
+held-out evidence for an explicit bounded experiment only. It does not imply
+that the local MLX training host is ready, that training should run, or that the
+artifact may be promoted into Mary's production route. Prepared-bundle lineage,
+Apple-Silicon/package preflight, explicit training, held-out evaluation and
+creator promotion remain separate gates.
+
+This closes another evidence loop without moving model identity into Mary Core:
+models and LoRAs remain replaceable capabilities, while Mary can accurately
+describe the evidence state surrounding them.
+
