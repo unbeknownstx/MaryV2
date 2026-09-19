@@ -410,10 +410,13 @@ class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
                 int(dict(count_generation.get("result") or {}).get("count") or 0),
             )
 
+        current_source_fingerprint = fabric.derivative_source_fingerprint(
+            source_id
+        )
         source_current = bool(
-            source_pack.content_fingerprint
+            current_source_fingerprint
             and recorded_source_fingerprint
-            and source_pack.content_fingerprint == recorded_source_fingerprint
+            and current_source_fingerprint == recorded_source_fingerprint
         )
         expected = len(active_chunks)
         generation_complete = bool(
@@ -484,9 +487,14 @@ class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
         source_pack = fabric.get(source_id)
         if source_pack.kind != "local_files":
             raise ValueError("Qdrant rebuild source must be a local_files pack")
-        if not source_pack.content_fingerprint:
+        source_lineage = fabric.local_index_lineage(source_id)
+        source_fingerprint = str(
+            source_lineage.get("derivative_fingerprint") or ""
+        )
+        if not source_fingerprint:
             raise RuntimeError(
-                "source local_files pack must be indexed before Qdrant rebuild"
+                "source local_files pack must have a current indexed ingestion "
+                "pipeline before Qdrant rebuild"
             )
         chunks = fabric.indexed_chunks(
             source_id,
@@ -495,7 +503,7 @@ class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
         )
         rebuild_id = sha256(
             (
-                source_pack.content_fingerprint
+                source_fingerprint
                 + "|"
                 + identity
                 + "|"
@@ -602,7 +610,7 @@ class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
             fabric.record_vector_build(
                 pack.id,
                 source_pack_id=source_id,
-                source_fingerprint=source_pack.content_fingerprint,
+                source_fingerprint=source_fingerprint,
                 embedding_space_identity=identity,
                 vectors=indexed,
                 rebuild_id=rebuild_id,
@@ -613,6 +621,10 @@ class QdrantKnowledgeIndexer(QdrantKnowledgeBackend):
             "pack_id": pack.id,
             "source_pack_id": source_id,
             "source_chunks": len(chunks),
+            "source_fingerprint": source_fingerprint,
+            "source_pipeline_fingerprint": str(
+                source_lineage.get("pipeline_fingerprint") or ""
+            ),
             "vectors_indexed": indexed,
             "batches": batches,
             "errors": errors,
