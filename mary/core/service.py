@@ -2682,6 +2682,12 @@ class MaryCoreService:
         return output
 
     def _model_experiment_ledger(self):
+        shared = getattr(self.mary, "model_experiments", None)
+        if shared is not None and callable(getattr(shared, "snapshot", None)):
+            return shared
+
+        # Compatibility fallback for partial/test Mary objects that predate the
+        # shared Core handle. Canonical Mary() owns one ledger instance.
         from mary.learning import ModelExperimentLedger
 
         runtime_root = getattr(
