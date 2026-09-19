@@ -145,3 +145,71 @@ def test_verified_stack_fingerprint_includes_base_and_adapter_hashes(tmp_path: P
     ).hexdigest()[:16]
     assert stack["artifact_fingerprint"] == expected
     assert stack["artifact_ready_for_benchmark"] is True
+
+
+def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_output(tmp_path: Path):
+    local = ModelExperimentLedger(tmp_path / "mac.json")
+    proposal = {
+        "version": "mary-mlx-adapter-candidate-v1",
+        "status": "review_required",
+        "candidate_id": "mary-m1-light-adapter",
+        "runtime": "mlx_lm",
+        "model": "mlx-community/Qwen3-1.7B-4bit",
+        "upstream_base": "Qwen/Qwen3-1.7B",
+        "adapter_config_sha256": "c" * 64,
+        "adapter_weights_sha256": "d" * 64,
+        "dataset_fingerprint": "mary-dataset-exact",
+        "notes": ["creator reviewed"],
+    }
+    reviewed = local.register_mlx_proposal(proposal)
+    benchmarked = local.record_benchmark(
+        reviewed.id,
+        node_id="MAC-MARY",
+        artifact_fingerprint=reviewed.artifact_fingerprint,
+        scores=_scores(),
+        latency_ms=321.5,
+    )
+
+    evidence = local.export_portable_evidence(benchmarked.id)
+    rendered = json.dumps(evidence, sort_keys=True).casefold()
+    assert "prompt" not in rendered
+    assert "generated output" not in rendered
+    assert evidence["experiment"]["dataset_fingerprint"] == "mary-dataset-exact"
+
+    core = ModelExperimentLedger(tmp_path / "core.json")
+    imported = core.import_portable_evidence(evidence, reviewed_by="creator:test")
+
+    assert imported.id == benchmarked.id
+    assert imported.artifact_fingerprint == benchmarked.artifact_fingerprint
+    assert imported.dataset_fingerprint == "mary-dataset-exact"
+    assert imported.node_id == "MAC-MARY"
+    assert imported.benchmark_verified is True
+    assert imported.trial_ready is True
+    assert any(
+        event["event_type"] == "evidence_imported"
+        for event in core.lineage(imported.id)
+    )
+
+
+def test_portable_experiment_evidence_rejects_tampering(tmp_path: Path):
+    import pytest
+
+    local = ModelExperimentLedger(tmp_path / "mac.json")
+    proposal = {
+        "version": "mary-mlx-adapter-candidate-v1",
+        "status": "review_required",
+        "candidate_id": "mary-smoke-adapter",
+        "runtime": "mlx_lm",
+        "model": "mlx-community/Qwen3-0.6B-4bit",
+        "upstream_base": "Qwen/Qwen3-0.6B",
+        "adapter_config_sha256": "e" * 64,
+        "adapter_weights_sha256": "f" * 64,
+        "dataset_fingerprint": "dataset-smoke",
+    }
+    reviewed = local.register_mlx_proposal(proposal)
+    evidence = local.export_portable_evidence(reviewed.id)
+    evidence["experiment"]["model"] = "tampered-model"
+
+    core = ModelExperimentLedger(tmp_path / "core.json")
+    with pytest.raises(ValueError, match="fingerprint mismatch"):
+        core.import_portable_evidence(evidence)
