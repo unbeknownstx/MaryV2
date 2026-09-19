@@ -9,6 +9,8 @@ measured/configured per-role accelerator-memory footprint; absent that hint,
 fit remains unknown and existing selection behavior is preserved.
 13.55 records one bounded content-free adaptive routing explanation for
 observability; prompts, task args, results, and credentials are never retained.
+13.56 binds live benchmark and durable competence hints to a capability's
+execution-relevant implementation fingerprint when one is advertised.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from statistics import median
 from threading import RLock
 from typing import Any, Iterable
 
+from .capabilities import capability_implementation_fingerprint
 from .nodes import NodeDescriptor, NodeRegistry
 from .resource_broker import ResourceSnapshot, WorkloadFootprint, plan_resource_handoff
 
@@ -30,6 +33,7 @@ class BenchmarkSample:
     latency_ms: float
     success: bool = True
     throughput: float | None = None
+    implementation_fingerprint: str = ""
     measured_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,7 +53,7 @@ class BenchmarkBook:
     def __init__(self, *, max_samples_per_key: int = 12) -> None:
         self.max_samples_per_key = max(3, min(50, int(max_samples_per_key)))
         self._lock = RLock()
-        self._samples: dict[tuple[str, str, str], list[BenchmarkSample]] = {}
+        self._samples: dict[tuple[str, str, str, str], list[BenchmarkSample]] = {}
         self._last_adaptive_decision: dict[str, Any] = {}
 
     def record(self, sample: BenchmarkSample) -> None:
@@ -57,8 +61,9 @@ class BenchmarkBook:
             str(sample.node_id).strip(),
             str(sample.capability).strip().lower(),
             str(sample.operation).strip().lower(),
+            str(sample.implementation_fingerprint or "").strip().lower()[:64],
         )
-        if not all(key):
+        if not all(key[:3]):
             raise ValueError("benchmark sample requires node, capability, and operation")
         with self._lock:
             items = self._samples.setdefault(key, [])
@@ -75,17 +80,33 @@ class BenchmarkBook:
                     latency_ms=max(0.0, float(item.get("latency_ms") or 0.0)),
                     success=bool(item.get("success", True)),
                     throughput=(None if item.get("throughput") is None else max(0.0, float(item.get("throughput")))),
+                    implementation_fingerprint=str(
+                        item.get("implementation_fingerprint") or ""
+                    ).strip().lower()[:64],
                     measured_at=str(item.get("measured_at") or datetime.now(timezone.utc).isoformat())[:80],
                 ))
             except (TypeError, ValueError):
                 continue
 
-    def summary(self, node_id: str, capability: str, operation: str = "general") -> dict[str, Any]:
-        key = (str(node_id).strip(), str(capability).strip().lower(), str(operation).strip().lower())
+    def summary(
+        self,
+        node_id: str,
+        capability: str,
+        operation: str = "general",
+        implementation_fingerprint: str = "",
+    ) -> dict[str, Any]:
+        key = (
+            str(node_id).strip(),
+            str(capability).strip().lower(),
+            str(operation).strip().lower(),
+            str(implementation_fingerprint or "").strip().lower()[:64],
+        )
         with self._lock:
             samples = list(self._samples.get(key, []))
             if not samples and key[2] != "general":
-                samples = list(self._samples.get((key[0], key[1], "general"), []))
+                samples = list(
+                    self._samples.get((key[0], key[1], "general", key[3]), [])
+                )
         successes = [item for item in samples if item.success]
         latencies = [item.latency_ms for item in successes]
         throughputs = [item.throughput for item in successes if item.throughput is not None]
@@ -94,6 +115,7 @@ class BenchmarkBook:
             "success_rate": round(len(successes) / len(samples), 3) if samples else None,
             "median_latency_ms": round(median(latencies), 2) if latencies else None,
             "median_throughput": round(median(throughputs), 3) if throughputs else None,
+            "implementation_fingerprint": key[3],
             "authority": "operational_hint_only",
         }
 
@@ -122,6 +144,12 @@ class BenchmarkBook:
                     "evidence_strength": competence.get("evidence_strength"),
                     "freshness": competence.get("freshness"),
                     "score_delta": competence.get("score_delta"),
+                    "implementation_fingerprint": competence.get(
+                        "implementation_fingerprint", ""
+                    ),
+                    "stale_records": max(
+                        0, int(competence.get("stale_records") or 0)
+                    ),
                     "authority": "routing_hint_only",
                 },
                 "benchmark": {
@@ -129,6 +157,9 @@ class BenchmarkBook:
                     "success_rate": benchmark.get("success_rate"),
                     "median_latency_ms": benchmark.get("median_latency_ms"),
                     "median_throughput": benchmark.get("median_throughput"),
+                    "implementation_fingerprint": benchmark.get(
+                        "implementation_fingerprint", ""
+                    ),
                     "authority": "operational_hint_only",
                 },
             })
@@ -247,7 +278,7 @@ class HomeComputeScheduler:
     explicit fit evidence, and live load.
     """
 
-    VERSION = "13.55"
+    VERSION = "13.56"
 
     def __init__(
         self,
@@ -282,6 +313,15 @@ class HomeComputeScheduler:
         permission, or resource-fit checks. Sparse evidence is intentionally
         weak, and old evidence decays because node hardware/runtime can change.
         """
+        node = self.registry.get(node_id)
+        descriptor = (
+            node.capabilities.get(str(capability).strip().lower())
+            if node is not None
+            else None
+        )
+        implementation_fingerprint = capability_implementation_fingerprint(
+            descriptor
+        )
         empty = {
             "attempts": 0,
             "reliability": None,
@@ -290,37 +330,117 @@ class HomeComputeScheduler:
             "score_delta": 0.0,
             "verified_successes": 0,
             "last_observed_at": "",
+            "implementation_fingerprint": implementation_fingerprint,
+            "stale_records": 0,
             "authority": "routing_hint_only",
         }
         summary = getattr(self.competence, "summary_for", None)
         if not callable(summary):
             return empty
         try:
-            rows = list(summary(
-                capability,
-                operation=operation,
-                node_ids=(node_id,),
-                limit=8,
-            ) or [])
+            summary_kwargs: dict[str, Any] = {
+                "operation": operation,
+                "node_ids": (node_id,),
+                "limit": 8,
+            }
+            if implementation_fingerprint:
+                summary_kwargs["implementation_fingerprint"] = (
+                    implementation_fingerprint
+                )
+            rows = list(summary(capability, **summary_kwargs) or [])
             exact = [
                 dict(row) for row in rows
                 if str(row.get("node_id") or "") == str(node_id)
             ]
             if not exact and str(operation or "general").casefold() != "general":
+                general_kwargs: dict[str, Any] = {
+                    "operation": "general",
+                    "node_ids": (node_id,),
+                    "limit": 8,
+                }
+                if implementation_fingerprint:
+                    general_kwargs["implementation_fingerprint"] = (
+                        implementation_fingerprint
+                    )
+                rows = list(summary(capability, **general_kwargs) or [])
+                exact = [
+                    dict(row) for row in rows
+                    if str(row.get("node_id") or "") == str(node_id)
+                ]
+        except TypeError:
+            try:
                 rows = list(summary(
                     capability,
-                    operation="general",
+                    operation=operation,
                     node_ids=(node_id,),
                     limit=8,
                 ) or [])
+            except Exception:
+                return empty
+            if implementation_fingerprint:
+                rows = [
+                    row
+                    for row in rows
+                    if isinstance(row, dict)
+                    and str(
+                        row.get("implementation_fingerprint") or ""
+                    ).casefold()
+                    == implementation_fingerprint
+                ]
+            exact = [
+                dict(row) for row in rows
+                if str(row.get("node_id") or "") == str(node_id)
+            ]
+            if not exact and str(operation or "general").casefold() != "general":
+                try:
+                    rows = list(summary(
+                        capability,
+                        operation="general",
+                        node_ids=(node_id,),
+                        limit=8,
+                    ) or [])
+                except Exception:
+                    rows = []
+                if implementation_fingerprint:
+                    rows = [
+                        row
+                        for row in rows
+                        if isinstance(row, dict)
+                        and str(
+                            row.get("implementation_fingerprint") or ""
+                        ).casefold()
+                        == implementation_fingerprint
+                    ]
                 exact = [
                     dict(row) for row in rows
                     if str(row.get("node_id") or "") == str(node_id)
                 ]
         except Exception:
             return empty
+
+        stale_records = 0
+        if implementation_fingerprint:
+            try:
+                all_rows = list(summary(
+                    capability,
+                    operation=operation,
+                    node_ids=(node_id,),
+                    limit=64,
+                ) or [])
+            except Exception:
+                all_rows = []
+            stale_records = sum(
+                1
+                for item in all_rows
+                if isinstance(item, dict)
+                and int(item.get("attempts") or 0) > 0
+                and str(
+                    item.get("implementation_fingerprint") or ""
+                ).casefold()
+                != implementation_fingerprint
+            )
         if not exact:
-            return empty
+            return {**empty, "stale_records": stale_records}
         row = max(
             exact,
             key=lambda item: (
@@ -360,6 +480,8 @@ class HomeComputeScheduler:
             "score_delta": round(max(-10.0, min(10.0, score_delta)), 3),
             "verified_successes": max(0, int(row.get("verified_successes") or 0)),
             "last_observed_at": observed[:80],
+            "implementation_fingerprint": implementation_fingerprint,
+            "stale_records": stale_records,
             "authority": "routing_hint_only",
         }
 
@@ -441,7 +563,13 @@ class HomeComputeScheduler:
             elif fit.status == "unknown":
                 reasons.append("resource_fit_unknown")
 
-        bench = self.benchmarks.summary(node.node_id, request.capability, request.operation)
+        implementation_fingerprint = capability_implementation_fingerprint(cap)
+        bench = self.benchmarks.summary(
+            node.node_id,
+            request.capability,
+            request.operation,
+            implementation_fingerprint=implementation_fingerprint,
+        )
         latency = bench.get("median_latency_ms")
         success_rate = bench.get("success_rate")
         static = dict(cap.metadata or {})
@@ -524,7 +652,14 @@ class HomeComputeScheduler:
                 "score": round(score, 3),
                 "reason": reason,
                 "load_pressure": round(load.pressure, 3),
-                "benchmark": self.benchmarks.summary(node.node_id, capability, normalized.operation),
+                "benchmark": self.benchmarks.summary(
+                    node.node_id,
+                    capability,
+                    normalized.operation,
+                    implementation_fingerprint=capability_implementation_fingerprint(
+                        node.capabilities[capability]
+                    ),
+                ),
                 "competence": competence,
             })
         ranked.sort(key=lambda item: (-float(item["score"]), str(item["node_id"])))
@@ -568,7 +703,14 @@ class HomeComputeScheduler:
                         "score": -10_000.0,
                         "reason": f"resource_infeasible:{plan.reason}",
                         "load_pressure": round(load.pressure, 3),
-                        "benchmark": self.benchmarks.summary(node.node_id, request.capability, request.operation),
+                        "benchmark": self.benchmarks.summary(
+                            node.node_id,
+                            request.capability,
+                            request.operation,
+                            implementation_fingerprint=capability_implementation_fingerprint(
+                                node.capabilities[request.capability]
+                            ),
+                        ),
                     })
                 self.benchmarks.record_adaptive_decision(
                     capability=request.capability,
