@@ -18,6 +18,7 @@ from typing import Any
 
 from .dataset_v1 import MaryDatasetV1Exporter
 from .dataset_audit import MaryDatasetV1Auditor
+from .bundle_lineage import build_mlx_bundle_lineage
 
 
 @dataclass(frozen=True)
@@ -357,6 +358,15 @@ def prepare_mlx_bundle(
         },
     }
     manifest_path = output / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    # Bind the exact prepared splits/profile/source fingerprints without
+    # including source text or output-directory paths in durable lineage.
+    lineage = build_mlx_bundle_lineage(output)
+    manifest["bundle_lineage"] = lineage.to_dict()
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True),
         encoding="utf-8",
