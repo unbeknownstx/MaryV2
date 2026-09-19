@@ -38,6 +38,7 @@ class SelfIntrospection:
         knowledge_fabric: Any | None = None,
         procedural_skills: Any | None = None,
         world_model: Any | None = None,
+        model_experiments: Any | None = None,
     ) -> None:
         self.identity = identity
         self.self_model = self_model
@@ -57,6 +58,7 @@ class SelfIntrospection:
         self.knowledge_fabric = knowledge_fabric
         self.procedural_skills = procedural_skills
         self.world_model = world_model
+        self.model_experiments = model_experiments
 
     def build(
         self,
@@ -956,6 +958,66 @@ class SelfIntrospection:
         skills_status = safe_status(getattr(self, "procedural_skills", None))
         world_status = safe_status(getattr(self, "world_model", None))
 
+        experiment_snapshot: dict[str, Any] = {}
+        experiment_owner = getattr(self, "model_experiments", None)
+        experiment_snapshot_fn = getattr(experiment_owner, "snapshot", None)
+        if callable(experiment_snapshot_fn):
+            try:
+                experiment_snapshot = dict(experiment_snapshot_fn() or {})
+            except Exception:
+                experiment_snapshot = {}
+        experiment_records = [
+            dict(item)
+            for item in list(experiment_snapshot.get("records") or [])[-12:]
+            if isinstance(item, dict)
+        ]
+        experiment_statuses = [
+            str(item.get("status") or "").strip().casefold()
+            for item in experiment_records
+        ]
+        experiment_view = {
+            "count": int(
+                experiment_snapshot.get("count", len(experiment_records)) or 0
+            ),
+            "reviewed_only": sum(
+                1 for status in experiment_statuses if status == "reviewed"
+            ),
+            "benchmarked": sum(
+                1 for status in experiment_statuses if status == "benchmarked"
+            ),
+            "benchmark_mismatch": sum(
+                1
+                for status in experiment_statuses
+                if status == "benchmark_mismatch"
+            ),
+            "benchmark_verified": sum(
+                1
+                for item in experiment_records
+                if bool(item.get("benchmark_verified"))
+            ),
+            "trial_ready": int(experiment_snapshot.get("trial_ready") or 0),
+            "records": [
+                {
+                    "id": str(item.get("id") or "")[:160],
+                    "candidate_id": str(item.get("candidate_id") or "")[:160],
+                    "status": str(item.get("status") or "")[:80],
+                    "runtime": str(item.get("runtime") or "")[:80],
+                    "model": str(item.get("model") or "")[:240],
+                    "node_id": str(item.get("node_id") or "")[:160],
+                    "benchmark_verified": bool(item.get("benchmark_verified")),
+                    "trial_ready": bool(item.get("trial_ready")),
+                    "mary_fit": item.get("mary_fit"),
+                    "missing_scores": list(item.get("missing_scores") or [])[:12],
+                    "failed_scores": list(item.get("failed_scores") or [])[:12],
+                }
+                for item in experiment_records[-8:]
+            ],
+            "training_readiness_claimed": False,
+            "automatic_training": False,
+            "automatic_promotion": False,
+            "authority": "experiment_evidence_only",
+        }
+
         web_search = bool(tool_status.get("web_search_configured"))
         repository_map = dict(tool_status.get("repository_map") or {})
         facts = {
@@ -1013,6 +1075,7 @@ class SelfIntrospection:
                 "current_beliefs": int(world_status.get("current_beliefs") or 0),
                 "reconciliation_groups": int(world_status.get("reconciliation_groups") or 0),
             },
+            "model_experiments": experiment_view,
         }
 
         if web_search:
@@ -1047,6 +1110,23 @@ class SelfIntrospection:
         asks_local_knowledge = any(
             term in lowered_query
             for term in ("local knowledge", "knowledge search", "corpus", "offline library")
+        )
+        asks_model_experiments = any(
+            term in lowered_query
+            for term in (
+                "lora",
+                "adapter",
+                "model experiment",
+                "model lab",
+                "marybench",
+                "benchmark",
+                "fine tune",
+                "fine-tune",
+                "training ready",
+                "train mary",
+                "trial ready",
+                "trial-ready",
+            )
         )
         if any(term in lowered_query for term in ("web", "browse", "internet")):
             requested_groups.append(("web search", ()))
@@ -1141,6 +1221,29 @@ class SelfIntrospection:
                     "or a connected knowledge.search route to claim."
                 )
 
+        if asks_model_experiments:
+            model_state = facts["model_experiments"]
+            if model_state["count"]:
+                requested_sentences.append(
+                    "My model lab currently has "
+                    f"{model_state['count']} reviewed experiment record"
+                    f"{'s' if model_state['count'] != 1 else ''}, "
+                    f"{model_state['benchmark_verified']} with verified benchmark lineage, "
+                    f"and {model_state['trial_ready']} trial-ready. "
+                    "Trial-ready means an exact reviewed artifact has enough held-out "
+                    "evidence for an explicit bounded experiment; it does not mean "
+                    "production promotion. The experiment ledger does not establish "
+                    "MLX training readiness by itself—prepared-bundle and host/package "
+                    "preflight remain separate local gates, and training is never automatic."
+                )
+            else:
+                requested_sentences.append(
+                    "I do not currently have a reviewed model/adapter experiment in my "
+                    "Core experiment ledger. Training and promotion are not automatic, "
+                    "and I should not claim an adapter is ready without exact bundle, "
+                    "host/preflight, benchmark, and creator-review evidence."
+                )
+
         for label, names in requested_groups[:6]:
             if label == "web search":
                 if web_search:
@@ -1180,7 +1283,7 @@ class SelfIntrospection:
             "live_capabilities": facts,
             "autonomy_type": type(self.autonomy).__name__,
             "authority": (
-                "live Core/tool/node state plus bounded competence/knowledge/procedure evidence "
+                "live Core/tool/node state plus bounded competence/knowledge/procedure/model-experiment evidence "
                 "is authoritative for capability claims; provider model priors are not capability evidence"
             ),
             "fallback_response": (
