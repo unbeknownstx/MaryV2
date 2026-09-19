@@ -1584,6 +1584,11 @@ class MaryRemoteMobileRuntime:
                 {"mode": mode},
             )
 
+        if name == "proposeSocial":
+            values = list(args or [])
+            payload = dict(values[0]) if values and isinstance(values[0], dict) else {}
+            return self.client.runtime_action("social.propose", payload)
+
         if name == "personalSearch":
             values = list(
                 args
@@ -3433,6 +3438,13 @@ class MaryMobileRuntime:
                 return self.application.mary.performance_context.set_mode(
                     str(values[0] if values else "private")
                 )
+
+            if name == "proposeSocial":
+                return {
+                    "ok": False,
+                    "status": "remote_core_required",
+                    "error": "Social authoring uses canonical Core in this product surface.",
+                }
 
             if name == "setConversationMode":
                 return (
