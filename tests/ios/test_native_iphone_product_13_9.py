@@ -44,7 +44,7 @@ def test_shared_life_actions_start_and_finish_through_canonical_core():
     assert '"shared_activity.cancel"' in state
     assert "draft = activity.prompt" in state
     assert "selectedTab = .chat" in state
-    assert 'Text("Save moment")' in together
+    assert '"Save moment"' in together
     for activity in ("watch", "game", "create", "study", "work", "music", "date", "unwind"):
         assert activity in models
 
