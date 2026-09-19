@@ -1497,6 +1497,16 @@ class MaryRemoteMobileRuntime:
         if name == "getWorldState":
             return self.client.runtime_action("world.status")
 
+        if name == "reconcileWorldBelief":
+            values = list(args or [])
+            belief_id = str(values[0] if values else "").strip()[:180]
+            if not belief_id:
+                raise ValueError("World belief ID is required.")
+            payload = {"belief_id": belief_id}
+            if len(values) > 1 and str(values[1] or "").strip():
+                payload["source"] = str(values[1]).strip()[:240]
+            return self.client.runtime_action("world.reconcile", payload)
+
         if name == "getPerceptionState":
             return self.client.runtime_action("perception.status")
 
@@ -1522,6 +1532,48 @@ class MaryRemoteMobileRuntime:
 
         if name == "getAdapterLabState":
             return self.client.runtime_action("model.adapter.status")
+
+        if name == "getSkillReviewState":
+            return self.client.runtime_action("continuity.skill.status")
+
+        if name == "approveSkillCandidate":
+            values = list(args or [])
+            skill_id = str(values[0] if values else "").strip()[:180]
+            if not skill_id:
+                raise ValueError("Skill candidate ID is required.")
+            return self.client.runtime_action(
+                "continuity.skill.approve",
+                {"skill_id": skill_id},
+            )
+
+        if name == "rejectSkillCandidate":
+            values = list(args or [])
+            skill_id = str(values[0] if values else "").strip()[:180]
+            if not skill_id:
+                raise ValueError("Skill candidate ID is required.")
+            return self.client.runtime_action(
+                "continuity.skill.reject",
+                {"skill_id": skill_id},
+            )
+
+        if name == "reviseApprovedSkill":
+            values = list(args or [])
+            skill_id = str(values[0] if values else "").strip()[:180]
+            reason = str(values[1] if len(values) > 1 else "").strip()[:600]
+            steps = (
+                [str(item).strip()[:240] for item in values[2][:32] if str(item).strip()]
+                if len(values) > 2 and isinstance(values[2], list)
+                else []
+            )
+            if not skill_id or not reason:
+                raise ValueError("Approved skill ID and revision reason are required.")
+            payload = {"skill_id": skill_id, "reason": reason}
+            if steps:
+                payload["steps"] = steps
+            return self.client.runtime_action(
+                "continuity.skill.revise",
+                payload,
+            )
 
         if name == "getModelExperimentStatus":
             values = list(args or [])
