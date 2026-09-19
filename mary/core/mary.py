@@ -1045,8 +1045,12 @@ class Mary:
                 runtime_context["current_surface"] = {
                     "surface": surface,
                     "surface_kind": surface_kind,
+                    "surface_id": str(turn_envelope.get("surface_id") or "")[:160],
                     "device_id": str(turn_envelope.get("device_id") or "unknown-device")[:160],
                     "transport": str(turn_envelope.get("transport") or "direct")[:64],
+                    "presentation_capabilities": dict(
+                        turn_envelope.get("presentation_capabilities") or {}
+                    ),
                     "state_authority": "canonical_mary_core",
                     "authority": "ephemeral_runtime_fact",
                     "persistence": "none",
@@ -1714,14 +1718,19 @@ class Mary:
             # truthfully advertise how much of it it can render without making
             # the renderer another Mary or silently pretending unsupported
             # animation/VR features exist.
-            current_surface = (
-                dict(runtime_context.get("current_surface") or {}).get("surface")
+            current_surface_state = (
+                dict(runtime_context.get("current_surface") or {})
                 if isinstance(runtime_context, dict)
-                else None
+                else {}
+            )
+            current_surface = current_surface_state.get("surface")
+            capability_overrides = dict(
+                current_surface_state.get("presentation_capabilities") or {}
             )
             result.metadata["surface_performance"] = project_performance_packet(
                 performance_packet,
                 surface=current_surface or "generic",
+                capability_overrides=capability_overrides or None,
             )
         except Exception as exc:
             result.metadata["delivery_plan_error"] = f"{type(exc).__name__}: {exc}"
