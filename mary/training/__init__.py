@@ -8,6 +8,11 @@ from .novel_miner import NovelSceneCandidate, mine_mary_scenes, read_paragraphs,
 from .mlx_bundle import MlxTrainingProfile, PROFILES as MLX_TRAINING_PROFILES, prepare_mlx_bundle
 from .mlx_preflight import MlxBundlePreflight, inspect_mlx_bundle
 from .adapter_candidate import MlxAdapterCandidateProposal, build_mlx_adapter_candidate_proposal
+from .marybench_experiment import (
+    REQUIRED_MODEL_SCORE_DIMENSIONS,
+    comparison_scorecard,
+    summarize_marybench_results,
+)
 
 __all__ = [
     "ResponseFeedback", "ResponseFeedbackStore",
@@ -19,4 +24,6 @@ __all__ = [
     "MlxTrainingProfile", "MLX_TRAINING_PROFILES", "prepare_mlx_bundle",
     "MlxBundlePreflight", "inspect_mlx_bundle",
     "MlxAdapterCandidateProposal", "build_mlx_adapter_candidate_proposal",
+    "REQUIRED_MODEL_SCORE_DIMENSIONS", "comparison_scorecard",
+    "summarize_marybench_results",
 ]
