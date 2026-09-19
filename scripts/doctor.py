@@ -35,6 +35,13 @@ def _present_env(name: str) -> str:
     return "configured" if bool(os.getenv(name, "").strip()) else "not configured"
 
 
+def _text_contains(path: Path, needle: str) -> bool:
+    try:
+        return needle in path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+
+
 def main() -> int:
     env_path = ROOT / ".env"
     if env_path.exists() and load_dotenv is not None:
@@ -86,12 +93,68 @@ def main() -> int:
         )
     )
 
+    # Presentation readiness is intentionally independent from Core startup.
+    # Missing optional body assets should be visible to the operator without
+    # making Mary unavailable or pretending the asset exists.
+    presentation_checks: list[tuple[str, bool, str]] = [
+        (
+            "Performance packet contract",
+            (ROOT / "mary" / "expression" / "performance_packet.py").exists(),
+            "mary/expression/performance_packet.py",
+        ),
+        (
+            "Surface performance projection",
+            (ROOT / "mary" / "expression" / "surface_performance.py").exists(),
+            "mary/expression/surface_performance.py",
+        ),
+        (
+            "Semantic motion catalog",
+            (ROOT / "mary" / "expression" / "motion_library.py").exists(),
+            "mary/expression/motion_library.py",
+        ),
+        (
+            "Motion asset policy",
+            (ROOT / "assets" / "motions" / "README.md").exists(),
+            "assets/motions/README.md",
+        ),
+        (
+            "Desktop Three-VRM renderer",
+            _text_contains(ROOT / "desktop" / "package.json", "@pixiv/three-vrm"),
+            "@pixiv/three-vrm dependency",
+        ),
+        (
+            "Desktop Mary VRM",
+            (ROOT / "desktop" / "public" / "models" / "MaryCosma.vrm").exists(),
+            "desktop/public/models/MaryCosma.vrm (optional local body asset)",
+        ),
+        (
+            "PWA performance consumer",
+            _text_contains(ROOT / "mobile_web" / "app.js", "applyMobilePerformance"),
+            "mobile_web/app.js performance packet projection",
+        ),
+        (
+            "Native iPhone performance stage",
+            _text_contains(
+                ROOT / "ios" / "MaryV2iOS" / "Sources" / "MaryStageView.swift",
+                "presentationExpression",
+            ),
+            "ios/MaryV2iOS/Sources/MaryStageView.swift",
+        ),
+    ]
+
     print("=" * 64)
     print("MARYV2 INSTALLATION DOCTOR")
     print("=" * 64)
 
     warnings = 0
     for label, ok, detail in checks:
+        print(f"{'PASS' if ok else 'WARN':4}  {label}: {detail}")
+        if not ok:
+            warnings += 1
+
+    print("-" * 64)
+    print("Presentation readiness (optional body/surface capabilities)")
+    for label, ok, detail in presentation_checks:
         print(f"{'PASS' if ok else 'WARN':4}  {label}: {detail}")
         if not ok:
             warnings += 1
