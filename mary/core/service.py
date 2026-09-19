@@ -1866,6 +1866,13 @@ class MaryCoreService:
         *,
         limit: int = 3,
     ) -> list[dict[str, Any]]:
+        """Recommend approved procedures using retrieval plus demonstrated evidence.
+
+        This is advisory ranking only. Competence evidence may change ordering,
+        but it cannot approve a skill, bind it to a plan, choose a node, or
+        authorize execution.
+        """
+
         capabilities = tuple(getattr(step, "required_capabilities", ()) or ())
         if len(capabilities) != 1:
             return []
@@ -1876,6 +1883,8 @@ class MaryCoreService:
             str(getattr(plan, "objective", "") or ""),
             str(getattr(step, "title", "") or ""),
         )).strip()
+        bounded_limit = max(1, min(8, int(limit)))
+        pool_limit = max(8, min(24, bounded_limit * 4))
         try:
             records = self.mary.procedural_skills.retrieve(
                 query,
@@ -1883,12 +1892,137 @@ class MaryCoreService:
                 # This is matching-only. The device broker still enforces actual
                 # local permission at dispatch/execution time.
                 permissions=(capability,),
-                limit=max(1, min(8, int(limit))),
+                limit=pool_limit,
                 approved_only=True,
             )
         except Exception:
             return []
-        return [self._skill_view(item) for item in records[:limit]]
+
+        connected_node_ids: list[str] = []
+        try:
+            snapshot = dict(self.mary.node_registry.snapshot() or {})
+            connected_node_ids = [
+                str(item.get("node_id") or "")
+                for item in list(snapshot.get("nodes") or [])
+                if isinstance(item, dict)
+                and bool(item.get("connected"))
+                and str(item.get("node_id") or "")
+            ]
+        except Exception:
+            connected_node_ids = []
+
+        revision_pressure: dict[str, dict[str, Any]] = {}
+        try:
+            revision_pressure = {
+                str(item.get("skill_id") or ""): dict(item)
+                for item in self.mary.procedural_skills.revision_queue(limit=200)
+                if isinstance(item, dict) and item.get("skill_id")
+            }
+        except Exception:
+            revision_pressure = {}
+
+        competence_owner = getattr(self.mary, "competence", None)
+        skill_summary = getattr(competence_owner, "skill_summary", None)
+        ranked: list[tuple[float, int, dict[str, Any]]] = []
+        count = max(1, len(records))
+        for index, skill in enumerate(records):
+            view = self._skill_view(skill)
+            skill_id = str(view.get("id") or "")
+            evidence: dict[str, Any] = {}
+            if callable(skill_summary):
+                try:
+                    evidence = dict(skill_summary(
+                        skill_id,
+                        capability=capability,
+                        node_ids=connected_node_ids,
+                    ) or {})
+                except Exception:
+                    evidence = {}
+
+            attempts = int(evidence.get("attempts") or 0)
+            verified_successes = int(evidence.get("verified_successes") or 0)
+            reliability = float(evidence.get("reliability") or 0.5)
+            evidence_strength = float(evidence.get("evidence_strength") or 0.0)
+            demonstrated = bool(evidence.get("demonstrated"))
+            verified_ratio = (
+                min(1.0, verified_successes / max(1, attempts))
+                if attempts
+                else 0.0
+            )
+            pressure_row = revision_pressure.get(skill_id, {})
+            pressure = float(pressure_row.get("revision_pressure") or 0.0)
+            retrieval_strength = (count - index) / count
+            demonstrated_quality = (
+                reliability * evidence_strength
+                if demonstrated
+                else 0.0
+            )
+            recommendation_score = round(
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        retrieval_strength * 0.40
+                        + demonstrated_quality * 0.35
+                        + verified_ratio * 0.25
+                        - pressure * 0.40,
+                    ),
+                ),
+                4,
+            )
+
+            evidence_needed: list[str] = []
+            if attempts == 0:
+                evidence_needed.append(
+                    "run this approved procedure through a bounded typed task and record its terminal outcome"
+                )
+            elif verified_successes == 0:
+                evidence_needed.append(
+                    "record at least one verified successful terminal outcome for this procedure"
+                )
+            if attempts < 4 or evidence_strength < 0.35:
+                evidence_needed.append(
+                    "collect additional independent terminal outcomes to strengthen the competence estimate"
+                )
+            if pressure > 0.0:
+                evidence_needed.append(
+                    "review the recorded failure evidence and, if warranted, create a creator-reviewed revision candidate"
+                )
+
+            view.update({
+                "demonstrated": demonstrated,
+                "degrading": bool(pressure > 0.0),
+                "recommendation_score": recommendation_score,
+                "competence": {
+                    "attempts": attempts,
+                    "successes": int(evidence.get("successes") or 0),
+                    "failures": int(evidence.get("failures") or 0),
+                    "verified_successes": verified_successes,
+                    "reliability": reliability,
+                    "evidence_strength": evidence_strength,
+                    "last_success": evidence.get("last_success"),
+                    "last_observed_at": str(evidence.get("last_observed_at") or ""),
+                    "nodes": list(evidence.get("nodes") or [])[:16],
+                },
+                "revision_pressure": pressure,
+                "evidence_needed": evidence_needed,
+                "selection_policy": (
+                    "advisory only; lexical fit, demonstrated competence and "
+                    "revision pressure affect ranking without binding or execution authority"
+                ),
+            })
+            ranked.append((recommendation_score, -index, view))
+
+        ranked.sort(
+            key=lambda item: (
+                item[0],
+                bool(item[2].get("demonstrated")),
+                int(dict(item[2].get("competence") or {}).get("verified_successes") or 0),
+                item[1],
+            ),
+            reverse=True,
+        )
+        return [item[2] for item in ranked[:bounded_limit]]
 
     @classmethod
     def _plan_view(cls, plan: Any) -> dict[str, Any]:
