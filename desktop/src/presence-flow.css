@@ -1,0 +1,72 @@
+.presence-flow-panel {
+  overflow:hidden;
+  position:relative;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(255,214,78,.08), transparent 34%),
+    linear-gradient(180deg, rgba(6,7,13,.98), rgba(9,9,17,.96));
+}
+
+.presence-flow-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:8px;
+}
+
+.presence-flow-head p { max-width:720px; margin:4px 0 0; }
+.presence-flow-legend { display:flex; gap:12px; white-space:nowrap; font-size:10px; color:#8f8998; }
+.presence-flow-legend i { display:inline-block; width:18px; height:2px; margin-right:5px; vertical-align:middle; background:#f4f1f6; box-shadow:0 0 5px rgba(255,255,255,.35); }
+.presence-flow-legend i.live { background:#ffd84d; box-shadow:0 0 9px rgba(255,216,77,.9); }
+
+#presence-flow { width:100%; min-height:360px; display:block; }
+#presence-flow .pf-wire {
+  fill:none;
+  stroke:rgba(244,241,246,.23);
+  stroke-width:2;
+  stroke-linecap:round;
+  transition:stroke .22s ease, filter .22s ease, opacity .22s ease;
+}
+#presence-flow .pf-wire.active {
+  stroke:#ffd84d;
+  stroke-width:3;
+  filter:drop-shadow(0 0 5px rgba(255,216,77,.9));
+  stroke-dasharray:8 10;
+  animation:presence-current .72s linear infinite;
+}
+
+#presence-flow .pf-node rect {
+  fill:rgba(10,10,18,.82);
+  stroke:rgba(244,241,246,.40);
+  stroke-width:1.2;
+  transition:stroke .22s ease, filter .22s ease;
+}
+#presence-flow .pf-node.active rect {
+  stroke:#ffd84d;
+  filter:drop-shadow(0 0 7px rgba(255,216,77,.58));
+}
+#presence-flow .pf-title {
+  fill:#f8f6fb;
+  font:700 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing:.06em;
+}
+#presence-flow .pf-sub {
+  fill:#8e8797;
+  font:10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+#presence-flow .pf-node.active .pf-title,
+#presence-flow .pf-node.active .pf-sub { fill:#ffe372; }
+#presence-flow .pf-core circle {
+  fill:rgba(255,216,77,.08);
+  stroke:rgba(255,216,77,.74);
+  filter:drop-shadow(0 0 8px rgba(255,216,77,.52));
+}
+#presence-flow .pf-core text { fill:#fff6bf; }
+
+@keyframes presence-current {
+  to { stroke-dashoffset:-18; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #presence-flow .pf-wire.active { animation:none; }
+}
