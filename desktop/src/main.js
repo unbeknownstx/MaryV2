@@ -2215,7 +2215,7 @@ function bindWorkspaceActions() {
   if (currentScreen === 'gallery') bindCreatorLabActions();
   if (currentScreen === 'fabric') {
     refreshFabricGovernance();
-    $('[data-world-reconcile]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-world-reconcile]').forEach((button) => button.addEventListener('click', () => {
       if (!bridge?.reconcileWorldBelief) return;
       button.disabled = true;
       bridge.reconcileWorldBelief(button.dataset.worldReconcile, (raw) => {
@@ -2230,7 +2230,7 @@ function bindWorkspaceActions() {
         refreshFabricGovernance({ force: true });
       });
     }));
-    $('[data-skill-approve]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-skill-approve]').forEach((button) => button.addEventListener('click', () => {
       if (!bridge?.approveSkillCandidate) return;
       button.disabled = true;
       bridge.approveSkillCandidate(button.dataset.skillApprove, (raw) => {
@@ -2245,7 +2245,7 @@ function bindWorkspaceActions() {
         refreshFabricGovernance({ force: true });
       });
     }));
-    $('[data-skill-reject]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-skill-reject]').forEach((button) => button.addEventListener('click', () => {
       if (!bridge?.rejectSkillCandidate) return;
       button.disabled = true;
       bridge.rejectSkillCandidate(button.dataset.skillReject, (raw) => {
@@ -2260,7 +2260,7 @@ function bindWorkspaceActions() {
         refreshFabricGovernance({ force: true });
       });
     }));
-    $('[data-skill-revise]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-skill-revise]').forEach((button) => button.addEventListener('click', () => {
       if (!bridge?.reviseApprovedSkill) return;
       const skillId = button.dataset.skillRevise;
       const current = (fabricGovernanceState.skills?.approved || []).find((item) => String(item.id || '') === String(skillId || '')) || {};
