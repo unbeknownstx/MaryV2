@@ -28,6 +28,7 @@ def test_trial_node_projection_accepts_exact_mlx_runtime_evidence():
         metadata={
             "runtime": "mlx_lm",
             "configured_model": "mlx-community/Qwen3-1.7B-4bit",
+            "artifact_fingerprint": "mlx-artifact-exact",
             "model_experiment_id": "model_exp_test",
             "model_experiment_trial_ready": True,
             "model_experiment_benchmark_verified": True,
@@ -47,11 +48,25 @@ def test_trial_node_projection_accepts_exact_mlx_runtime_evidence():
     service.mary = SimpleNamespace(
         node_registry=SimpleNamespace(available=lambda: [node])
     )
+    record = SimpleNamespace(
+        id="model_exp_test",
+        runtime="mlx_lm",
+        model="mlx-community/Qwen3-1.7B-4bit",
+        artifact_fingerprint="mlx-artifact-exact",
+        node_id="MAC-MARY",
+        benchmark_verified=True,
+        trial_ready=True,
+    )
+    service._model_experiment_ledger = lambda: SimpleNamespace(
+        get=lambda experiment_id: record if experiment_id == "model_exp_test" else (_ for _ in ()).throw(KeyError(experiment_id))
+    )
 
     rows = service._model_experiment_trial_nodes("model_exp_test")
     assert len(rows) == 1
     assert rows[0]["capability"] == "llm.mlx_lm"
     assert rows[0]["runtime"] == "mlx_lm"
+    assert rows[0]["core_registered"] is True
+    assert rows[0]["core_trial_ready"] is True
     assert rows[0]["runnable"] is True
 
 
