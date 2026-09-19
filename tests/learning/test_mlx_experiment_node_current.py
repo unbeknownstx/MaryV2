@@ -185,3 +185,61 @@ def test_mlx_node_with_different_benchmark_suite_is_not_runnable():
     assert row["core_benchmark_match"] is False
     assert row["core_trial_ready"] is False
     assert row["runnable"] is False
+
+
+
+def test_mlx_node_with_different_pretraining_bundle_lineage_is_not_runnable():
+    capability = CapabilityDescriptor(
+        name="llm.mlx_lm",
+        private=True,
+        local=True,
+        cost="local",
+        metadata={
+            "runtime": "mlx_lm",
+            "configured_model": "mlx-community/Qwen3-1.7B-4bit",
+            "artifact_fingerprint": "mlx-artifact-exact",
+            "model_experiment_id": "model_exp_bundle_mismatch",
+            "model_experiment_trial_ready": True,
+            "model_experiment_benchmark_verified": True,
+            "model_experiment_benchmark_fingerprint": "marybench-core-v1",
+            "model_experiment_benchmark_case_count": 60,
+            "model_experiment_bundle_lineage_fingerprint": "a" * 64,
+            "model_experiment_runtime_match": True,
+            "model_experiment_artifact_match": True,
+            "model_experiment_node_match": True,
+            "execution_authorized": True,
+        },
+    )
+    node = SimpleNamespace(
+        node_id="MAC-MARY",
+        capabilities={"llm.mlx_lm": capability},
+    )
+    canonical = SimpleNamespace(
+        id="model_exp_bundle_mismatch",
+        runtime="mlx_lm",
+        model="mlx-community/Qwen3-1.7B-4bit",
+        artifact_fingerprint="mlx-artifact-exact",
+        bundle_lineage_fingerprint="b" * 64,
+        node_id="MAC-MARY",
+        benchmark_fingerprint="marybench-core-v1",
+        benchmark_case_count=60,
+        benchmark_verified=True,
+        trial_ready=True,
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        node_registry=SimpleNamespace(available=lambda: [node])
+    )
+    service._model_experiment_ledger = lambda: SimpleNamespace(
+        get=lambda _experiment_id: canonical
+    )
+
+    row = service._model_experiment_trial_nodes(
+        "model_exp_bundle_mismatch"
+    )[0]
+    assert row["node_trial_ready"] is True
+    assert row["core_registered"] is True
+    assert row["core_benchmark_match"] is True
+    assert row["core_bundle_lineage_match"] is False
+    assert row["core_trial_ready"] is False
+    assert row["runnable"] is False
