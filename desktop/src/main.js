@@ -5,6 +5,7 @@ import './style.css';
 import './uplift.css';
 import './presence.css';
 import './neon-street.css';
+import './presence-flow.css';
 import { renderPresenceHome } from './ui/presenceHome.js';
 import { formatMilliseconds, normalizeTurnTrace, providerAttemptSummary, timingValue } from './runtime/turnTrace.js';
 import { createHttpBridge, installMaryPwa } from './runtime/httpBridge.js';
@@ -612,6 +613,7 @@ function applyPerformancePacket(packet = {}) {
     performanceSettleTimer = null;
   }
   currentPerformancePacket = packet && typeof packet === 'object' ? packet : {};
+  syncPresenceFlow();
   const delivery = currentPerformancePacket.delivery || {};
   if (delivery && typeof delivery === 'object' && Object.keys(delivery).length) {
     currentDeliveryPlan = { ...BASE_DELIVERY_PLAN, ...delivery };
@@ -650,6 +652,7 @@ function settlePerformanceState(delay = 320) {
   if (performanceSettleTimer) window.clearTimeout(performanceSettleTimer);
   performanceSettleTimer = window.setTimeout(() => {
     currentPerformancePacket = {};
+    syncPresenceFlow();
     currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
     currentPerformanceBeatIndex = -1;
     currentMotionCue = null;
@@ -1198,6 +1201,7 @@ function setConversationState(raw) {
   const state = String(payload.state || raw || 'idle').toLowerCase();
   if (!['idle', 'listening', 'transcribing', 'responding', 'thinking', 'speaking', 'interrupted'].includes(state)) return;
   conversationState = state;
+  syncPresenceFlow();
   const stage = $('#main-stage');
   if (stage) stage.dataset.interactionState = state;
   refreshConversationControls();
@@ -1934,6 +1938,90 @@ function renderFabric() {
     </div>`;
 }
 
+function presenceFlowMarkup() {
+  return `
+    <div class="section-title">LIVE PRESENCE FLOW</div>
+    <div class="workspace-panel presence-flow-panel">
+      <div class="presence-flow-head">
+        <div><h3>Mary nervous system</h3><p>White is available structure. Yellow is the active presentation path for the current turn. This view is ephemeral telemetry only.</p></div>
+        <div class="presence-flow-legend"><span><i></i> structure</span><span><i class="live"></i> active flow</span></div>
+      </div>
+      <svg id="presence-flow" viewBox="0 0 920 430" role="img" aria-label="Live Mary identity, agency, embodiment and presence flow">
+        <path class="pf-wire" data-flow="core-identity" d="M460 63 C360 75 260 86 205 118"/>
+        <path class="pf-wire" data-flow="core-agency" d="M460 63 L460 118"/>
+        <path class="pf-wire" data-flow="core-embodiment" d="M460 63 C560 75 660 86 715 118"/>
+        <path class="pf-wire" data-flow="identity-agency" d="M325 164 L375 164"/>
+        <path class="pf-wire" data-flow="agency-embodiment" d="M545 164 L595 164"/>
+        <path class="pf-wire" data-flow="identity-presence" d="M205 205 C250 270 340 278 460 300"/>
+        <path class="pf-wire" data-flow="agency-presence" d="M460 205 L460 300"/>
+        <path class="pf-wire" data-flow="embodiment-presence" d="M715 205 C670 270 580 278 460 300"/>
+        <path class="pf-wire" data-flow="presence-desktop" d="M460 350 L460 386"/>
+
+        <g class="pf-node pf-core active" data-node="core">
+          <circle cx="460" cy="42" r="34"/>
+          <text class="pf-title" x="460" y="48" text-anchor="middle">MARY</text>
+        </g>
+        <g class="pf-node" data-node="identity">
+          <rect x="85" y="118" width="240" height="87" rx="16"/>
+          <text class="pf-title" x="205" y="147" text-anchor="middle">Identity</text>
+          <text class="pf-sub" x="205" y="171" text-anchor="middle">memory · self-model · world · relationship</text>
+          <text class="pf-sub" x="205" y="188" text-anchor="middle">knowledge</text>
+        </g>
+        <g class="pf-node" data-node="agency">
+          <rect x="340" y="118" width="240" height="87" rx="16"/>
+          <text class="pf-title" x="460" y="147" text-anchor="middle">Agency</text>
+          <text class="pf-sub" x="460" y="171" text-anchor="middle">planning · tools · procedures</text>
+          <text class="pf-sub" x="460" y="188" text-anchor="middle">autonomy · streaming</text>
+        </g>
+        <g class="pf-node" data-node="embodiment">
+          <rect x="595" y="118" width="240" height="87" rx="16"/>
+          <text class="pf-title" x="715" y="147" text-anchor="middle">Embodiment</text>
+          <text class="pf-sub" x="715" y="171" text-anchor="middle">avatar · expression · animation</text>
+          <text class="pf-sub" x="715" y="188" text-anchor="middle">gaze · voice</text>
+        </g>
+        <g class="pf-node" data-node="presence">
+          <rect x="350" y="300" width="220" height="52" rx="16"/>
+          <text class="pf-title" x="460" y="332" text-anchor="middle">Presence</text>
+        </g>
+        <g class="pf-node" data-node="desktop">
+          <rect x="365" y="386" width="190" height="38" rx="14"/>
+          <text class="pf-title" x="460" y="411" text-anchor="middle">Desktop</text>
+        </g>
+      </svg>
+    </div>`;
+}
+
+function syncPresenceFlow() {
+  const root = $('#presence-flow');
+  if (!root) return;
+  const thinking = ['transcribing', 'thinking', 'responding'].includes(conversationState);
+  const listening = conversationState === 'listening';
+  const speaking = conversationState === 'speaking' || Boolean(activeSpeechAudio);
+  const directed = Boolean(currentPerformancePacket && Object.keys(currentPerformancePacket).length);
+  const agencyActive = thinking || directed;
+  const embodimentActive = listening || speaking || directed;
+  const presenceActive = conversationState !== 'idle' || directed;
+
+  const setNode = (name, active) => root.querySelector(`[data-node="${name}"]`)?.classList.toggle('active', Boolean(active));
+  const setWire = (name, active) => root.querySelector(`[data-flow="${name}"]`)?.classList.toggle('active', Boolean(active));
+
+  setNode('identity', true);
+  setNode('agency', agencyActive);
+  setNode('embodiment', embodimentActive);
+  setNode('presence', presenceActive);
+  setNode('desktop', true);
+
+  setWire('core-identity', true);
+  setWire('core-agency', agencyActive);
+  setWire('core-embodiment', embodimentActive);
+  setWire('identity-agency', agencyActive);
+  setWire('agency-embodiment', directed || speaking);
+  setWire('identity-presence', presenceActive);
+  setWire('agency-presence', agencyActive);
+  setWire('embodiment-presence', embodimentActive);
+  setWire('presence-desktop', presenceActive || conversationState === 'idle');
+}
+
 function renderDiagnostics() {
   const metrics = ecosystemState.metrics || {};
   const rows = Object.entries(metrics);
@@ -1971,7 +2059,7 @@ function renderDiagnostics() {
     ['Playback / perceived', timingValue(trace, 'perceived_ms')],
   ].filter(([,value]) => value !== null);
   const max = Math.max(1, ...timeline.map(([,value]) => value || 0));
-  return `<div class="trace-hero">
+  return `${presenceFlowMarkup()}<div class="trace-hero">
     <div class="workspace-panel hero-panel"><h3>Last Turn Trace</h3><p>Measured from the real runtime: provider, cognition, reflection, speech, and perceived response timing. This telemetry is ephemeral and never becomes Mary memory.</p>
       <div class="trace-stack">${timeline.length ? timeline.map(([label,value]) => `<div class="trace-row"><span>${escapeHtml(label)}</span><i style="width:${Math.max(2,(value/max)*100)}%"></i><strong>${escapeHtml(formatMilliseconds(value))}</strong></div>`).join('') : '<div class="workspace-empty">Complete one desktop turn to populate the trace.</div>'}</div>
     </div>
@@ -2234,6 +2322,7 @@ function renderWorkspace(screen) {
   };
   workspaceBody.innerHTML = (renderers[screen] || (() => '<div class="workspace-empty">Coming soon.</div>'))();
   bindWorkspaceActions();
+  if (screen === 'diagnostics') syncPresenceFlow();
 }
 
 function bindCreatorLabActions() {
