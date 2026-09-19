@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .capabilities import capability_implementation_fingerprint
+
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
@@ -51,24 +53,76 @@ def build_node_intelligence(
                 continue
             cap = _mapping(raw_capability)
             metadata = _mapping(cap.get("metadata"))
+            implementation_fingerprint = capability_implementation_fingerprint({
+                "name": name,
+                "metadata": metadata,
+            })
             available = bool(cap.get("available", True))
             readiness = str(
                 cap.get("readiness") or ("ready" if available else "unavailable")
             )[:80]
             authorized = metadata.get("execution_authorized") is True
             evidence: list[dict[str, Any]] = []
+            stale_competence_records = 0
             if callable(summary_fn) and node_id:
-                try:
-                    raw_evidence = list(
-                        summary_fn(
-                            name,
-                            node_ids=(node_id,),
-                            limit=max(1, min(12, int(competence_limit))),
-                        )
-                        or []
+                summary_kwargs: dict[str, Any] = {
+                    "node_ids": (node_id,),
+                    "limit": max(1, min(12, int(competence_limit))),
+                }
+                if implementation_fingerprint:
+                    summary_kwargs["implementation_fingerprint"] = (
+                        implementation_fingerprint
                     )
+                try:
+                    raw_evidence = list(summary_fn(name, **summary_kwargs) or [])
+                except TypeError:
+                    try:
+                        raw_evidence = list(
+                            summary_fn(
+                                name,
+                                node_ids=(node_id,),
+                                limit=max(1, min(12, int(competence_limit))),
+                            )
+                            or []
+                        )
+                    except Exception:
+                        raw_evidence = []
+                    if implementation_fingerprint:
+                        raw_evidence = [
+                            item
+                            for item in raw_evidence
+                            if isinstance(item, dict)
+                            and str(
+                                item.get("implementation_fingerprint") or ""
+                            ).casefold()
+                            == implementation_fingerprint
+                        ]
                 except Exception:
                     raw_evidence = []
+
+                if implementation_fingerprint:
+                    try:
+                        all_evidence = list(
+                            summary_fn(
+                                name,
+                                node_ids=(node_id,),
+                                limit=max(12, min(50, int(competence_limit) * 4)),
+                            )
+                            or []
+                        )
+                    except Exception:
+                        all_evidence = []
+                    stale_competence_records = sum(
+                        1
+                        for item in all_evidence
+                        if isinstance(item, dict)
+                        and int(item.get("attempts") or 0) > 0
+                        and str(
+                            item.get("implementation_fingerprint") or ""
+                        ).casefold()
+                        != implementation_fingerprint
+                    )
+
                 for item in raw_evidence[:12]:
                     if not isinstance(item, dict):
                         continue
@@ -84,6 +138,9 @@ def build_node_intelligence(
                             float(item.get("evidence_strength") or 0.0), 4
                         ),
                         "mean_latency_ms": item.get("mean_latency_ms"),
+                        "implementation_fingerprint": str(
+                            item.get("implementation_fingerprint") or ""
+                        )[:64],
                         "last_success": item.get("last_success"),
                         "last_observed_at": str(
                             item.get("last_observed_at") or ""
@@ -98,6 +155,8 @@ def build_node_intelligence(
                 evidence_state = "offline"
             elif not available or readiness == "unavailable":
                 evidence_state = "unavailable"
+            elif attempts <= 0 and stale_competence_records > 0:
+                evidence_state = "implementation_changed"
             elif attempts <= 0:
                 evidence_state = "advertised_unverified"
             elif verified_successes <= 0:
@@ -111,6 +170,8 @@ def build_node_intelligence(
                 "readiness": readiness,
                 "execution_authorized": authorized,
                 "routable": bool(cap.get("routable", available and readiness in {"ready", "degraded"})),
+                "implementation_fingerprint": implementation_fingerprint,
+                "stale_competence_records": stale_competence_records,
                 "evidence_state": evidence_state,
                 "evidence": evidence,
                 "experiment": {
@@ -168,7 +229,14 @@ def build_node_intelligence(
             "advertised": "node reports capability presence",
             "ready": "runtime reports currently routable readiness",
             "authorized": "device-local execution permission is represented",
-            "demonstrated": "terminal competence evidence includes verified success",
+            "demonstrated": (
+                "terminal competence evidence includes verified success for the "
+                "currently advertised implementation"
+            ),
+            "implementation_changed": (
+                "historical competence exists for a different implementation "
+                "fingerprint and is excluded from current competence"
+            ),
         },
         "execution_permission_granted": False,
         "routing_performed": False,
