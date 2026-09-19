@@ -2521,6 +2521,16 @@ class MaryCoreService:
                 runtime = str(metadata.get("runtime") or "")[:80]
                 model = str(metadata.get("configured_model") or metadata.get("model") or "")[:300]
                 artifact_fingerprint = str(metadata.get("artifact_fingerprint") or "")[:64].lower()
+                node_benchmark_fingerprint = str(
+                    metadata.get("model_experiment_benchmark_fingerprint") or ""
+                )[:160]
+                try:
+                    node_benchmark_case_count = max(
+                        0,
+                        int(metadata.get("model_experiment_benchmark_case_count") or 0),
+                    )
+                except (TypeError, ValueError):
+                    node_benchmark_case_count = 0
 
                 canonical = None
                 if canonical_ledger is not None:
@@ -2546,6 +2556,13 @@ class MaryCoreService:
                     and bool(canonical.node_id)
                     and canonical.node_id == node_id
                 )
+                core_benchmark_match = bool(
+                    canonical is not None
+                    and bool(node_benchmark_fingerprint)
+                    and canonical.benchmark_fingerprint == node_benchmark_fingerprint
+                    and canonical.benchmark_case_count > 0
+                    and canonical.benchmark_case_count == node_benchmark_case_count
+                )
                 core_trial_ready = bool(
                     canonical is not None
                     and canonical.trial_ready
@@ -2554,6 +2571,7 @@ class MaryCoreService:
                     and core_model_match
                     and core_artifact_match
                     and core_node_match
+                    and core_benchmark_match
                 )
                 qualified = bool(node_qualified and core_trial_ready)
                 try:
@@ -2580,6 +2598,9 @@ class MaryCoreService:
                     "core_model_match": core_model_match,
                     "core_artifact_match": core_artifact_match,
                     "core_node_match": core_node_match,
+                    "core_benchmark_match": core_benchmark_match,
+                    "benchmark_fingerprint": node_benchmark_fingerprint,
+                    "benchmark_case_count": node_benchmark_case_count,
                     "execution_authorized": execution_authorized,
                     "trial_ready": qualified,
                     "runnable": bool(qualified and execution_authorized),
