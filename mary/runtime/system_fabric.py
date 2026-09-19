@@ -54,14 +54,19 @@ def _candidate_summary(catalog: Any) -> dict[str, Any]:
 def _model_experiment_summary(mary: Any) -> dict[str, Any]:
     """Project exact reviewed/benchmarked model evidence without model output."""
     try:
-        from mary.learning import ModelExperimentLedger
-        paths = getattr(getattr(mary, "config", None), "paths", None)
-        runtime_root = getattr(paths, "runtime", None)
-        if runtime_root is None:
-            return {"count": 0, "trial_ready": 0, "records": []}
-        snapshot = ModelExperimentLedger(
-            runtime_root / "model_experiment_evidence.json"
-        ).snapshot()
+        ledger = getattr(mary, "model_experiments", None)
+        if ledger is not None and callable(getattr(ledger, "snapshot", None)):
+            snapshot = ledger.snapshot()
+        else:
+            # Compatibility fallback for older/partial application fixtures.
+            from mary.learning import ModelExperimentLedger
+            paths = getattr(getattr(mary, "config", None), "paths", None)
+            runtime_root = getattr(paths, "runtime", None)
+            if runtime_root is None:
+                return {"count": 0, "trial_ready": 0, "records": []}
+            snapshot = ModelExperimentLedger(
+                runtime_root / "model_experiment_evidence.json"
+            ).snapshot()
     except Exception as exc:
         return {
             "count": 0,
