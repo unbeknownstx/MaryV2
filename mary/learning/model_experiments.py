@@ -65,6 +65,7 @@ class ModelExperimentRecord:
     source: str
     created_at: str
     updated_at: str
+    bundle_lineage_fingerprint: str = ""
     node_id: str = ""
     scores: dict[str, float] | None = None
     mary_fit: float | None = None
@@ -90,7 +91,7 @@ class ModelExperimentRecord:
 
 
 class ModelExperimentLedger:
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path).expanduser()
@@ -125,6 +126,11 @@ class ModelExperimentLedger:
             raise ValueError("MLX candidate proposal is incomplete")
         if len(config_sha) != 64 or len(weights_sha) != 64:
             raise ValueError("MLX candidate proposal requires exact SHA256 evidence")
+        bundle_lineage = _text(
+            raw.get("bundle_lineage_fingerprint"), 64
+        ).lower()
+        if bundle_lineage and len(bundle_lineage) != 64:
+            raise ValueError("MLX candidate bundle lineage fingerprint must be SHA256")
         artifact = self._artifact_fingerprint(config_sha, weights_sha)
         return self._register(
             candidate_id=candidate_id,
@@ -135,6 +141,7 @@ class ModelExperimentLedger:
             adapter_candidate_ids=(candidate_id,),
             artifact_fingerprint=artifact,
             dataset_fingerprint=_text(raw.get("dataset_fingerprint"), 160),
+            bundle_lineage_fingerprint=bundle_lineage,
             reviewed_by=reviewed_by,
             source="mlx_adapter_candidate_proposal",
             notes=tuple(str(item) for item in list(raw.get("notes") or [])[:12]),
@@ -166,6 +173,7 @@ class ModelExperimentLedger:
             adapter_candidate_ids=_tuple(adapter_candidate_ids),
             artifact_fingerprint=artifact,
             dataset_fingerprint="",
+            bundle_lineage_fingerprint="",
             reviewed_by=reviewed_by,
             source=source,
             notes=_tuple(notes, limit=12, item_limit=300),
@@ -182,6 +190,7 @@ class ModelExperimentLedger:
         adapter_candidate_ids: tuple[str, ...],
         artifact_fingerprint: str,
         dataset_fingerprint: str,
+        bundle_lineage_fingerprint: str,
         reviewed_by: str,
         source: str,
         notes: tuple[str, ...],
@@ -208,6 +217,9 @@ class ModelExperimentLedger:
             source=_text(source, 160) or "reviewed_candidate",
             created_at=now,
             updated_at=now,
+            bundle_lineage_fingerprint=_text(
+                bundle_lineage_fingerprint, 64
+            ).lower(),
             notes=notes,
         )
 
@@ -230,6 +242,7 @@ class ModelExperimentLedger:
                     "runtime": runtime,
                     "artifact_fingerprint": artifact_fingerprint,
                     "dataset_fingerprint": dataset_fingerprint,
+                    "bundle_lineage_fingerprint": record.bundle_lineage_fingerprint,
                     "reviewed_by": record.reviewed_by,
                     "source": record.source,
                 },
@@ -431,6 +444,7 @@ class ModelExperimentLedger:
                 "adapter_candidate_ids": list(item.adapter_candidate_ids),
                 "artifact_fingerprint": item.artifact_fingerprint,
                 "dataset_fingerprint": item.dataset_fingerprint,
+                "bundle_lineage_fingerprint": item.bundle_lineage_fingerprint,
                 "source": item.source,
                 "notes": list(item.notes),
             },
@@ -525,6 +539,9 @@ class ModelExperimentLedger:
                 "adapter_candidate_ids": _tuple(experiment.get("adapter_candidate_ids") or ()),
                 "artifact_fingerprint": artifact,
                 "dataset_fingerprint": _text(experiment.get("dataset_fingerprint"), 160),
+                "bundle_lineage_fingerprint": _text(
+                    experiment.get("bundle_lineage_fingerprint"), 64
+                ).lower(),
             }
             for name, value in immutable.items():
                 if getattr(current, name) != value:
@@ -541,6 +558,9 @@ class ModelExperimentLedger:
                 adapter_candidate_ids=_tuple(experiment.get("adapter_candidate_ids") or ()),
                 artifact_fingerprint=artifact,
                 dataset_fingerprint=_text(experiment.get("dataset_fingerprint"), 160),
+                bundle_lineage_fingerprint=_text(
+                    experiment.get("bundle_lineage_fingerprint"), 64
+                ).lower(),
                 reviewed_by=_text(reviewed_by, 160) or "creator",
                 source=(
                     "portable_import:"
