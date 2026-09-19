@@ -26,7 +26,7 @@ def test_character_studio_camera_scene_and_capture_controls_are_bound():
         "data-stage-scene",
     ):
         assert f"$$('#workspace-body [{selector}]').forEach" in source
-        assert f"$('#workspace-body [{selector}]').forEach" not in source
+        assert f"\n  $('#workspace-body [{selector}]').forEach" not in source
 
 
 def test_vrm_gaze_uses_real_lookat_target_and_face_expressions_are_model_aware():
