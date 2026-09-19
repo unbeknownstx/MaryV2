@@ -41,6 +41,7 @@ def test_desktop_and_mobile_surface_world_pulse_freshness_without_truth_authorit
         assert "External context" in surface
         assert "Current beliefs" in surface
         assert "Temporal relations" in surface
+        assert "Reconciliation groups" in surface
 
     assert "World Pulse plans refreshes only" in desktop
     assert "World Pulse plans refreshes only" in web
@@ -58,9 +59,11 @@ def test_native_iphone_world_surface_projects_context_pulse_beliefs_and_history(
     assert 'app.liveData["beliefs"]' in detail
     assert 'app.liveData["temporal"]' in detail
     assert 'app.liveData["contradictions"]' in detail
+    assert 'app.liveData["reconciliation_queue"]' in detail
     assert 'Eyebrow(text: "World pulse")' in detail
     assert 'DataRow(label: "Refresh lanes due"' in detail
     assert 'DataRow(label: "Current beliefs"' in detail
     assert 'DataRow(label: "Contradictions"' in detail
+    assert 'DataRow(label: "Reconciliation groups"' in detail
     assert "cannot promote itself into Mary truth" in detail
     assert "acceptance and reconciliation remain explicit Core actions" in detail
