@@ -95,9 +95,15 @@ class MaryCorpusMiner:
                 hashes.setdefault(digest, []).append(str(record.record_id))
 
             text = str(getattr(record, "text", "") or "")
-            if _BEHAVIOR_RE.search(text):
+            training_blocked = bool(
+                record_labels.intersection({"NEG", "FC", "ALT"})
+            )
+            if _BEHAVIOR_RE.search(text) and not training_blocked:
                 structured += 1
-            if record_labels.intersection({"AI", "DNA", "PUB"}):
+            if (
+                record_labels.intersection({"AI", "DNA", "PUB"})
+                and not training_blocked
+            ):
                 training_candidates += 1
             if "NEG" in record_labels:
                 negatives += 1
