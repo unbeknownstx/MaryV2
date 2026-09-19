@@ -1035,6 +1035,10 @@ function applySemanticMotionLayer(cue, elapsed, energy, delta) {
   humanoid.setNormalizedPose(layeredPose);
 }
 
+function applySemanticMotionPose(cue, elapsed, energy, delta = .016) {
+  applySemanticMotionLayer(cue, elapsed, energy, delta);
+}
+
 function updatePerformanceBeat() {
   const { index, beat } = performanceBeatState();
   if (index === currentPerformanceBeatIndex) return beat;
