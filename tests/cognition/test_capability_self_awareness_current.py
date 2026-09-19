@@ -107,6 +107,9 @@ def _introspection(*, web: bool = True, registry=None, substrate: bool = False):
                 "enabled_retrieval_modes": ["fts", "direct", "vector"],
                 "attention_required": True,
                 "stale_derivatives": [{"pack_id": "vectors"}],
+                "stale_local_indexes": [
+                    {"pack_id": "notes", "state": "pipeline_stale"}
+                ],
             },
         )
         if substrate else None
@@ -151,6 +154,7 @@ def test_capability_introspection_projects_competence_and_local_substrates():
     ]
     assert live["knowledge_substrate"]["attention_required"] is True
     assert live["knowledge_substrate"]["stale_derivatives"] == 1
+    assert live["knowledge_substrate"]["stale_local_indexes"] == 1
     assert live["procedural_memory"]["approved"] == 5
     assert live["procedural_memory"]["revision_attention"] == 1
     assert live["world_model"]["reconciliation_groups"] == 2
@@ -198,3 +202,17 @@ def test_broad_node_capability_question_enumerates_live_and_ready_sets():
     answer = evidence["fallback_response"]
     assert "currently advertise: llm.ollama, sensor.screen_describe" in answer
     assert "execution-authorized ready subset is: llm.ollama" in answer
+
+
+def test_local_knowledge_question_uses_core_substrate_and_reports_staleness():
+    evidence = _introspection(registry=_Registry(), substrate=True)._capabilities(
+        "is your local knowledge corpus current?"
+    )
+
+    answer = evidence["fallback_response"]
+    assert "local knowledge substrate is available" in answer
+    assert "fts, direct, vector" in answer
+    assert "1 local index is stale" in answer
+    assert "explicit reindexing" in answer
+    assert "1 semantic derivative" in answer
+    assert "No connected node currently advertises local knowledge search" not in answer
