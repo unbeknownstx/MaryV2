@@ -326,3 +326,61 @@ def test_curation_report_detects_duplicates_and_drift_without_mutation(tmp_path:
     assert drift["packs"][0]["refresh"]["has_changes"] is True
     assert "explicit_refresh" in drift["packs"][0]["recommendations"]
     assert fabric.search("same canonical reference body", pack_ids=(a.id,))
+
+
+def test_substrate_profile_maps_active_reference_and_derivative_tiers_without_scanning(tmp_path: Path):
+    docs = tmp_path / "docs-profile"
+    docs.mkdir()
+    (docs / "manual.md").write_text("local substrate evidence", encoding="utf-8")
+
+    fabric = KnowledgeFabric(
+        tmp_path / "knowledge" / "profile.json",
+        index_path=tmp_path / "knowledge" / "profile.sqlite3",
+    )
+    local = fabric.register(
+        pack_id="local-docs",
+        title="Local Docs",
+        kind="local_files",
+        location=str(docs),
+        query_mode="fts",
+        collection="projects",
+    )
+    fabric.index_local_pack(local.id)
+    fabric.register(
+        pack_id="offline-wiki",
+        title="Offline Wiki",
+        kind="kiwix",
+        location="http://127.0.0.1:8080",
+        query_mode="direct",
+        collection="reference",
+    )
+    fabric.register(
+        pack_id="vectors",
+        title="Local Vectors",
+        kind="qdrant",
+        location="http://127.0.0.1:6333",
+        query_mode="vector",
+        collection="projects",
+        metadata={
+            "qdrant_collection": "mary_projects",
+            "embedding_model": "test-embedding",
+            "embedding_space_identity": "0123456789abcdef",
+            "embedding_dimensions": 384,
+        },
+    )
+    fabric.seed_recommended_candidates()
+
+    profile = fabric.substrate_profile()
+
+    assert profile["counts"]["active_local"] == 1
+    assert profile["counts"]["offline_reference"] == 1
+    assert profile["counts"]["semantic_derivative"] == 1
+    assert profile["counts"]["catalog_candidates"] == 3
+    assert profile["indexed_chunks"] == 1
+    assert profile["enabled_retrieval_modes"] == ["direct", "fts", "vector"]
+    assert profile["stale_derivatives"] == [
+        {"pack_id": "vectors", "source_pack_id": "", "state": "unbuilt"}
+    ]
+    assert profile["attention_required"] is True
+    assert profile["automatic_scan_performed"] is False
+    assert profile["automatic_rebuild_performed"] is False
