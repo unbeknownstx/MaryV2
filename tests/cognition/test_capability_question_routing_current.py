@@ -26,3 +26,11 @@ def test_figurative_see_question_does_not_become_sensor_capability_query():
         intent.intent_type == IntentType.SELF_QUERY
         and intent.parameters.get("self_query_type") == "capabilities"
     )
+
+
+def test_media_preference_question_stays_out_of_capability_routing():
+    intent = _intent("do you like images and photography?")
+    assert not (
+        intent.intent_type == IntentType.SELF_QUERY
+        and intent.parameters.get("self_query_type") == "capabilities"
+    )
