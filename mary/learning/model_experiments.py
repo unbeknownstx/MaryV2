@@ -309,6 +309,55 @@ class ModelExperimentLedger:
         )
         return self.get(current.id)
 
+    def record_trial_dispatch(
+        self,
+        experiment_id: str,
+        *,
+        task_id: str,
+        node_id: str,
+        capability: str,
+    ) -> None:
+        """Append content-free evidence that an explicit trial was queued."""
+        self.get(experiment_id)
+        self._record_event(
+            experiment_id,
+            "trial_dispatched",
+            {
+                "task_id": _text(task_id, 180),
+                "node_id": _text(node_id, 180),
+                "capability": _text(capability, 120).casefold(),
+            },
+        )
+
+    def record_trial_outcome(
+        self,
+        experiment_id: str,
+        *,
+        task_id: str,
+        node_id: str,
+        status: str,
+        provider: str = "",
+        model: str = "",
+        error_class: str = "",
+    ) -> None:
+        """Append terminal trial evidence without retaining prompts or output."""
+        self.get(experiment_id)
+        clean_status = _text(status, 40).casefold()
+        if clean_status not in {"completed", "rejected", "failed", "expired"}:
+            raise ValueError("trial outcome must be terminal")
+        self._record_event(
+            experiment_id,
+            "trial_outcome",
+            {
+                "task_id": _text(task_id, 180),
+                "node_id": _text(node_id, 180),
+                "status": clean_status,
+                "provider": _text(provider, 120),
+                "model": _text(model, 240),
+                "error_class": _text(error_class, 120),
+            },
+        )
+
     def advertisement_overlay(
         self,
         experiment_id: str,
