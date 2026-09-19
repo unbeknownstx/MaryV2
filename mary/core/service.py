@@ -2483,14 +2483,25 @@ class MaryCoreService:
         self,
         experiment_id: str = "",
     ) -> list[dict[str, Any]]:
-        """Return live nodes carrying exact benchmarked experiment evidence."""
+        """Return live experiment nodes only when Core and node evidence agree.
+
+        A replaceable node may advertise locally reviewed benchmark evidence, but
+        advertisement is never sufficient to make an experiment runnable. The
+        canonical Core ledger must contain the same deterministic experiment,
+        exact artifact/runtime/model and the benchmarked node identity.
+        """
         requested = str(experiment_id or "").strip()[:160]
         registry = getattr(self.mary, "node_registry", None)
         available = getattr(registry, "available", None)
         if not callable(available):
             return []
+        try:
+            canonical_ledger = self._model_experiment_ledger()
+        except Exception:
+            canonical_ledger = None
         output: list[dict[str, Any]] = []
         for node in list(available() or [])[:64]:
+            node_id = str(getattr(node, "node_id", "") or "")[:180]
             for capability_name in ("llm.llama_cpp", "llm.mlx_lm"):
                 capability = dict(getattr(node, "capabilities", {}) or {}).get(capability_name)
                 if capability is None:
@@ -2499,7 +2510,7 @@ class MaryCoreService:
                 advertised_id = str(metadata.get("model_experiment_id") or "")[:160]
                 if not advertised_id or (requested and advertised_id != requested):
                     continue
-                qualified = all((
+                node_qualified = all((
                     bool(metadata.get("model_experiment_trial_ready")),
                     bool(metadata.get("model_experiment_benchmark_verified")),
                     bool(metadata.get("model_experiment_runtime_match")),
@@ -2507,26 +2518,73 @@ class MaryCoreService:
                     bool(metadata.get("model_experiment_node_match")),
                 ))
                 execution_authorized = metadata.get("execution_authorized") is True
+                runtime = str(metadata.get("runtime") or "")[:80]
+                model = str(metadata.get("configured_model") or metadata.get("model") or "")[:180]
+                artifact_fingerprint = str(metadata.get("artifact_fingerprint") or "")[:64].lower()
+
+                canonical = None
+                if canonical_ledger is not None:
+                    try:
+                        canonical = canonical_ledger.get(advertised_id)
+                    except Exception:
+                        canonical = None
+                core_registered = canonical is not None
+                core_runtime_match = bool(
+                    canonical is not None and canonical.runtime == runtime.casefold()
+                )
+                core_model_match = bool(
+                    canonical is not None and canonical.model == model
+                )
+                core_artifact_match = bool(
+                    canonical is not None
+                    and bool(artifact_fingerprint)
+                    and canonical.artifact_fingerprint.lower() == artifact_fingerprint
+                )
+                core_node_match = bool(
+                    canonical is not None
+                    and bool(node_id)
+                    and bool(canonical.node_id)
+                    and canonical.node_id == node_id
+                )
+                core_trial_ready = bool(
+                    canonical is not None
+                    and canonical.trial_ready
+                    and canonical.benchmark_verified
+                    and core_runtime_match
+                    and core_model_match
+                    and core_artifact_match
+                    and core_node_match
+                )
+                qualified = bool(node_qualified and core_trial_ready)
                 try:
                     latency = float(metadata.get("model_experiment_latency_ms"))
                 except (TypeError, ValueError):
                     latency = None
                 output.append({
-                    "node_id": str(getattr(node, "node_id", "") or "")[:180],
+                    "node_id": node_id,
                     "capability": capability_name,
-                    "runtime": str(metadata.get("runtime") or "")[:80],
+                    "runtime": runtime,
                     "experiment_id": advertised_id,
-                    "model": str(metadata.get("configured_model") or metadata.get("model") or "")[:180],
+                    "model": model,
+                    "artifact_fingerprint": artifact_fingerprint,
                     "mary_fit": metadata.get("model_experiment_mary_fit"),
                     "latency_ms": latency,
                     "benchmark_verified": bool(metadata.get("model_experiment_benchmark_verified")),
                     "artifact_match": bool(metadata.get("model_experiment_artifact_match")),
                     "runtime_match": bool(metadata.get("model_experiment_runtime_match")),
                     "node_match": bool(metadata.get("model_experiment_node_match")),
+                    "node_trial_ready": node_qualified,
+                    "core_registered": core_registered,
+                    "core_trial_ready": core_trial_ready,
+                    "core_runtime_match": core_runtime_match,
+                    "core_model_match": core_model_match,
+                    "core_artifact_match": core_artifact_match,
+                    "core_node_match": core_node_match,
                     "execution_authorized": execution_authorized,
                     "trial_ready": qualified,
                     "runnable": bool(qualified and execution_authorized),
-                    "authority": "explicit_experiment_trial_only",
+                    "registration_required": bool(node_qualified and not core_trial_ready),
+                    "authority": "explicit_core_registered_experiment_trial_only",
                 })
         output.sort(key=lambda item: (
             not bool(item.get("runnable")),
@@ -3300,6 +3358,27 @@ class MaryCoreService:
                 return _json_safe({
                     **self.application.ecosystem.adapter_lab.snapshot(),
                     "reviewed_candidates": self.application.ecosystem.model_candidates.snapshot(),
+                })
+
+            if action.action == "model.experiment.import_evidence":
+                evidence = values.get("evidence")
+                if not isinstance(evidence, dict):
+                    raise ValueError("model experiment evidence import requires an evidence object")
+                ledger = self._model_experiment_ledger()
+                record = ledger.import_portable_evidence(
+                    evidence,
+                    reviewed_by=f"creator:{action.device_id}",
+                )
+                return _json_safe({
+                    "ok": True,
+                    "experiment": record.to_dict(),
+                    "nodes": self._model_experiment_trial_nodes(record.id),
+                    "core_registration_present": True,
+                    "execution_performed": False,
+                    "production_route_changed": False,
+                    "promotion_performed": False,
+                    "identity_or_memory_authority_granted": False,
+                    "authority": "explicit_creator_imported_experiment_evidence",
                 })
 
             if action.action == "model.experiment.status":
