@@ -1047,6 +1047,41 @@ class SelfIntrospection:
             requested_groups.append(("web search", ()))
 
         requested_sentences: list[str] = []
+        if any(
+            term in lowered_query
+            for term in (
+                "what can you do",
+                "your capabilities",
+                "your tools",
+                "your nodes",
+                "capability nodes",
+                "nodes actually do",
+            )
+        ):
+            advertised_summary = ", ".join(sorted(capability_names)[:16])
+            authorized_summary = ", ".join(sorted(execution_ready)[:16])
+            if advertised_summary:
+                requested_sentences.append(
+                    "My connected nodes currently advertise: "
+                    + advertised_summary
+                    + "."
+                )
+            else:
+                requested_sentences.append(
+                    "No connected node currently advertises a device capability."
+                )
+            if authorized_summary:
+                requested_sentences.append(
+                    "The currently execution-authorized ready subset is: "
+                    + authorized_summary
+                    + "."
+                )
+            elif advertised_summary:
+                requested_sentences.append(
+                    "None of those advertised node capabilities is currently both ready "
+                    "and execution-authorized."
+                )
+
         for label, names in requested_groups[:6]:
             if label == "web search":
                 if web_search:
