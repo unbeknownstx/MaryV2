@@ -56,12 +56,52 @@ class _Registry:
         }
 
 
-def _introspection(*, web: bool = True, registry=None):
+class _Competence:
+    def status(self):
+        return {"records": 2}
+
+    def summary_for(self, capability, *, node_ids=(), limit=4):
+        if capability != "llm.ollama":
+            return []
+        return [{
+            "node_id": "desktop-ready",
+            "attempts": 8,
+            "verified_successes": 7,
+            "reliability": 0.88,
+            "evidence_strength": 0.9,
+            "mean_latency_ms": 820.0,
+            "last_success": True,
+            "last_observed_at": "2026-09-18T00:00:00+00:00",
+        }]
+
+
+class _StatusOwner:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def status(self):
+        return dict(self.payload)
+
+
+def _introspection(*, web: bool = True, registry=None, substrate: bool = False):
     value = object.__new__(SelfIntrospection)
     value.tools = _Tools(web=web)
     value.node_registry = registry
     value.agency = SimpleNamespace(status=lambda: {"active": True})
     value.autonomy = SimpleNamespace()
+    value.competence = _Competence() if substrate else None
+    value.knowledge_fabric = (
+        _StatusOwner({"packs": 4, "enabled": 2, "indexed_documents": 1200})
+        if substrate else None
+    )
+    value.procedural_skills = (
+        _StatusOwner({"approved": 5, "candidates": 2, "revision_attention": 1})
+        if substrate else None
+    )
+    value.world_model = (
+        _StatusOwner({"current_beliefs": 11, "reconciliation_groups": 2})
+        if substrate else None
+    )
     return value
 
 
@@ -76,6 +116,24 @@ def test_capability_introspection_uses_live_tools_and_connected_nodes():
     assert live["nodes"]["execution_ready_capabilities"] == ["llm.ollama"]
     assert evidence["authority"].startswith("live Core/tool/node state is authoritative")
     assert "provider model priors are not capability evidence" in evidence["authority"]
+
+
+def test_capability_introspection_projects_competence_and_local_substrates():
+    evidence = _introspection(registry=_Registry(), substrate=True)._capabilities()
+    live = evidence["live_capabilities"]
+
+    assert live["nodes"]["competence_records"] == 2
+    assert live["nodes"]["demonstrated_competence"]["llm.ollama"][0]["attempts"] == 8
+    assert live["knowledge_substrate"] == {
+        "packs": 4,
+        "enabled": 2,
+        "indexed_documents": 1200,
+        "available": True,
+    }
+    assert live["procedural_memory"]["approved"] == 5
+    assert live["procedural_memory"]["revision_attention"] == 1
+    assert live["world_model"]["reconciliation_groups"] == 2
+    assert "advertised capability is separate from demonstrated competence" in evidence["fallback_response"]
 
 
 def test_capability_introspection_does_not_invent_browse_or_device_execution():
