@@ -35,8 +35,10 @@ def test_governed_world_and_skill_actions_are_available_on_every_creator_surface
         assert "continuity.skill.reject" in source
         assert "continuity.skill.revise" in source
 
+    assert "Keep this as current" in desktop
+    assert "Keep current" in web
+    assert "Keep this as current" in ios
     for surface in (desktop, web, ios):
-        assert "Keep this as current" in surface
         assert "Approve" in surface
         assert "Reject" in surface
         assert "revision" in surface.lower()
