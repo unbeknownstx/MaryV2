@@ -76,9 +76,22 @@ def main() -> int:
                 f'python -m scripts.review_mlx_adapter_candidate '
                 f'"{candidate_path}" --approve'
             ),
+            "run_base_marybench": (
+                f'python -m scripts.run_mary_mlx_marybench --bundle "{output}" '
+                f'--variant base --output "{output / "marybench_base.json"}"'
+            ),
+            "run_adapter_marybench": (
+                f'python -m scripts.run_mary_mlx_marybench --bundle "{output}" '
+                f'--variant adapter --output "{output / "marybench_adapter.json"}"'
+            ),
+            "compare_marybench": (
+                f'python -m scripts.compare_marybench_runs '
+                f'"{output / "marybench_base.json"}" "{output / "marybench_adapter.json"}" '
+                f'--output "{output / "marybench_scorecard.json"}"'
+            ),
             "record_held_out_benchmark": (
                 "python -m scripts.record_model_experiment_benchmark "
-                "<experiment-id> <scores-json> --node-id <node-id> "
+                "<experiment-id> marybench_scorecard.json --node-id <node-id> "
                 "--artifact-fingerprint <artifact-fingerprint>"
             ),
             "sync_reviewed_benchmark_to_core": (
