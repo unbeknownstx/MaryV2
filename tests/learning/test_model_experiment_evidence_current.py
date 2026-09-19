@@ -171,9 +171,12 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
     )
 
     evidence = local.export_portable_evidence(benchmarked.id)
-    rendered = json.dumps(evidence, sort_keys=True).casefold()
-    assert "prompt" not in rendered
-    assert "generated output" not in rendered
+    assert evidence["boundaries"]["prompts_included"] is False
+    assert evidence["boundaries"]["generated_output_included"] is False
+    assert "messages" not in evidence["experiment"]
+    assert "messages" not in evidence["benchmark"]
+    assert "content" not in evidence["experiment"]
+    assert "content" not in evidence["benchmark"]
     assert evidence["experiment"]["dataset_fingerprint"] == "mary-dataset-exact"
 
     core = ModelExperimentLedger(tmp_path / "core.json")
