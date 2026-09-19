@@ -27,6 +27,7 @@ class _SurfaceLease:
     expires_at: float
     last_seen: float
     last_activity: float
+    presentation_capabilities: dict[str, bool]
 
 
 class CreatorSurfaceCoordinator:
@@ -58,6 +59,7 @@ class CreatorSurfaceCoordinator:
         visible: bool = True,
         foreground: bool = True,
         lease_seconds: float | None = None,
+        presentation_capabilities: dict[str, bool] | None = None,
     ) -> dict:
         with self._lock:
             now = self._clock()
@@ -71,6 +73,7 @@ class CreatorSurfaceCoordinator:
                 expires_at=now + self._lease(lease_seconds),
                 last_seen=now,
                 last_activity=now,
+                presentation_capabilities=dict(presentation_capabilities or {}),
             )
             return self._status_locked(now)
 
@@ -82,6 +85,7 @@ class CreatorSurfaceCoordinator:
         foreground: bool | None = None,
         activity: bool = False,
         lease_seconds: float | None = None,
+        presentation_capabilities: dict[str, bool] | None = None,
     ) -> dict:
         with self._lock:
             now = self._clock()
@@ -99,6 +103,8 @@ class CreatorSurfaceCoordinator:
                 surface.visible = bool(visible)
             if foreground is not None:
                 surface.foreground = bool(foreground)
+            if presentation_capabilities is not None:
+                surface.presentation_capabilities = dict(presentation_capabilities)
             surface.expires_at = now + self._lease(lease_seconds)
             surface.last_seen = now
             if activity or became_present:
@@ -211,6 +217,7 @@ class CreatorSurfaceCoordinator:
                     "surface_id": key,
                     "visible": item.visible,
                     "foreground": item.foreground,
+                    "presentation_capabilities": dict(item.presentation_capabilities),
                     "lease_remaining_seconds": round(
                         max(0.0, item.expires_at - now), 3
                     ),
