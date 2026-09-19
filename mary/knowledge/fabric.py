@@ -466,16 +466,78 @@ class KnowledgeFabric:
             / f"{self._manifest_locator(pack_id)}.json"
         )
 
+    @classmethod
+    def local_index_pipeline_fingerprint(cls) -> str:
+        payload = {
+            "version": cls.LOCAL_INDEX_PIPELINE_VERSION,
+            "allowed_suffixes": sorted(_ALLOWED_FILE_SUFFIXES),
+            "max_file_bytes": _MAX_FILE_BYTES,
+            "chunk_target": cls.DEFAULT_CHUNK_TARGET,
+            "chunk_overlap": cls.DEFAULT_CHUNK_OVERLAP,
+        }
+        return sha256(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+
+    def local_index_lineage(self, pack_id: str) -> dict[str, Any]:
+        """Return cheap content-free lineage for the current local derivative."""
+
+        pack = self.get(pack_id)
+        if pack.kind != "local_files":
+            raise ValueError("local index lineage requires a local_files pack")
+        manifest = self._load_source_manifest(pack.id)
+        current_pipeline = self.local_index_pipeline_fingerprint()
+        stored_pipeline = _text(manifest.get("pipeline_fingerprint"), 128)
+        manifest_content = _text(manifest.get("content_fingerprint"), 128)
+        current = bool(
+            self._source_manifest_path(pack.id).exists()
+            and pack.content_fingerprint
+            and manifest_content == pack.content_fingerprint
+            and stored_pipeline == current_pipeline
+        )
+        derivative_fingerprint = (
+            sha256(
+                (
+                    pack.content_fingerprint
+                    + "|"
+                    + current_pipeline
+                ).encode("utf-8")
+            ).hexdigest()
+            if current
+            else ""
+        )
+        return {
+            "pack_id": pack.id,
+            "content_fingerprint": pack.content_fingerprint,
+            "manifest_content_fingerprint": manifest_content,
+            "pipeline_version": self.LOCAL_INDEX_PIPELINE_VERSION,
+            "pipeline_fingerprint": current_pipeline,
+            "stored_pipeline_fingerprint": stored_pipeline,
+            "current": current,
+            "derivative_fingerprint": derivative_fingerprint,
+            "authority": "rebuildable local index lineage only",
+        }
+
+    def derivative_source_fingerprint(self, pack_id: str) -> str:
+        pack = self.get(pack_id)
+        if pack.kind == "local_files":
+            return str(self.local_index_lineage(pack.id)["derivative_fingerprint"])
+        return _text(pack.content_fingerprint, 128)
+
     def _load_source_manifest(self, pack_id: str) -> dict[str, Any]:
         path = self._source_manifest_path(pack_id)
         if not path.exists():
-            return {"version": 1, "pack_id": pack_id, "documents": []}
+            return {"version": 2, "pack_id": pack_id, "documents": []}
         try:
             payload, _source = load_json_recovering(path, backup_generations=2)
         except Exception:
-            return {"version": 1, "pack_id": pack_id, "documents": []}
+            return {"version": 2, "pack_id": pack_id, "documents": []}
         return dict(payload) if isinstance(payload, dict) else {
-            "version": 1, "pack_id": pack_id, "documents": []
+            "version": 2, "pack_id": pack_id, "documents": []
         }
 
     def _save_source_manifest(
@@ -490,10 +552,12 @@ class KnowledgeFabric:
         atomic_write_json(
             path,
             {
-                "version": 1,
+                "version": 2,
                 "pack_id": pack.id,
                 "generated_at": _now(),
                 "content_fingerprint": _text(content_fingerprint, 128),
+                "pipeline_version": self.LOCAL_INDEX_PIPELINE_VERSION,
+                "pipeline_fingerprint": self.local_index_pipeline_fingerprint(),
                 "documents": list(documents)[:100_000],
                 "authority": "rebuildable_source_inventory_only",
             },
@@ -535,6 +599,11 @@ class KnowledgeFabric:
             raise ValueError("refresh planning is available only for local_files packs")
         root = Path(pack.location).resolve()
         previous = self._load_source_manifest(pack.id)
+        current_pipeline = self.local_index_pipeline_fingerprint()
+        previous_pipeline = _text(
+            previous.get("pipeline_fingerprint"), 128
+        )
+        pipeline_changed = previous_pipeline != current_pipeline
         old = {
             str(item.get("locator") or ""): dict(item)
             for item in list(previous.get("documents") or [])
@@ -593,8 +662,10 @@ class KnowledgeFabric:
                 )
             ).encode("utf-8")
         ).hexdigest() if current else ""
-        has_changes = bool(added or removed or changed) or (
-            fingerprint != str(previous.get("content_fingerprint") or "")
+        has_changes = (
+            bool(added or removed or changed)
+            or fingerprint != str(previous.get("content_fingerprint") or "")
+            or pipeline_changed
         )
         return {
             "pack_id": pack.id,
@@ -608,6 +679,10 @@ class KnowledgeFabric:
             "unchanged": len(unchanged),
             "skipped": skipped,
             "content_fingerprint": fingerprint,
+            "pipeline_version": self.LOCAL_INDEX_PIPELINE_VERSION,
+            "pipeline_fingerprint": current_pipeline,
+            "previous_pipeline_fingerprint": previous_pipeline,
+            "pipeline_changed": pipeline_changed,
             "has_changes": has_changes,
             "recommended_action": "explicit_index" if has_changes else "none",
             "automatic_mutation_performed": False,
@@ -690,7 +765,11 @@ class KnowledgeFabric:
                     "size_bytes": int(stat.st_size),
                     "source_modified_at": source_modified_at,
                 })
-                chunks = self._document_chunks(body)
+                chunks = self._document_chunks(
+                    body,
+                    target_characters=self.DEFAULT_CHUNK_TARGET,
+                    overlap_characters=self.DEFAULT_CHUNK_OVERLAP,
+                )
                 if not chunks:
                     skipped += 1
                     continue
@@ -731,6 +810,8 @@ class KnowledgeFabric:
             "chunks_indexed": indexed,
             "skipped": skipped,
             "content_fingerprint": combined,
+            "pipeline_fingerprint": self.local_index_pipeline_fingerprint(),
+            "derivative_fingerprint": self.derivative_source_fingerprint(pack.id),
             "index": "sqlite_fts5_rebuildable",
         }
 
@@ -837,6 +918,7 @@ class KnowledgeFabric:
                     "changed": len(refresh["changed"]),
                     "removed": len(refresh["removed"]),
                     "skipped": refresh["skipped"],
+                    "pipeline_changed": refresh["pipeline_changed"],
                     "has_changes": refresh["has_changes"],
                 },
                 "drift": drift,
@@ -951,7 +1033,7 @@ class KnowledgeFabric:
                 source = by_id.get(source_id)
                 built_from = _text(vector_build.get("source_fingerprint"), 128)
                 current_source = (
-                    _text(source.content_fingerprint, 128)
+                    self.derivative_source_fingerprint(source.id)
                     if source is not None
                     else ""
                 )
@@ -1210,6 +1292,10 @@ class KnowledgeFabric:
                 metadata = dict(row.get("metadata") or {})
                 metadata["indexed_documents"] = int(indexed)
                 metadata["index_backend"] = "sqlite_fts5"
+                metadata["index_pipeline_version"] = self.LOCAL_INDEX_PIPELINE_VERSION
+                metadata["index_pipeline_fingerprint"] = (
+                    self.local_index_pipeline_fingerprint()
+                )
                 row["metadata"] = metadata
                 break
         self._save(payload)
