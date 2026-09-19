@@ -82,3 +82,53 @@ def test_prepare_mlx_bundle_uses_only_structured_approved_mary_sft(tmp_path: Pat
         "m1-smoke", "m1-light", "m1-4b"
     ]
     assert "mlx_lm.generate" in manifest["run"]["generate_smoke"]
+
+
+def test_prepare_mlx_bundle_forwards_creator_reviewed_novel_abstractions(tmp_path: Path):
+    root = tmp_path / "repo"
+    active = root / "character_sources" / "active"
+    active.mkdir(parents=True)
+    rows = [
+        {
+            "heading": f"EX-{index}",
+            "labels": ["DNA"],
+            "text": (
+                f"Situation: Baseline authored situation {index}. "
+                f"Mary behavior: Baseline authored behavior {index}. "
+                "Avoid: generic assistant drift."
+            ),
+        }
+        for index in range(12)
+    ]
+    (active / "mary_behavior_fixture.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    review = tmp_path / "novel_review.json"
+    review.write_text(json.dumps({
+        "source": {"file": "Unbeknownst.docx", "sha256": "a" * 64},
+        "reviews": [{
+            "candidate_id": "scene-reviewed-1",
+            "status": "approved",
+            "situation": "A fictional scene reveals a generalizable pressure response.",
+            "mary_behavior": "Stay practical first, then let the emotion show without claiming the scene happened to AI Mary.",
+            "tags": ["pressure", "fiction-derived"],
+        }],
+    }), encoding="utf-8")
+
+    output = tmp_path / "bundle"
+    manifest = prepare_mlx_bundle(
+        root=root,
+        output_dir=output,
+        profile_id="m1-light",
+        novel_review_path=review,
+    )
+
+    assert manifest["mary_dataset"]["novel_behavior_sft"] == 1
+    rows = [
+        json.loads(line)
+        for line in (output / "mary-dataset-v1" / "mary_behavior_sft.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(row["example_id"] == "novel_behavior_scene-reviewed-1" for row in rows)
+    assert all("fictional scene as AI-Mary lived memory" not in json.dumps(row).casefold() for row in rows)
