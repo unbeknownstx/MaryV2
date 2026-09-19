@@ -137,10 +137,11 @@ def comparison_scorecard(
             "mean_latency_ms": latency_delta,
             "categories": category_delta,
         },
+        "scores": {
+            key: None for key in REQUIRED_MODEL_SCORE_DIMENSIONS
+        },
         "review": {
-            "required_semantic_scores": {
-                key: None for key in REQUIRED_MODEL_SCORE_DIMENSIONS
-            },
+            "required_semantic_dimensions": list(REQUIRED_MODEL_SCORE_DIMENSIONS),
             "deterministic_checks_are_not_semantic_scores": True,
             "creator_or_explicit_judge_review_required": True,
             "promotion_performed": False,
