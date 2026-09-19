@@ -23,6 +23,7 @@ from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
 
+from .capabilities import capability_implementation_fingerprint
 from .compute_fabric import BenchmarkBook, BenchmarkSample, HomeComputeScheduler, NodeLoad, WorkloadRequest
 from .nodes import NodeRegistry
 from .mcp_fabric import MCP_CAPABILITIES, sanitize_mcp_result, sanitize_mcp_task_args
@@ -546,12 +547,25 @@ class DeviceTaskBroker:
             task.updated_at = _utc_now()
 
             if claimed_at is not None and normalized_status in {"completed", "failed"}:
+                implementation_fingerprint = ""
+                registry = self._scheduler_registry
+                if registry is not None:
+                    node = registry.get(task.selected_node_id)
+                    descriptor = (
+                        node.capabilities.get(task.capability)
+                        if node is not None
+                        else None
+                    )
+                    implementation_fingerprint = (
+                        capability_implementation_fingerprint(descriptor)
+                    )
                 self._benchmark_book.record(BenchmarkSample(
                     node_id=task.selected_node_id,
                     capability=task.capability,
                     operation=task.operation,
                     latency_ms=max(0.0, (monotonic() - claimed_at) * 1000.0),
                     success=normalized_status == "completed",
+                    implementation_fingerprint=implementation_fingerprint,
                 ))
             self._condition.notify_all()
             return task
