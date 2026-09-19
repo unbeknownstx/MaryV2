@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "authority": "presentation_assets_only",
+  "motions": [],
+  "expected_slots": [
+    "talk_neutral",
+    "listen_attentive",
+    "explain_small",
+    "explain_animated",
+    "shrug_dry",
+    "teasing_point",
+    "warm_acknowledge",
+    "serious_hold",
+    "thinking_pause",
+    "boundary_small",
+    "surprised_react",
+    "laugh_small"
+  ]
+}
