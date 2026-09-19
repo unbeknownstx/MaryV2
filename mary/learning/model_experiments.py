@@ -563,6 +563,13 @@ class ModelExperimentLedger:
                     else round(max(0.0, min(3_600_000.0, float(clean_latency))), 2)
                 )
                 and current.artifact_fingerprint == artifact
+                and current.benchmark_fingerprint == _text(
+                    benchmark.get("benchmark_fingerprint"), 160
+                )
+                and current.benchmark_case_count == max(
+                    0,
+                    min(100_000, int(benchmark.get("benchmark_case_count", 0) or 0)),
+                )
             )
             if not same_benchmark:
                 current = self.record_benchmark(
