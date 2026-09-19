@@ -1435,6 +1435,82 @@ class MaryDesktopBridge(QObject):
         except Exception as exc:
             return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
+    @Slot(str, result=str)
+    def getModelExperimentStatus(
+        self,
+        experiment_id: str = "",
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Return bounded experiment/node readiness from canonical remote Core."""
+
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "Model experiment trials require canonical remote Mary Core.",
+                "execution_performed": False,
+                "promotion_performed": False,
+            })
+        try:
+            result = self.application.gateway.runtime_action(
+                "model.experiment.status",
+                {"experiment_id": str(experiment_id or "").strip()[:160]},
+            )
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, str, result=str)
+    def runModelExperiment(
+        self,
+        experiment_id: str,
+        prompt: str,
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Queue one explicit lab-only model experiment through Mary Core."""
+
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "Model experiment trials require canonical remote Mary Core.",
+                "production_route_changed": False,
+                "promotion_performed": False,
+            })
+        experiment = str(experiment_id or "").strip()[:160]
+        clean_prompt = " ".join(str(prompt or "").split())[:12_000]
+        if not experiment or not clean_prompt:
+            return _json({"ok": False, "error": "Experiment ID and prompt are required."})
+        try:
+            result = self.application.gateway.runtime_action(
+                "model.experiment.dispatch",
+                {
+                    "experiment_id": experiment,
+                    "prompt": clean_prompt,
+                    "max_tokens": 512,
+                    "temperature": 0.7,
+                },
+            )
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, result=str)
+    def getCapabilityTaskStatus(
+        self,
+        task_id: str,
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Read one bounded capability-task result from canonical remote Core."""
+
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "Capability task status requires canonical remote Mary Core.",
+            })
+        clean = str(task_id or "").strip()[:180]
+        if not clean:
+            return _json({"ok": False, "error": "Capability task ID is required."})
+        try:
+            return _json(self.application.gateway.capability_task_status(clean))
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
     @Slot(result=str)
     def getLastTurnTrace(
         self,
