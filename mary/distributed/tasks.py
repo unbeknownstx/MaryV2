@@ -256,6 +256,7 @@ class DeviceCapabilityTask:
     root_task_id: str = ""
     replacement_task_id: str = ""
     operation: str = "general"
+    implementation_fingerprint: str = ""
     claimed_monotonic: float | None = field(default=None, repr=False)
     created_monotonic: float = field(default_factory=monotonic, repr=False)
 
@@ -281,6 +282,7 @@ class DeviceCapabilityTask:
             "root_task_id": self.root_task_id,
             "replacement_task_id": self.replacement_task_id,
             "operation": self.operation,
+            "implementation_fingerprint": self.implementation_fingerprint,
         }
 
 
@@ -472,6 +474,9 @@ class DeviceTaskBroker:
                 requester_device_id=_clean_text(requester_device_id or "unknown-device", 160),
                 selected_node_id=selected.node_id,
                 operation=_operation_for(normalized, sanitized_args),
+                implementation_fingerprint=capability_implementation_fingerprint(
+                    selected.capabilities.get(normalized)
+                ),
             )
             self._tasks[task.task_id] = task
             self._order.append(task.task_id)
@@ -547,25 +552,13 @@ class DeviceTaskBroker:
             task.updated_at = _utc_now()
 
             if claimed_at is not None and normalized_status in {"completed", "failed"}:
-                implementation_fingerprint = ""
-                registry = self._scheduler_registry
-                if registry is not None:
-                    node = registry.get(task.selected_node_id)
-                    descriptor = (
-                        node.capabilities.get(task.capability)
-                        if node is not None
-                        else None
-                    )
-                    implementation_fingerprint = (
-                        capability_implementation_fingerprint(descriptor)
-                    )
                 self._benchmark_book.record(BenchmarkSample(
                     node_id=task.selected_node_id,
                     capability=task.capability,
                     operation=task.operation,
                     latency_ms=max(0.0, (monotonic() - claimed_at) * 1000.0),
                     success=normalized_status == "completed",
-                    implementation_fingerprint=implementation_fingerprint,
+                    implementation_fingerprint=task.implementation_fingerprint,
                 ))
             self._condition.notify_all()
             return task
@@ -691,6 +684,7 @@ class DeviceTaskBroker:
             attempt=task.attempt + 1,
             root_task_id=task.root_task_id,
             operation=task.operation,
+            implementation_fingerprint=task.implementation_fingerprint,
         )
         self._tasks[replacement.task_id] = replacement
         self._order.append(replacement.task_id)
