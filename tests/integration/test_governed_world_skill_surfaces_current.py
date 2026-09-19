@@ -22,6 +22,8 @@ def test_world_and_skill_governance_remain_core_owned_and_explicit():
         assert f'action.action == "{action}"' in core
 
     assert "competing beliefs are retired as history rather than deleted" in core
+    assert '"reconciliation_queue"' in core
+    assert '"revision_queue"' in core
     assert "review candidate only" in core
     assert "explicit creator approval" in core
     assert "explicit creator rejection" in core
@@ -44,6 +46,9 @@ def test_desktop_pwa_and_native_iphone_expose_governed_review_without_execution_
     assert "PROCEDURE REVIEW" in web
     assert "World reconciliation" in ios
     assert "Procedure review" in ios
+    assert "Revision pressure" in desktop
+    assert "Revision pressure" in ios
+    assert "revisionPressure" in web
 
     for source in (desktop_bridge, mobile_bridge, ios_state):
         assert "world.reconcile" in source
