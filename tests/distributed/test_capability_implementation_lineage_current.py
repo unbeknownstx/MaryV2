@@ -10,6 +10,7 @@ from mary.distributed.compute_fabric import (
     WorkloadRequest,
 )
 from mary.distributed.node_intelligence import build_node_intelligence
+from mary.distributed.tasks import DeviceTaskBroker
 
 
 def _cap(model: str, *, authorized: bool = True, benchmark_ms: float = 500.0):
@@ -170,3 +171,31 @@ def test_node_intelligence_marks_only_stale_competence_as_implementation_changed
     assert capability["stale_competence_records"] == 1
     assert len(capability["implementation_fingerprint"]) == 64
     assert node["counts"]["demonstrated"] == 0
+
+
+def test_task_keeps_selected_implementation_when_node_advertisement_changes():
+    registry = NodeRegistry()
+    registry.register(_node("qwen3:1.7b"))
+    expected = capability_implementation_fingerprint(_cap("qwen3:1.7b"))
+    broker = DeviceTaskBroker()
+
+    task = broker.enqueue(
+        registry,
+        capability="llm.ollama",
+        intent="reply",
+        args={
+            "messages": [{"role": "user", "content": "hello"}],
+            "role": "conversation",
+            "temperature": 0.2,
+            "max_tokens": 64,
+        },
+        requester_device_id="creator",
+    )
+    assert task.implementation_fingerprint == expected
+
+    registry.register(_node("qwen3:4b"))
+
+    assert task.implementation_fingerprint == expected
+    assert task.implementation_fingerprint != capability_implementation_fingerprint(
+        registry.get("pc").capabilities["llm.ollama"]
+    )
