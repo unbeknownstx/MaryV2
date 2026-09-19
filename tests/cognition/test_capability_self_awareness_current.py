@@ -87,7 +87,53 @@ class _StatusOwner:
         return dict(self.substrate)
 
 
-def _introspection(*, web: bool = True, registry=None, substrate: bool = False):
+class _ExperimentLedger:
+    def snapshot(self):
+        return {
+            "count": 3,
+            "trial_ready": 1,
+            "records": [
+                {
+                    "id": "exp-reviewed",
+                    "candidate_id": "mary-smoke",
+                    "status": "reviewed",
+                    "runtime": "mlx_lm",
+                    "model": "mlx-community/Qwen3-0.6B-4bit",
+                    "benchmark_verified": False,
+                    "trial_ready": False,
+                    "missing_scores": ["naturalism"],
+                },
+                {
+                    "id": "exp-mismatch",
+                    "candidate_id": "mary-mismatch",
+                    "status": "benchmark_mismatch",
+                    "runtime": "mlx_lm",
+                    "model": "mlx-community/Qwen3-1.7B-4bit",
+                    "benchmark_verified": False,
+                    "trial_ready": False,
+                },
+                {
+                    "id": "exp-ready",
+                    "candidate_id": "mary-light",
+                    "status": "benchmarked",
+                    "runtime": "mlx_lm",
+                    "model": "mlx-community/Qwen3-1.7B-4bit",
+                    "node_id": "mac-m1",
+                    "benchmark_verified": True,
+                    "trial_ready": True,
+                    "mary_fit": 0.91,
+                },
+            ],
+        }
+
+
+def _introspection(
+    *,
+    web: bool = True,
+    registry=None,
+    substrate: bool = False,
+    experiments: bool = False,
+):
     value = object.__new__(SelfIntrospection)
     value.tools = _Tools(web=web)
     value.node_registry = registry
@@ -122,6 +168,7 @@ def _introspection(*, web: bool = True, registry=None, substrate: bool = False):
         _StatusOwner({"current_beliefs": 11, "reconciliation_groups": 2})
         if substrate else None
     )
+    value.model_experiments = _ExperimentLedger() if experiments else None
     return value
 
 
@@ -216,3 +263,32 @@ def test_local_knowledge_question_uses_core_substrate_and_reports_staleness():
     assert "explicit reindexing" in answer
     assert "1 semantic derivative" in answer
     assert "No connected node currently advertises local knowledge search" not in answer
+
+
+def test_model_experiment_question_reports_evidence_without_claiming_training_or_promotion():
+    evidence = _introspection(
+        registry=_Registry(),
+        substrate=True,
+        experiments=True,
+    )._capabilities(
+        "is the Mary LoRA model experiment training ready or trial-ready?"
+    )
+    live = evidence["live_capabilities"]
+    model_lab = live["model_experiments"]
+
+    assert model_lab["count"] == 3
+    assert model_lab["reviewed_only"] == 1
+    assert model_lab["benchmarked"] == 1
+    assert model_lab["benchmark_mismatch"] == 1
+    assert model_lab["benchmark_verified"] == 1
+    assert model_lab["trial_ready"] == 1
+    assert model_lab["training_readiness_claimed"] is False
+    assert model_lab["automatic_training"] is False
+    assert model_lab["automatic_promotion"] is False
+
+    answer = evidence["fallback_response"]
+    assert "1 with verified benchmark lineage" in answer
+    assert "1 trial-ready" in answer
+    assert "does not mean production promotion" in answer
+    assert "host/package preflight" in answer
+    assert "training is never automatic" in answer
