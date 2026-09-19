@@ -13,6 +13,9 @@ struct WorkspaceDetailView: View {
     @State private var modelTrialProvider = ""
     @State private var modelTrialModel = ""
     @State private var modelTrialRunning = false
+    @State private var skillRevisionID = ""
+    @State private var skillRevisionReason = ""
+    @State private var skillRevisionSteps = ""
 
     var body: some View {
         ScrollView {
@@ -124,6 +127,59 @@ struct WorkspaceDetailView: View {
                     .foregroundStyle(MaryTheme.muted)
             }}
 
+            if !contradictions.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow(text: "World reconciliation")
+                    Text("Select a current claim only when competing evidence should be resolved. Other claims are retired as history, not erased.")
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
+
+                    ForEach(Array(contradictions.prefix(12).enumerated()), id: \.offset) { _, item in
+                        let row = CoreProjection.dict(item)
+                        let beliefID = CoreProjection.string(row["id"])
+                        let rawValue = row["value"]
+                        let value = CoreProjection.string(rawValue).isEmpty
+                            ? String(describing: rawValue ?? "—")
+                            : CoreProjection.string(rawValue)
+
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(
+                                CoreProjection.string(row["subject"])
+                                + " · "
+                                + CoreProjection.string(row["predicate"])
+                            )
+                            .font(.subheadline.bold())
+                            Text(value)
+                                .font(.subheadline)
+                            Text(
+                                (CoreProjection.string(row["source"]).isEmpty
+                                    ? "unknown source"
+                                    : CoreProjection.string(row["source"]))
+                                + " · "
+                                + CoreProjection.string(row["verification"])
+                            )
+                            .font(.caption)
+                            .foregroundStyle(MaryTheme.muted)
+
+                            Button {
+                                Task {
+                                    _ = await app.reconcileWorldBelief(beliefID)
+                                }
+                            } label: {
+                                Label(
+                                    "Keep this as current",
+                                    systemImage: "checkmark.seal.fill"
+                                )
+                            }
+                            .buttonStyle(MarySecondaryButtonStyle())
+                            .disabled(beliefID.isEmpty)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                }}
+            }
+
             if !due.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Needs refresh")
@@ -174,15 +230,169 @@ struct WorkspaceDetailView: View {
         let plans = CoreProjection.dict(app.liveData["plans"])
         let replay = CoreProjection.dict(app.liveData["replay"])
         let competence = CoreProjection.dict(app.liveData["competence"])
-        return GlassCard { VStack(alignment: .leading, spacing: 9) {
-            Eyebrow(text: "Procedural continuity")
-            Text("\(CoreProjection.int(skills["approved"])) approved skills").font(.title2.bold())
-            DataRow(label: "Skill candidates", value: "\(CoreProjection.int(skills["candidates"]))")
-            DataRow(label: "Active plans", value: "\(CoreProjection.int(plans["active_plans"]))")
-            DataRow(label: "Replay lessons", value: "\(CoreProjection.int(replay["lessons"]))")
-            DataRow(label: "Competence records", value: "\(CoreProjection.int(competence["records"]))")
-            Text("Replay may suggest procedures, but approval and execution permissions remain explicit.").font(.caption).foregroundStyle(MaryTheme.muted)
-        }}
+        let review = CoreProjection.dict(app.liveData["review"])
+        let candidates = CoreProjection.array(review["candidates"])
+        let approved = CoreProjection.array(review["approved"])
+
+        return VStack(spacing: 12) {
+            GlassCard { VStack(alignment: .leading, spacing: 9) {
+                Eyebrow(text: "Procedural continuity")
+                Text("\(CoreProjection.int(skills["approved"])) approved skills")
+                    .font(.title2.bold())
+                DataRow(label: "Skill candidates", value: "\(CoreProjection.int(skills["candidates"]))")
+                DataRow(label: "Active plans", value: "\(CoreProjection.int(plans["active_plans"]))")
+                DataRow(label: "Replay lessons", value: "\(CoreProjection.int(replay["lessons"]))")
+                DataRow(label: "Competence records", value: "\(CoreProjection.int(competence["records"]))")
+                Text("Replay may suggest procedures, but approval and execution permissions remain explicit.")
+                    .font(.caption)
+                    .foregroundStyle(MaryTheme.muted)
+            }}
+
+            GlassCard { VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "Procedure review")
+                Text("Approval changes reusable guidance only. It never grants tool, model, filesystem, or node permission.")
+                    .font(.caption)
+                    .foregroundStyle(MaryTheme.muted)
+
+                if candidates.isEmpty {
+                    Text("No procedure candidates are waiting for review.")
+                        .foregroundStyle(MaryTheme.muted)
+                } else {
+                    ForEach(Array(candidates.prefix(12).enumerated()), id: \.offset) { _, item in
+                        let row = CoreProjection.dict(item)
+                        let skillID = CoreProjection.string(row["id"])
+
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(
+                                CoreProjection.string(row["name"])
+                                + " · v"
+                                + String(CoreProjection.int(row["version"]))
+                            )
+                            .font(.headline)
+                            Text(CoreProjection.string(row["description"]))
+                                .font(.subheadline)
+                                .foregroundStyle(MaryTheme.muted)
+                            HStack(spacing: 8) {
+                                Button("Approve") {
+                                    Task {
+                                        _ = await app.approveSkillCandidate(skillID)
+                                    }
+                                }
+                                .buttonStyle(MaryPrimaryButtonStyle())
+                                .disabled(skillID.isEmpty)
+
+                                Button("Reject") {
+                                    Task {
+                                        _ = await app.rejectSkillCandidate(skillID)
+                                    }
+                                }
+                                .buttonStyle(MarySecondaryButtonStyle())
+                                .disabled(skillID.isEmpty)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                }
+            }}
+
+            GlassCard { VStack(alignment: .leading, spacing: 10) {
+                Eyebrow(text: "Approved procedures")
+                if approved.isEmpty {
+                    Text("No approved reusable procedures yet.")
+                        .foregroundStyle(MaryTheme.muted)
+                } else {
+                    ForEach(Array(approved.prefix(8).enumerated()), id: \.offset) { _, item in
+                        let row = CoreProjection.dict(item)
+                        let skillID = CoreProjection.string(row["id"])
+                        let steps = CoreProjection.array(row["steps"])
+                            .map { CoreProjection.string($0) }
+                            .filter { !$0.isEmpty }
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(
+                                    CoreProjection.string(row["name"])
+                                    + " · v"
+                                    + String(CoreProjection.int(row["version"]))
+                                )
+                                .font(.subheadline.bold())
+                                Text(steps.prefix(3).joined(separator: " → "))
+                                    .font(.caption)
+                                    .foregroundStyle(MaryTheme.muted)
+                                    .lineLimit(2)
+                            }
+                            Spacer()
+                            Button("Revise") {
+                                skillRevisionID = skillID
+                                skillRevisionReason = ""
+                                skillRevisionSteps = steps.joined(separator: "\n")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(skillID.isEmpty)
+                        }
+                    }
+                }
+
+                if !skillRevisionID.isEmpty {
+                    Divider().overlay(MaryTheme.hairline)
+                    TextField(
+                        "Why should this procedure change?",
+                        text: $skillRevisionReason,
+                        axis: .vertical
+                    )
+                    .lineLimit(2...4)
+                    .padding(10)
+                    .background(
+                        MaryTheme.panel2,
+                        in: RoundedRectangle(cornerRadius: 12)
+                    )
+
+                    TextField(
+                        "Procedure steps — one per line",
+                        text: $skillRevisionSteps,
+                        axis: .vertical
+                    )
+                    .lineLimit(3...8)
+                    .padding(10)
+                    .background(
+                        MaryTheme.panel2,
+                        in: RoundedRectangle(cornerRadius: 12)
+                    )
+
+                    HStack(spacing: 8) {
+                        Button("Create revision candidate") {
+                            let steps = skillRevisionSteps
+                                .components(separatedBy: .newlines)
+                            Task {
+                                if await app.reviseApprovedSkill(
+                                    skillRevisionID,
+                                    reason: skillRevisionReason,
+                                    steps: steps
+                                ) {
+                                    skillRevisionID = ""
+                                    skillRevisionReason = ""
+                                    skillRevisionSteps = ""
+                                }
+                            }
+                        }
+                        .buttonStyle(MaryPrimaryButtonStyle())
+                        .disabled(
+                            skillRevisionReason
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .isEmpty
+                        )
+
+                        Button("Cancel") {
+                            skillRevisionID = ""
+                            skillRevisionReason = ""
+                            skillRevisionSteps = ""
+                        }
+                        .buttonStyle(MarySecondaryButtonStyle())
+                    }
+                }
+            }}
+        }
     }
 
     private var modelLabCard: some View {
