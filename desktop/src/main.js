@@ -1784,6 +1784,7 @@ function renderFabric() {
   const models = f.models || {};
   const lab = models.adapter_lab || {};
   const candidates = models.candidates || {};
+  const experiments = models.experiments || {};
   const compute = f.compute || {};
   const nodes = compute.nodes || {};
   const integration = f.integration || {};
@@ -1791,7 +1792,7 @@ function renderFabric() {
     <div class="workspace-grid three">
       <div class="workspace-panel accent"><h3>One Mary Core</h3><div class="data-row"><span>Architecture</span><strong>${integration.healthy ? 'Connected' : 'Degraded'}</strong></div><div class="data-row"><span>Operational</span><strong>${integration.operational ? 'Yes' : 'No'}</strong></div><div class="data-row"><span>Connected nodes</span><strong>${nodes.connected ?? nodes.connected_nodes ?? 0}</strong></div><p>PC, Mac, PWA and iPhone are surfaces or workers around the same canonical identity and state.</p></div>
       <div class="workspace-panel"><h3>Knowledge + World</h3><div class="data-row"><span>Enabled packs</span><strong>${k.enabled ?? 0}/${k.packs ?? 0}</strong></div><div class="data-row"><span>Indexed chunks</span><strong>${k.indexed_documents ?? 0}</strong></div><div class="data-row"><span>Current beliefs</span><strong>${w.beliefs?.current_beliefs ?? 0}</strong></div><div class="data-row"><span>Temporal relations</span><strong>${w.temporal?.relations ?? 0}</strong></div><p>Retrieval is evidence, and superseded history never becomes current truth.</p></div>
-      <div class="workspace-panel"><h3>Procedures + Models</h3><div class="data-row"><span>Approved skills</span><strong>${skills.approved ?? 0}</strong></div><div class="data-row"><span>Active plans</span><strong>${plans.active_plans ?? 0}</strong></div><div class="data-row"><span>Competence evidence</span><strong>${competence.records ?? 0}</strong></div><div class="data-row"><span>Model candidates</span><strong>${candidates.count ?? 0}</strong></div><div class="data-row"><span>Adapter configs</span><strong>${(lab.configurations || []).length}</strong></div><p>Skills require creator approval. Benchmarks and competence cannot grant permission or auto-promote a model.</p></div>
+      <div class="workspace-panel"><h3>Procedures + Models</h3><div class="data-row"><span>Approved skills</span><strong>${skills.approved ?? 0}</strong></div><div class="data-row"><span>Active plans</span><strong>${plans.active_plans ?? 0}</strong></div><div class="data-row"><span>Competence evidence</span><strong>${competence.records ?? 0}</strong></div><div class="data-row"><span>Model candidates</span><strong>${candidates.count ?? 0}</strong></div><div class="data-row"><span>Trial-ready experiments</span><strong>${experiments.trial_ready ?? 0}</strong></div><div class="data-row"><span>Adapter configs</span><strong>${(lab.configurations || []).length}</strong></div><p>Skills require creator approval. Benchmarks and competence cannot grant permission or auto-promote a model.</p></div>
     </div>`;
 }
 

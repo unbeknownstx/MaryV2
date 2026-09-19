@@ -122,9 +122,11 @@ struct WorkspaceDetailView: View {
     private var modelLabCard: some View {
         let lab = CoreProjection.dict(app.liveData["adapter_lab"])
         let candidates = CoreProjection.dict(app.liveData["candidates"])
+        let experiments = CoreProjection.dict(app.liveData["experiments"])
         return GlassCard { VStack(alignment: .leading, spacing: 9) {
             Eyebrow(text: "Model lab")
             Text("\(CoreProjection.int(candidates["count"])) reviewed candidates").font(.title2.bold())
+            DataRow(label: "Trial-ready experiments", value: "\(CoreProjection.int(experiments["trial_ready"]))")
             DataRow(label: "Configurations", value: "\(CoreProjection.array(lab["configurations"]).count)")
             DataRow(label: "Evaluations", value: "\(CoreProjection.array(lab["evaluations"]).count)")
             DataRow(label: "Promotion", value: "Creator-reviewed")
