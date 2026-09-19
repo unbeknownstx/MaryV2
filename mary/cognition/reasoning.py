@@ -1444,7 +1444,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                     "labels": list(item.get("labels", []) or [])[:4],
                     "kind": clip(item.get("kind"), 70),
                     "heading": clip(item.get("heading"), 120),
-                    "text": clip(item.get("text"), 620),
+                    "text": clip(item.get("text"), 540),
                     "boundary": clip(item.get("boundary"), 80),
                 })
 
