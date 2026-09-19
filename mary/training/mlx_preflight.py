@@ -14,6 +14,8 @@ from pathlib import Path
 import platform
 from typing import Any
 
+from .bundle_lineage import build_mlx_bundle_lineage
+
 
 @dataclass(frozen=True)
 class MlxBundlePreflight:
@@ -30,6 +32,8 @@ class MlxBundlePreflight:
     minimum_train_examples: int
     dataset_ready: bool
     config_lineage_matches: bool
+    bundle_lineage_fingerprint: str
+    bundle_lineage_matches: bool | None
     adapter_present: bool
     adapter_lineage_matches: bool | None
     ready_for_training: bool
@@ -94,6 +98,24 @@ def inspect_mlx_bundle(
         model and f'model: "{model}"' in config_text
     )
 
+    stored_lineage = dict(raw.get("bundle_lineage") or {})
+    bundle_lineage_fingerprint = str(
+        stored_lineage.get("bundle_fingerprint") or ""
+    ).strip().lower()
+    bundle_lineage_matches: bool | None = None
+    bundle_lineage_error = ""
+    if bundle_lineage_fingerprint:
+        try:
+            actual_lineage = build_mlx_bundle_lineage(root)
+            bundle_lineage_matches = bool(
+                not actual_lineage.missing_files
+                and actual_lineage.bundle_fingerprint
+                == bundle_lineage_fingerprint
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            bundle_lineage_matches = False
+            bundle_lineage_error = str(exc)[:300]
+
     system = str(host_system if host_system is not None else platform.system())
     machine = str(host_machine if host_machine is not None else platform.machine())
     apple_silicon = (
@@ -113,6 +135,15 @@ def inspect_mlx_bundle(
     adapter_present = adapter_config.exists() and adapter_weights.exists()
     adapter_lineage_matches: bool | None = None
     warnings: list[str] = []
+    if not bundle_lineage_fingerprint:
+        warnings.append(
+            "Bundle has no reproducibility fingerprint; regenerate it before "
+            "creating a new adapter candidate."
+        )
+    elif bundle_lineage_matches is False and bundle_lineage_error:
+        warnings.append(
+            "Bundle lineage inspection failed: " + bundle_lineage_error
+        )
     if adapter_present:
         try:
             adapter_raw = json.loads(adapter_config.read_text(encoding="utf-8"))
@@ -143,6 +174,11 @@ def inspect_mlx_bundle(
         )
     if not config_lineage_matches:
         blockers.append("Generated MLX config does not pin the manifest's exact model lineage.")
+    if bundle_lineage_fingerprint and bundle_lineage_matches is not True:
+        blockers.append(
+            "Prepared MLX data/profile/source lineage no longer matches the "
+            "bundle reproducibility fingerprint."
+        )
 
     ready_for_training = not blockers
     ready_for_evaluation = bool(
@@ -170,6 +206,8 @@ def inspect_mlx_bundle(
         minimum_train_examples=minimum,
         dataset_ready=dataset_ready,
         config_lineage_matches=config_lineage_matches,
+        bundle_lineage_fingerprint=bundle_lineage_fingerprint,
+        bundle_lineage_matches=bundle_lineage_matches,
         adapter_present=adapter_present,
         adapter_lineage_matches=adapter_lineage_matches,
         ready_for_training=ready_for_training,
