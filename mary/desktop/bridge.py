@@ -1385,6 +1385,139 @@ class MaryDesktopBridge(QObject):
             )
 
     @Slot(result=str)
+    def getWorldReviewState(self) -> str:  # noqa: N802 - JS-facing API
+        """Return bounded world/contradiction evidence from canonical Core."""
+
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "World reconciliation requires canonical remote Mary Core.",
+            })
+        try:
+            return _json(self.application.gateway.runtime_action("world.status"))
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, result=str)
+    def reconcileWorldBelief(
+        self,
+        belief_id: str,
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Explicitly select one contested belief; competing history is retained."""
+
+        clean = str(belief_id or "").strip()[:180]
+        if not clean:
+            return _json({"ok": False, "error": "World belief ID is required."})
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "World reconciliation requires canonical remote Mary Core.",
+            })
+        try:
+            result = self.application.gateway.runtime_action(
+                "world.reconcile",
+                {"belief_id": clean},
+            )
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(result=str)
+    def getSkillReviewState(self) -> str:  # noqa: N802 - JS-facing API
+        """Return approved/candidate procedure metadata without execution authority."""
+
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "Skill governance requires canonical remote Mary Core.",
+            })
+        try:
+            return _json(
+                self.application.gateway.runtime_action("continuity.skill.status")
+            )
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, result=str)
+    def approveSkillCandidate(
+        self,
+        skill_id: str,
+    ) -> str:  # noqa: N802 - JS-facing API
+        clean = str(skill_id or "").strip()[:180]
+        if not clean:
+            return _json({"ok": False, "error": "Skill candidate ID is required."})
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({"ok": False, "error": "Skill approval requires canonical remote Mary Core."})
+        try:
+            result = self.application.gateway.runtime_action(
+                "continuity.skill.approve",
+                {"skill_id": clean},
+            )
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, result=str)
+    def rejectSkillCandidate(
+        self,
+        skill_id: str,
+    ) -> str:  # noqa: N802 - JS-facing API
+        clean = str(skill_id or "").strip()[:180]
+        if not clean:
+            return _json({"ok": False, "error": "Skill candidate ID is required."})
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({"ok": False, "error": "Skill rejection requires canonical remote Mary Core."})
+        try:
+            result = self.application.gateway.runtime_action(
+                "continuity.skill.reject",
+                {"skill_id": clean},
+            )
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, str, str, result=str)
+    def reviseApprovedSkill(
+        self,
+        skill_id: str,
+        reason: str,
+        steps_json: str = "[]",
+    ) -> str:  # noqa: N802 - JS-facing API
+        clean = str(skill_id or "").strip()[:180]
+        clean_reason = " ".join(str(reason or "").split())[:600]
+        if not clean or not clean_reason:
+            return _json({"ok": False, "error": "Approved skill ID and revision reason are required."})
+        try:
+            parsed = json.loads(steps_json or "[]")
+            steps = [
+                str(item).strip()[:240]
+                for item in (parsed if isinstance(parsed, list) else [])[:32]
+                if str(item).strip()
+            ]
+        except Exception:
+            steps = []
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({"ok": False, "error": "Skill revision requires canonical remote Mary Core."})
+        try:
+            payload: dict[str, Any] = {
+                "skill_id": clean,
+                "reason": clean_reason,
+            }
+            if steps:
+                payload["steps"] = steps
+            result = self.application.gateway.runtime_action(
+                "continuity.skill.revise",
+                payload,
+            )
+            self.dashboardStateChanged.emit(self.getDashboardState())
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(result=str)
     def getTrainingFeedbackState(self) -> str:  # noqa: N802 - JS-facing API
         """Return the explicit-feedback dataset status; never character authority."""
         try:
