@@ -496,12 +496,16 @@ class KnowledgeFabric:
         current_pipeline = self.local_index_pipeline_fingerprint()
         stored_pipeline = _text(manifest.get("pipeline_fingerprint"), 128)
         manifest_content = _text(manifest.get("content_fingerprint"), 128)
-        current = bool(
-            self._source_manifest_path(pack.id).exists()
-            and pack.content_fingerprint
-            and manifest_content == pack.content_fingerprint
-            and stored_pipeline == current_pipeline
-        )
+        manifest_present = self._source_manifest_path(pack.id).exists()
+        if not manifest_present or not pack.content_fingerprint:
+            state = "unbuilt"
+        elif stored_pipeline != current_pipeline:
+            state = "pipeline_stale"
+        elif manifest_content != pack.content_fingerprint:
+            state = "lineage_mismatch"
+        else:
+            state = "current"
+        current = state == "current"
         derivative_fingerprint = (
             sha256(
                 (
@@ -520,6 +524,8 @@ class KnowledgeFabric:
             "pipeline_version": self.LOCAL_INDEX_PIPELINE_VERSION,
             "pipeline_fingerprint": current_pipeline,
             "stored_pipeline_fingerprint": stored_pipeline,
+            "manifest_present": manifest_present,
+            "state": state,
             "current": current,
             "derivative_fingerprint": derivative_fingerprint,
             "authority": "rebuildable local index lineage only",
@@ -1010,6 +1016,7 @@ class KnowledgeFabric:
             "catalog_candidates": [],
         }
         stale_derivatives: list[dict[str, str]] = []
+        stale_local_indexes: list[dict[str, str]] = []
         enabled_retrieval_modes: set[str] = set()
 
         for pack in packs:
@@ -1031,6 +1038,15 @@ class KnowledgeFabric:
                 else {}
             )
             derivative_state = ""
+            local_index_state = ""
+            if pack.kind == "local_files":
+                local_lineage = self.local_index_lineage(pack.id)
+                local_index_state = str(local_lineage.get("state") or "")
+                if local_index_state != "current":
+                    stale_local_indexes.append({
+                        "pack_id": pack.id,
+                        "state": local_index_state or "unknown",
+                    })
             if tier == "semantic_derivative":
                 source_id = _text(vector_build.get("source_pack_id"), 160)
                 source = by_id.get(source_id)
@@ -1070,6 +1086,7 @@ class KnowledgeFabric:
                     dict(status.get("pack_documents") or {}).get(pack.id, 0) or 0
                 ),
                 "content_fingerprint_present": bool(pack.content_fingerprint),
+                "local_index_state": local_index_state or None,
                 "derivative_state": derivative_state or None,
             })
 
@@ -1082,7 +1099,10 @@ class KnowledgeFabric:
             "counts": {name: len(rows) for name, rows in tiers.items()},
             "enabled_retrieval_modes": sorted(enabled_retrieval_modes),
             "stale_derivatives": stale_derivatives,
-            "attention_required": bool(stale_derivatives),
+            "stale_local_indexes": stale_local_indexes,
+            "attention_required": bool(
+                stale_derivatives or stale_local_indexes
+            ),
             "automatic_scan_performed": False,
             "automatic_rebuild_performed": False,
             "authority": (
