@@ -83,13 +83,73 @@ struct WorkspaceDetailView: View {
         case .social: SocialStudioView()
         case .media: statusCard(eyebrow: "Media", title: "Connected media", body: "YouTube, OBS, Twitch, and other media capabilities appear here only when Core reports them as available.")
         case .voiceAvatar: MaryStageView(compact: true)
-        case .world: statusCard(eyebrow: "World", title: "Current context", body: CoreProjection.string(app.liveData["summary"]).isEmpty ? "No bounded world-context summary is available yet." : CoreProjection.string(app.liveData["summary"]))
+        case .world: worldCard
         case .knowledge: knowledgeCard
         case .procedures: proceduresCard
         case .modelLab: modelLabCard
         case .training: statusCard(eyebrow: "Feedback", title: "Training signals", body: "Explicit feedback can improve future behavior without exposing internal training mechanics on the main app surface.")
         case .advanced: advancedCard
         case .gallery: EmptyView()
+        }
+    }
+
+    private var worldCard: some View {
+        let context = CoreProjection.dict(app.liveData["context"])
+        let pulse = CoreProjection.dict(app.liveData["pulse"])
+        let beliefs = CoreProjection.dict(app.liveData["beliefs"])
+        let epistemic = CoreProjection.dict(beliefs["epistemic"])
+        let temporal = CoreProjection.dict(app.liveData["temporal"])
+        let contradictions = CoreProjection.array(app.liveData["contradictions"])
+        let recent = CoreProjection.array(context["recent"])
+        let due = CoreProjection.array(pulse["due"])
+
+        return VStack(spacing: 12) {
+            GlassCard { VStack(alignment: .leading, spacing: 9) {
+                Eyebrow(text: "World pulse")
+                Text("\\(CoreProjection.int(context["count"])) current context items")
+                    .font(.title2.bold())
+                DataRow(label: "Refresh lanes due", value: "\\(due.count)")
+                DataRow(label: "Current beliefs", value: "\\(CoreProjection.int(beliefs["current_beliefs"]))")
+                DataRow(label: "Contested beliefs", value: "\\(CoreProjection.int(epistemic["contested"]))")
+                DataRow(label: "Temporal relations", value: "\\(CoreProjection.int(temporal["relations"]))")
+                DataRow(label: "Contradictions", value: "\\(contradictions.count)")
+                Text("World Pulse only plans refreshes. External context expires and cannot promote itself into Mary truth; acceptance and reconciliation remain explicit Core actions.")
+                    .font(.caption)
+                    .foregroundStyle(MaryTheme.muted)
+            }}
+
+            if !due.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Needs refresh")
+                    ForEach(Array(due.prefix(8).enumerated()), id: \\.offset) { _, item in
+                        let row = CoreProjection.dict(item)
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .foregroundStyle(MaryTheme.cyan)
+                            Text(CoreProjection.string(row["lane"]).replacingOccurrences(of: "_", with: " ").capitalized)
+                            Spacer()
+                        }
+                        .font(.subheadline)
+                    }
+                }}
+            }
+
+            if !recent.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Current external context")
+                    ForEach(Array(recent.suffix(6).enumerated()), id: \\.offset) { _, item in
+                        let row = CoreProjection.dict(item)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(CoreProjection.string(row["topic"]).isEmpty ? "World context" : CoreProjection.string(row["topic"]))
+                                .font(.subheadline.bold())
+                            Text(CoreProjection.string(row["source"]).isEmpty ? "Source-attributed evidence" : CoreProjection.string(row["source"]))
+                                .font(.caption)
+                                .foregroundStyle(MaryTheme.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }}
+            }
         }
     }
 
