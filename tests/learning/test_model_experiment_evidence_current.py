@@ -72,6 +72,17 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
         node_id="mac",
     )["model_experiment_trial_ready"] is False
 
+    events = ledger.lineage(exact.id)
+    assert [item["event_type"] for item in events] == [
+        "reviewed_registered",
+        "benchmark_recorded",
+        "benchmark_recorded",
+    ]
+    assert events[1]["details"]["artifact_match"] is False
+    assert events[2]["details"]["artifact_match"] is True
+    assert ledger.snapshot()["event_count"] == 3
+    assert ledger.snapshot()["promotion_performed"] is False
+
 
 def test_verified_stack_fingerprint_includes_base_and_adapter_hashes(tmp_path: Path):
     manifest = tmp_path / "candidates.json"
