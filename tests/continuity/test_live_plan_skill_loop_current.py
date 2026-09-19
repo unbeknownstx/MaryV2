@@ -56,7 +56,11 @@ def test_terminal_task_settles_plan_skill_and_skill_specific_competence(tmp_path
         operation="search",
         selected_node_id="mac",
         status="completed",
-        result={"ok": True, "summary": "found three local references"},
+        result={
+            "ok": True,
+            "summary": "found three local references",
+            "verification_passed": True,
+        },
         error="",
     )
 
@@ -77,6 +81,31 @@ def test_terminal_task_settles_plan_skill_and_skill_specific_competence(tmp_path
     )[0]
     assert competence.attempts == 1
     assert competence.verified_successes == 1
+
+
+def test_completed_task_without_required_verification_does_not_claim_demonstrated_competence(tmp_path: Path):
+    service, plan, step, skill = _service_with_continuity(tmp_path)
+    task = SimpleNamespace(
+        task_id="task-1",
+        capability="knowledge.search",
+        operation="search",
+        selected_node_id="mac",
+        status="completed",
+        result={"ok": True, "summary": "search returned a result"},
+        error="",
+    )
+
+    service._settle_continuity_task_link(task)
+
+    competence = service.mary.competence.find(
+        capability="knowledge.search",
+        node_id="mac",
+        skill_id=skill.id,
+    )[0]
+    assert competence.attempts == 1
+    assert competence.successes == 1
+    assert competence.verified_successes == 0
+    assert service.mary.executive_plans.get_step(plan.id, step.id).status == "completed"
 
 
 def test_failed_linked_task_waits_for_creator_recovery_instead_of_erasing_plan(tmp_path: Path):
