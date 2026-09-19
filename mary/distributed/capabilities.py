@@ -7,6 +7,8 @@ used by a cloud control plane, a home PC agent, or an embedded runtime.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from hashlib import sha256
+import json
 import re
 from typing import Any
 
@@ -25,6 +27,31 @@ _SECRET_KEYS = {
     "credential",
 }
 
+_IMPLEMENTATION_METADATA_KEYS = (
+    "runtime",
+    "runtime_version",
+    "model",
+    "configured_model",
+    "model_version",
+    "adapter_fingerprint",
+    "artifact_fingerprint",
+    "model_experiment_id",
+    "model_experiment_bundle_lineage_fingerprint",
+    "bundle_lineage_fingerprint",
+    "backend",
+    "backend_version",
+    "engine",
+    "engine_version",
+    "tool_version",
+    "schema_version",
+    "implementation_version",
+    "ingestion_pipeline_fingerprint",
+    "pipeline_fingerprint",
+    "index_pipeline_fingerprint",
+    "embedding_model",
+    "embedding_identity_fingerprint",
+)
+
 
 def _safe_metadata(values: dict[str, Any] | None) -> dict[str, Any]:
     output: dict[str, Any] = {}
@@ -38,6 +65,58 @@ def _safe_metadata(values: dict[str, Any] | None) -> dict[str, Any]:
         elif value is not None:
             output[clean_key] = str(value)[:180]
     return output
+
+
+def capability_implementation_fingerprint(
+    capability: "CapabilityDescriptor | dict[str, Any] | None",
+) -> str:
+    """Return a stable digest for execution-relevant capability identity.
+
+    Readiness, permission, benchmark, load, pack counts and other live telemetry
+    are intentionally excluded.  The fingerprint changes only when a node
+    advertises a materially different runtime/model/tool/index implementation.
+    Empty means the capability did not advertise enough stable identity to bind
+    durable competence safely.
+    """
+
+    if capability is None:
+        return ""
+    if isinstance(capability, CapabilityDescriptor):
+        name = str(capability.name or "").strip().casefold()
+        metadata = dict(capability.metadata or {})
+    elif isinstance(capability, dict):
+        name = str(capability.get("name") or "").strip().casefold()
+        raw = capability.get("metadata")
+        metadata = dict(raw) if isinstance(raw, dict) else {}
+    else:
+        return ""
+
+    explicit = str(metadata.get("implementation_fingerprint") or "").strip().lower()
+    if explicit:
+        if len(explicit) == 64 and all(ch in "0123456789abcdef" for ch in explicit):
+            return explicit
+        return sha256(("explicit:" + explicit).encode("utf-8")).hexdigest()
+
+    stable: dict[str, Any] = {}
+    for key in _IMPLEMENTATION_METADATA_KEYS:
+        if key not in metadata:
+            continue
+        value = metadata.get(key)
+        if value is None or value == "":
+            continue
+        if isinstance(value, (bool, int, float, str)):
+            stable[key] = value
+        else:
+            stable[key] = str(value)[:180]
+    if not name or not stable:
+        return ""
+    encoded = json.dumps(
+        {"capability": name, "implementation": stable},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)
