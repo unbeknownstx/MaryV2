@@ -434,6 +434,9 @@ class ModelExperimentLedger:
             "model_experiment_benchmark_fingerprint": item.benchmark_fingerprint,
             "model_experiment_benchmark_case_count": item.benchmark_case_count,
             "model_experiment_benchmark_verified": item.benchmark_verified,
+            "model_experiment_bundle_lineage_fingerprint": (
+                item.bundle_lineage_fingerprint
+            ),
             "model_experiment_authority": "evidence_only_no_promotion",
         }
 
