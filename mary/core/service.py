@@ -2706,8 +2706,19 @@ class MaryCoreService:
         if terminal:
             self._settle_continuity_task_link(task)
 
-        lineage_recorded = str(task_id) in self._model_experiment_terminal_recorded
-        experiment_id = self._model_experiment_tasks.get(str(task_id), "")
+        terminal_recorded = getattr(
+            self, "_model_experiment_terminal_recorded", None
+        )
+        if terminal_recorded is None:
+            terminal_recorded = set()
+            self._model_experiment_terminal_recorded = terminal_recorded
+        experiment_tasks = getattr(self, "_model_experiment_tasks", None)
+        if experiment_tasks is None:
+            experiment_tasks = {}
+            self._model_experiment_tasks = experiment_tasks
+
+        lineage_recorded = str(task_id) in terminal_recorded
+        experiment_id = experiment_tasks.get(str(task_id), "")
         if terminal and experiment_id and not lineage_recorded:
             result = dict(getattr(task, "result", {}) or {})
             error = str(getattr(task, "error", "") or "")
@@ -2726,7 +2737,7 @@ class MaryCoreService:
                     model=str(result.get("model") or "")[:240],
                     error_class=error_class,
                 )
-                self._model_experiment_terminal_recorded.add(str(task_id))
+                terminal_recorded.add(str(task_id))
                 lineage_recorded = True
             except Exception:
                 # Task truth remains available even if the optional durable lab
@@ -3358,7 +3369,11 @@ class MaryCoreService:
                     requester_device_id=action.device_id,
                     preferred_node_id=str(selected["node_id"]),
                 )
-                self._model_experiment_tasks[str(task.task_id)] = experiment_id
+                experiment_tasks = getattr(self, "_model_experiment_tasks", None)
+                if experiment_tasks is None:
+                    experiment_tasks = {}
+                    self._model_experiment_tasks = experiment_tasks
+                experiment_tasks[str(task.task_id)] = experiment_id
                 lineage_recorded = False
                 try:
                     self._model_experiment_ledger().record_trial_dispatch(
