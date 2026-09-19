@@ -11,6 +11,40 @@ _ALLOWED_MODES = {"quick", "adaptive", "engaged", "deep"}
 _NODE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
 _CAPABILITY_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,79}$")
 
+_PRESENTATION_CAPABILITY_NAMES = {
+    "expression_cues",
+    "gaze_cues",
+    "head_motion",
+    "semantic_motion",
+    "motion_assets",
+    "lip_sync",
+    "voice_direction",
+    "scene_context",
+    "lighting_control",
+    "transparent_overlay",
+    "capture",
+    "locomotion",
+    "vr",
+}
+
+
+def _presentation_capabilities(value: Any) -> dict[str, bool]:
+    if value in (None, {}):
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("presentation_capabilities must be a JSON object.")
+    if len(value) > len(_PRESENTATION_CAPABILITY_NAMES):
+        raise ValueError("presentation_capabilities exceeds the protocol field limit.")
+    result: dict[str, bool] = {}
+    for raw_name, raw_enabled in value.items():
+        name = str(raw_name or "").strip().lower()
+        if name not in _PRESENTATION_CAPABILITY_NAMES:
+            raise ValueError(f"Unsupported presentation capability: {name or '<empty>'}.")
+        if not isinstance(raw_enabled, bool):
+            raise ValueError("presentation capability values must be booleans.")
+        result[name] = raw_enabled
+    return result
+
 
 def _node_id(value: Any, *, field_name: str = "node_id") -> str:
     text = str(value or "").strip()
@@ -33,6 +67,7 @@ class CreatorSurfaceRequest:
     foreground: bool | None = None
     activity: bool = False
     lease_seconds: float | None = None
+    presentation_capabilities: dict[str, bool] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "CreatorSurfaceRequest":
@@ -63,6 +98,9 @@ class CreatorSurfaceRequest:
             foreground=foreground,
             activity=activity,
             lease_seconds=lease,
+            presentation_capabilities=_presentation_capabilities(
+                payload.get("presentation_capabilities")
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,6 +131,7 @@ class TurnRequest:
     conversation_id: str = field(default_factory=lambda: f"conversation_{uuid4().hex}")
     device_id: str = "unknown-device"
     surface: str = "client"
+    surface_id: str | None = None
     voice_input: bool = False
     requested_mode: str | None = None
     client_local_time: str | None = None
@@ -113,6 +152,12 @@ class TurnRequest:
         )
         device_id = str(payload.get("device_id") or "unknown-device").strip()
         surface = str(payload.get("surface") or "client").strip().lower()[:64]
+        raw_surface_id = payload.get("surface_id")
+        surface_id = (
+            _node_id(raw_surface_id, field_name="surface_id")
+            if raw_surface_id not in (None, "")
+            else None
+        )
         voice_input = bool(payload.get("voice_input", False))
         mode_raw = payload.get("requested_mode")
         mode = str(mode_raw).strip().lower() if mode_raw is not None else None
