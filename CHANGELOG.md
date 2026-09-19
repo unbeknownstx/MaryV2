@@ -9,7 +9,11 @@
 - Added the first Desktop Character Studio pass: local expression and semantic-pose previews, camera framing, key/fill/rim lighting sandbox/presets, transparent WebGL PNG capture and presentation-only stage JSON handoff.
 - Expanded mary doctor with presentation readiness checks for packet/projection/motion contracts, Three-VRM, optional local Mary VRM, PWA performance consumption and native iPhone stage linkage.
 - Added a live Desktop Presence-flow diagnostic: quiet white architecture becomes an animated yellow current through Identity, Agency, Embodiment, Presence and the active Desktop body using ephemeral runtime/performance state only.
-- Added regression coverage and updated the AI-character research/adoption ledger. Real VRMA/FBX playback, imported rooms, locomotion and full VR remain explicit renderer/world milestones rather than falsely advertised capabilities.
+- Added an opt-in Desktop companion-body mode: transparent, compact and always-on-top, with Ctrl+Shift+P/full-Desktop recovery while the same canonical Core/session remains active.
+- Added the official `@pixiv/three-vrm-animation` runtime, a local allowlisted VRMA manifest, crossfaded semantic animation playback and automatic layered-procedural fallback; no private/Riko Patreon animation files are bundled.
+- Expanded Character Studio with orbit/elevation camera control and transparent/void/studio/neon scene presets, including a minimal procedural 3D room and deterministic transparent capture.
+- Upgraded Desktop gaze from head-only implication to the VRM LookAt target system and made facial-expression resolution compatible with both standard presets and custom VRM expression names.
+- Added regression coverage and updated the AI-character research/adoption ledger. VRMA runtime playback is implemented but actual licensed/creator-owned clips remain external; FBX ingestion, imported rooms, locomotion and full VR remain explicit future renderer/world milestones.
 
 
 ## Unreleased — Mary Dataset v1
