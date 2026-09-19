@@ -8,6 +8,7 @@
 - Wired native iPhone to the same DeliveryPlan/PerformancePacket used by Desktop/PWA; normal iPhone voice synthesis now receives Mary's canonical delivery direction and the stage visibly reacts to expression, gaze, head style and energy.
 - Added the first Desktop Character Studio pass: local expression and semantic-pose previews, camera framing, key/fill/rim lighting sandbox/presets, transparent WebGL PNG capture and presentation-only stage JSON handoff.
 - Expanded mary doctor with presentation readiness checks for packet/projection/motion contracts, Three-VRM, optional local Mary VRM, PWA performance consumption and native iPhone stage linkage.
+- Added a live Desktop Presence-flow diagnostic: quiet white architecture becomes an animated yellow current through Identity, Agency, Embodiment, Presence and the active Desktop body using ephemeral runtime/performance state only.
 - Added regression coverage and updated the AI-character research/adoption ledger. Real VRMA/FBX playback, imported rooms, locomotion and full VR remain explicit renderer/world milestones rather than falsely advertised capabilities.
 
 
