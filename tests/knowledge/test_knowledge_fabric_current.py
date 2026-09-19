@@ -387,6 +387,7 @@ def test_substrate_profile_maps_active_reference_and_derivative_tiers_without_sc
     assert profile["stale_derivatives"] == [
         {"pack_id": "vectors", "source_pack_id": "", "state": "unbuilt"}
     ]
+    assert profile["stale_local_indexes"] == []
     assert profile["attention_required"] is True
     assert profile["automatic_scan_performed"] is False
     assert profile["automatic_rebuild_performed"] is False
@@ -415,6 +416,7 @@ def test_local_corpus_pipeline_change_requires_explicit_reindex(tmp_path: Path):
     )
     indexed = fabric.index_local_pack(pack.id)
     baseline = fabric.local_index_lineage(pack.id)
+    assert baseline["state"] == "current"
     assert baseline["current"] is True
     assert baseline["derivative_fingerprint"] == indexed["derivative_fingerprint"]
 
@@ -430,8 +432,16 @@ def test_local_corpus_pipeline_change_requires_explicit_reindex(tmp_path: Path):
     assert plan["pipeline_changed"] is True
     assert plan["has_changes"] is True
     assert plan["recommended_action"] == "explicit_index"
-    assert fabric.local_index_lineage(pack.id)["current"] is False
+    stale_lineage = fabric.local_index_lineage(pack.id)
+    assert stale_lineage["state"] == "pipeline_stale"
+    assert stale_lineage["current"] is False
     assert fabric.derivative_source_fingerprint(pack.id) == ""
+
+    profile = fabric.substrate_profile()
+    assert profile["stale_local_indexes"] == [
+        {"pack_id": pack.id, "state": "pipeline_stale"}
+    ]
+    assert profile["attention_required"] is True
 
     report = fabric.curation_report(pack.id)
     assert report["packs"][0]["refresh"]["pipeline_changed"] is True
