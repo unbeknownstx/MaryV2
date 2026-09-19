@@ -25,6 +25,7 @@ from mary.distributed import (
     MCP_CAPABILITIES,
     MCPFabric,
     engineering_capability_descriptors,
+    execute_knowledge_curation,
     execute_knowledge_search,
     knowledge_capability_descriptors,
     sanitize_mcp_error,
@@ -670,7 +671,8 @@ class DesktopCapabilityNodeAgent:
                 result_payload = self._execute_engineering(capability, dict(task.get("args") or {}))
             elif capability in KNOWLEDGE_NODE_CAPABILITIES:
                 result_payload = self._execute_knowledge(
-                    dict(task.get("args") or {})
+                    capability,
+                    dict(task.get("args") or {}),
                 )
             elif capability in MCP_CAPABILITIES:
                 result_payload = self._execute_mcp(capability, dict(task.get("args") or {}))
@@ -767,10 +769,18 @@ class DesktopCapabilityNodeAgent:
         }
 
 
-    def _execute_knowledge(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Run one bounded read-only search over node-local knowledge packs."""
+    def _execute_knowledge(
+        self,
+        capability: str,
+        args: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run one bounded node-local knowledge operation."""
 
-        return execute_knowledge_search(args)
+        if capability == "knowledge.search":
+            return execute_knowledge_search(args)
+        if capability == "knowledge.curation":
+            return execute_knowledge_curation(args)
+        raise ValueError(f"Unsupported knowledge capability: {capability}")
 
     def _execute_engineering(self, capability: str, args: dict[str, Any]) -> dict[str, Any]:
         """Run one typed repository task through the bounded local worker."""
