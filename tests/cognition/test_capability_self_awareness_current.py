@@ -131,7 +131,7 @@ def test_capability_introspection_uses_live_tools_and_connected_nodes():
     assert live["nodes"]["registered"] == 2
     assert live["nodes"]["advertised_capabilities"] == ["llm.ollama", "sensor.screen_describe"]
     assert live["nodes"]["execution_ready_capabilities"] == ["llm.ollama"]
-    assert evidence["authority"].startswith("live Core/tool/node state is authoritative")
+    assert evidence["authority"].startswith("live Core/tool/node state plus bounded competence")
     assert "provider model priors are not capability evidence" in evidence["authority"]
 
 
