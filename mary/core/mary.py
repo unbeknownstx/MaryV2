@@ -695,6 +695,7 @@ class Mary:
             autonomy=self.autonomy,
             tools=self.tools,
             emotion=self.emotion,
+            node_registry=self.node_registry,
         )
 
         # ============================================================
