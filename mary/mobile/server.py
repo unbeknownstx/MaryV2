@@ -1601,6 +1601,16 @@ class MaryRemoteMobileRuntime:
                 },
             )
 
+        if name == "runKnowledgeCuration":
+            values = list(args or [])
+            pack_id = str(values[0] if values else "").strip()[:160]
+            dispatched = self.client.dispatch_capability_task(
+                "knowledge.curation",
+                "Inspect node-local corpus hygiene without changing source or indexes.",
+                {"pack_id": pack_id},
+            )
+            return dispatched
+
         if name == "getCapabilityTaskStatus":
             values = list(args or [])
             task_id = str(values[0] if values else "").strip()[:180]
