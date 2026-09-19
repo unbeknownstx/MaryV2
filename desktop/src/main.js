@@ -377,6 +377,11 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
 camera.position.set(0, 1.35, 2.6);
 
+const lookAtTarget = new THREE.Object3D();
+lookAtTarget.name = 'maryPerformanceLookAtTarget';
+scene.add(lookAtTarget);
+const gazeTargetPosition = new THREE.Vector3();
+
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.35);
 keyLight.position.set(1.5, 2.6, 2.2);
 scene.add(keyLight);
@@ -630,6 +635,10 @@ async function loadMaryVrm() {
     currentVrm = vrm;
     VRMUtils.rotateVRM0(currentVrm);
     ensureVrmLookAtAnimationProxy(currentVrm);
+    if (currentVrm.lookAt) {
+      currentVrm.lookAt.target = lookAtTarget;
+      currentVrm.lookAt.autoUpdate = true;
+    }
     applyRelaxedStandingPose(currentVrm);
     scene.add(currentVrm.scene);
     currentVrm.scene.updateMatrixWorld(true);
@@ -670,9 +679,66 @@ const PRESET_MAP = {
   calm: 'relaxed', hopeful: 'relaxed', curious: 'relaxed', neutral: 'relaxed',
 };
 
+function faceExpressionNames(manager) {
+  const names = Object.keys(manager?.expressionMap || {});
+  const reserved = new Set([
+    ...(manager?.blinkExpressionNames || []),
+    ...(manager?.mouthExpressionNames || []),
+    ...(manager?.lookAtExpressionNames || []),
+  ].map((item) => String(item).toLowerCase()));
+  return names.filter((name) => !reserved.has(String(name).toLowerCase()));
+}
+
+function resolveFaceExpression(manager, requested = 'neutral') {
+  const raw = String(requested || 'neutral').trim();
+  const key = raw.toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
+  const exactNames = Object.keys(manager?.expressionMap || {});
+  const exact = exactNames.find((name) => String(name).toLowerCase() === key);
+  if (exact) return exact;
+
+  const aliases = {
+    loving: ['happy', 'smile', 'joy'],
+    affectionate: ['happy', 'smile', 'joy'],
+    warmth: ['happy', 'relaxed', 'smile'],
+    grateful: ['happy', 'relaxed', 'smile'],
+    gratitude: ['happy', 'relaxed', 'smile'],
+    proud: ['happy', 'relaxed'],
+    excited: ['happy', 'surprised'],
+    amused: ['happy', 'relaxed', 'smile'],
+    playful: ['happy', 'relaxed', 'smile'],
+    curious: ['relaxed', 'neutral', 'surprised'],
+    calm: ['relaxed', 'neutral'],
+    hopeful: ['relaxed', 'happy'],
+    concerned: ['sad', 'relaxed'],
+    lonely: ['sad', 'relaxed'],
+    disappointed: ['sad', 'relaxed'],
+    frustrated: ['angry', 'sad'],
+    firm: ['angry', 'neutral'],
+    confused: ['surprised', 'relaxed'],
+    afraid: ['surprised', 'sad'],
+    neutral: ['neutral', 'relaxed'],
+  };
+  const candidates = [key, ...(aliases[key] || []), PRESET_MAP[key]].filter(Boolean);
+  for (const candidate of candidates) {
+    const found = exactNames.find((name) => String(name).toLowerCase() === String(candidate).toLowerCase());
+    if (found) return found;
+  }
+
+  const custom = manager?.customExpressionMap || {};
+  const customNames = Object.keys(custom);
+  const fuzzyTokens = new Set(candidates.flatMap((item) => String(item).split(/[_\s-]+/)).filter(Boolean));
+  for (const name of customNames) {
+    const lower = String(name).toLowerCase();
+    if ([...fuzzyTokens].some((token) => token.length > 2 && lower.includes(token))) return name;
+  }
+  return exactNames.find((name) => String(name).toLowerCase() === 'neutral')
+    || exactNames.find((name) => String(name).toLowerCase() === 'relaxed')
+    || null;
+}
+
 function resetKnownExpressions(manager) {
-  for (const preset of ['happy', 'sad', 'angry', 'surprised', 'relaxed']) {
-    try { manager.setValue(preset, 0); } catch (_) { /* optional preset */ }
+  for (const name of faceExpressionNames(manager)) {
+    try { manager.setValue(name, 0); } catch (_) { /* optional/custom expression */ }
   }
 }
 
@@ -692,10 +758,12 @@ function applyPerformanceExpression(beat) {
   if (!manager || !beat) return;
   resetKnownExpressions(manager);
   const expression = String(beat.expression || currentDeliveryPlan.avatar_expression || 'neutral').toLowerCase();
-  const preset = PRESET_MAP[expression] || 'relaxed';
+  const preset = resolveFaceExpression(manager, expression);
   const beatEnergy = clamp(beat.energy ?? currentDeliveryPlan.energy ?? .4);
   const intensity = Math.max(.08, Math.min(.82, .18 + beatEnergy * .62));
-  try { manager.setValue(preset, intensity); } catch (_) { /* optional preset */ }
+  if (preset) {
+    try { manager.setValue(preset, intensity); } catch (_) { /* optional/custom expression */ }
+  }
 }
 
 async function loadMotionManifest() {
@@ -1082,10 +1150,12 @@ function applyAvatarState(state = {}) {
   resetKnownExpressions(manager);
   const directedExpression = String(currentDeliveryPlan.avatar_expression || '').toLowerCase();
   const emotionName = directedExpression || String(state.expression || state.emotion || 'neutral').toLowerCase();
-  const preset = PRESET_MAP[emotionName] || PRESET_MAP[String(state.expression || state.emotion || 'neutral').toLowerCase()] || 'relaxed';
+  const preset = resolveFaceExpression(manager, emotionName);
   const deliveryEnergy = clamp(currentDeliveryPlan.energy ?? 0.4);
   const intensity = Math.max(0.08, clamp(Math.max(state.emotion_intensity ?? state.intensity ?? 0.3, deliveryEnergy * .58)));
-  try { manager.setValue(preset, intensity); } catch (_) { /* optional preset */ }
+  if (preset) {
+    try { manager.setValue(preset, intensity); } catch (_) { /* optional/custom expression */ }
+  }
 }
 
 function updateBlink(now) {
@@ -1103,6 +1173,30 @@ function updateBlink(now) {
     blinkPhase = -1;
     blinkAt = now + 2200 + Math.random() * 3200;
   }
+}
+
+function updatePerformanceGaze(gazeStyle = 'engaged', delta = .016) {
+  if (!currentVrm?.lookAt || !modelBounds) return;
+  const { size } = modelBounds;
+  const scale = Math.max(.45, Math.min(1.4, size.y || 1));
+  const style = String(gazeStyle || 'engaged').toLowerCase();
+  let x = 0;
+  let y = 0;
+  if (style === 'glance_away') x = -.26 * scale;
+  else if (style === 'left') x = -.34 * scale;
+  else if (style === 'right') x = .34 * scale;
+  else if (style === 'up') y = .18 * scale;
+  else if (style === 'down') y = -.18 * scale;
+  else if (style === 'soft') y = -.035 * scale;
+
+  gazeTargetPosition.copy(camera.position);
+  gazeTargetPosition.x += x;
+  gazeTargetPosition.y += y;
+  const response = Math.min(1, Math.max(.04, delta / (style === 'direct' ? .10 : .20)));
+  lookAtTarget.position.lerp(gazeTargetPosition, response);
+  lookAtTarget.updateMatrixWorld(true);
+  currentVrm.lookAt.target = lookAtTarget;
+  currentVrm.lookAt.autoUpdate = true;
 }
 
 function animate(now = performance.now()) {
@@ -1157,6 +1251,8 @@ function animate(now = performance.now()) {
     if (!vrmaOwnsBody) {
       applySemanticMotionLayer(semanticCue, elapsed, gestureEnergy, delta);
     }
+
+    updatePerformanceGaze(gazeStyle, delta);
 
     const speakingBoost = conversationState === 'speaking' ? .55 + gestureEnergy * .65 : .45;
     const bounceGain = ['animated','celebrate'].includes(gestureStyle) ? 1.65 : gestureStyle === 'firm' ? .58 : gestureStyle === 'soft' ? .72 : 1.0;
