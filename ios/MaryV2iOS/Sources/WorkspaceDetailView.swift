@@ -112,13 +112,13 @@ struct WorkspaceDetailView: View {
         return VStack(spacing: 12) {
             GlassCard { VStack(alignment: .leading, spacing: 9) {
                 Eyebrow(text: "World pulse")
-                Text("\\(CoreProjection.int(context["count"])) current context items")
+                Text("\(CoreProjection.int(context["count"])) current context items")
                     .font(.title2.bold())
-                DataRow(label: "Refresh lanes due", value: "\\(due.count)")
-                DataRow(label: "Current beliefs", value: "\\(CoreProjection.int(beliefs["current_beliefs"]))")
-                DataRow(label: "Contested beliefs", value: "\\(CoreProjection.int(epistemic["contested"]))")
-                DataRow(label: "Temporal relations", value: "\\(CoreProjection.int(temporal["relations"]))")
-                DataRow(label: "Contradictions", value: "\\(contradictions.count)")
+                DataRow(label: "Refresh lanes due", value: "\(due.count)")
+                DataRow(label: "Current beliefs", value: "\(CoreProjection.int(beliefs["current_beliefs"]))")
+                DataRow(label: "Contested beliefs", value: "\(CoreProjection.int(epistemic["contested"]))")
+                DataRow(label: "Temporal relations", value: "\(CoreProjection.int(temporal["relations"]))")
+                DataRow(label: "Contradictions", value: "\(contradictions.count)")
                 Text("World Pulse only plans refreshes. External context expires and cannot promote itself into Mary truth; acceptance and reconciliation remain explicit Core actions.")
                     .font(.caption)
                     .foregroundStyle(MaryTheme.muted)
@@ -127,7 +127,7 @@ struct WorkspaceDetailView: View {
             if !due.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Needs refresh")
-                    ForEach(Array(due.prefix(8).enumerated()), id: \\.offset) { _, item in
+                    ForEach(Array(due.prefix(8).enumerated()), id: \.offset) { _, item in
                         let row = CoreProjection.dict(item)
                         HStack {
                             Image(systemName: "clock.arrow.circlepath")
@@ -143,7 +143,7 @@ struct WorkspaceDetailView: View {
             if !recent.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Current external context")
-                    ForEach(Array(recent.suffix(6).enumerated()), id: \\.offset) { _, item in
+                    ForEach(Array(recent.suffix(6).enumerated()), id: \.offset) { _, item in
                         let row = CoreProjection.dict(item)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(CoreProjection.string(row["topic"]).isEmpty ? "World context" : CoreProjection.string(row["topic"]))
