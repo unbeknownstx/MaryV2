@@ -33,10 +33,12 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
         "adapter_config_sha256": "a" * 64,
         "adapter_weights_sha256": "b" * 64,
         "dataset_fingerprint": "dataset-1",
+        "bundle_lineage_fingerprint": "0" * 64,
         "notes": ["review only"],
     }
     reviewed = ledger.register_mlx_proposal(proposal)
     assert reviewed.status == "reviewed"
+    assert reviewed.bundle_lineage_fingerprint == "0" * 64
     assert reviewed.trial_ready is False
     assert reviewed.to_dict()["promotion_performed"] is False
 
@@ -163,6 +165,7 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
         "adapter_config_sha256": "c" * 64,
         "adapter_weights_sha256": "d" * 64,
         "dataset_fingerprint": "mary-dataset-exact",
+        "bundle_lineage_fingerprint": "1" * 64,
         "notes": ["creator reviewed"],
     }
     reviewed = local.register_mlx_proposal(proposal)
@@ -184,6 +187,7 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
     assert "content" not in evidence["experiment"]
     assert "content" not in evidence["benchmark"]
     assert evidence["experiment"]["dataset_fingerprint"] == "mary-dataset-exact"
+    assert evidence["experiment"]["bundle_lineage_fingerprint"] == "1" * 64
 
     core = ModelExperimentLedger(tmp_path / "core.json")
     imported = core.import_portable_evidence(evidence, reviewed_by="creator:test")
@@ -191,6 +195,7 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
     assert imported.id == benchmarked.id
     assert imported.artifact_fingerprint == benchmarked.artifact_fingerprint
     assert imported.dataset_fingerprint == "mary-dataset-exact"
+    assert imported.bundle_lineage_fingerprint == "1" * 64
     assert imported.node_id == "MAC-MARY"
     assert imported.benchmark_verified is True
     assert imported.benchmark_fingerprint == "marybench-portable-v1"
