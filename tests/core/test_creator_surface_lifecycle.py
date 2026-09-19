@@ -84,6 +84,31 @@ def test_surface_registry_is_bounded():
         lifecycle.register("three")
 
 
+def test_surface_lease_keeps_ephemeral_presentation_capabilities():
+    lifecycle = CreatorSurfaceCoordinator()
+    status = lifecycle.register(
+        "desktop",
+        presentation_capabilities={
+            "expression_cues": True,
+            "motion_assets": False,
+        },
+    )
+    surface = status["surfaces"][0]
+    assert surface["presentation_capabilities"] == {
+        "expression_cues": True,
+        "motion_assets": False,
+    }
+
+    status = lifecycle.renew(
+        "desktop",
+        presentation_capabilities={
+            "expression_cues": True,
+            "motion_assets": True,
+        },
+    )
+    assert status["surfaces"][0]["presentation_capabilities"]["motion_assets"] is True
+
+
 class FakeRegistry:
     def __init__(self) -> None:
         self.lifecycle_lock = RLock()
