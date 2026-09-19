@@ -109,7 +109,10 @@ class KnowledgeHit:
 class KnowledgeFabric:
     """Registry and read-only retrieval substrate for locally owned knowledge."""
 
-    VERSION = 3
+    VERSION = 4
+    LOCAL_INDEX_PIPELINE_VERSION = "mary-local-index-v1"
+    DEFAULT_CHUNK_TARGET = 6000
+    DEFAULT_CHUNK_OVERLAP = 500
     KINDS = {"local_files", "kiwix", "qdrant", "qdrant_edge", "kolibri", "notes", "custom"}
     QUERY_MODES = {"fts", "direct", "vector", "hybrid", "catalog_only"}
     INGEST_POLICIES = {"manual", "on_change"}
