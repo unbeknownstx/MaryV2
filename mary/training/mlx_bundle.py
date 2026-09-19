@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .dataset_v1 import MaryDatasetV1Exporter
+from .dataset_audit import MaryDatasetV1Auditor
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,15 @@ def prepare_mlx_bundle(
         output_dir=dataset_dir,
         feedback_path=feedback_path,
     )
+    dataset_audit = MaryDatasetV1Auditor().audit(
+        dataset_dir,
+        minimum_train_examples=1,
+    )
+    if not dataset_audit.training_ready:
+        raise ValueError(
+            "Mary Dataset v1 failed the structural quality gate: "
+            + "; ".join(dataset_audit.blocking_issues[:8])
+        )
 
     behavior = _load_jsonl(dataset_dir / "mary_behavior_sft.jsonl")
     feedback = _load_jsonl(dataset_dir / "explicit_feedback" / "mary_sft.jsonl")
@@ -247,7 +257,10 @@ def prepare_mlx_bundle(
     )
 
     training_example_count = len(splits["train"])
-    dataset_ready = training_example_count >= profile.minimum_train_examples
+    dataset_ready = (
+        dataset_audit.training_ready
+        and training_example_count >= profile.minimum_train_examples
+    )
     readiness_reasons = []
     if not dataset_ready:
         readiness_reasons.append(
@@ -259,6 +272,7 @@ def prepare_mlx_bundle(
         "version": "mary-mlx-adapter-bundle-v2",
         "profile": profile.to_dict(),
         "mary_dataset": dataset_summary.to_dict(),
+        "dataset_audit": dataset_audit.to_dict(),
         "examples": {
             "train": len(splits["train"]),
             "validation": len(splits["validation"]),
@@ -298,6 +312,7 @@ def prepare_mlx_bundle(
         "boundaries": {
             "training_performed": False,
             "marybench_in_training_data": False,
+            "dataset_quality_gate_passed": dataset_audit.training_ready,
             "ordinary_conversation_harvested": False,
             "fictional_canon_is_lived_memory": False,
             "adapter_is_identity_authority": False,
