@@ -51,6 +51,53 @@ def _candidate_summary(catalog: Any) -> dict[str, Any]:
     }
 
 
+def _model_experiment_summary(mary: Any) -> dict[str, Any]:
+    """Project exact reviewed/benchmarked model evidence without model output."""
+    try:
+        from mary.learning import ModelExperimentLedger
+        paths = getattr(getattr(mary, "config", None), "paths", None)
+        runtime_root = getattr(paths, "runtime", None)
+        if runtime_root is None:
+            return {"count": 0, "trial_ready": 0, "records": []}
+        snapshot = ModelExperimentLedger(
+            runtime_root / "model_experiment_evidence.json"
+        ).snapshot()
+    except Exception as exc:
+        return {
+            "count": 0,
+            "trial_ready": 0,
+            "records": [],
+            "available": False,
+            "error_type": type(exc).__name__,
+        }
+    records = []
+    for raw in list(snapshot.get("records") or [])[-24:]:
+        if not isinstance(raw, dict):
+            continue
+        records.append({
+            "id": str(raw.get("id") or "")[:160],
+            "status": str(raw.get("status") or "")[:80],
+            "candidate_id": str(raw.get("candidate_id") or "")[:160],
+            "runtime": str(raw.get("runtime") or "")[:80],
+            "model": str(raw.get("model") or "")[:240],
+            "node_id": str(raw.get("node_id") or "")[:180],
+            "mary_fit": raw.get("mary_fit"),
+            "latency_ms": raw.get("latency_ms"),
+            "benchmark_verified": bool(raw.get("benchmark_verified")),
+            "trial_ready": bool(raw.get("trial_ready")),
+            "missing_scores": list(raw.get("missing_scores") or [])[:16],
+            "failed_scores": list(raw.get("failed_scores") or [])[:16],
+        })
+    return {
+        "version": snapshot.get("version"),
+        "count": int(snapshot.get("count", len(records)) or 0),
+        "trial_ready": int(snapshot.get("trial_ready", 0) or 0),
+        "records": records,
+        "promotion_performed": False,
+        "authority": "experiment_evidence_only",
+    }
+
+
 def build_system_fabric_projection(application: Any, *, service: Any | None = None) -> dict[str, Any]:
     """Return one read-only status contract shared by Desktop/PWA/iPhone."""
 
@@ -61,6 +108,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     nodes = _status(getattr(mary, "node_registry", None), "snapshot")
     adapter_lab = _status(getattr(ecosystem, "adapter_lab", None), "snapshot")
     candidates = _candidate_summary(getattr(ecosystem, "model_candidates", None))
+    experiments = _model_experiment_summary(mary)
     training = _status(getattr(mary, "training_feedback", None), "status")
     character_eval = _status(getattr(mary, "character_evaluation", None), "snapshot")
 
@@ -114,6 +162,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
         "models": {
             "adapter_lab": adapter_lab,
             "candidates": candidates,
+            "experiments": experiments,
             "policy": "model/adapters are replaceable capabilities; benchmark and creator promotion remain explicit",
         },
         "compute": {"nodes": nodes, **compute},

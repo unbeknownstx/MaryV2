@@ -276,6 +276,8 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "world.accept_evidence",
     "world.reconcile",
     "model.adapter.status",
+    "model.experiment.status",
+    "model.experiment.dispatch",
     "mind.rebuild_reservoir",
     "mind.maintenance",
     "continuity.status",

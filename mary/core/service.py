@@ -2474,6 +2474,59 @@ class MaryCoreService:
             },
         })
 
+    def _model_experiment_trial_nodes(
+        self,
+        experiment_id: str = "",
+    ) -> list[dict[str, Any]]:
+        """Return live nodes carrying exact benchmarked experiment evidence."""
+        requested = str(experiment_id or "").strip()[:160]
+        registry = getattr(self.mary, "node_registry", None)
+        available = getattr(registry, "available", None)
+        if not callable(available):
+            return []
+        output: list[dict[str, Any]] = []
+        for node in list(available() or [])[:64]:
+            capability = dict(getattr(node, "capabilities", {}) or {}).get("llm.llama_cpp")
+            if capability is None:
+                continue
+            metadata = dict(getattr(capability, "metadata", {}) or {})
+            advertised_id = str(metadata.get("model_experiment_id") or "")[:160]
+            if not advertised_id or (requested and advertised_id != requested):
+                continue
+            qualified = all((
+                bool(metadata.get("model_experiment_trial_ready")),
+                bool(metadata.get("model_experiment_benchmark_verified")),
+                bool(metadata.get("model_experiment_runtime_match")),
+                bool(metadata.get("model_experiment_artifact_match")),
+                bool(metadata.get("model_experiment_node_match")),
+            ))
+            execution_authorized = metadata.get("execution_authorized") is True
+            try:
+                latency = float(metadata.get("model_experiment_latency_ms"))
+            except (TypeError, ValueError):
+                latency = None
+            output.append({
+                "node_id": str(getattr(node, "node_id", "") or "")[:180],
+                "experiment_id": advertised_id,
+                "model": str(metadata.get("configured_model") or metadata.get("model") or "")[:180],
+                "mary_fit": metadata.get("model_experiment_mary_fit"),
+                "latency_ms": latency,
+                "benchmark_verified": bool(metadata.get("model_experiment_benchmark_verified")),
+                "artifact_match": bool(metadata.get("model_experiment_artifact_match")),
+                "runtime_match": bool(metadata.get("model_experiment_runtime_match")),
+                "node_match": bool(metadata.get("model_experiment_node_match")),
+                "execution_authorized": execution_authorized,
+                "trial_ready": qualified,
+                "runnable": bool(qualified and execution_authorized),
+                "authority": "explicit_experiment_trial_only",
+            })
+        output.sort(key=lambda item: (
+            not bool(item.get("runnable")),
+            float(item["latency_ms"]) if item.get("latency_ms") is not None else float("inf"),
+            str(item.get("node_id") or ""),
+        ))
+        return output
+
     def dispatch_capability_task(
         self,
         request: CapabilityTaskDispatchRequest | dict[str, Any],
@@ -3106,6 +3159,83 @@ class MaryCoreService:
                 return _json_safe({
                     **self.application.ecosystem.adapter_lab.snapshot(),
                     "reviewed_candidates": self.application.ecosystem.model_candidates.snapshot(),
+                })
+
+            if action.action == "model.experiment.status":
+                requested = str(values.get("experiment_id") or "").strip()[:160]
+                from mary.runtime.system_fabric import build_system_fabric_projection
+                fabric = build_system_fabric_projection(self.application)
+                return _json_safe({
+                    "experiments": dict(dict(fabric.get("models") or {}).get("experiments") or {}),
+                    "nodes": self._model_experiment_trial_nodes(requested),
+                    "requested_experiment_id": requested,
+                    "execution_performed": False,
+                    "promotion_performed": False,
+                    "authority": "experiment_evidence_only",
+                })
+
+            if action.action == "model.experiment.dispatch":
+                experiment_id = str(values.get("experiment_id") or "").strip()[:160]
+                prompt = " ".join(str(values.get("prompt") or "").split())[:12_000]
+                if not experiment_id:
+                    raise ValueError("model experiment dispatch requires experiment_id")
+                if not prompt:
+                    raise ValueError("model experiment dispatch requires a prompt")
+                candidates = [
+                    item for item in self._model_experiment_trial_nodes(experiment_id)
+                    if bool(item.get("runnable"))
+                ]
+                if not candidates:
+                    raise PermissionError(
+                        "No live node advertises this exact benchmarked experiment "
+                        "with device-local llama.cpp permission."
+                    )
+                selected = candidates[0]
+                try:
+                    max_tokens = max(1, min(1024, int(values.get("max_tokens", 512) or 512)))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("model experiment max_tokens must be an integer") from exc
+                try:
+                    temperature = max(0.0, min(1.5, float(values.get("temperature", 0.7))))
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("model experiment temperature must be numeric") from exc
+                task = self.device_tasks.enqueue(
+                    self.mary.node_registry,
+                    capability="llm.llama_cpp",
+                    intent=(
+                        "Run an explicit reviewed Mary model/adapter experiment "
+                        f"{experiment_id}; output is experiment evidence only."
+                    ),
+                    args={
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are an explicit local model experiment. "
+                                    "Generate only the requested experimental text. "
+                                    "Do not claim this output is canonical Mary memory, "
+                                    "identity, relationship state, a completed tool action, "
+                                    "or a production routing decision."
+                                ),
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        "role": "utility",
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                    },
+                    requester_device_id=action.device_id,
+                    preferred_node_id=str(selected["node_id"]),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "experiment_id": experiment_id,
+                    "node": selected,
+                    "task": task.to_dict(),
+                    "execution": "queued_explicit_trial",
+                    "production_route_changed": False,
+                    "promotion_performed": False,
+                    "authority": "experiment_trial_only",
                 })
 
             if action.action == "mind.rebuild_reservoir":
