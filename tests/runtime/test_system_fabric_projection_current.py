@@ -20,3 +20,6 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert "repository" not in result["models"]["candidates"]["candidates"][0]
     assert result["authority"]["execution_permission"] is False
     assert result["authority"]["promotion_permission"] is False
+    assert result["compute"]["node_intelligence"]["registered"] == 1
+    assert result["compute"]["node_intelligence"]["execution_permission_granted"] is False
+    assert result["semantics"]["node_intelligence"].startswith("advertisement_readiness")
