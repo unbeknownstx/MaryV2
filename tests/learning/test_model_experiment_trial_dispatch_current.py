@@ -25,6 +25,8 @@ def _registry(*, authorized=True, trial_ready=True):
                 "model_experiment_mary_fit":0.91,
                 "model_experiment_latency_ms":640.0,
                 "model_experiment_benchmark_verified":True,
+                "model_experiment_benchmark_fingerprint":"marybench-test-v1",
+                "model_experiment_benchmark_case_count":60,
             })},
     ))
     return registry
@@ -60,6 +62,8 @@ class _Ledger:
             model="reviewed-model",
             artifact_fingerprint="artifact-exact",
             node_id="mac-m1",
+            benchmark_fingerprint="marybench-test-v1",
+            benchmark_case_count=60,
             benchmark_verified=True,
             trial_ready=True,
         )
