@@ -41,6 +41,7 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
     cognitive_workspace = getattr(mary, "cognitive_workspace", None)
     continuity = getattr(mary, "experiential_continuity", None)
     knowledge_fabric = getattr(mary, "knowledge_fabric", None)
+    model_experiments = getattr(mary, "model_experiments", None)
 
     contract = {}
     if callable(getattr(system_contract, "snapshot", None)):
@@ -73,6 +74,14 @@ def build_integration_graph(*, application: Any, service: Any | None = None) -> 
             and callable(getattr(knowledge_fabric, "search", None))
             and callable(getattr(knowledge_fabric, "status", None)),
             owner="KnowledgeFabric",
+        ),
+        _edge(
+            "Mary -> shared model experiment ledger",
+            model_experiments is not None
+            and callable(getattr(model_experiments, "snapshot", None))
+            and getattr(getattr(mary, "self_introspection", None), "model_experiments", None)
+            is model_experiments,
+            owner="ModelExperimentLedger",
         ),
         _edge(
             "Mary -> unified experiential continuity",
