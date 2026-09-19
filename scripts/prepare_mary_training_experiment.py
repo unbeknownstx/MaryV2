@@ -76,6 +76,14 @@ def main() -> int:
                 f'python -m scripts.review_mlx_adapter_candidate '
                 f'"{candidate_path}" --approve'
             ),
+            "record_held_out_benchmark": (
+                "python -m scripts.record_model_experiment_benchmark "
+                "<experiment-id> <scores-json> --node-id <node-id> "
+                "--artifact-fingerprint <artifact-fingerprint>"
+            ),
+            "sync_reviewed_benchmark_to_core": (
+                "python -m scripts.sync_model_experiment_to_core <experiment-id>"
+            ),
         },
         "gates": {
             "dataset_structurally_ready": bool(
@@ -90,6 +98,7 @@ def main() -> int:
             "manual_training_gate_required": True,
             "manual_candidate_review_required": True,
             "held_out_benchmark_required": True,
+            "canonical_core_evidence_import_required": True,
             "manual_promotion_required": True,
         },
         "boundaries": {
