@@ -284,8 +284,15 @@ function setAvatarPresentation(mode = 'live') {
 
 function setWindowPresentationMode(mode = 'standard') {
   const next = mode === 'companion' ? 'companion' : 'standard';
+  const previous = windowPresentationMode;
   windowPresentationMode = next;
   document.documentElement.dataset.windowMode = next;
+  if (next === 'companion') {
+    stageSceneBeforeCompanion = stageScenePreset;
+    applyStageScenePreset('transparent');
+  } else if (previous === 'companion') {
+    applyStageScenePreset(stageSceneBeforeCompanion || 'transparent');
+  }
   if (bridge?.setWindowPresentationMode) {
     bridge.setWindowPresentationMode(next);
   } else if (next === 'companion') {
@@ -299,8 +306,15 @@ function setWindowPresentationMode(mode = 'standard') {
 
 window.addEventListener('mary-window-mode', (event) => {
   const mode = String(event?.detail?.mode || 'standard').toLowerCase();
+  const previous = windowPresentationMode;
   windowPresentationMode = mode === 'companion' ? 'companion' : 'standard';
   document.documentElement.dataset.windowMode = windowPresentationMode;
+  if (windowPresentationMode === 'companion') {
+    stageSceneBeforeCompanion = stageScenePreset;
+    applyStageScenePreset('transparent');
+  } else if (previous === 'companion') {
+    applyStageScenePreset(stageSceneBeforeCompanion || 'transparent');
+  }
   resizeRenderer();
   window.setTimeout(() => setAvatarFraming(avatarFraming), 30);
 });
@@ -453,6 +467,7 @@ function copyStageSetup() {
     body: 'MaryCosma.vrm',
     framing: avatarFraming,
     lighting: { ...stageLighting },
+    scene: stageScenePreset,
     expression: String(ambientAvatarState.expression || 'neutral'),
     motion_preview: studioMotionCue?.motion_id || '',
     authority: 'presentation_only',
@@ -2334,6 +2349,13 @@ function renderVoice() {
           <button class="action-button" data-stage-lighting="neon"><strong>Neon</strong><small>More fill and rim</small></button>
           <button class="action-button" data-stage-lighting="dramatic"><strong>Dramatic</strong><small>High contrast stage light</small></button>
         </div>
+        <div class="section-title" style="margin-top:12px">SCENE</div>
+        <div class="action-grid">
+          <button class="action-button" data-stage-scene="transparent"><strong>Transparent</strong><small>Body-only / overlay-ready</small></button>
+          <button class="action-button" data-stage-scene="void"><strong>Void</strong><small>Dark minimal stage</small></button>
+          <button class="action-button" data-stage-scene="studio"><strong>Studio</strong><small>Neutral capture stage</small></button>
+          <button class="action-button" data-stage-scene="neon"><strong>Neon</strong><small>Mary night-stage floor</small></button>
+        </div>
       </div>
     </div>
     <div class="workspace-panel">
@@ -2775,6 +2797,11 @@ function bindWorkspaceActions() {
     applyStageLightingPreset(button.dataset.stageLighting);
     renderWorkspace('voice');
     toast(`Lighting: ${titleCase(button.dataset.stageLighting)}`);
+  }));
+  $('#workspace-body [data-stage-scene]').forEach((button) => button.addEventListener('click', () => {
+    applyStageScenePreset(button.dataset.stageScene);
+    renderWorkspace('voice');
+    toast(`Scene: ${titleCase(button.dataset.stageScene)}`);
   }));
   const bindLightSlider = (selector, key, valueSelector) => {
     $(selector)?.addEventListener('input', (event) => {
