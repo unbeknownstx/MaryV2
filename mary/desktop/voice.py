@@ -30,7 +30,7 @@ from mary.voice import (
     emotion_voice_profile_name,
     resolve_emotion_voice_settings,
 )
-from mary.voice.providers import ElevenLabsTextToSpeechProvider
+from mary.voice.providers import ElevenLabsTextToSpeechProvider, GPTSoVITSLocalTextToSpeechProvider
 
 
 @dataclass(frozen=True)
@@ -172,8 +172,72 @@ class DesktopVoiceEngine:
                    status=DesktopVoiceStatus(True, "elevenlabs", voice_id, model_id, False, True))
 
     @classmethod
-    def _local_only_from_environment(cls) -> "DesktopVoiceEngine":
-        """Resolve Piper/SAPI without constructing a cloud fallback loop."""
+    def _gpt_sovits_from_environment(cls) -> "DesktopVoiceEngine":
+        base_url = os.getenv("MARY_GPT_SOVITS_URL", "http://127.0.0.1:9880").strip()
+        ref_audio = os.getenv("MARY_GPT_SOVITS_REF_AUDIO", "").strip()
+        if not ref_audio:
+            return cls(status=DesktopVoiceStatus(False, "gpt_sovits", local=True))
+
+        voice_label = os.getenv("MARY_GPT_SOVITS_VOICE_LABEL", "Mary local voice").strip() or "Mary local voice"
+        text_lang = os.getenv("MARY_GPT_SOVITS_TEXT_LANG", "en").strip().lower() or "en"
+        prompt_lang = os.getenv("MARY_GPT_SOVITS_PROMPT_LANG", text_lang).strip().lower() or text_lang
+        prompt_text = os.getenv("MARY_GPT_SOVITS_PROMPT_TEXT", "").strip()
+        speed = _env_float("MARY_TTS_SPEED", 1.0, minimum=0.7, maximum=1.2)
+        try:
+            provider = GPTSoVITSLocalTextToSpeechProvider(
+                base_url=base_url,
+                ref_audio_path=ref_audio,
+                prompt_text=prompt_text,
+                text_lang=text_lang,
+                prompt_lang=prompt_lang,
+                timeout=_env_float(
+                    "MARY_GPT_SOVITS_TIMEOUT",
+                    45.0,
+                    minimum=2.0,
+                    maximum=180.0,
+                ),
+            )
+        except ValueError:
+            return cls(status=DesktopVoiceStatus(False, "gpt_sovits", local=True))
+
+        settings = VoiceSettings(
+            voice=voice_label,
+            speed=speed,
+            output_format=SpeechAudioFormat.WAV,
+            metadata={
+                "gpt_sovits_text_lang": text_lang,
+                "gpt_sovits_prompt_lang": prompt_lang,
+                "gpt_sovits_prompt_text": prompt_text,
+            },
+        )
+        return cls(
+            service=create_tts_service(provider, settings=settings),
+            base_settings=settings,
+            status=DesktopVoiceStatus(
+                True,
+                "gpt_sovits",
+                voice_label,
+                "GPT-SoVITS local",
+                True,
+                False,
+            ),
+        )
+
+    @classmethod
+    def _local_only_from_environment(
+        cls,
+        *,
+        include_gpt_sovits: bool = True,
+    ) -> "DesktopVoiceEngine":
+        """Resolve local voices without constructing a cloud fallback loop."""
+
+        if include_gpt_sovits and _env_bool("MARY_GPT_SOVITS_ENABLED", False):
+            gpt_sovits = cls._gpt_sovits_from_environment()
+            if gpt_sovits.status.enabled:
+                fallback = cls._local_only_from_environment(include_gpt_sovits=False)
+                if fallback.status.enabled:
+                    gpt_sovits.failure_fallback = fallback
+                return gpt_sovits
 
         piper_exe, piper_model = _piper_paths()
         if piper_exe and piper_model:
@@ -223,6 +287,13 @@ class DesktopVoiceEngine:
             return cls()
         if provider_name == "elevenlabs":
             return cls._elevenlabs_from_environment()
+        if provider_name in {"gpt_sovits", "gpt-sovits", "sovits"}:
+            local_voice = cls._gpt_sovits_from_environment()
+            if local_voice.status.enabled:
+                local_voice.failure_fallback = cls._local_only_from_environment(
+                    include_gpt_sovits=False,
+                )
+            return local_voice
 
         # Fast companion policy for the creator's primary Windows host:
         # prefer the configured ElevenLabs Flash voice when credentials are
@@ -238,22 +309,23 @@ class DesktopVoiceEngine:
             provider_name = "local_first"
 
         if provider_name in {"local", "local_first", "auto"}:
-            piper_exe, piper_model = _piper_paths()
-            fallback = cls._elevenlabs_from_environment() if _env_bool("MARY_TTS_ALLOW_CLOUD_FALLBACK", False) else None
-            if piper_exe and piper_model:
-                return cls(status=DesktopVoiceStatus(True, "piper", model=str(piper_model), local=True),
-                           local_engine="piper", piper_executable=piper_exe, piper_model=piper_model,
-                           cloud_fallback=fallback if fallback and fallback.status.enabled else None)
-            if sys.platform == "win32":
-                voice_name = os.getenv("MARY_WINDOWS_TTS_VOICE", "").strip() or None
-                return cls(status=DesktopVoiceStatus(True, "windows_sapi", voice_id=voice_name, model="System.Speech", local=True),
-                           local_engine="windows_sapi", cloud_fallback=fallback if fallback and fallback.status.enabled else None)
-            if _macos_say_available():
-                voice_name = os.getenv("MARY_MACOS_TTS_VOICE", "").strip() or None
-                return cls(status=DesktopVoiceStatus(True, "macos_say", voice_id=voice_name, model="say+afconvert", local=True),
-                           local_engine="macos_say", cloud_fallback=fallback if fallback and fallback.status.enabled else None)
-            if fallback and fallback.status.enabled:
-                return fallback
+            local = cls._local_only_from_environment()
+            cloud = (
+                cls._elevenlabs_from_environment()
+                if _env_bool("MARY_TTS_ALLOW_CLOUD_FALLBACK", False)
+                else None
+            )
+            if local.status.enabled:
+                if cloud and cloud.status.enabled:
+                    if local.local_engine:
+                        local.cloud_fallback = cloud
+                    elif local.failure_fallback and local.failure_fallback.local_engine:
+                        local.failure_fallback.cloud_fallback = cloud
+                    elif local.failure_fallback is None:
+                        local.failure_fallback = cloud
+                return local
+            if cloud and cloud.status.enabled:
+                return cloud
             return cls(status=DesktopVoiceStatus(False, "local_first", local=True))
 
         if provider_name == "piper":
@@ -481,7 +553,13 @@ class DesktopVoiceEngine:
                 {**self.status.to_dict(), "status": speech.status.value, "spoken_text": spoken_text},
                 synth_started,
             )
-        mime_type = "audio/mpeg" if speech.format == SpeechAudioFormat.MP3 else "application/octet-stream"
+        mime_type = {
+            SpeechAudioFormat.MP3: "audio/mpeg",
+            SpeechAudioFormat.WAV: "audio/wav",
+            SpeechAudioFormat.OGG: "audio/ogg",
+            SpeechAudioFormat.OPUS: "audio/ogg; codecs=opus",
+            SpeechAudioFormat.FLAC: "audio/flac",
+        }.get(speech.format, "application/octet-stream")
         return finish(
             {
                 **self.status.to_dict(),
