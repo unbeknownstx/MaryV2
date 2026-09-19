@@ -54,6 +54,7 @@ from mary.mobile.audio import MobileSpeechService
 from mary.mobile.voice_lab import VoiceLabStore, BASELINE as VOICE_BASELINE
 from mary.protocol.client import MaryClient, MaryProtocolError
 from mary.experience import build_experience_snapshot
+from mary.expression.surface_performance import capabilities_for_surface
 
 
 MOBILE_PROTOCOL_VERSION = "4"
@@ -718,6 +719,14 @@ class MaryRemoteMobileRuntime:
         ).strip("-._:")
         return cleaned[:160] or None
 
+    def _presentation_capabilities(self) -> dict[str, bool]:
+        capabilities = capabilities_for_surface("mobile_web").to_dict()
+        capabilities.pop("surface", None)
+        return {
+            str(key): bool(value)
+            for key, value in capabilities.items()
+        }
+
     def surface_register(
         self,
         *,
@@ -733,6 +742,7 @@ class MaryRemoteMobileRuntime:
             visible=bool(visible),
             foreground=bool(foreground),
             lease_seconds=lease,
+            presentation_capabilities=self._presentation_capabilities(),
         )
         payload = dict(result or {})
         resolved = self._clean_surface_id(
@@ -1071,6 +1081,7 @@ class MaryRemoteMobileRuntime:
                     voice_input=bool(
                         voice_input
                     ),
+                    surface_id=self._surface_id,
                 )
             )
 
