@@ -97,7 +97,7 @@ def test_competence_ledger_separates_same_capability_by_implementation(tmp_path)
     assert current[0]["failures"] == 1
     assert current[0]["implementation_fingerprint"] == current_fp
     assert historical[0]["attempts"] == 8
-    assert ledger.status()["implementation_bound_records"] == 2
+    assert ledger.status()["records"] == 2
 
 
 def test_scheduler_excludes_stale_competence_and_benchmark_after_model_change(tmp_path):
