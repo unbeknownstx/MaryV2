@@ -201,7 +201,7 @@ struct WorkspaceDetailView: View {
 
             if !contradictions.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow(text: "Reconcile contested beliefs")
+                    Eyebrow(text: "World reconciliation")
                     Text("Choosing one claim retires competing claims as history; it does not erase the evidence.")
                         .font(.caption)
                         .foregroundStyle(MaryTheme.muted)
