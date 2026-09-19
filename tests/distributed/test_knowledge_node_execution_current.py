@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from mary.desktop import device_node as device_module
 from mary.distributed import (
     CapabilityDescriptor,
+    execute_knowledge_curation,
     execute_knowledge_search,
     knowledge_capability_descriptors,
     node_knowledge_fabric,
@@ -17,10 +18,16 @@ class _Permissions:
         self._allowed = allowed
 
     def is_allowed(self, capability: str) -> bool:
-        return self._allowed and capability == "knowledge.search"
+        return self._allowed and capability in {
+            "knowledge.search",
+            "knowledge.curation",
+        }
 
     def allowed(self):
-        return {"knowledge.search"} if self._allowed else set()
+        return {
+            "knowledge.search",
+            "knowledge.curation",
+        } if self._allowed else set()
 
     def is_mcp_tool_allowed(self, capability: str, tool: str) -> bool:
         return False
@@ -80,8 +87,11 @@ def test_node_knowledge_capability_is_advertised_and_executes_locally(
     _seed_local_pack(tmp_path)
 
     descriptors = knowledge_capability_descriptors(_Permissions(True))
-    assert [item.name for item in descriptors] == ["knowledge.search"]
-    assert descriptors[0].metadata["execution_authorized"] is True
+    assert {item.name for item in descriptors} == {
+        "knowledge.search",
+        "knowledge.curation",
+    }
+    assert all(item.metadata["execution_authorized"] is True for item in descriptors)
 
     result = execute_knowledge_search({
         "query": "nebularouter",
@@ -94,6 +104,29 @@ def test_node_knowledge_capability_is_advertised_and_executes_locally(
     assert result["hits"]
     assert result["hits"][0]["citation_id"].startswith("knowledge:manuals:")
     assert result["hits"][0]["collection"] == "manuals"
+
+
+def test_node_curation_capability_returns_hygiene_only(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("MARY_KNOWLEDGE_NODE_ROOT", str(tmp_path / "knowledge-node"))
+    _seed_local_pack(tmp_path)
+    docs = tmp_path / "docs"
+    (docs / "copy.md").write_text(
+        "Nebularouter is the creator-owned local retrieval regression term.",
+        encoding="utf-8",
+    )
+    fabric = node_knowledge_fabric()
+    fabric.index_local_pack("manuals")
+
+    result = execute_knowledge_curation({"pack_id": "manuals"})
+    assert result["ok"] is True
+    assert result["automatic_mutation_performed"] is False
+    assert result["raw_files_leave_node"] is False
+    assert result["duplicate_content_group_count"] == 1
+    assert result["packs"][0]["pack_id"] == "manuals"
+    assert "location" not in result["packs"][0]
 
 
 def test_headless_node_discovery_includes_knowledge_descriptor(monkeypatch) -> None:
@@ -169,4 +202,43 @@ def test_device_agent_executes_bounded_knowledge_task(monkeypatch) -> None:
     })
     assert result["status"] == "completed"
     assert gateway.completions[-1]["result"]["hits"][0]["pack_id"] == "manuals"
+    assert agent.status()["last_task"]["status"] == "completed"
+
+
+def test_device_agent_executes_bounded_curation_task(monkeypatch) -> None:
+    gateway = _Gateway()
+    agent = device_module.DesktopCapabilityNodeAgent(
+        gateway,
+        capabilities=[
+            CapabilityDescriptor(
+                "knowledge.curation",
+                private=True,
+                local=True,
+            )
+        ],
+        permissions=_Permissions(True),
+        mcp_fabric=_MCP(),
+    )
+    monkeypatch.setattr(
+        device_module,
+        "execute_knowledge_curation",
+        lambda args: {
+            "ok": True,
+            "packs": [{"pack_id": "manuals", "recommendations": ["none"]}],
+            "duplicate_content_groups": [],
+            "duplicate_content_group_count": 0,
+            "automatic_mutation_performed": False,
+            "raw_files_leave_node": False,
+        },
+    )
+
+    result = agent._handle_task({
+        "task_id": "task-curation-1",
+        "capability": "knowledge.curation",
+        "args": {"pack_id": "manuals"},
+    })
+    assert result["status"] == "completed"
+    payload = gateway.completions[-1]["result"]
+    assert payload["automatic_mutation_performed"] is False
+    assert payload["raw_files_leave_node"] is False
     assert agent.status()["last_task"]["status"] == "completed"
