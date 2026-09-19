@@ -475,7 +475,13 @@ final class AppState: ObservableObject {
             case .procedures:
                 let dashboard = try await client.dashboard()
                 dashboardData = dashboard
-                liveData = CoreProjection.dict(CoreProjection.dict(dashboard["system_fabric"])["continuity"])
+                var continuity = CoreProjection.dict(
+                    CoreProjection.dict(dashboard["system_fabric"])["continuity"]
+                )
+                continuity["review"] = try await client.runtimeAction(
+                    "continuity.skill.status"
+                )
+                liveData = continuity
             case .modelLab:
                 let dashboard = try await client.dashboard()
                 dashboardData = dashboard
@@ -724,6 +730,102 @@ final class AppState: ObservableObject {
         } catch {
             lastError = error.localizedDescription
             return nil
+        }
+    }
+
+    func reconcileWorldBelief(_ beliefID: String) async -> Bool {
+        guard let client else { return false }
+        let clean = beliefID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return false }
+        do {
+            _ = try await client.runtimeAction(
+                "world.reconcile",
+                args: ["belief_id": clean]
+            )
+            lastError = nil
+            await loadWorkspace(.world)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
+    func approveSkillCandidate(_ skillID: String) async -> Bool {
+        await mutateSkillCandidate(
+            action: "continuity.skill.approve",
+            skillID: skillID
+        )
+    }
+
+    func rejectSkillCandidate(_ skillID: String) async -> Bool {
+        await mutateSkillCandidate(
+            action: "continuity.skill.reject",
+            skillID: skillID
+        )
+    }
+
+    func reviseApprovedSkill(
+        _ skillID: String,
+        reason: String,
+        steps: [String]
+    ) async -> Bool {
+        guard let client else { return false }
+        let cleanID = skillID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanSteps = Array(
+            steps
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .prefix(32)
+        )
+        guard !cleanID.isEmpty, !cleanReason.isEmpty else { return false }
+
+        do {
+            var args: [String: Any] = [
+                "skill_id": cleanID,
+                "reason": String(cleanReason.prefix(600)),
+            ]
+            if !cleanSteps.isEmpty {
+                args["steps"] = cleanSteps.map { String($0.prefix(240)) }
+            }
+            _ = try await client.runtimeAction(
+                "continuity.skill.revise",
+                args: args
+            )
+            lastError = nil
+            await loadWorkspace(.procedures)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
+    private func mutateSkillCandidate(
+        action: String,
+        skillID: String
+    ) async -> Bool {
+        guard let client else { return false }
+        let clean = skillID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return false }
+        do {
+            _ = try await client.runtimeAction(
+                action,
+                args: ["skill_id": clean]
+            )
+            lastError = nil
+            await loadWorkspace(.procedures)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
         }
     }
 
