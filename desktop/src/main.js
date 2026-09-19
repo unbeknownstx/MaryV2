@@ -481,6 +481,8 @@ function copyStageSetup() {
     framing: avatarFraming,
     lighting: { ...stageLighting },
     scene: stageScenePreset,
+    vrma_assets: motionManifestStatus.count,
+    vrma_active_motion: vrmaActiveMotionId,
     expression: String(ambientAvatarState.expression || 'neutral'),
     motion_preview: studioMotionCue?.motion_id || '',
     authority: 'presentation_only',
@@ -570,11 +572,13 @@ async function loadMaryVrm() {
     const vrm = gltf.userData.vrm;
     if (!vrm) throw new Error('No VRM object was found in MaryCosma.vrm.');
 
+    resetVrmaRuntime();
     if (currentVrm) scene.remove(currentVrm.scene);
     VRMUtils.removeUnnecessaryVertices(vrm.scene);
     VRMUtils.combineSkeletons(vrm.scene);
     currentVrm = vrm;
     VRMUtils.rotateVRM0(currentVrm);
+    ensureVrmLookAtAnimationProxy(currentVrm);
     applyRelaxedStandingPose(currentVrm);
     scene.add(currentVrm.scene);
     currentVrm.scene.updateMatrixWorld(true);
@@ -1057,6 +1061,7 @@ function animate(now = performance.now()) {
   if (currentVrm) {
     updateLipSync();
     const activeBeat = updatePerformanceBeat();
+    if (vrmaMixer) vrmaMixer.update(delta);
     currentVrm.update(delta);
     const reactionActive = preReactionCue && now < preReactionUntil;
     let gestureEnergy = clamp(activeBeat?.energy ?? currentDeliveryPlan.gesture_energy ?? .3);
@@ -1094,7 +1099,10 @@ function animate(now = performance.now()) {
     const semanticCue = currentMotionCue
       || ((!activeSpeechAudio && currentScreen === 'voice' && studioMotionCue) ? studioMotionCue : null)
       || (conversationState === 'listening' ? { motion_id: 'listen_attentive' } : null);
-    applySemanticMotionLayer(semanticCue, elapsed, gestureEnergy, delta);
+    const vrmaOwnsBody = syncVrmaMotion(semanticCue);
+    if (!vrmaOwnsBody) {
+      applySemanticMotionLayer(semanticCue, elapsed, gestureEnergy, delta);
+    }
 
     const speakingBoost = conversationState === 'speaking' ? .55 + gestureEnergy * .65 : .45;
     const bounceGain = ['animated','celebrate'].includes(gestureStyle) ? 1.65 : gestureStyle === 'firm' ? .58 : gestureStyle === 'soft' ? .72 : 1.0;
@@ -2534,6 +2542,8 @@ function renderVoice() {
       <div class="avatar-runtime-note">
         <strong>${currentVrm ? 'Live VRM ready' : 'Live VRM is in fallback mode'}</strong><br/>
         ${escapeHtml(currentVrm ? 'Three.js + VRM renderer is active.' : (avatarLoadError || 'The renderer or model is not ready yet. Mary remains fully usable with portrait art.'))}
+        <br/><span>${motionManifestStatus.loaded ? `VRMA runtime · ${motionManifestStatus.count} local motion asset${motionManifestStatus.count === 1 ? '' : 's'}` : `VRMA manifest unavailable${motionManifestStatus.error ? ` · ${escapeHtml(motionManifestStatus.error)}` : ''}`}</span>
+        ${vrmaFailedMotions.size ? `<br/><span>${vrmaFailedMotions.size} VRMA asset${vrmaFailedMotions.size === 1 ? '' : 's'} failed this session · procedural fallback active</span>` : ''}
         ${currentVrm ? '' : '<br/><button class="ghost-button" id="avatar-retry" style="margin-top:8px">Retry live VRM</button>'}
       </div>
       <div class="section-title" style="margin-top:14px">CAMERA</div>
@@ -3412,6 +3422,7 @@ window.addEventListener('resize', () => {
 
 bootStep(28, 'Loading character renderer…');
 syncAvatarPresentation();
+loadMotionManifest();
 loadMaryVrm();
 window.setTimeout(()=>{ if(!bridge) finishBoot('Mary web preview mode.'); }, 4000);
 connectBridge();
