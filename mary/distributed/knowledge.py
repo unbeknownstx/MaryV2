@@ -74,6 +74,9 @@ def knowledge_capability_descriptors(permissions: Any) -> list[CapabilityDescrip
                     "execution_authorized": bool(
                         permissions.is_allowed("knowledge.search")
                     ),
+                    "implementation_fingerprint": (
+                        fabric.local_index_pipeline_fingerprint()[:16]
+                    ),
                     "packs": len(enabled_packs),
                     "indexed_documents": int(
                         status.get("indexed_documents", 0) or 0
