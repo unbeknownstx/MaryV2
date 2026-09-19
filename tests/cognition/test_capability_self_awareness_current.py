@@ -166,3 +166,25 @@ def test_capability_introspection_does_not_invent_browse_or_device_execution():
     assert live["nodes"]["advertised_capabilities"] == []
     assert "Web search is not currently configured" in evidence["fallback_response"]
     assert "do not currently have a connected capability node" in evidence["fallback_response"]
+
+
+def test_concrete_screen_question_reports_advertised_but_not_authorized():
+    evidence = _introspection(registry=_Registry(), substrate=True)._capabilities(
+        "can you see my screen right now?"
+    )
+
+    answer = evidence["fallback_response"]
+    assert "screen vision" in answer
+    assert "sensor.screen_describe" in answer
+    assert "not presently execution-authorized" in answer
+
+
+def test_concrete_local_model_question_reports_ready_authorized_route():
+    evidence = _introspection(registry=_Registry(), substrate=True)._capabilities(
+        "can you use a local model?"
+    )
+
+    answer = evidence["fallback_response"]
+    assert "local model inference" in answer
+    assert "llm.ollama" in answer
+    assert "execution-authorize" in answer
