@@ -643,6 +643,7 @@ class MaryCoreService:
                 # A creator-authenticated turn may wake only an already known
                 # creator surface. Explicit OFFLINE remains a stronger hard gate.
                 candidates = [
+                    str(turn.surface_id or "").strip(),
                     str(turn.device_id or "").strip(),
                     str(turn.surface or "").strip(),
                 ]
@@ -684,6 +685,7 @@ class MaryCoreService:
                         "conversation_id": turn.conversation_id,
                         "device_id": turn.device_id,
                         "surface": turn.surface,
+                        "surface_id": turn.surface_id,
                         "voice_input": turn.voice_input,
                         "requested_mode": turn.requested_mode,
                     },
@@ -717,8 +719,25 @@ class MaryCoreService:
 
             pipeline_started = monotonic()
             with observe_turn_stage("application_turn"):
+                lifecycle = self.creator_lifecycle_status()
+                active_surface = {}
+                requested_surface_id = str(turn.surface_id or "").strip()
+                if requested_surface_id:
+                    active_surface = next(
+                        (
+                            dict(item)
+                            for item in list(lifecycle.get("surfaces") or [])
+                            if str(item.get("surface_id") or "") == requested_surface_id
+                        ),
+                        {},
+                    )
+                presentation_capabilities = dict(
+                    active_surface.get("presentation_capabilities") or {}
+                )
                 application_metadata = {
                         "surface": turn.surface or "client",
+                        "surface_id": requested_surface_id or None,
+                        "presentation_capabilities": presentation_capabilities,
                         "transport": "core",
                         "conversation_id": turn.conversation_id,
                         "device_id": turn.device_id,
@@ -1161,6 +1180,7 @@ class MaryCoreService:
             visible=True if model.visible is None else model.visible,
             foreground=True if model.foreground is None else model.foreground,
             lease_seconds=model.lease_seconds,
+            presentation_capabilities=model.presentation_capabilities,
         )
         return {
             **self.creator_lifecycle_status(),
@@ -1180,6 +1200,7 @@ class MaryCoreService:
             foreground=model.foreground,
             activity=model.activity,
             lease_seconds=model.lease_seconds,
+            presentation_capabilities=model.presentation_capabilities,
         )
         return {**self.creator_lifecycle_status(), "surface_id": model.surface_id}
 
