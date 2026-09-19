@@ -192,6 +192,10 @@ def test_portable_experiment_evidence_preserves_exact_id_without_prompts_or_outp
         event["event_type"] == "evidence_imported"
         for event in core.lineage(imported.id)
     )
+    event_count = core.snapshot()["event_count"]
+    repeated = core.import_portable_evidence(evidence, reviewed_by="creator:test")
+    assert repeated.id == imported.id
+    assert core.snapshot()["event_count"] == event_count
 
 
 def test_portable_experiment_evidence_rejects_tampering(tmp_path: Path):
