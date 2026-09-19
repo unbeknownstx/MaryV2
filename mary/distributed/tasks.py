@@ -475,7 +475,9 @@ class DeviceTaskBroker:
                 selected_node_id=selected.node_id,
                 operation=_operation_for(normalized, sanitized_args),
                 implementation_fingerprint=capability_implementation_fingerprint(
-                    selected.capabilities.get(normalized)
+                    dict(getattr(selected, "capabilities", {}) or {}).get(
+                        normalized
+                    )
                 ),
             )
             self._tasks[task.task_id] = task
