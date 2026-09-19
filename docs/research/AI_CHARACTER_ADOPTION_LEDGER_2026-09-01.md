@@ -10,6 +10,11 @@ This ledger prevents research from becoming architecture sprawl. A borrowed idea
 | Lumi/Nox viewer familiarity | `streaming.social.AudienceRoster` | INTEGRATED | Session-only; never relationship truth. |
 | AIRI IO/behavior tracing | `realtime.decision_trace` | INTEGRATED | Safe labels only; no raw content/canonical state. |
 | AIRI semantic motion retrieval | `expression.motion_library` + PerformancePacket | INTEGRATED PARTIAL | Desktop consumes semantic motion now; real VRMA/FBX assets later. |
+| Riko V2 model-directed acting | PerformancePacket + `expression.surface_performance` | INTEGRATED PARTIAL | Canonical packet owns expression/gaze/head/motion intent; Desktop/PWA/iPhone consume it. Real motion-asset playback remains renderer work. |
+| Riko one-character/many-bodies presentation | `expression.surface_performance` + Core surface grounding | INTEGRATED | Surfaces advertise truthful render affordances and degrade unsupported cues without becoming Mary authority. |
+| Riko setup/component diagnostics | `scripts/doctor.py` | INTEGRATED PARTIAL | Doctor now checks presentation contracts/renderers/body asset readiness without making optional assets startup requirements. |
+| Riko photo/pose/lighting studio | Creator Lab + future Character Studio | DEFERRED | Build on Mary-owned scene/presentation state; do not create a second character state owner. |
+| Riko room/VR movement | LiveScene + future Mary World capability | DEFERRED | Scene/body/VR stay replaceable surfaces over canonical Core. |
 | OLLVT false-barge-in hardening | `realtime.report_voice_activity` | INTEGRATED | Confirmed speech required before interruption. |
 | Truthful node capability readiness | `distributed.capabilities` + NodeRegistry | INTEGRATED | ready/degraded/start/unavailable affects routing. |
 | Community LoRA experimentation | Adapter Lab + llama.cpp local matrix | INTEGRATED | Exact base checks, blind review, no canonical promotion. |
