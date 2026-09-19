@@ -3090,6 +3090,7 @@ class MaryCoreService:
                         item.to_dict()
                         for item in self.mary.world_model.contradictions(limit=12)
                     ],
+                    "reconciliation_queue": self.mary.world_model.reconciliation_queue(limit=24),
                     "authority": "evidence/status projection only",
                 })
 
@@ -3343,6 +3344,7 @@ class MaryCoreService:
                     "status": self.mary.procedural_skills.status(),
                     "candidates": [self._skill_view(item) for item in candidates],
                     "approved": [self._skill_view(item) for item in approved],
+                    "revision_queue": self.mary.procedural_skills.revision_queue(limit=50),
                     "execution_performed": False,
                 })
 
