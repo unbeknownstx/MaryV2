@@ -343,6 +343,36 @@ def subsystem_integrity_report(
             "emotion",
             getattr(mary, "emotion", None),
         ),
+        "self_introspection.node_registry": _same(
+            self_introspection,
+            "node_registry",
+            getattr(mary, "node_registry", None),
+        ),
+        "self_introspection.competence": _same(
+            self_introspection,
+            "competence",
+            getattr(mary, "competence", None),
+        ),
+        "self_introspection.knowledge_fabric": _same(
+            self_introspection,
+            "knowledge_fabric",
+            getattr(mary, "knowledge_fabric", None),
+        ),
+        "self_introspection.procedural_skills": _same(
+            self_introspection,
+            "procedural_skills",
+            getattr(mary, "procedural_skills", None),
+        ),
+        "self_introspection.world_model": _same(
+            self_introspection,
+            "world_model",
+            getattr(mary, "world_model", None),
+        ),
+        "self_introspection.model_experiments": _same(
+            self_introspection,
+            "model_experiments",
+            getattr(mary, "model_experiments", None),
+        ),
 
         # ------------------------------------------------------------
         # Cognition and provider routing share the configured live engines.
