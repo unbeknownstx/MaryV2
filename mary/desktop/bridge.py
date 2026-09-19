@@ -2654,6 +2654,40 @@ class MaryDesktopBridge(QObject):
             normalized = "standard"
         self.windowPresentationRequested.emit(normalized)
 
+    @Slot(str, result=str)
+    def setPresentationCapabilities(
+        self,
+        raw: str,
+    ) -> str:  # noqa: N802
+        """Renew this Desktop surface with truthful renderer affordances."""
+
+        try:
+            payload = json.loads(str(raw or "{}"))
+        except json.JSONDecodeError:
+            return _json({"ok": False, "error": "Invalid presentation capability JSON."})
+        if not isinstance(payload, dict):
+            return _json({"ok": False, "error": "Presentation capabilities must be an object."})
+
+        gateway = getattr(self.application, "gateway", None)
+        setter = getattr(gateway, "set_presentation_capabilities", None)
+        if not callable(setter):
+            return _json({
+                "ok": False,
+                "error": "This Desktop host does not expose surface capability negotiation.",
+            })
+        try:
+            result = dict(setter(payload) or {})
+        except Exception as exc:
+            return _json({
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+        return _json({
+            "ok": True,
+            **result,
+            "authority": "presentation_surface_only",
+        })
+
     def _emit_dashboard_state(
         self,
     ) -> None:
