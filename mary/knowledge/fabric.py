@@ -908,6 +908,104 @@ class KnowledgeFabric:
             "authority": "retrieved evidence only; never implicit memory/identity truth",
         }
 
+    def substrate_profile(self) -> dict[str, Any]:
+        """Return a cheap read-only map of Mary's local knowledge substrate.
+
+        This inspects registry/index metadata only. It never scans source files,
+        contacts Kiwix/Qdrant, rebuilds an index, or promotes retrieved evidence.
+        """
+
+        packs = self.packs()
+        status = self.status()
+        by_id = {pack.id: pack for pack in packs}
+        tiers = {
+            "active_local": [],
+            "offline_reference": [],
+            "semantic_derivative": [],
+            "catalog_candidates": [],
+        }
+        stale_derivatives: list[dict[str, str]] = []
+        enabled_retrieval_modes: set[str] = set()
+
+        for pack in packs:
+            if pack.query_mode == "catalog_only":
+                tier = "catalog_candidates"
+            elif pack.kind in {"qdrant", "qdrant_edge"}:
+                tier = "semantic_derivative"
+            elif pack.kind in {"kiwix", "kolibri"}:
+                tier = "offline_reference"
+            else:
+                tier = "active_local"
+
+            if pack.enabled and pack.query_mode != "catalog_only":
+                enabled_retrieval_modes.add(pack.query_mode)
+
+            vector_build = (
+                dict(pack.metadata.get("vector_build") or {})
+                if isinstance(pack.metadata, dict)
+                else {}
+            )
+            derivative_state = ""
+            if tier == "semantic_derivative":
+                source_id = _text(vector_build.get("source_pack_id"), 160)
+                source = by_id.get(source_id)
+                built_from = _text(vector_build.get("source_fingerprint"), 128)
+                current_source = (
+                    _text(source.content_fingerprint, 128)
+                    if source is not None
+                    else ""
+                )
+                if not vector_build:
+                    derivative_state = "unbuilt"
+                elif source is None:
+                    derivative_state = "source_missing"
+                elif not built_from or not current_source:
+                    derivative_state = "lineage_incomplete"
+                elif built_from != current_source:
+                    derivative_state = "stale"
+                else:
+                    derivative_state = "current"
+                if derivative_state != "current":
+                    stale_derivatives.append({
+                        "pack_id": pack.id,
+                        "source_pack_id": source_id,
+                        "state": derivative_state,
+                    })
+
+            tiers[tier].append({
+                "pack_id": pack.id,
+                "title": pack.title,
+                "kind": pack.kind,
+                "collection": pack.collection,
+                "enabled": pack.enabled,
+                "query_mode": pack.query_mode,
+                "ingest_policy": pack.ingest_policy,
+                "local_only": pack.local_only,
+                "indexed_chunks": int(
+                    dict(status.get("pack_documents") or {}).get(pack.id, 0) or 0
+                ),
+                "content_fingerprint_present": bool(pack.content_fingerprint),
+                "derivative_state": derivative_state or None,
+            })
+
+        return {
+            "version": 1,
+            "packs": len(packs),
+            "enabled": int(status.get("enabled") or 0),
+            "indexed_chunks": int(status.get("indexed_documents") or 0),
+            "tiers": tiers,
+            "counts": {name: len(rows) for name, rows in tiers.items()},
+            "enabled_retrieval_modes": sorted(enabled_retrieval_modes),
+            "stale_derivatives": stale_derivatives,
+            "attention_required": bool(stale_derivatives),
+            "automatic_scan_performed": False,
+            "automatic_rebuild_performed": False,
+            "authority": (
+                "registry/index metadata projection only; source text remains "
+                "evidence and derivative indexes remain rebuildable"
+            ),
+        }
+
     def seed_recommended_candidates(self) -> list[KnowledgePack]:
         """Create disabled catalog-only entries for useful local knowledge substrates."""
 
