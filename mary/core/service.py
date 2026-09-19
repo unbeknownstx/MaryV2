@@ -2486,40 +2486,43 @@ class MaryCoreService:
             return []
         output: list[dict[str, Any]] = []
         for node in list(available() or [])[:64]:
-            capability = dict(getattr(node, "capabilities", {}) or {}).get("llm.llama_cpp")
-            if capability is None:
-                continue
-            metadata = dict(getattr(capability, "metadata", {}) or {})
-            advertised_id = str(metadata.get("model_experiment_id") or "")[:160]
-            if not advertised_id or (requested and advertised_id != requested):
-                continue
-            qualified = all((
-                bool(metadata.get("model_experiment_trial_ready")),
-                bool(metadata.get("model_experiment_benchmark_verified")),
-                bool(metadata.get("model_experiment_runtime_match")),
-                bool(metadata.get("model_experiment_artifact_match")),
-                bool(metadata.get("model_experiment_node_match")),
-            ))
-            execution_authorized = metadata.get("execution_authorized") is True
-            try:
-                latency = float(metadata.get("model_experiment_latency_ms"))
-            except (TypeError, ValueError):
-                latency = None
-            output.append({
-                "node_id": str(getattr(node, "node_id", "") or "")[:180],
-                "experiment_id": advertised_id,
-                "model": str(metadata.get("configured_model") or metadata.get("model") or "")[:180],
-                "mary_fit": metadata.get("model_experiment_mary_fit"),
-                "latency_ms": latency,
-                "benchmark_verified": bool(metadata.get("model_experiment_benchmark_verified")),
-                "artifact_match": bool(metadata.get("model_experiment_artifact_match")),
-                "runtime_match": bool(metadata.get("model_experiment_runtime_match")),
-                "node_match": bool(metadata.get("model_experiment_node_match")),
-                "execution_authorized": execution_authorized,
-                "trial_ready": qualified,
-                "runnable": bool(qualified and execution_authorized),
-                "authority": "explicit_experiment_trial_only",
-            })
+            for capability_name in ("llm.llama_cpp", "llm.mlx_lm"):
+                capability = dict(getattr(node, "capabilities", {}) or {}).get(capability_name)
+                if capability is None:
+                    continue
+                metadata = dict(getattr(capability, "metadata", {}) or {})
+                advertised_id = str(metadata.get("model_experiment_id") or "")[:160]
+                if not advertised_id or (requested and advertised_id != requested):
+                    continue
+                qualified = all((
+                    bool(metadata.get("model_experiment_trial_ready")),
+                    bool(metadata.get("model_experiment_benchmark_verified")),
+                    bool(metadata.get("model_experiment_runtime_match")),
+                    bool(metadata.get("model_experiment_artifact_match")),
+                    bool(metadata.get("model_experiment_node_match")),
+                ))
+                execution_authorized = metadata.get("execution_authorized") is True
+                try:
+                    latency = float(metadata.get("model_experiment_latency_ms"))
+                except (TypeError, ValueError):
+                    latency = None
+                output.append({
+                    "node_id": str(getattr(node, "node_id", "") or "")[:180],
+                    "capability": capability_name,
+                    "runtime": str(metadata.get("runtime") or "")[:80],
+                    "experiment_id": advertised_id,
+                    "model": str(metadata.get("configured_model") or metadata.get("model") or "")[:180],
+                    "mary_fit": metadata.get("model_experiment_mary_fit"),
+                    "latency_ms": latency,
+                    "benchmark_verified": bool(metadata.get("model_experiment_benchmark_verified")),
+                    "artifact_match": bool(metadata.get("model_experiment_artifact_match")),
+                    "runtime_match": bool(metadata.get("model_experiment_runtime_match")),
+                    "node_match": bool(metadata.get("model_experiment_node_match")),
+                    "execution_authorized": execution_authorized,
+                    "trial_ready": qualified,
+                    "runnable": bool(qualified and execution_authorized),
+                    "authority": "explicit_experiment_trial_only",
+                })
         output.sort(key=lambda item: (
             not bool(item.get("runnable")),
             float(item["latency_ms"]) if item.get("latency_ms") is not None else float("inf"),
@@ -3267,7 +3270,7 @@ class MaryCoreService:
                 if not candidates:
                     raise PermissionError(
                         "No live node advertises this exact benchmarked experiment "
-                        "with device-local llama.cpp permission."
+                        "with device-local runtime permission."
                     )
                 selected = candidates[0]
                 try:
@@ -3280,12 +3283,13 @@ class MaryCoreService:
                     raise ValueError("model experiment temperature must be numeric") from exc
                 task = self.device_tasks.enqueue(
                     self.mary.node_registry,
-                    capability="llm.llama_cpp",
+                    capability=str(selected.get("capability") or "llm.llama_cpp"),
                     intent=(
                         "Run an explicit reviewed Mary model/adapter experiment "
                         f"{experiment_id}; output is experiment evidence only."
                     ),
                     args={
+                        "experiment_id": experiment_id,
                         "messages": [
                             {
                                 "role": "system",
