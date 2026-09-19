@@ -78,11 +78,22 @@ Mary integration:
 
 ### Riko
 
-The public repository demonstrates a comparatively small dialogue + TTS + STT + character configuration stack.  Any richer private implementation should be treated as unknown unless public evidence exists.  The lesson is that perceived character quality can come disproportionately from voice, timing, direction, and character consistency rather than subsystem count.
+The MIT public repository still demonstrates the small original loop: Faster-Whisper -> OpenAI-compatible dialogue/history -> GPT-SoVITS. Rayen's **official public Patreon development posts** now document substantially more of the later product without requiring private source access: Three-VRM rooms, layered/Mixamo animation, VR/scene movement, MCP tool calling, Fish Audio/GPT-SoVITS routing, model-selected expressions/animations, transparent desktop presentation, a lighting sandbox, a photo/pose workflow, and a component-check/setup script. The private implementation details remain private; only those publicly documented mechanisms are treated as evidence.
 
 Mary integration:
-- keep measuring experiential Mary-fit rather than rewarding architecture complexity
-- Adapter Lab compares engines/LoRAs under the same Mary sourcebook grounding
+- PerformancePacket remains the canonical acting score. Riko's model-selected expression/animation pattern validates making Mary's existing expression/gaze/head/motion directions physically visible rather than allowing a renderer to infer personality from raw text.
+- expression.surface_performance now negotiates truthful per-surface affordances and explicit degradation. Desktop, PWA, iPhone, stream and future VR stay bodies/projections of the same Core instead of becoming separate Mary implementations.
+- Desktop already consumes expression, gaze, head style, micro-reaction, lip-sync and semantic motion cues. Real local VRMA/FBX asset playback remains a renderer capability, not Core authority.
+- PWA already consumes the same packet. Native iPhone now consumes the same delivery/performance hints for stage movement and voice direction instead of presenting a static disconnected portrait.
+- scripts/doctor.py now reports presentation readiness, including the deliberately optional local VRM body asset.
+- Riko's room/VR and photo/lighting studio remain useful product references for a future Mary World/Character Studio. Reuse LiveScene, Creator Lab and the existing presentation contract rather than inventing a second world or character owner.
+- Fish Audio/GPT-SoVITS reinforces Mary's existing provider-neutral voice rule: a provider renders a DeliveryPlan; it never owns Mary's voice identity.
+- keep measuring experiential Mary-fit rather than rewarding architecture complexity; Adapter Lab still compares engines/LoRAs under the same sourcebook grounding.
+
+Official public references:
+- https://github.com/rayenfeng/riko_project
+- https://www.patreon.com/RayenAI/posts/riko-project-v2-168551391
+- https://www.patreon.com/RayenAI/posts/riko-project-app-169226252
 
 ### YuriOS
 
