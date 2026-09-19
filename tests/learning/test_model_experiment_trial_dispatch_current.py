@@ -15,6 +15,7 @@ def _registry(*, authorized=True, trial_ready=True):
             name="llm.llama_cpp", available=True, private=True, local=True,
             cost="local", readiness="ready", metadata={
                 "runtime":"llama.cpp","configured_model":"reviewed-model",
+                "artifact_fingerprint":"artifact-exact",
                 "execution_authorized":authorized,
                 "model_experiment_id":"model_exp_exact",
                 "model_experiment_runtime_match":True,
@@ -50,6 +51,18 @@ class _Broker:
 
 class _Ledger:
     def __init__(self): self.events=[]
+    def get(self, experiment_id):
+        if experiment_id != "model_exp_exact":
+            raise KeyError(experiment_id)
+        return SimpleNamespace(
+            id=experiment_id,
+            runtime="llama.cpp",
+            model="reviewed-model",
+            artifact_fingerprint="artifact-exact",
+            node_id="mac-m1",
+            benchmark_verified=True,
+            trial_ready=True,
+        )
     def record_trial_dispatch(self, experiment_id, **kwargs):
         self.events.append(("dispatch", experiment_id, dict(kwargs)))
     def record_trial_outcome(self, experiment_id, **kwargs):
@@ -75,6 +88,9 @@ def _core(registry):
 def test_exact_benchmark_evidence_is_required_for_trial():
     core=_core(_registry())
     row=core._model_experiment_trial_nodes("model_exp_exact")[0]
+    assert row["node_trial_ready"] is True
+    assert row["core_registered"] is True
+    assert row["core_trial_ready"] is True
     assert row["trial_ready"] is True and row["runnable"] is True
     assert _core(_registry(trial_ready=False))._model_experiment_trial_nodes("model_exp_exact")[0]["runnable"] is False
 
