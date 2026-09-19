@@ -12,6 +12,7 @@ def test_13_6_bounded_runtime_actions_are_protocol_reachable():
         "runtime.performance.set",
         "game.action.preview",
         "capability.invocations.status",
+        "model.experiment.import_evidence",
     ]
     for action in actions:
         parsed = RuntimeActionRequest.from_dict({
