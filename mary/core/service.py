@@ -2524,6 +2524,9 @@ class MaryCoreService:
                 node_benchmark_fingerprint = str(
                     metadata.get("model_experiment_benchmark_fingerprint") or ""
                 )[:160]
+                node_bundle_lineage = str(
+                    metadata.get("model_experiment_bundle_lineage_fingerprint") or ""
+                ).strip().lower()[:64]
                 try:
                     node_benchmark_case_count = max(
                         0,
@@ -2563,6 +2566,22 @@ class MaryCoreService:
                     and canonical.benchmark_case_count > 0
                     and canonical.benchmark_case_count == node_benchmark_case_count
                 )
+                canonical_bundle_lineage = str(
+                    getattr(canonical, "bundle_lineage_fingerprint", "") or ""
+                ).strip().lower()
+                core_bundle_lineage_match = bool(
+                    canonical is not None
+                    and (
+                        (
+                            not canonical_bundle_lineage
+                            and not node_bundle_lineage
+                        )
+                        or (
+                            bool(canonical_bundle_lineage)
+                            and canonical_bundle_lineage == node_bundle_lineage
+                        )
+                    )
+                )
                 core_trial_ready = bool(
                     canonical is not None
                     and canonical.trial_ready
@@ -2572,6 +2591,7 @@ class MaryCoreService:
                     and core_artifact_match
                     and core_node_match
                     and core_benchmark_match
+                    and core_bundle_lineage_match
                 )
                 qualified = bool(node_qualified and core_trial_ready)
                 try:
@@ -2599,6 +2619,8 @@ class MaryCoreService:
                     "core_artifact_match": core_artifact_match,
                     "core_node_match": core_node_match,
                     "core_benchmark_match": core_benchmark_match,
+                    "core_bundle_lineage_match": core_bundle_lineage_match,
+                    "bundle_lineage_fingerprint": node_bundle_lineage,
                     "benchmark_fingerprint": node_benchmark_fingerprint,
                     "benchmark_case_count": node_benchmark_case_count,
                     "execution_authorized": execution_authorized,
