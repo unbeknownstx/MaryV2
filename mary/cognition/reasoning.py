@@ -1283,7 +1283,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 return text
             return text[: max(0, limit - 1)].rstrip() + "…"
 
-        def bounded_mapping(value: Any, *, limit: int = 2) -> dict[str, str]:
+        def bounded_mapping(value: Any, *, limit: int = 1) -> dict[str, str]:
             if not isinstance(value, dict):
                 return {}
             result: dict[str, str] = {}
@@ -1291,7 +1291,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
                 result[clip(key, 80)] = clip(item)
             return result
 
-        def bounded_list(value: Any, *, limit: int = 2) -> list[str]:
+        def bounded_list(value: Any, *, limit: int = 1) -> list[str]:
             if not isinstance(value, (list, tuple)):
                 return []
             return [clip(item) for item in list(value)[:limit]]
