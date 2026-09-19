@@ -16,9 +16,6 @@ struct WorkspaceDetailView: View {
     @State private var skillRevisionID = ""
     @State private var skillRevisionReason = ""
     @State private var skillRevisionSteps = ""
-    @State private var skillRevisionID = ""
-    @State private var skillRevisionReason = ""
-    @State private var skillRevisionSteps = ""
 
     var body: some View {
         ScrollView {
