@@ -24,6 +24,7 @@ from .engineering import (
 )
 from .knowledge import (
     KNOWLEDGE_NODE_CAPABILITIES,
+    execute_knowledge_curation,
     execute_knowledge_search,
     knowledge_capability_descriptors,
     node_knowledge_fabric,
@@ -116,6 +117,7 @@ __all__ = [
     "READ_ONLY_ENGINEERING_CAPABILITIES",
     "EngineeringWorker",
     "KNOWLEDGE_NODE_CAPABILITIES",
+    "execute_knowledge_curation",
     "execute_knowledge_search",
     "knowledge_capability_descriptors",
     "node_knowledge_fabric",
