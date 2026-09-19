@@ -60,6 +60,12 @@ from .performance_packet import (
     MicroReaction,
     build_performance_packet,
 )
+from .surface_performance import (
+    SurfacePerformanceCapabilities,
+    capabilities_for_surface,
+    normalize_surface,
+    project_performance_packet,
+)
 
 from .dialogue import (
     DialogueMode,
@@ -108,6 +114,10 @@ __all__ = [
     "MotionCue",
     "MotionLibrary",
     "DEFAULT_MOTION_LIBRARY",
+    "SurfacePerformanceCapabilities",
+    "capabilities_for_surface",
+    "normalize_surface",
+    "project_performance_packet",
 
     # Dialogue
     "DialogueMode",
