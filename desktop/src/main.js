@@ -662,11 +662,13 @@ async function loadMaryVrm() {
     window.requestAnimationFrame(() => setAvatarFraming(avatarFraming));
     syncAvatarPresentation();
     applyAvatarState({ expression: 'neutral', emotion_intensity: 0 });
+    reportPresentationCapabilities();
   } catch (error) {
     console.warn('MaryCosma.vrm was not loaded:', error);
     avatarLoadError = String(error?.message || error || 'VRM load failed');
     currentVrm = null;
     syncAvatarPresentation();
+    reportPresentationCapabilities();
   }
 }
 
@@ -766,6 +768,36 @@ function applyPerformanceExpression(beat) {
   }
 }
 
+function desktopPresentationCapabilities() {
+  const liveBody = Boolean(currentVrm);
+  return {
+    expression_cues: liveBody,
+    gaze_cues: liveBody,
+    head_motion: liveBody,
+    semantic_motion: liveBody,
+    motion_assets: liveBody && motionManifestStatus.count > 0,
+    lip_sync: liveBody,
+    voice_direction: true,
+    scene_context: true,
+    lighting_control: true,
+    transparent_overlay: true,
+    capture: liveBody,
+    locomotion: false,
+    vr: false,
+  };
+}
+
+function reportPresentationCapabilities() {
+  if (!bridge?.setPresentationCapabilities || bridge?._isHttpBridge) return;
+  const payload = JSON.stringify(desktopPresentationCapabilities());
+  try {
+    bridge.setPresentationCapabilities(payload, () => {});
+  } catch (_) {
+    // Capability reporting is presentation telemetry only; a failed renewal
+    // must never fail the Desktop or a Mary turn.
+  }
+}
+
 async function loadMotionManifest() {
   try {
     const response = await fetch('./motions/manifest.json', { cache: 'no-store' });
@@ -799,6 +831,7 @@ async function loadMotionManifest() {
       error: String(error?.message || error || 'motion manifest unavailable').slice(0, 220),
     };
   }
+  reportPresentationCapabilities();
   if (currentScreen === 'voice') renderWorkspace('voice');
   return motionManifestStatus;
 }
@@ -3426,6 +3459,7 @@ $('#titlebar')?.addEventListener('dblclick', (event) => {
 function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
   bridge = connectedBridge;
   document.body.classList.toggle('mary-web-mobile', surface === 'mobile');
+  if (surface === 'desktop') reportPresentationCapabilities();
   if (surface === 'mobile') installMaryPwa();
   bootStep(58, surface === 'mobile' ? 'Connected to Mary mobile core…' : 'Connected to Mary core…');
   setConnected(true, 'Connection: Strong');
