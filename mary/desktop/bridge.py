@@ -8,14 +8,16 @@ success or failure slot on the GUI thread.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QObject, QThread, Qt, Signal, Slot, QUrl
+from PySide6.QtGui import QDesktopServices, QImage
 from PySide6.QtWidgets import QFileDialog
 
 from mary.runtime.application import MaryApplication
@@ -468,6 +470,202 @@ class _TranscriptionWorker(QObject):
             self.failed.emit(error)
 
 
+_CREATOR_IMAGE_MAX_BYTES = 1_350_000
+
+
+def _prepare_creator_image(path: str) -> bytes:
+    """Normalize one explicitly selected local image into a bounded JPEG."""
+
+    image = QImage(path)
+    if image.isNull():
+        raise ValueError("The selected image could not be decoded.")
+    if max(image.width(), image.height()) > 1600:
+        image = image.scaled(
+            1600,
+            1600,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    image = image.convertToFormat(QImage.Format.Format_RGB888)
+
+    def encode(source: QImage, quality: int) -> bytes:
+        target = QByteArray()
+        buffer = QBuffer(target)
+        if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+            raise RuntimeError("Could not prepare the selected image.")
+        try:
+            if not source.save(buffer, "JPEG", quality):
+                raise RuntimeError("Could not encode the selected image.")
+            return bytes(target)
+        finally:
+            buffer.close()
+
+    for quality in (80, 72, 64, 56, 48, 40):
+        data = encode(image, quality)
+        if 0 < len(data) <= _CREATOR_IMAGE_MAX_BYTES:
+            return data
+
+    if max(image.width(), image.height()) > 1200:
+        image = image.scaled(
+            1200,
+            1200,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        for quality in (64, 54, 44, 36):
+            data = encode(image, quality)
+            if 0 < len(data) <= _CREATOR_IMAGE_MAX_BYTES:
+                return data
+    raise ValueError("The selected image remains too large after bounded compression.")
+
+
+class _CreatorImageVisionWorker(QObject):
+    """Ground one explicit image through canonical Core off the GUI thread."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, gateway: Any, image: bytes) -> None:
+        super().__init__()
+        self.gateway = gateway
+        self.image = bytes(image)
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            encoded = base64.b64encode(self.image).decode("ascii")
+            digest = hashlib.sha256(self.image).hexdigest()
+            registered = self.gateway.runtime_action(
+                "perception.asset.register",
+                {
+                    "kind": "image",
+                    "mime_type": "image/jpeg",
+                    "content_sha256": digest,
+                    "byte_count": len(self.image),
+                },
+            )
+            asset = dict(registered.get("asset") or {})
+            asset_id = str(asset.get("asset_id") or "")
+            if not asset_id:
+                raise RuntimeError("Mary Core did not register the creator image.")
+
+            dispatched = self.gateway.dispatch_capability_task(
+                "sensor.image_describe",
+                "Describe one creator-selected image as factual creative evidence for Mary.",
+                {
+                    "image_base64": encoded,
+                    "mime_type": "image/jpeg",
+                    "mode": "creative",
+                    "asset_id": asset_id,
+                },
+            )
+            task = dict(dispatched.get("task") or {})
+            task_id = str(task.get("task_id") or "")
+            if not task_id:
+                raise RuntimeError("Mary Core did not create a visual-description task.")
+
+            deadline = monotonic() + 45.0
+            while monotonic() < deadline:
+                current = self.gateway.capability_task_status(task_id)
+                task = dict(current.get("task") or {})
+                status = str(task.get("status") or "").casefold()
+                if status == "completed":
+                    result = dict(task.get("result") or {})
+                    description = " ".join(
+                        str(result.get("description") or "").split()
+                    )[:12_000]
+                    if not description:
+                        raise RuntimeError(
+                            "The vision node completed without a usable description."
+                        )
+                    self.finished.emit({
+                        "ok": True,
+                        "asset_id": asset_id,
+                        "task_id": task_id,
+                        "description": description,
+                        "provider": str(result.get("provider") or "")[:80],
+                        "model": str(result.get("model") or "")[:180],
+                        "source_sha256": str(result.get("source_sha256") or "")[:64],
+                        "raw_media_stored": False,
+                        "authority": "ephemeral_perception_evidence",
+                    })
+                    return
+                if status in {"failed", "rejected", "expired"}:
+                    raise RuntimeError(
+                        str(task.get("error") or "").strip()
+                        or f"Vision task ended as {status}."
+                    )
+                sleep(0.35)
+            raise RuntimeError("Vision task did not finish within the bounded wait.")
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+class _CreatorSocialWorker(QObject):
+    """Ask canonical Mary Core to author from already-grounded visual evidence."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, gateway: Any, brief: str, summary: str, tone: str) -> None:
+        super().__init__()
+        self.gateway = gateway
+        self.brief = brief
+        self.summary = summary
+        self.tone = tone
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            result = self.gateway.runtime_action(
+                "social.propose",
+                {
+                    "platform": "instagram",
+                    "kind": "caption",
+                    "brief": self.brief[:2000],
+                    "media_summary": self.summary[:12_000],
+                    "tone": self.tone[:120] or "natural",
+                    "audience_text": "",
+                },
+            )
+            self.finished.emit(dict(result or {}))
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+class _CreatorDraftVoiceWorker(QObject):
+    """Synthesize one Creator Lab preview through Mary's configured voice."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        voice: DesktopVoiceEngine,
+        audio_cache: DesktopAudioCache,
+        text: str,
+    ) -> None:
+        super().__init__()
+        self.voice = voice
+        self.audio_cache = audio_cache
+        self.text = text
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            payload = self.voice.synthesize(
+                self.text,
+                user_text=None,
+                emotional_state=None,
+                delivery_plan={},
+            )
+            if payload.get("status") == "success":
+                payload = self.audio_cache.stage(payload)
+            self.finished.emit(payload)
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class MaryDesktopBridge(QObject):
     """Object exposed to JavaScript through QWebChannel."""
 
@@ -481,6 +679,9 @@ class MaryDesktopBridge(QObject):
     conversationStateChanged = Signal(str)
     characterStateChanged = Signal(str)
     dashboardStateChanged = Signal(str)
+    creatorImageReady = Signal(str)
+    creatorSocialReady = Signal(str)
+    creatorDraftVoiceReady = Signal(str)
     voicePlaybackStopRequested = Signal()
     minimizeRequested = Signal()
     maximizeRequested = Signal()
@@ -504,6 +705,14 @@ class MaryDesktopBridge(QObject):
 
         self._speech_thread: QThread | None = None
         self._speech_worker: _TranscriptionWorker | None = None
+
+        self._creator_image_thread: QThread | None = None
+        self._creator_image_worker: _CreatorImageVisionWorker | None = None
+        self._creator_social_thread: QThread | None = None
+        self._creator_social_worker: _CreatorSocialWorker | None = None
+        self._creator_voice_thread: QThread | None = None
+        self._creator_voice_worker: _CreatorDraftVoiceWorker | None = None
+        self._creator_image_bytes: bytes = b""
 
         self.conversation_runtime = DesktopConversationRuntime()
 
@@ -2238,14 +2447,187 @@ class MaryDesktopBridge(QObject):
                 f"{type(exc).__name__}: {exc}"
             )
 
+    @Slot(result=str)
+    def chooseCreatorImage(self) -> str:  # noqa: N802
+        """Pick and normalize one image without exposing its filesystem path."""
+
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Choose an image for Mary",
+            "",
+            "Images (*.jpg *.jpeg *.png *.webp)",
+        )
+        if not path:
+            return _json({"ok": False, "cancelled": True})
+        try:
+            data = _prepare_creator_image(path)
+        except Exception as exc:
+            return _json({
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+        self._creator_image_bytes = data
+        return _json({
+            "ok": True,
+            "mime_type": "image/jpeg",
+            "byte_count": len(data),
+            "preview_data_url": (
+                "data:image/jpeg;base64,"
+                + base64.b64encode(data).decode("ascii")
+            ),
+            "raw_media_stored_by_core": False,
+        })
+
+    @Slot()
+    def describeCreatorImage(self) -> None:  # noqa: N802
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            self.errorOccurred.emit(
+                "Creator Lab vision requires canonical remote Mary Core on Desktop."
+            )
+            return
+        if not self._creator_image_bytes:
+            self.errorOccurred.emit("Choose a Creator Lab image first.")
+            return
+        if self._creator_image_thread is not None:
+            self.errorOccurred.emit("Mary is already looking at a Creator Lab image.")
+            return
+        gateway = getattr(self.application, "gateway", None)
+        if gateway is None:
+            self.errorOccurred.emit("Mary Core gateway is unavailable.")
+            return
+        thread = QThread(self)
+        worker = _CreatorImageVisionWorker(gateway, self._creator_image_bytes)
+        worker.moveToThread(thread)
+        self._creator_image_thread = thread
+        self._creator_image_worker = worker
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_creator_image_finished)
+        worker.failed.connect(self._on_creator_image_failed)
+        thread.finished.connect(self._on_creator_image_thread_finished)
+        thread.start()
+
+    @Slot(str, str, str)
+    def proposeCreatorSocial(
+        self,
+        brief: str,
+        media_summary: str,
+        tone: str,
+    ) -> None:  # noqa: N802
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            self.errorOccurred.emit(
+                "Creator Lab authoring requires canonical remote Mary Core."
+            )
+            return
+        summary = " ".join(str(media_summary or "").split())[:12_000]
+        if not summary:
+            self.errorOccurred.emit("Visual grounding is required.")
+            return
+        if self._creator_social_thread is not None:
+            self.errorOccurred.emit("Mary is already drafting in Creator Lab.")
+            return
+        gateway = getattr(self.application, "gateway", None)
+        if gateway is None:
+            self.errorOccurred.emit("Mary Core gateway is unavailable.")
+            return
+        thread = QThread(self)
+        worker = _CreatorSocialWorker(
+            gateway,
+            str(brief or ""),
+            summary,
+            str(tone or "natural"),
+        )
+        worker.moveToThread(thread)
+        self._creator_social_thread = thread
+        self._creator_social_worker = worker
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_creator_social_finished)
+        worker.failed.connect(self._on_creator_social_failed)
+        thread.finished.connect(self._on_creator_social_thread_finished)
+        thread.start()
+
+    @Slot(str)
+    def speakCreatorDraft(self, text: str) -> None:  # noqa: N802
+        value = str(text or "").strip()[:12_000]
+        if not value:
+            self.errorOccurred.emit("Creator Lab draft is empty.")
+            return
+        if self._creator_voice_thread is not None:
+            self.errorOccurred.emit("Creator Lab voice preview is already running.")
+            return
+        thread = QThread(self)
+        worker = _CreatorDraftVoiceWorker(self.voice, self.audio_cache, value)
+        worker.moveToThread(thread)
+        self._creator_voice_thread = thread
+        self._creator_voice_worker = worker
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_creator_voice_finished)
+        worker.failed.connect(self._on_creator_voice_failed)
+        thread.finished.connect(self._on_creator_voice_thread_finished)
+        thread.start()
+
+    @Slot(object)
+    def _on_creator_image_finished(self, payload: object) -> None:
+        self.creatorImageReady.emit(_json(dict(payload or {})))
+        thread = self._creator_image_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot(str)
+    def _on_creator_image_failed(self, error: str) -> None:
+        self.errorOccurred.emit(str(error))
+        thread = self._creator_image_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot()
+    def _on_creator_image_thread_finished(self) -> None:
+        self._creator_image_worker = None
+        self._creator_image_thread = None
+
+    @Slot(object)
+    def _on_creator_social_finished(self, payload: object) -> None:
+        self.creatorSocialReady.emit(_json(dict(payload or {})))
+        thread = self._creator_social_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot(str)
+    def _on_creator_social_failed(self, error: str) -> None:
+        self.errorOccurred.emit(str(error))
+        thread = self._creator_social_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot()
+    def _on_creator_social_thread_finished(self) -> None:
+        self._creator_social_worker = None
+        self._creator_social_thread = None
+
+    @Slot(object)
+    def _on_creator_voice_finished(self, payload: object) -> None:
+        self.creatorDraftVoiceReady.emit(_json(dict(payload or {})))
+        thread = self._creator_voice_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot(str)
+    def _on_creator_voice_failed(self, error: str) -> None:
+        self.errorOccurred.emit(str(error))
+        thread = self._creator_voice_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    @Slot()
+    def _on_creator_voice_thread_finished(self) -> None:
+        self._creator_voice_worker = None
+        self._creator_voice_thread = None
+
     def close(
         self,
     ) -> None:
         self.presence_socket.stop()
         self.resident_hearing.disable()
         self.microphone.stop()
-        self.audio_cache.cleanup()
-
         presence_thread = self._presence_thread
         if presence_thread is not None and presence_thread.isRunning():
             presence_thread.quit()
@@ -2260,6 +2642,17 @@ class MaryDesktopBridge(QObject):
             speech_thread.quit()
             speech_thread.wait()
 
+        for creator_thread in (
+            self._creator_image_thread,
+            self._creator_social_thread,
+            self._creator_voice_thread,
+        ):
+            if creator_thread is not None and creator_thread.isRunning():
+                creator_thread.quit()
+                creator_thread.wait()
+
+        self._creator_image_bytes = b""
+        self.audio_cache.cleanup()
         self.microphone.cleanup()
 
         thread = self._active_thread

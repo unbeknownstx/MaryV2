@@ -68,6 +68,7 @@ let runtimeStatus = {};
 let lastTurnTrace = {};
 let currentScreen = 'chat';
 let selectedCreativeFile = '';
+let creatorLabState = { previewDataUrl: '', description: '', draft: '', busy: false };
 let busy = false;
 let conversationState = 'idle';
 let activeSpeechAudio = null;
@@ -1886,15 +1887,33 @@ function renderDiagnostics() {
 }
 
 function renderGallery() {
+  const lab = creatorLabState;
   return `
-    <div class="workspace-grid three">
-      <div class="workspace-panel accent"><h3>Mary Reference</h3><img src="./assets/mary-reference.jpeg" style="width:100%;height:240px;object-fit:cover;object-position:center 38%;border-radius:10px;opacity:.9" alt="Mary reference" /></div>
-      <div class="workspace-panel"><h3>Neon Reference Study</h3><img src="./assets/gallery/mary-neon-reference-sheet.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.94" alt="Mary neon reference sheet" /><small>Generated concept/reference sheet · visual evidence only.</small></div>
-      <div class="workspace-panel"><h3>Gala Visual Study</h3><img src="./assets/gallery/mary-gala-reference.png" style="width:100%;height:240px;object-fit:cover;object-position:center 30%;border-radius:10px;opacity:.92" alt="Mary gala visual study" /><small>Optional generated visual reference · not autobiographical memory or automatic canon.</small></div>
-      <div class="workspace-panel"><h3>Neon Night Manga Study</h3><img src="./assets/gallery/mary-neon-night-manga.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.92" alt="Mary neon night manga study" /><small>Library visual study preserving Mary's beanie/jacket/skirt palette.</small></div>
+    <div class="workspace-grid two">
+      <div class="workspace-panel accent">
+        <h3>Creator Lab</h3>
+        <p>Pick an image explicitly, let an authorized vision node ground what Mary sees, then have canonical Mary author a reviewable draft in her own voice.</p>
+        <div class="action-grid">
+          <button class="action-button" id="creator-lab-choose"><strong>${lab.previewDataUrl ? 'Change image' : 'Choose image'}</strong><small>Local selection · normalized before vision dispatch</small></button>
+          <button class="action-button" id="creator-lab-look" ${lab.previewDataUrl && !lab.busy ? '' : 'disabled'}><strong>Let Mary look</strong><small>Ephemeral pixels → typed vision capability → grounded evidence</small></button>
+        </div>
+        ${lab.previewDataUrl ? `<img src="${escapeHtml(lab.previewDataUrl)}" alt="Selected Creator Lab image" style="width:100%;max-height:340px;object-fit:contain;border-radius:12px;margin-top:12px;background:rgba(255,255,255,.03)">` : ''}
+        <label class="field-label"><span>WHAT MARY SEES · EDITABLE</span><textarea id="creator-lab-description" rows="5" placeholder="Grounded visual evidence appears here…">${escapeHtml(lab.description)}</textarea></label>
+        <label class="field-label"><span>WHAT SHOULD MARY DO WITH IT?</span><textarea id="creator-lab-intent" rows="3">Tell me what you'd say about this in your own voice.</textarea></label>
+        <label class="field-label"><span>TONE</span><input id="creator-lab-tone" value="natural"></label>
+        <button class="action-button primary" id="creator-lab-create" ${lab.busy ? 'disabled' : ''}><strong>${lab.busy ? 'Mary is creating…' : 'Create with Mary'}</strong><small>Draft only · nothing publishes automatically</small></button>
+      </div>
+      <div class="workspace-panel">
+        <h3>Mary's Draft</h3>
+        <p id="creator-lab-draft">${escapeHtml(lab.draft || 'Mary’s draft will appear here after grounded creation.')}</p>
+        <button class="action-button" id="creator-lab-speak" ${lab.draft && !lab.busy ? '' : 'disabled'}><strong>Hear Mary say it</strong><small>Uses the configured Mary voice route</small></button>
+        <div class="data-row"><span>Core media retention</span><strong>Metadata + description only</strong></div>
+        <small>Raw pixels are ephemeral task input. Vision evidence does not become memory or canon automatically.</small>
+      </div>
+      <div class="workspace-panel"><h3>Reference Sheet</h3><img src="./assets/gallery/mary-neon-reference-sheet.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.92" alt="Mary neon reference sheet" /><small>Bundled visual reference for Mary's current design language.</small></div>
+      <div class="workspace-panel"><h3>Neon Night Study</h3><img src="./assets/gallery/mary-neon-night-manga.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.92" alt="Mary neon night manga study" /><small>Library visual study preserving Mary's beanie/jacket/skirt palette.</small></div>
       <div class="workspace-panel"><h3>Stream Room Study</h3><img src="./assets/gallery/mary-stream-room-reference.png" style="width:100%;height:240px;object-fit:cover;object-position:center;border-radius:10px;opacity:.92" alt="Mary stream room visual study" /><small>Library visual study for the streamer/companion environment.</small></div>
       <div class="workspace-panel"><h3>VRM</h3><p>MaryCosma.vrm is connected to the live stage and remains the preferred interactive avatar.</p><div class="data-row"><span>Model</span><strong>MaryCosma.vrm</strong></div><div class="data-row"><span>Renderer</span><strong>Three.js + three-vrm</strong></div></div>
-      <div class="workspace-panel"><h3>Project Gallery</h3><div class="workspace-empty">Bind this to Unbeknownst references, storyboards, approved generated images, screenshots, and tagged creative assets while preserving provenance.</div></div>
     </div>
   `;
 }
@@ -2038,7 +2057,58 @@ function renderWorkspace(screen) {
   bindWorkspaceActions();
 }
 
+function bindCreatorLabActions() {
+  $('#creator-lab-choose')?.addEventListener('click', () => {
+    if (!bridge?.chooseCreatorImage) {
+      toast('Creator Lab image picking is unavailable on this surface.', 'error');
+      return;
+    }
+    bridge.chooseCreatorImage((raw) => {
+      const result = parsePayload(raw);
+      if (!result.ok) {
+        if (!result.cancelled) toast(result.error || 'Could not prepare that image.', 'error');
+        return;
+      }
+      creatorLabState = { previewDataUrl: result.preview_data_url || '', description: '', draft: '', busy: false };
+      renderWorkspace('gallery');
+      toast('Image ready for Mary.');
+    });
+  });
+  $('#creator-lab-look')?.addEventListener('click', () => {
+    if (!bridge?.describeCreatorImage) {
+      toast('Creator Lab vision is unavailable.', 'error');
+      return;
+    }
+    creatorLabState.description = $('#creator-lab-description')?.value?.trim() || creatorLabState.description;
+    creatorLabState.busy = true;
+    renderWorkspace('gallery');
+    bridge.describeCreatorImage();
+  });
+  $('#creator-lab-create')?.addEventListener('click', () => {
+    const description = $('#creator-lab-description')?.value?.trim() || creatorLabState.description;
+    const brief = $('#creator-lab-intent')?.value?.trim() || "Tell me what you'd say about this in your own voice.";
+    const tone = $('#creator-lab-tone')?.value?.trim() || 'natural';
+    if (!description) {
+      toast('Let Mary look at the image or enter visual grounding first.', 'error');
+      return;
+    }
+    if (!bridge?.proposeCreatorSocial) {
+      toast('Canonical Creator Lab authoring is unavailable.', 'error');
+      return;
+    }
+    creatorLabState.busy = true;
+    creatorLabState.description = description;
+    renderWorkspace('gallery');
+    bridge.proposeCreatorSocial(brief, description, tone);
+  });
+  $('#creator-lab-speak')?.addEventListener('click', () => {
+    const text = String(creatorLabState.draft || '').trim();
+    if (text) bridge?.speakCreatorDraft?.(text);
+  });
+}
+
 function bindWorkspaceActions() {
+  if (currentScreen === 'gallery') bindCreatorLabActions();
   $('#resident-hearing-toggle')?.addEventListener('click', () => {
     if (!bridge?.setResidentHearing) return;
     const current = runtimeStatus.resident_hearing || residentHearingState || {};
@@ -2412,6 +2482,31 @@ function activateBridge(connectedBridge, { surface = 'desktop' } = {}) {
   bridge.conversationStateChanged.connect((raw) => setConversationState(raw));
   bridge.characterStateChanged?.connect((raw) => applyCharacterState(raw));
   bridge.dashboardStateChanged?.connect((raw) => applyDashboardState(raw));
+  bridge.creatorImageReady?.connect((raw) => {
+    const result = parsePayload(raw);
+    creatorLabState.busy = false;
+    if (result.ok && result.description) {
+      creatorLabState.description = String(result.description);
+      if (currentScreen === 'gallery') renderWorkspace('gallery');
+      toast(`Mary grounded the image · ${providerDisplayName(result.provider || 'vision')}`);
+    } else {
+      if (currentScreen === 'gallery') renderWorkspace('gallery');
+      toast(result.error || 'Mary could not ground that image.', 'error');
+    }
+  });
+  bridge.creatorSocialReady?.connect((raw) => {
+    const result = parsePayload(raw);
+    const proposal = result.proposal || result;
+    creatorLabState.busy = false;
+    creatorLabState.draft = String(proposal.content || '').trim();
+    if (currentScreen === 'gallery') renderWorkspace('gallery');
+    if (!creatorLabState.draft) toast(result.error || 'Mary returned no Creator Lab draft.', 'error');
+  });
+  bridge.creatorDraftVoiceReady?.connect((raw) => {
+    const payload = parsePayload(raw);
+    if (payload.status === 'success') playVoice(payload);
+    else toast(payload.error || 'Mary voice preview is unavailable.', 'error');
+  });
   bridge.voicePlaybackStopRequested.connect(() => stopVoicePlayback({ notifyBridge: false }));
   bridge.errorOccurred.connect((message) => {
     setBusy(false);
