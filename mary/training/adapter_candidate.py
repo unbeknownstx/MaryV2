@@ -39,6 +39,7 @@ class MlxAdapterCandidateProposal:
     adapter_weights_sha256: str
     adapter_weights_bytes: int
     dataset_fingerprint: str
+    bundle_lineage_fingerprint: str
     experiment_class: str
     benchmark_required: bool
     catalog_write_performed: bool
@@ -119,6 +120,7 @@ def build_mlx_adapter_candidate_proposal(
         adapter_weights_sha256=_sha256(weights_path),
         adapter_weights_bytes=weights_path.stat().st_size,
         dataset_fingerprint=dataset_fingerprint,
+        bundle_lineage_fingerprint=report.bundle_lineage_fingerprint,
         experiment_class=str(profile.get("experiment_class") or "unknown")[:120],
         benchmark_required=True,
         catalog_write_performed=False,
@@ -126,6 +128,11 @@ def build_mlx_adapter_candidate_proposal(
         promotion_performed=False,
         notes=(
             "Exact base lineage must remain unchanged.",
+            (
+                "Prepared bundle lineage is pinned."
+                if report.bundle_lineage_matches is True
+                else "Legacy bundle has no prepared-bundle reproducibility fingerprint."
+            ),
             "Benchmark base-only versus adapter under held-out MaryBench before promotion.",
             "This proposal is local artifact evidence only and grants no Mary authority.",
         ),
