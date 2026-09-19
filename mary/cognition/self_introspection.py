@@ -111,6 +111,8 @@ class SelfIntrospection:
             specific = self._appearance(query_text)
         elif subtype == "preferences":
             specific = self._preferences(query_text)
+        elif subtype == "capabilities":
+            specific = self._capabilities(query_text)
         else:
             builder = builders.get(subtype, self._identity)
             specific = builder()
@@ -834,7 +836,7 @@ class SelfIntrospection:
             entries.append(data)
         return entries
 
-    def _capabilities(self) -> dict[str, Any]:
+    def _capabilities(self, query: str = "") -> dict[str, Any]:
         """Project Mary's live capability graph instead of model self-knowledge.
 
         Availability and authorization are deliberately separate. A registered
@@ -1023,6 +1025,61 @@ class SelfIntrospection:
         else:
             node_sentence = "I do not currently have a connected capability node to claim device execution from."
 
+        lowered_query = str(query or "").casefold()
+        requested_groups: list[tuple[str, tuple[str, ...]]] = []
+        if any(term in lowered_query for term in ("screen", "desktop view", "see my app", "see the app")):
+            requested_groups.append(("screen vision", ("sensor.screen_describe",)))
+        if any(term in lowered_query for term in ("image", "picture", "photo")):
+            requested_groups.append(("image vision", ("sensor.image_describe",)))
+        if any(term in lowered_query for term in ("hear", "microphone", "audio", "transcribe", "listen")):
+            requested_groups.append((
+                "audio transcription",
+                ("sensor.audio_transcribe", "audio.transcribe"),
+            ))
+        if any(term in lowered_query for term in ("local model", "local llm", "ollama", "llama.cpp", "mlx")):
+            requested_groups.append((
+                "local model inference",
+                ("llm.local", "llm.ollama", "llm.llama_cpp", "llm.mlx_lm"),
+            ))
+        if any(term in lowered_query for term in ("local knowledge", "knowledge search", "corpus", "offline library")):
+            requested_groups.append(("local knowledge search", ("knowledge.search",)))
+        if any(term in lowered_query for term in ("web", "browse", "internet")):
+            requested_groups.append(("web search", ()))
+
+        requested_sentences: list[str] = []
+        for label, names in requested_groups[:6]:
+            if label == "web search":
+                if web_search:
+                    requested_sentences.append(
+                        "Web search is configured in my registered tool layer."
+                    )
+                else:
+                    requested_sentences.append(
+                        "Web search is not currently configured in my registered tool layer."
+                    )
+                continue
+            represented = [name for name in names if name in capability_names]
+            ready = [name for name in represented if name in execution_ready]
+            if ready:
+                requested_sentences.append(
+                    f"My connected nodes currently advertise and execution-authorize {label} "
+                    f"through {', '.join(ready)}."
+                )
+            elif represented:
+                requested_sentences.append(
+                    f"My connected nodes currently advertise {label} through "
+                    f"{', '.join(represented)}, but it is not presently execution-authorized."
+                )
+            else:
+                requested_sentences.append(
+                    f"No connected node currently advertises {label}, so I should not claim "
+                    "I can execute it right now."
+                )
+
+        capability_answer = " ".join(requested_sentences)
+        if capability_answer:
+            capability_answer += " "
+
         return {
             "agency_status": self.agency.status(),
             "tool_status": tool_status,
@@ -1033,7 +1090,8 @@ class SelfIntrospection:
                 "is authoritative for capability claims; provider model priors are not capability evidence"
             ),
             "fallback_response": (
-                "I can inspect my own Core/runtime state and analyze problems directly. "
+                capability_answer
+                + "I can inspect my own Core/runtime state and analyze problems directly. "
                 + search_sentence + " " + node_sentence + " "
                 "A capability being present is separate from permission to execute it, and "
                 "advertised capability is separate from demonstrated competence. "
