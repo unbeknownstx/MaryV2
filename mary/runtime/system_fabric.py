@@ -171,6 +171,15 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     adapter_lab = _status(getattr(ecosystem, "adapter_lab", None), "snapshot")
     candidates = _candidate_summary(getattr(ecosystem, "model_candidates", None))
     experiments = _model_experiment_summary(mary)
+    self_evidence = _status(
+        getattr(mary, "self_introspection", None),
+        "capability_evidence",
+    )
+    procedure_intelligence = _mapping(self_evidence.get("procedural_memory"))
+    capability_improvement = _mapping(
+        self_evidence.get("capability_improvement")
+    )
+    model_evidence = _mapping(self_evidence.get("model_experiments"))
     training = _status(getattr(mary, "training_feedback", None), "status")
     character_eval = _status(getattr(mary, "character_evaluation", None), "snapshot")
 
@@ -234,6 +243,19 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
                     _mapping(continuity.get("skills")).get("revision_candidates", 0)
                     or 0
                 ),
+                "demonstrated": int(
+                    procedure_intelligence.get("demonstrated", 0) or 0
+                ),
+                "degrading": int(
+                    procedure_intelligence.get("degrading", 0) or 0
+                ),
+                "procedures": list(
+                    procedure_intelligence.get("procedures") or []
+                )[:16],
+                "authority": (
+                    "read-only evidence projection; review, approval, binding "
+                    "and execution remain explicit"
+                ),
             },
             "plans": _mapping(continuity.get("plans")),
             "workflows": _mapping(continuity.get("workflows")),
@@ -244,11 +266,13 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "adapter_lab": adapter_lab,
             "candidates": candidates,
             "experiments": experiments,
+            "evidence_readiness": model_evidence,
             "policy": "model/adapters are replaceable capabilities; benchmark and creator promotion remain explicit",
         },
         "compute": {
             "nodes": nodes,
             "node_intelligence": node_intelligence,
+            "capability_improvement": capability_improvement,
             **compute,
         },
         "training": {
@@ -261,7 +285,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "retrieval": "evidence_not_memory",
             "temporal_history": "historical_or_superseded_is_not_current_truth",
             "skills": "creator_approval_required",
-            "competence": "routing_hint_only_after_hard_eligibility",
+            "competence": "routing_and_procedure-ranking_evidence_only_after_hard_eligibility",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
         },
