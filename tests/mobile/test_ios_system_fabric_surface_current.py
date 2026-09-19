@@ -23,3 +23,8 @@ def test_native_iphone_exposes_shared_system_fabric_workspaces():
     assert "evidence sources" in detail
     assert "approval and execution permissions remain explicit" in detail
     assert "Models and LoRAs are replaceable capabilities" in detail
+    assert "Lineage events" in detail
+    assert "Authorized node capabilities" in detail
+    assert "Demonstrated capabilities" in detail
+    assert "Revision pressure" in detail
+    assert 'models["node_intelligence"]' in app
