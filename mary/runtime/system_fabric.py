@@ -144,7 +144,9 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     mary = getattr(application, "mary", None)
     ecosystem = getattr(application, "ecosystem", None)
     continuity = _status(getattr(mary, "experiential_continuity", None), "status")
-    knowledge = _status(getattr(mary, "knowledge_fabric", None), "status")
+    knowledge_owner = getattr(mary, "knowledge_fabric", None)
+    knowledge = _status(knowledge_owner, "status")
+    knowledge_intelligence = _status(knowledge_owner, "substrate_profile")
     nodes = _status(getattr(mary, "node_registry", None), "snapshot")
     try:
         from mary.distributed import build_node_intelligence
@@ -200,7 +202,10 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "execution_permission": False,
             "promotion_permission": False,
         },
-        "knowledge": knowledge,
+        "knowledge": {
+            **knowledge,
+            "substrate": knowledge_intelligence,
+        },
         "world": {
             "beliefs": _mapping(continuity.get("world_model")),
             "temporal": _mapping(continuity.get("temporal")),
