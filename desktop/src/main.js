@@ -102,6 +102,8 @@ let avatarFraming = 'portrait';
 let avatarPresentation = localStorage.getItem('mary.avatarPresentation') === 'art' ? 'art' : 'live';
 let studioMotionCue = null;
 let windowPresentationMode = document.documentElement.dataset.windowMode || 'standard';
+let stageScenePreset = localStorage.getItem('mary.stageScenePreset') || 'transparent';
+let stageSceneBeforeCompanion = stageScenePreset;
 let stageLighting = {
   key: Number(localStorage.getItem('mary.stageLight.key') || 2.35),
   fill: Number(localStorage.getItem('mary.stageLight.fill') || 1.25),
@@ -357,6 +359,50 @@ rimLight.position.set(1.7, 1.5, -1.5);
 scene.add(rimLight);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x171124, 1.65));
 
+const stageGroundMaterial = new THREE.MeshStandardMaterial({
+  color: 0x101522,
+  roughness: .72,
+  metalness: .08,
+  transparent: true,
+  opacity: .72,
+});
+const stageGround = new THREE.Mesh(new THREE.CircleGeometry(1.35, 64), stageGroundMaterial);
+stageGround.rotation.x = -Math.PI / 2;
+stageGround.visible = false;
+stageGround.receiveShadow = true;
+scene.add(stageGround);
+
+function applyStageScenePreset(name = stageScenePreset) {
+  const normalized = ['transparent', 'void', 'studio', 'neon'].includes(name) ? name : 'transparent';
+  stageScenePreset = normalized;
+  localStorage.setItem('mary.stageScenePreset', normalized);
+  stageGroundMaterial.emissiveIntensity = 0;
+  if (normalized === 'transparent') {
+    renderer.setClearColor(0x000000, 0);
+    stageGround.visible = false;
+  } else if (normalized === 'void') {
+    renderer.setClearColor(0x050611, 1);
+    stageGroundMaterial.color.setHex(0x101522);
+    stageGroundMaterial.emissive.setHex(0x000000);
+    stageGroundMaterial.opacity = .66;
+    stageGround.visible = true;
+  } else if (normalized === 'studio') {
+    renderer.setClearColor(0x111521, 1);
+    stageGroundMaterial.color.setHex(0x252b38);
+    stageGroundMaterial.emissive.setHex(0x000000);
+    stageGroundMaterial.opacity = .82;
+    stageGround.visible = true;
+  } else {
+    renderer.setClearColor(0x03050e, 1);
+    stageGroundMaterial.color.setHex(0x130d22);
+    stageGroundMaterial.emissive.setHex(0x24082a);
+    stageGroundMaterial.emissiveIntensity = .34;
+    stageGroundMaterial.opacity = .74;
+    stageGround.visible = true;
+  }
+  stageGroundMaterial.needsUpdate = true;
+}
+
 function applyStageLighting(values = stageLighting) {
   stageLighting = {
     key: Math.max(0, Math.min(5, Number(values.key ?? stageLighting.key) || 0)),
@@ -422,6 +468,7 @@ function copyStageSetup() {
 }
 
 applyStageLighting();
+applyStageScenePreset(stageScenePreset);
 
 let previousFrameMs = performance.now();
 let blinkAt = performance.now() + 1800;
@@ -512,6 +559,8 @@ async function loadMaryVrm() {
     }
     modelBounds = { box, size, center };
     modelBaseY = vrm.scene.position.y;
+    stageGround.position.set(center.x, box.min.y + .006, center.z);
+    stageGround.scale.setScalar(Math.max(.75, Math.min(1.65, size.x * 1.4)));
     avatarLoadError = '';
     setAvatarFraming(avatarFraming);
     // Qt may settle the stage geometry one frame after the model finishes loading.
