@@ -59,6 +59,7 @@ class CompetenceRecord:
     last_observed_at: str
     last_result: str
     last_success: bool | None
+    implementation_fingerprint: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -69,7 +70,7 @@ class CompetenceRecord:
 class CompetenceLedger:
     """Persistent structural performance evidence, never execution authority."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self, path: Path, *, capacity: int = 2000) -> None:
         self.capacity = max(64, int(capacity))
@@ -84,12 +85,14 @@ class CompetenceLedger:
         operation: str,
         node_id: str,
         skill_id: str,
-    ) -> tuple[str, str, str, str]:
+        implementation_fingerprint: str = "",
+    ) -> tuple[str, str, str, str, str]:
         return (
             _text(capability, 160).casefold(),
             _text(operation, 80).casefold() or "general",
             _text(node_id, 180),
             _text(skill_id, 180),
+            _text(implementation_fingerprint, 64).casefold(),
         )
 
     @staticmethod
@@ -122,9 +125,14 @@ class CompetenceLedger:
         evidence_ids: Iterable[str] = (),
         result: str = "",
         observed_at: str | None = None,
+        implementation_fingerprint: str = "",
     ) -> CompetenceRecord:
-        capability, operation, node_id, skill_id = self._key(
-            capability, operation, node_id, skill_id
+        capability, operation, node_id, skill_id, implementation_fingerprint = self._key(
+            capability,
+            operation,
+            node_id,
+            skill_id,
+            implementation_fingerprint,
         )
         if not capability:
             raise ValueError("competence evidence requires capability")
@@ -143,7 +151,14 @@ class CompetenceLedger:
                         str(item.get("operation") or "general"),
                         str(item.get("node_id") or ""),
                         str(item.get("skill_id") or ""),
-                    ) == (capability, operation, node_id, skill_id)
+                        str(item.get("implementation_fingerprint") or ""),
+                    ) == (
+                        capability,
+                        operation,
+                        node_id,
+                        skill_id,
+                        implementation_fingerprint,
+                    )
                 ),
                 None,
             )
@@ -168,6 +183,7 @@ class CompetenceLedger:
                     "last_observed_at": when,
                     "last_result": "",
                     "last_success": None,
+                    "implementation_fingerprint": implementation_fingerprint,
                 }
                 rows.append(row)
             else:
@@ -234,10 +250,16 @@ class CompetenceLedger:
         operation: str = "",
         node_id: str | None = None,
         skill_id: str | None = None,
+        implementation_fingerprint: str | None = None,
         limit: int = 50,
     ) -> list[CompetenceRecord]:
         cap = _text(capability, 160).casefold()
         op = _text(operation, 80).casefold()
+        implementation = (
+            None
+            if implementation_fingerprint is None
+            else _text(implementation_fingerprint, 64).casefold()
+        )
         output: list[CompetenceRecord] = []
         for row in list(self._store.snapshot().get("records") or []):
             item = self._decode(row)
@@ -248,6 +270,11 @@ class CompetenceLedger:
             if node_id is not None and item.node_id != str(node_id):
                 continue
             if skill_id is not None and item.skill_id != str(skill_id):
+                continue
+            if (
+                implementation is not None
+                and item.implementation_fingerprint != implementation
+            ):
                 continue
             output.append(item)
         output.sort(
@@ -267,10 +294,16 @@ class CompetenceLedger:
         *,
         operation: str = "",
         node_ids: Iterable[str] = (),
+        implementation_fingerprint: str | None = None,
         limit: int = 8,
     ) -> list[dict[str, Any]]:
         allowed_nodes = {str(item) for item in node_ids if str(item)}
-        rows = self.find(capability=capability, operation=operation, limit=200)
+        rows = self.find(
+            capability=capability,
+            operation=operation,
+            implementation_fingerprint=implementation_fingerprint,
+            limit=200,
+        )
         if allowed_nodes:
             rows = [item for item in rows if not item.node_id or item.node_id in allowed_nodes]
         return [
@@ -279,6 +312,7 @@ class CompetenceLedger:
                 "operation": item.operation,
                 "node_id": item.node_id,
                 "skill_id": item.skill_id,
+                "implementation_fingerprint": item.implementation_fingerprint,
                 "attempts": item.attempts,
                 "successes": item.successes,
                 "failures": item.failures,
@@ -303,6 +337,12 @@ class CompetenceLedger:
             "capabilities": len({item.capability for item in rows}),
             "nodes": len({item.node_id for item in rows if item.node_id}),
             "skills": len({item.skill_id for item in rows if item.skill_id}),
+            "implementation_bound_records": sum(
+                1 for item in rows if item.implementation_fingerprint
+            ),
+            "legacy_unbound_records": sum(
+                1 for item in rows if not item.implementation_fingerprint
+            ),
             "authority": (
                 "durable operational evidence only; does not grant permission, "
                 "select a model/node, or define Mary identity"
@@ -322,4 +362,5 @@ class CompetenceLedger:
         values.setdefault("evidence_strength", 0.0)
         values.setdefault("last_result", "")
         values.setdefault("last_success", None)
+        values.setdefault("implementation_fingerprint", "")
         return CompetenceRecord(**values)
