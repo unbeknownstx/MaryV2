@@ -99,6 +99,7 @@ from mary.learning.researcher import Researcher
 from mary.learning.grounding import ResearchGrounder
 from mary.learning.source_resolver import SourceResolver
 from mary.learning.evidence import ClaimGrounder, EvidenceValidator
+from mary.learning.model_experiments import ModelExperimentLedger
 
 from mary.tools.manager import ToolManager
 from mary.tools.registry import PermissionLevel
@@ -437,6 +438,13 @@ class Mary:
             index_path=self.config.paths.knowledge / "knowledge_fabric.sqlite3",
         )
 
+        # Reviewed model/adapter evidence is durable lab state, not identity or
+        # routing authority. Multiple readers may inspect the same atomic ledger;
+        # training and promotion remain explicit creator actions.
+        self.model_experiments = ModelExperimentLedger(
+            self.config.paths.runtime / "model_experiment_evidence.json"
+        )
+
         # Global/cognitive workspace is a disposable cross-system projection.
         # It binds the relevant pieces for one task but owns none of them.
         self.cognitive_workspace = CognitiveWorkspace(self)
@@ -700,6 +708,7 @@ class Mary:
             knowledge_fabric=self.knowledge_fabric,
             procedural_skills=self.procedural_skills,
             world_model=self.world_model,
+            model_experiments=self.model_experiments,
         )
 
         # ============================================================
