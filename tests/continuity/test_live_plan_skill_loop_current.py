@@ -192,3 +192,63 @@ def test_skill_recommendation_helper_returns_only_approved_matching_guidance(tmp
     rows = service._recommend_skills_for_plan_step(plan, step, limit=3)
     assert [row["id"] for row in rows] == [approved.id]
     assert rows[0]["authority"].startswith("approved procedural guidance")
+
+def test_plan_recommendation_prefers_demonstrated_approved_procedure(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-ranked.json")
+    weak = skills.approve(skills.register_candidate(
+        name="local knowledge lookup alpha",
+        description="search local knowledge for project references",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local knowledge pack",),
+    ).id)
+    strong = skills.approve(skills.register_candidate(
+        name="local knowledge lookup beta",
+        description="search local knowledge for project references",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local knowledge pack",),
+    ).id)
+
+    competence = CompetenceLedger(tmp_path / "competence-ranked.json")
+    for index in range(6):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=strong.id,
+            success=True,
+            verified=True,
+            evidence_ids=(f"strong-{index}",),
+        )
+
+    plans = ExecutivePlanGraph(tmp_path / "plans-ranked.json")
+    plan = plans.create(objective="Answer from local knowledge", source="creator")
+    step = plans.add_step(
+        plan.id,
+        title="Search local knowledge for project references",
+        required_capabilities=("knowledge.search",),
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        procedural_skills=skills,
+        executive_plans=plans,
+        competence=competence,
+        node_registry=SimpleNamespace(
+            snapshot=lambda: {
+                "nodes": [{"node_id": "mac", "connected": True}]
+            }
+        ),
+    )
+
+    rows = service._recommend_skills_for_plan_step(plan, step, limit=2)
+
+    assert [row["id"] for row in rows] == [strong.id, weak.id]
+    assert rows[0]["demonstrated"] is True
+    assert rows[0]["competence"]["verified_successes"] == 6
+    assert rows[0]["recommendation_score"] > rows[1]["recommendation_score"]
+    assert rows[1]["evidence_needed"]
+    assert "advisory only" in rows[0]["selection_policy"]
+
