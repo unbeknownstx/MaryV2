@@ -392,6 +392,22 @@ class SkillLibrary:
             failure_rate = skill.failure_count / max(1, attempts)
             if failure_rate < failure_floor:
                 continue
+            evidence_ids = list(dict.fromkeys(skill.origin_experience_ids))
+            evidence_count = len(evidence_ids)
+            evidence_diversity = round(
+                min(1.0, evidence_count / max(1, attempts)),
+                4,
+            )
+            attempt_weight = min(1.0, attempts / 6.0)
+            evidence_weight = (
+                0.75
+                if evidence_count == 0
+                else 0.5 + 0.5 * evidence_diversity
+            )
+            revision_pressure = round(
+                failure_rate * attempt_weight * evidence_weight,
+                4,
+            )
             rows.append({
                 "skill_id": skill.id,
                 "name": skill.name,
@@ -400,18 +416,23 @@ class SkillLibrary:
                 "successes": skill.success_count,
                 "failures": skill.failure_count,
                 "failure_rate": round(failure_rate, 4),
+                "revision_pressure": revision_pressure,
+                "evidence_count": evidence_count,
+                "evidence_diversity": evidence_diversity,
                 "confidence": skill.confidence,
                 "last_used_at": skill.last_used_at,
                 "last_result": skill.last_result,
-                "origin_experience_ids": list(skill.origin_experience_ids[-16:]),
+                "origin_experience_ids": evidence_ids[-16:],
                 "review_reason": (
                     f"observed failure rate {failure_rate:.0%} across {attempts} "
-                    "recorded use(s); inspect evidence before proposing a revision"
+                    f"recorded use(s), backed by {evidence_count} distinct evidence "
+                    "record(s); inspect evidence before proposing a revision"
                 ),
                 "mutation_performed": False,
             })
         rows.sort(
             key=lambda item: (
+                float(item["revision_pressure"]),
                 float(item["failure_rate"]),
                 int(item["failures"]),
                 str(item.get("last_used_at") or ""),
