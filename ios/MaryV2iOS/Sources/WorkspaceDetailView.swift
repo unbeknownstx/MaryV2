@@ -225,33 +225,6 @@ struct WorkspaceDetailView: View {
                 }}
             }
 
-            if !contradictions.isEmpty {
-                GlassCard { VStack(alignment: .leading, spacing: 10) {
-                    Eyebrow(text: "World reconciliation")
-                    Text("Choosing one claim retires competing claims as history; it does not erase the evidence.")
-                        .font(.caption)
-                        .foregroundStyle(MaryTheme.muted)
-                    ForEach(Array(contradictions.prefix(8).enumerated()), id: \.offset) { _, item in
-                        let row = CoreProjection.dict(item)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("\(CoreProjection.string(row["subject"])) · \(CoreProjection.string(row["predicate"]))")
-                                .font(.subheadline.bold())
-                            Text(CoreProjection.string(row["value"]))
-                                .font(.caption)
-                            Button("Keep this as current") {
-                                Task {
-                                    _ = await app.reconcileWorldBelief(
-                                        CoreProjection.string(row["id"])
-                                    )
-                                }
-                            }
-                            .buttonStyle(MarySecondaryButtonStyle())
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }}
-            }
-
             if !recent.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Current external context")
@@ -343,9 +316,10 @@ struct WorkspaceDetailView: View {
                         .font(.caption)
                         .foregroundStyle(MaryTheme.muted)
                     ForEach(Array(revisionQueue.prefix(8).enumerated()), id: \.offset) { _, item in
+                        let failureRate = (item["failure_rate"] as? NSNumber)?.doubleValue ?? 0.0
                         DataRow(
                             label: CoreProjection.string(item["name"]),
-                            value: "\(Int((CoreProjection.double(item["failure_rate"]) * 100).rounded()))% failure"
+                            value: "\(Int((failureRate * 100).rounded()))% failure"
                         )
                     }
                 }}
