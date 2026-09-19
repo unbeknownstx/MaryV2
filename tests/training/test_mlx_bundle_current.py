@@ -47,6 +47,7 @@ def test_prepare_mlx_bundle_uses_only_structured_approved_mary_sft(tmp_path: Pat
     )
 
     assert manifest["boundaries"]["training_performed"] is False
+    assert manifest["dataset_fingerprint"] == manifest["mary_dataset"]["fingerprint"]
     assert manifest["boundaries"]["marybench_in_training_data"] is False
     assert manifest["boundaries"]["dataset_quality_gate_passed"] is True
     assert manifest["dataset_audit"]["training_ready"] is True
