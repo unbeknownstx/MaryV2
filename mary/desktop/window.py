@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSettings, Qt, QUrl
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -92,6 +92,9 @@ class MaryDesktopWindow(QMainWindow):
         self._settings = QSettings("Unbe", "MaryV2")
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self._was_maximized_before_fullscreen = True
+        self._window_presentation_mode = "standard"
+        self._standard_geometry = None
+        self._standard_was_maximized = False
 
         self.web = QWebEngineView(self)
         self.web.setPage(MaryWebEnginePage(self.web))
@@ -134,6 +137,9 @@ class MaryDesktopWindow(QMainWindow):
         self.bridge.maximizeRequested.connect(self._toggle_maximized)
         self.bridge.closeRequested.connect(self.close)
         self.bridge.windowMoveRequested.connect(self._start_system_move)
+        self.bridge.windowPresentationRequested.connect(
+            self._set_window_presentation_mode
+        )
         # Vite ES-module builds are not reliable from file:// on macOS QtWebEngine:
         # Chromium can render the HTML/CSS while blocking module chunks under a
         # null file origin. Use a loopback-only same-origin static server instead.
@@ -144,6 +150,11 @@ class MaryDesktopWindow(QMainWindow):
         QShortcut(QKeySequence("F11"), self, activated=self._toggle_fullscreen)
         QShortcut(QKeySequence("Alt+Return"), self, activated=self._toggle_fullscreen)
         QShortcut(QKeySequence("Escape"), self, activated=self._leave_fullscreen)
+        QShortcut(
+            QKeySequence("Ctrl+Shift+P"),
+            self,
+            activated=self._toggle_companion_window,
+        )
 
     def show_for_startup(self) -> None:
         mode = os.getenv("MARY_DESKTOP_START_MODE", "maximized").strip().lower()
@@ -178,6 +189,99 @@ class MaryDesktopWindow(QMainWindow):
             self.show()
             return
         self.showMaximized()
+
+    def _toggle_companion_window(self) -> None:
+        next_mode = (
+            "standard"
+            if self._window_presentation_mode == "companion"
+            else "companion"
+        )
+        self._set_window_presentation_mode(next_mode)
+
+    def _set_window_presentation_mode(self, mode: str) -> None:
+        """Switch native window chrome without changing Mary state.
+
+        Companion mode is deliberately a host-window concern: the same Core,
+        conversation, avatar and performance packet remain active underneath.
+        """
+
+        normalized = str(mode or "standard").strip().lower()
+        if normalized not in {"standard", "companion"}:
+            normalized = "standard"
+        if normalized == self._window_presentation_mode:
+            self._project_window_mode_to_frontend()
+            return
+
+        if normalized == "companion":
+            if not self.isFullScreen():
+                try:
+                    self._standard_geometry = self.saveGeometry()
+                except Exception:
+                    self._standard_geometry = None
+                self._standard_was_maximized = self.isMaximized()
+
+            self.showNormal()
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+            try:
+                self.setAttribute(
+                    Qt.WidgetAttribute.WA_TranslucentBackground,
+                    True,
+                )
+                self.web.page().setBackgroundColor(QColor(0, 0, 0, 0))
+            except Exception:
+                pass
+
+            screen = self.screen() or QApplication.primaryScreen()
+            if screen is not None:
+                area = screen.availableGeometry()
+                width = min(520, max(420, int(area.width() * 0.30)))
+                height = min(780, max(620, int(area.height() * 0.82)))
+                self.resize(width, height)
+                self.move(
+                    area.x() + max(0, area.width() - width - 24),
+                    area.y() + max(0, area.height() - height - 24),
+                )
+            self._window_presentation_mode = "companion"
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            self._project_window_mode_to_frontend()
+            return
+
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        try:
+            self.setAttribute(
+                Qt.WidgetAttribute.WA_TranslucentBackground,
+                False,
+            )
+            self.web.page().setBackgroundColor(QColor("#050611"))
+        except Exception:
+            pass
+        self._window_presentation_mode = "standard"
+        self.show()
+        if self._standard_geometry is not None:
+            try:
+                self.restoreGeometry(self._standard_geometry)
+            except Exception:
+                pass
+        if self._standard_was_maximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
+        self._project_window_mode_to_frontend()
+
+    def _project_window_mode_to_frontend(self) -> None:
+        mode = self._window_presentation_mode
+        script = (
+            "document.documentElement.dataset.windowMode = "
+            + repr(mode)
+            + "; window.dispatchEvent(new CustomEvent('mary-window-mode', "
+            + "{detail:{mode:" + repr(mode) + "}}));"
+        )
+        try:
+            self.web.page().runJavaScript(script)
+        except Exception:
+            pass
 
     def _toggle_maximized(self) -> None:
         if self.isMaximized():
