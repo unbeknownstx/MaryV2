@@ -942,7 +942,15 @@ class SelfIntrospection:
             except Exception:
                 return {}
 
-        knowledge_status = safe_status(getattr(self, "knowledge_fabric", None))
+        knowledge_owner = getattr(self, "knowledge_fabric", None)
+        knowledge_status = safe_status(knowledge_owner)
+        knowledge_substrate: dict[str, Any] = {}
+        substrate_fn = getattr(knowledge_owner, "substrate_profile", None)
+        if callable(substrate_fn):
+            try:
+                knowledge_substrate = dict(substrate_fn() or {})
+            except Exception:
+                knowledge_substrate = {}
         skills_status = safe_status(getattr(self, "procedural_skills", None))
         world_status = safe_status(getattr(self, "world_model", None))
 
@@ -979,6 +987,16 @@ class SelfIntrospection:
                 "available": bool(
                     int(knowledge_status.get("enabled") or 0)
                     or int(knowledge_status.get("indexed_documents") or 0)
+                ),
+                "tiers": dict(knowledge_substrate.get("counts") or {}),
+                "enabled_retrieval_modes": list(
+                    knowledge_substrate.get("enabled_retrieval_modes") or []
+                )[:12],
+                "attention_required": bool(
+                    knowledge_substrate.get("attention_required")
+                ),
+                "stale_derivatives": len(
+                    list(knowledge_substrate.get("stale_derivatives") or [])
                 ),
             },
             "procedural_memory": {
