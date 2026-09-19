@@ -1625,6 +1625,30 @@ class MaryDesktopBridge(QObject):
             return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
     @Slot(str, result=str)
+    def runKnowledgeCuration(
+        self,
+        pack_id: str = "",
+    ) -> str:  # noqa: N802 - JS-facing API
+        """Queue one read-only corpus hygiene inspection on an eligible node."""
+
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({
+                "ok": False,
+                "error": "Corpus curation requires canonical remote Mary Core.",
+                "automatic_mutation_performed": False,
+            })
+        clean = str(pack_id or "").strip()[:160]
+        try:
+            result = self.application.gateway.dispatch_capability_task(
+                "knowledge.curation",
+                "Inspect node-local corpus hygiene without changing source or indexes.",
+                {"pack_id": clean},
+            )
+            return _json(result)
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    @Slot(str, result=str)
     def getCapabilityTaskStatus(
         self,
         task_id: str,
