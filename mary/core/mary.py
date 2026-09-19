@@ -56,6 +56,7 @@ from mary.expression.expression import ExpressionSystem
 from mary.expression.director import ExpressionDirector
 from mary.expression.context import PerformanceContextManager
 from mary.expression.performance_packet import build_performance_packet
+from mary.expression.surface_performance import project_performance_packet
 from mary.expression.dialogue_plan import DialoguePlanner
 
 from mary.avatar.bridge import AvatarBridge
@@ -1696,7 +1697,7 @@ class Mary:
             result.metadata["delivery_plan"] = delivery.to_dict()
             result.metadata["performance_context"] = dict(stage_context)
             initiative_turn = bool(result.metadata.get("initiative_turn", False))
-            result.metadata["performance_packet"] = build_performance_packet(
+            performance_packet = build_performance_packet(
                 result.final_response,
                 delivery,
                 social_context=str(stage_context.get("mode") or "private"),
@@ -1707,6 +1708,21 @@ class Mary:
                     else "creator_turn"
                 ),
             ).to_dict()
+            result.metadata["performance_packet"] = performance_packet
+
+            # The score above is canonical presentation intent.  Each body can
+            # truthfully advertise how much of it it can render without making
+            # the renderer another Mary or silently pretending unsupported
+            # animation/VR features exist.
+            current_surface = (
+                dict(runtime_context.get("current_surface") or {}).get("surface")
+                if isinstance(runtime_context, dict)
+                else None
+            )
+            result.metadata["surface_performance"] = project_performance_packet(
+                performance_packet,
+                surface=current_surface or "generic",
+            )
         except Exception as exc:
             result.metadata["delivery_plan_error"] = f"{type(exc).__name__}: {exc}"
 
