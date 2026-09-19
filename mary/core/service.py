@@ -201,6 +201,11 @@ class MaryCoreService:
         # retains only ephemeral asset metadata + grounded description evidence.
         self.perception_assets = PerceptionAssetRegistry(capacity=128)
         self._perception_asset_tasks: dict[str, str] = {}
+        # Explicit model trials keep only task→experiment linkage in process.
+        # Durable experiment lineage stores content-free dispatch/outcome events;
+        # prompts and generated trial text never enter that ledger.
+        self._model_experiment_tasks: dict[str, str] = {}
+        self._model_experiment_terminal_recorded: set[str] = set()
         # Ephemeral links bind process-local device tasks back to durable plan
         # and skill records. Device tasks themselves intentionally do not
         # survive Core restarts.
@@ -2530,6 +2535,20 @@ class MaryCoreService:
         ))
         return output
 
+    def _model_experiment_ledger(self):
+        from mary.learning import ModelExperimentLedger
+
+        runtime_root = getattr(
+            getattr(getattr(self.mary, "config", None), "paths", None),
+            "runtime",
+            None,
+        )
+        if runtime_root is None:
+            raise RuntimeError("model experiment runtime path is unavailable")
+        return ModelExperimentLedger(
+            Path(runtime_root) / "model_experiment_evidence.json"
+        )
+
     def dispatch_capability_task(
         self,
         request: CapabilityTaskDispatchRequest | dict[str, Any],
@@ -2682,16 +2701,47 @@ class MaryCoreService:
         task = self.device_tasks.get(task_id)
         if task is None:
             raise KeyError(f"Unknown capability task: {task_id}")
-        if str(getattr(task, "status", "") or "") in {
-            "completed", "rejected", "failed", "expired"
-        }:
+        status = str(getattr(task, "status", "") or "")
+        terminal = status in {"completed", "rejected", "failed", "expired"}
+        if terminal:
             self._settle_continuity_task_link(task)
+
+        lineage_recorded = str(task_id) in self._model_experiment_terminal_recorded
+        experiment_id = self._model_experiment_tasks.get(str(task_id), "")
+        if terminal and experiment_id and not lineage_recorded:
+            result = dict(getattr(task, "result", {}) or {})
+            error = str(getattr(task, "error", "") or "")
+            error_class = (
+                error.split(":", 1)[0].strip()[:120]
+                if error
+                else ""
+            )
+            try:
+                self._model_experiment_ledger().record_trial_outcome(
+                    experiment_id,
+                    task_id=str(task_id),
+                    node_id=str(getattr(task, "selected_node_id", "") or ""),
+                    status=status,
+                    provider=str(result.get("provider") or "")[:120],
+                    model=str(result.get("model") or "")[:240],
+                    error_class=error_class,
+                )
+                self._model_experiment_terminal_recorded.add(str(task_id))
+                lineage_recorded = True
+            except Exception:
+                # Task truth remains available even if the optional durable lab
+                # ledger cannot be updated. The caller can see that evidence
+                # persistence has not yet succeeded and retry status later.
+                lineage_recorded = False
+
         asset_id = self._perception_asset_tasks.get(str(task_id), "")
         asset = self.perception_assets.get(asset_id) if asset_id else None
         return _json_safe({
             "ok": True,
             "task": task.to_dict(),
             "perception_asset": asset,
+            "model_experiment_id": experiment_id or None,
+            "experiment_lineage_recorded": lineage_recorded,
         })
 
     def workspace_status(self) -> dict[str, Any]:
@@ -3308,12 +3358,25 @@ class MaryCoreService:
                     requester_device_id=action.device_id,
                     preferred_node_id=str(selected["node_id"]),
                 )
+                self._model_experiment_tasks[str(task.task_id)] = experiment_id
+                lineage_recorded = False
+                try:
+                    self._model_experiment_ledger().record_trial_dispatch(
+                        experiment_id,
+                        task_id=str(task.task_id),
+                        node_id=str(selected["node_id"]),
+                        capability=str(selected.get("capability") or "llm.llama_cpp"),
+                    )
+                    lineage_recorded = True
+                except Exception:
+                    lineage_recorded = False
                 return _json_safe({
                     "ok": True,
                     "experiment_id": experiment_id,
                     "node": selected,
                     "task": task.to_dict(),
                     "execution": "queued_explicit_trial",
+                    "experiment_lineage_recorded": lineage_recorded,
                     "production_route_changed": False,
                     "promotion_performed": False,
                     "authority": "experiment_trial_only",
