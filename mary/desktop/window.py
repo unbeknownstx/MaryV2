@@ -227,6 +227,11 @@ class MaryDesktopWindow(QMainWindow):
                     Qt.WidgetAttribute.WA_TranslucentBackground,
                     True,
                 )
+                self.web.setAttribute(
+                    Qt.WidgetAttribute.WA_TranslucentBackground,
+                    True,
+                )
+                self.web.setStyleSheet("background: transparent;")
                 self.web.page().setBackgroundColor(QColor(0, 0, 0, 0))
             except Exception:
                 pass
@@ -254,6 +259,11 @@ class MaryDesktopWindow(QMainWindow):
                 Qt.WidgetAttribute.WA_TranslucentBackground,
                 False,
             )
+            self.web.setAttribute(
+                Qt.WidgetAttribute.WA_TranslucentBackground,
+                False,
+            )
+            self.web.setStyleSheet("")
             self.web.page().setBackgroundColor(QColor("#050611"))
         except Exception:
             pass
