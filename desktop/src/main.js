@@ -6,6 +6,7 @@ import './uplift.css';
 import './presence.css';
 import './neon-street.css';
 import './presence-flow.css';
+import './companion-window.css';
 import { renderPresenceHome } from './ui/presenceHome.js';
 import { formatMilliseconds, normalizeTurnTrace, providerAttemptSummary, timingValue } from './runtime/turnTrace.js';
 import { createHttpBridge, installMaryPwa } from './runtime/httpBridge.js';
@@ -100,6 +101,7 @@ let modelBounds = null;
 let avatarFraming = 'portrait';
 let avatarPresentation = localStorage.getItem('mary.avatarPresentation') === 'art' ? 'art' : 'live';
 let studioMotionCue = null;
+let windowPresentationMode = document.documentElement.dataset.windowMode || 'standard';
 let stageLighting = {
   key: Number(localStorage.getItem('mary.stageLight.key') || 2.35),
   fill: Number(localStorage.getItem('mary.stageLight.fill') || 1.25),
@@ -277,6 +279,29 @@ function setAvatarPresentation(mode = 'live') {
   localStorage.setItem('mary.avatarPresentation', avatarPresentation);
   syncAvatarPresentation();
 }
+
+function setWindowPresentationMode(mode = 'standard') {
+  const next = mode === 'companion' ? 'companion' : 'standard';
+  windowPresentationMode = next;
+  document.documentElement.dataset.windowMode = next;
+  if (bridge?.setWindowPresentationMode) {
+    bridge.setWindowPresentationMode(next);
+  } else if (next === 'companion') {
+    toast('Companion window mode requires the native Desktop host.', 'error');
+    windowPresentationMode = 'standard';
+    document.documentElement.dataset.windowMode = 'standard';
+  }
+  resizeRenderer();
+  window.setTimeout(() => setAvatarFraming(avatarFraming), 30);
+}
+
+window.addEventListener('mary-window-mode', (event) => {
+  const mode = String(event?.detail?.mode || 'standard').toLowerCase();
+  windowPresentationMode = mode === 'companion' ? 'companion' : 'standard';
+  document.documentElement.dataset.windowMode = windowPresentationMode;
+  resizeRenderer();
+  window.setTimeout(() => setAvatarFraming(avatarFraming), 30);
+});
 
 function toast(message, kind = 'info') {
   const stack = $('#toast-stack');
@@ -2268,6 +2293,7 @@ function renderVoice() {
       <div class="action-grid">
         <button class="action-button" id="stage-capture" ${currentVrm ? '' : 'disabled'}><strong>Capture transparent PNG</strong><small>Current WebGL avatar frame</small></button>
         <button class="action-button" id="stage-copy-setup"><strong>Copy stage setup</strong><small>Portable presentation-only JSON</small></button>
+        <button class="action-button" id="desktop-companion-toggle"><strong>${windowPresentationMode === 'companion' ? 'Return to full Desktop' : 'Companion window'}</strong><small>${windowPresentationMode === 'companion' ? 'Restore the normal Mary product shell' : 'Compact transparent always-on-top body · Ctrl+Shift+P'}</small></button>
       </div>
     </div>
   `;
@@ -2713,6 +2739,9 @@ function bindWorkspaceActions() {
   bindLightSlider('#stage-rim-light', 'rim', '#stage-rim-value');
   $('#stage-capture')?.addEventListener('click', captureAvatarPng);
   $('#stage-copy-setup')?.addEventListener('click', copyStageSetup);
+  $('#desktop-companion-toggle')?.addEventListener('click', () => {
+    setWindowPresentationMode(windowPresentationMode === 'companion' ? 'standard' : 'companion');
+  });
   $$('#workspace-body [data-launch-app]').forEach((button) => button.addEventListener('click', () => {
     if (!bridge?.launchCreativeApp) return;
     bridge.launchCreativeApp(button.dataset.launchApp, selectedCreativeFile || '', (ok) => {
@@ -2776,6 +2805,7 @@ function bindWorkspaceActions() {
 $$('[data-screen]').forEach((button) => { button.addEventListener('click', () => { playUiSound('#ui-select-sound'); setScreen(button.dataset.screen); }); button.addEventListener('mouseenter',()=>playUiSound('#ui-hover-sound',.06)); });
 $$('[data-screen-jump]').forEach((button) => button.addEventListener('click', () => setScreen(button.dataset.screenJump)));
 $('#workspace-close')?.addEventListener('click', () => setScreen('chat'));
+$('#companion-exit')?.addEventListener('click', () => setWindowPresentationMode('standard'));
 $$('#quick-actions [data-prompt]').forEach((button) => button.addEventListener('click', () => submitPrompt(button.dataset.prompt)));
 
 // ---------------------------------------------------------------------------
