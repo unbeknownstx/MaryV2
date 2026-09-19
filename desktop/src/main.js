@@ -1406,6 +1406,10 @@ function renderMind() {
   }).join('');
   const leaderboardRows = leaderboard.map((item, index) => `<div class="data-row"><span>#${index + 1} ${escapeHtml(item.config_id || 'config')}</span><strong>${Math.round(Number(item.mary_fit || 0) * 100)}%</strong></div>`).join('');
   const modelRoot = ecosystemState.paths?.model_root || 'platform-local Mary model directory';
+  const nodeIntelligence = compute.node_intelligence || {};
+  const intelligenceNodes = Array.isArray(nodeIntelligence.nodes) ? nodeIntelligence.nodes : [];
+  const demonstratedCaps = intelligenceNodes.reduce((total, item) => total + Number(item?.counts?.demonstrated || 0), 0);
+  const authorizedCaps = intelligenceNodes.reduce((total, item) => total + Number(item?.counts?.authorized || 0), 0);
   return `
     <div class="workspace-grid three">
       <div class="workspace-panel accent"><h3>Local Mind</h3><div class="data-row"><span>Status</span><strong>${mind.enabled ? 'Running' : 'Off'}</strong></div><div class="data-row"><span>Dialogue reflex</span><strong>${mind.local_dialogue_enabled ? 'Enabled' : 'Off'}</strong></div><div class="data-row"><span>Hot state</span><strong>${hot.loaded ? 'In RAM' : 'Cold'}</strong></div><p>Fast character decisions happen before a provider call. This layer is a projection over Mary—not a replacement identity.</p></div>
@@ -1806,26 +1810,40 @@ function renderFabric() {
     : '';
   const worldReview = fabricGovernanceState.world || {};
   const contradictions = Array.isArray(worldReview.contradictions) ? worldReview.contradictions : [];
+  const reconciliationGroups = Array.isArray(worldReview.reconciliation_queue) ? worldReview.reconciliation_queue : [];
   const skillReview = fabricGovernanceState.skills || {};
   const skillCandidates = Array.isArray(skillReview.candidates) ? skillReview.candidates : [];
   const approvedSkills = Array.isArray(skillReview.approved) ? skillReview.approved : [];
-  const contradictionCards = contradictions.length
-    ? contradictions.slice(0, 12).map((item) => {
-        const value = typeof item.value === 'string' ? item.value : JSON.stringify(item.value);
-        return `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(item.subject || 'Unknown')}</span><strong>${escapeHtml(item.predicate || 'claim')}</strong></div><p>${escapeHtml(value || '—')}</p><small>${escapeHtml(item.source || 'unknown source')} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence · ${escapeHtml(item.verification || 'unverified')}</small><button class="action-button" data-world-reconcile="${escapeHtml(item.id || '')}" style="margin-top:8px"><strong>Keep this as current</strong><small>Retire competing claims as history</small></button></div>`;
+  const revisionQueue = Array.isArray(skillReview.revision_queue) ? skillReview.revision_queue : [];
+  const contradictionCards = reconciliationGroups.length
+    ? reconciliationGroups.slice(0, 12).map((group) => {
+        const candidates = Array.isArray(group.candidates) ? group.candidates : [];
+        const options = candidates.map((item) => {
+          const value = typeof item.value === 'string' ? item.value : JSON.stringify(item.value);
+          return `<div class="workspace-panel" style="margin-top:8px"><p>${escapeHtml(value || '—')}</p><small>${escapeHtml(item.source || 'unknown source')} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence · ${escapeHtml(item.verification || 'unverified')}</small><button class="action-button" data-world-reconcile="${escapeHtml(item.belief_id || '')}" style="margin-top:8px"><strong>Keep this as current</strong><small>Retire competing claims as history</small></button></div>`;
+        }).join('');
+        return `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(group.subject || 'Unknown')}</span><strong>${escapeHtml(group.predicate || 'claim')}</strong></div><small>${Number(group.candidate_count || candidates.length)} competing current claim(s)</small>${options}</div>`;
       }).join('')
-    : '<div class="workspace-empty">No contested current beliefs require review.</div>';
+    : contradictions.length
+      ? contradictions.slice(0, 12).map((item) => {
+          const value = typeof item.value === 'string' ? item.value : JSON.stringify(item.value);
+          return `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(item.subject || 'Unknown')}</span><strong>${escapeHtml(item.predicate || 'claim')}</strong></div><p>${escapeHtml(value || '—')}</p><small>${escapeHtml(item.source || 'unknown source')} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence · ${escapeHtml(item.verification || 'unverified')}</small><button class="action-button" data-world-reconcile="${escapeHtml(item.id || '')}" style="margin-top:8px"><strong>Keep this as current</strong><small>Retire competing claims as history</small></button></div>`;
+        }).join('')
+      : '<div class="workspace-empty">No contested current beliefs require review.</div>';
   const skillCandidateCards = skillCandidates.length
     ? skillCandidates.slice(0, 12).map((item) => `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(item.name || 'Procedure')}</span><strong>v${escapeHtml(item.version || 0)}</strong></div><p>${escapeHtml(item.description || '')}</p><small>${escapeHtml((item.steps || []).join(' → ') || 'No steps supplied')} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence</small><div class="button-row" style="margin-top:8px"><button class="action-button primary" data-skill-approve="${escapeHtml(item.id || '')}"><strong>Approve</strong><small>Guidance only</small></button><button class="action-button" data-skill-reject="${escapeHtml(item.id || '')}"><strong>Reject</strong><small>Keep current procedure unchanged</small></button></div></div>`).join('')
     : '<div class="workspace-empty">No procedure candidates are waiting for review.</div>';
+  const revisionPressure = revisionQueue.length
+    ? `<div class="workspace-panel" style="margin-top:10px"><h4>Revision pressure</h4>${revisionQueue.slice(0, 8).map((item) => `<div class="data-row"><span>${escapeHtml(item.name || 'Procedure')} · v${escapeHtml(item.version || 0)}</span><strong>${Math.round(Number(item.failure_rate || 0) * 100)}% failure</strong></div>`).join('')}<small>Evidence only · no approved procedure was changed automatically.</small></div>`
+    : '';
   const approvedSkillCards = approvedSkills.length
     ? approvedSkills.slice(0, 8).map((item) => `<div class="data-row"><span>${escapeHtml(item.name || 'Procedure')} · v${escapeHtml(item.version || 0)}</span><button class="action-button" data-skill-revise="${escapeHtml(item.id || '')}"><strong>Propose revision</strong></button></div>`).join('')
     : '<div class="workspace-empty">No approved reusable procedures yet.</div>';
   return `
     <div class="workspace-grid three">
-      <div class="workspace-panel accent"><h3>One Mary Core</h3><div class="data-row"><span>Architecture</span><strong>${integration.healthy ? 'Connected' : 'Degraded'}</strong></div><div class="data-row"><span>Operational</span><strong>${integration.operational ? 'Yes' : 'No'}</strong></div><div class="data-row"><span>Connected nodes</span><strong>${nodes.connected ?? nodes.connected_nodes ?? 0}</strong></div><p>PC, Mac, PWA and iPhone are surfaces or workers around the same canonical identity and state.</p></div>
-      <div class="workspace-panel"><h3>Knowledge + World</h3><div class="data-row"><span>Enabled packs</span><strong>${k.enabled ?? 0}/${k.packs ?? 0}</strong></div><div class="data-row"><span>Indexed chunks</span><strong>${k.indexed_documents ?? 0}</strong></div><div class="data-row"><span>External context</span><strong>${worldContext.count ?? 0}</strong></div><div class="data-row"><span>Refresh lanes due</span><strong>${dueWorld.length}</strong></div><div class="data-row"><span>Current beliefs</span><strong>${w.beliefs?.current_beliefs ?? 0}</strong></div><div class="data-row"><span>Temporal relations</span><strong>${w.temporal?.relations ?? 0}</strong></div><p>World Pulse plans refreshes only. Retrieved material stays evidence, and superseded history never becomes current truth.</p></div>
-      <div class="workspace-panel"><h3>Procedures + Models</h3><div class="data-row"><span>Approved skills</span><strong>${skills.approved ?? 0}</strong></div><div class="data-row"><span>Active plans</span><strong>${plans.active_plans ?? 0}</strong></div><div class="data-row"><span>Competence evidence</span><strong>${competence.records ?? 0}</strong></div><div class="data-row"><span>Model candidates</span><strong>${candidates.count ?? 0}</strong></div><div class="data-row"><span>Trial-ready experiments</span><strong>${experiments.trial_ready ?? 0}</strong></div><div class="data-row"><span>Adapter configs</span><strong>${(lab.configurations || []).length}</strong></div><p>Skills require creator approval. Benchmarks and competence cannot grant permission or auto-promote a model.</p></div>
+      <div class="workspace-panel accent"><h3>One Mary Core</h3><div class="data-row"><span>Architecture</span><strong>${integration.healthy ? 'Connected' : 'Degraded'}</strong></div><div class="data-row"><span>Operational</span><strong>${integration.operational ? 'Yes' : 'No'}</strong></div><div class="data-row"><span>Connected nodes</span><strong>${nodes.connected ?? nodes.connected_nodes ?? 0}</strong></div><div class="data-row"><span>Authorized node capabilities</span><strong>${authorizedCaps}</strong></div><div class="data-row"><span>Demonstrated capabilities</span><strong>${demonstratedCaps}</strong></div><p>Nodes are replaceable workers. Advertisement, readiness, permission, and demonstrated competence are separate evidence states.</p></div>
+      <div class="workspace-panel"><h3>Knowledge + World</h3><div class="data-row"><span>Enabled packs</span><strong>${k.enabled ?? 0}/${k.packs ?? 0}</strong></div><div class="data-row"><span>Indexed chunks</span><strong>${k.indexed_documents ?? 0}</strong></div><div class="data-row"><span>External context</span><strong>${worldContext.count ?? 0}</strong></div><div class="data-row"><span>Refresh lanes due</span><strong>${dueWorld.length}</strong></div><div class="data-row"><span>Current beliefs</span><strong>${w.beliefs?.current_beliefs ?? 0}</strong></div><div class="data-row"><span>Reconciliation groups</span><strong>${w.review?.reconciliation_groups ?? w.beliefs?.reconciliation_groups ?? 0}</strong></div><div class="data-row"><span>Temporal relations</span><strong>${w.temporal?.relations ?? 0}</strong></div><p>World Pulse plans refreshes only. Retrieved material stays evidence, and superseded history never becomes current truth.</p></div>
+      <div class="workspace-panel"><h3>Procedures + Models</h3><div class="data-row"><span>Approved skills</span><strong>${skills.approved ?? 0}</strong></div><div class="data-row"><span>Procedure review pressure</span><strong>${c.procedure_review?.revision_attention ?? skills.revision_attention ?? 0}</strong></div><div class="data-row"><span>Active plans</span><strong>${plans.active_plans ?? 0}</strong></div><div class="data-row"><span>Competence evidence</span><strong>${competence.records ?? 0}</strong></div><div class="data-row"><span>Model candidates</span><strong>${candidates.count ?? 0}</strong></div><div class="data-row"><span>Trial-ready experiments</span><strong>${experiments.trial_ready ?? 0}</strong></div><div class="data-row"><span>Experiment lineage events</span><strong>${experiments.event_count ?? 0}</strong></div><div class="data-row"><span>Adapter configs</span><strong>${(lab.configurations || []).length}</strong></div><p>Skills require creator approval. Benchmarks and competence cannot grant permission or auto-promote a model.</p></div>
     </div>
     <div class="workspace-panel" style="margin-top:12px">
       <h3>Explicit Model Trial</h3>
@@ -1838,7 +1856,7 @@ function renderFabric() {
     </div>
     <div class="workspace-grid two" style="margin-top:12px">
       <div class="workspace-panel"><h3>World Reconciliation</h3><p>Choose only when competing current evidence should be resolved. The other claims are retired as history, not erased.</p>${fabricGovernanceState.loading ? '<div class="workspace-empty">Loading bounded world evidence…</div>' : contradictionCards}</div>
-      <div class="workspace-panel"><h3>Procedure Review</h3><p>Approve or reject learned procedure candidates. Approval never grants tool or node permission.</p>${fabricGovernanceState.loading ? '<div class="workspace-empty">Loading governed skills…</div>' : skillCandidateCards}<h4 style="margin-top:14px">Approved procedures</h4>${approvedSkillCards}</div>
+      <div class="workspace-panel"><h3>Procedure Review</h3><p>Approve or reject learned procedure candidates. Approval never grants tool or node permission.</p>${fabricGovernanceState.loading ? '<div class="workspace-empty">Loading governed skills…</div>' : skillCandidateCards}${revisionPressure}<h4 style="margin-top:14px">Approved procedures</h4>${approvedSkillCards}</div>
     </div>`;
 }
 
