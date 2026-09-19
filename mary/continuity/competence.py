@@ -327,6 +327,90 @@ class CompetenceLedger:
             for item in rows[: max(1, min(50, int(limit)))]
         ]
 
+    def skill_summary(
+        self,
+        skill_id: str,
+        *,
+        capability: str = "",
+        node_ids: Iterable[str] = (),
+    ) -> dict[str, Any]:
+        """Aggregate demonstrated evidence for one reusable procedure.
+
+        This is a read-only evidence projection. It never selects the procedure,
+        authorizes execution, or changes its approval state.
+        """
+
+        clean_skill = _text(skill_id, 180)
+        if not clean_skill:
+            return {
+                "skill_id": "",
+                "attempts": 0,
+                "successes": 0,
+                "failures": 0,
+                "verified_successes": 0,
+                "reliability": 0.5,
+                "evidence_strength": 0.0,
+                "demonstrated": False,
+                "evidence_ids": [],
+                "nodes": [],
+                "implementations": [],
+                "last_success": None,
+                "last_observed_at": "",
+            }
+
+        allowed_nodes = {str(item) for item in node_ids if str(item)}
+        rows = self.find(
+            capability=capability,
+            skill_id=clean_skill,
+            limit=500,
+        )
+        if allowed_nodes:
+            rows = [
+                item for item in rows
+                if not item.node_id or item.node_id in allowed_nodes
+            ]
+
+        attempts = sum(item.attempts for item in rows)
+        successes = sum(item.successes for item in rows)
+        failures = sum(item.failures for item in rows)
+        verified_successes = sum(item.verified_successes for item in rows)
+        reliability, evidence_strength = self._posterior(successes, failures)
+        evidence_ids = _tuple(
+            evidence_id
+            for item in rows
+            for evidence_id in item.evidence_ids
+        , limit=48)
+        ordered = sorted(
+            rows,
+            key=lambda item: item.last_observed_at,
+            reverse=True,
+        )
+        last = ordered[0] if ordered else None
+        return {
+            "skill_id": clean_skill,
+            "capability": _text(capability, 160).casefold(),
+            "attempts": attempts,
+            "successes": successes,
+            "failures": failures,
+            "verified_successes": verified_successes,
+            "reliability": reliability,
+            "evidence_strength": evidence_strength,
+            "demonstrated": bool(verified_successes > 0),
+            "evidence_ids": list(evidence_ids),
+            "nodes": sorted({item.node_id for item in rows if item.node_id}),
+            "implementations": sorted({
+                item.implementation_fingerprint
+                for item in rows
+                if item.implementation_fingerprint
+            }),
+            "last_success": None if last is None else last.last_success,
+            "last_observed_at": "" if last is None else last.last_observed_at,
+            "authority": (
+                "aggregated operational evidence only; does not select a "
+                "procedure or grant execution permission"
+            ),
+        }
+
     def status(self) -> dict[str, Any]:
         rows = [self._decode(row) for row in list(self._store.snapshot().get("records") or [])]
         return {
@@ -337,6 +421,11 @@ class CompetenceLedger:
             "capabilities": len({item.capability for item in rows}),
             "nodes": len({item.node_id for item in rows if item.node_id}),
             "skills": len({item.skill_id for item in rows if item.skill_id}),
+            "demonstrated_skills": len({
+                item.skill_id
+                for item in rows
+                if item.skill_id and item.verified_successes > 0
+            }),
             "authority": (
                 "durable operational evidence only; does not grant permission, "
                 "select a model/node, or define Mary identity"
