@@ -26,8 +26,11 @@ def test_corpus_miner_reports_source_balance_boundaries_and_eval_coverage(tmp_pa
         },
         {
             "heading": "FC-1",
-            "labels": ["FC"],
-            "text": "Fictional Mary once crossed a dangerous city at night.",
+            "labels": ["DNA", "FC"],
+            "text": (
+                "Situation: A fictional scene happens. "
+                "Mary behavior: Treat it as fictional calibration only."
+            ),
         },
     ]
     source = active / "fixture.jsonl"
