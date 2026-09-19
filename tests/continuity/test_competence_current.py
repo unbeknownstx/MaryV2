@@ -73,3 +73,35 @@ def test_competence_accumulates_durable_evidence_without_granting_authority(tmp_
     assert summary[0]["node_id"] == "mac"
     assert summary[0]["attempts"] == 10
     assert "does not grant permission" in ledger.status()["authority"]
+
+def test_skill_summary_aggregates_verified_procedure_evidence(tmp_path: Path):
+    ledger = CompetenceLedger(tmp_path / "skill-summary.json")
+
+    for index, success in enumerate((True, True, False, True)):
+        ledger.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id="skill-local-search",
+            success=success,
+            verified=success,
+            evidence_ids=(f"task-{index}",),
+        )
+
+    summary = ledger.skill_summary(
+        "skill-local-search",
+        capability="knowledge.search",
+        node_ids=("mac",),
+    )
+
+    assert summary["attempts"] == 4
+    assert summary["successes"] == 3
+    assert summary["failures"] == 1
+    assert summary["verified_successes"] == 3
+    assert summary["demonstrated"] is True
+    assert summary["reliability"] == 0.6667
+    assert len(summary["evidence_ids"]) == 4
+    assert summary["nodes"] == ["mac"]
+    assert ledger.status()["demonstrated_skills"] == 1
+    assert "does not select a procedure" in summary["authority"]
+
