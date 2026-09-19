@@ -188,3 +188,13 @@ def test_concrete_local_model_question_reports_ready_authorized_route():
     assert "local model inference" in answer
     assert "llm.ollama" in answer
     assert "execution-authorize" in answer
+
+
+def test_broad_node_capability_question_enumerates_live_and_ready_sets():
+    evidence = _introspection(registry=_Registry(), substrate=True)._capabilities(
+        "what can your nodes actually do?"
+    )
+
+    answer = evidence["fallback_response"]
+    assert "currently advertise: llm.ollama, sensor.screen_describe" in answer
+    assert "execution-authorized ready subset is: llm.ollama" in answer
