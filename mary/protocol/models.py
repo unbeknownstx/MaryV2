@@ -28,8 +28,10 @@ _PRESENTATION_CAPABILITY_NAMES = {
 }
 
 
-def _presentation_capabilities(value: Any) -> dict[str, bool]:
-    if value in (None, {}):
+def _presentation_capabilities(value: Any) -> dict[str, bool] | None:
+    if value is None:
+        return None
+    if value == {}:
         return {}
     if not isinstance(value, dict):
         raise ValueError("presentation_capabilities must be a JSON object.")
@@ -67,7 +69,7 @@ class CreatorSurfaceRequest:
     foreground: bool | None = None
     activity: bool = False
     lease_seconds: float | None = None
-    presentation_capabilities: dict[str, bool] = field(default_factory=dict)
+    presentation_capabilities: dict[str, bool] | None = None
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "CreatorSurfaceRequest":
