@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
+import json
 from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
@@ -393,6 +394,181 @@ class ModelExperimentLedger:
             "model_experiment_benchmark_verified": item.benchmark_verified,
             "model_experiment_authority": "evidence_only_no_promotion",
         }
+
+    def export_portable_evidence(self, experiment_id: str) -> dict[str, Any]:
+        """Export content-free reviewed/benchmark evidence for explicit Core import."""
+        item = self.get(experiment_id)
+        payload: dict[str, Any] = {
+            "version": "mary-model-experiment-evidence-v1",
+            "experiment": {
+                "id": item.id,
+                "candidate_id": item.candidate_id,
+                "runtime": item.runtime,
+                "model": item.model,
+                "upstream_base": item.upstream_base,
+                "base_candidate_id": item.base_candidate_id,
+                "adapter_candidate_ids": list(item.adapter_candidate_ids),
+                "artifact_fingerprint": item.artifact_fingerprint,
+                "dataset_fingerprint": item.dataset_fingerprint,
+                "source": item.source,
+                "notes": list(item.notes),
+            },
+            "benchmark": {
+                "node_id": item.node_id,
+                "scores": dict(item.scores or {}),
+                "mary_fit": item.mary_fit,
+                "latency_ms": item.latency_ms,
+                "benchmark_verified": item.benchmark_verified,
+                "trial_ready": item.trial_ready,
+                "missing_scores": list(item.missing_scores),
+                "failed_scores": list(item.failed_scores),
+            },
+            "boundaries": {
+                "prompts_included": False,
+                "generated_output_included": False,
+                "identity_or_memory_authority": False,
+                "routing_or_promotion_authority": False,
+                "explicit_creator_import_required": True,
+            },
+        }
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        payload["fingerprint"] = sha256(canonical.encode("utf-8")).hexdigest()
+        return payload
+
+    def import_portable_evidence(
+        self,
+        evidence: dict[str, Any],
+        *,
+        reviewed_by: str = "creator",
+    ) -> ModelExperimentRecord:
+        """Explicitly import content-free experiment evidence into this ledger.
+
+        Import recomputes the deterministic experiment id and benchmark state.
+        Node advertisements alone never call this method and never gain Core
+        authority from carrying an experiment id.
+        """
+        raw = dict(evidence or {})
+        if str(raw.get("version") or "") != "mary-model-experiment-evidence-v1":
+            raise ValueError("unsupported model experiment evidence bundle")
+        expected_fingerprint = _text(raw.get("fingerprint"), 64).lower()
+        unsigned = dict(raw)
+        unsigned.pop("fingerprint", None)
+        canonical = json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        actual_fingerprint = sha256(canonical.encode("utf-8")).hexdigest()
+        if not expected_fingerprint or expected_fingerprint != actual_fingerprint:
+            raise ValueError("model experiment evidence fingerprint mismatch")
+
+        experiment = dict(raw.get("experiment") or {})
+        benchmark = dict(raw.get("benchmark") or {})
+        boundaries = dict(raw.get("boundaries") or {})
+        if boundaries.get("prompts_included") is not False:
+            raise ValueError("portable model evidence must not contain prompts")
+        if boundaries.get("generated_output_included") is not False:
+            raise ValueError("portable model evidence must not contain generated output")
+
+        candidate_id = _text(experiment.get("candidate_id"), 160)
+        runtime = _text(experiment.get("runtime"), 80).casefold()
+        model = _text(experiment.get("model"), 300)
+        artifact = _text(experiment.get("artifact_fingerprint"), 64).lower()
+        if not candidate_id or not runtime or not model or not artifact:
+            raise ValueError("portable model experiment evidence is incomplete")
+        stable = sha256(
+            f"{candidate_id}|{runtime}|{artifact}".encode("utf-8")
+        ).hexdigest()[:24]
+        expected_id = f"model_exp_{stable}"
+        supplied_id = _text(experiment.get("id"), 180)
+        if supplied_id and supplied_id != expected_id:
+            raise ValueError("portable model experiment id does not match exact artifact lineage")
+
+        try:
+            current = self.get(expected_id)
+            immutable = {
+                "candidate_id": candidate_id,
+                "runtime": runtime,
+                "model": model,
+                "upstream_base": _text(experiment.get("upstream_base"), 300),
+                "base_candidate_id": _text(experiment.get("base_candidate_id"), 160),
+                "adapter_candidate_ids": _tuple(experiment.get("adapter_candidate_ids") or ()),
+                "artifact_fingerprint": artifact,
+                "dataset_fingerprint": _text(experiment.get("dataset_fingerprint"), 160),
+            }
+            for name, value in immutable.items():
+                if getattr(current, name) != value:
+                    raise ValueError(
+                        f"portable model evidence conflicts with Core lineage field: {name}"
+                    )
+        except KeyError:
+            current = self._register(
+                candidate_id=candidate_id,
+                runtime=runtime,
+                model=model,
+                upstream_base=_text(experiment.get("upstream_base"), 300),
+                base_candidate_id=_text(experiment.get("base_candidate_id"), 160),
+                adapter_candidate_ids=_tuple(experiment.get("adapter_candidate_ids") or ()),
+                artifact_fingerprint=artifact,
+                dataset_fingerprint=_text(experiment.get("dataset_fingerprint"), 160),
+                reviewed_by=_text(reviewed_by, 160) or "creator",
+                source=(
+                    "portable_import:"
+                    + (_text(experiment.get("source"), 120) or "reviewed_experiment")
+                )[:160],
+                notes=_tuple(experiment.get("notes") or (), limit=12, item_limit=300),
+            )
+
+        scores = dict(benchmark.get("scores") or {})
+        node_id = _text(benchmark.get("node_id"), 180)
+        has_benchmark = bool(scores or benchmark.get("benchmark_verified") or node_id)
+        benchmark_changed = False
+        if has_benchmark:
+            clean_latency = benchmark.get("latency_ms")
+            same_benchmark = bool(
+                current.node_id == node_id
+                and dict(current.scores or {}) == {
+                    _text(key, 80): round(max(0.0, min(1.0, float(value))), 4)
+                    for key, value in list(scores.items())[:64]
+                    if isinstance(value, (int, float))
+                }
+                and current.latency_ms == (
+                    None
+                    if clean_latency is None
+                    else round(max(0.0, min(3_600_000.0, float(clean_latency))), 2)
+                )
+                and current.artifact_fingerprint == artifact
+            )
+            if not same_benchmark:
+                current = self.record_benchmark(
+                    expected_id,
+                    node_id=node_id,
+                    artifact_fingerprint=artifact,
+                    scores=scores,
+                    latency_ms=clean_latency,
+                    benchmark_source="portable_creator_import",
+                )
+                benchmark_changed = True
+
+        if benchmark_changed or current.status == "reviewed":
+            self._record_event(
+                expected_id,
+                "evidence_imported",
+                {
+                    "source_fingerprint": expected_fingerprint,
+                    "node_id": node_id,
+                    "benchmark_present": has_benchmark,
+                    "trial_ready": current.trial_ready,
+                    "reviewed_by": _text(reviewed_by, 160) or "creator",
+                },
+            )
+        return self.get(expected_id)
 
     def get(self, experiment_id: str) -> ModelExperimentRecord:
         for row in list(self._store.snapshot().get("records") or []):
