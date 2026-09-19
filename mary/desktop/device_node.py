@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import platform
 import socket
 from threading import Event, Thread
@@ -173,6 +174,63 @@ def _llama_cpp_capability() -> CapabilityDescriptor | None:
         },
     )
 
+
+
+def _mlx_lm_capability() -> CapabilityDescriptor | None:
+    """Advertise MLX-LM only on Apple Silicon with an explicit local experiment bundle."""
+
+    machine = platform.machine().lower()
+    if platform.system().lower() != "darwin" or machine not in {"arm64", "aarch64"}:
+        return None
+    try:
+        import importlib.util
+        if importlib.util.find_spec("mlx") is None or importlib.util.find_spec("mlx_lm") is None:
+            return None
+    except (ImportError, AttributeError, ValueError):
+        return None
+
+    bundle_raw = os.getenv("MARY_MLX_EXPERIMENT_BUNDLE", "").strip()
+    if not bundle_raw:
+        return None
+    try:
+        from mary.training.adapter_candidate import build_mlx_adapter_candidate_proposal
+        from mary.learning.model_experiments import ModelExperimentLedger
+
+        bundle = Path(bundle_raw).expanduser().resolve()
+        proposal = build_mlx_adapter_candidate_proposal(bundle)
+        ledger_path = os.getenv("MARY_MODEL_EXPERIMENT_LEDGER", "").strip()
+        experiment_id = os.getenv("MARY_MLX_EXPERIMENT_ID", "").strip()[:160]
+        artifact_fingerprint = ""
+        overlay: dict[str, Any] = {}
+        if ledger_path and experiment_id:
+            ledger = ModelExperimentLedger(Path(ledger_path).expanduser())
+            record = ledger.get(experiment_id)
+            artifact_fingerprint = record.artifact_fingerprint
+            overlay = ledger.advertisement_overlay(
+                experiment_id,
+                runtime="mlx_lm",
+                artifact_fingerprint=artifact_fingerprint,
+                node_id=os.getenv("MARY_NODE_ID", "").strip()[:180],
+            )
+        return CapabilityDescriptor(
+            name="llm.mlx_lm",
+            available=True,
+            private=True,
+            local=True,
+            cost="local",
+            latency="interactive",
+            metadata={
+                "runtime": "mlx_lm",
+                "configured_model": proposal.model,
+                "upstream_base": proposal.upstream_base,
+                "artifact_fingerprint": artifact_fingerprint,
+                "adapter_candidate_id": proposal.candidate_id,
+                "adapter_loading": True,
+                **overlay,
+            },
+        )
+    except Exception:
+        return None
 
 def _local_model_capability() -> CapabilityDescriptor | None:
     """Advertise the host's selected local conversation runtime under one stable capability."""
@@ -342,6 +400,12 @@ def desktop_capabilities(
             permissions is not None and permissions.is_allowed("llm.llama_cpp")
         )
         items.append(llama_cpp)
+    mlx_lm = _mlx_lm_capability()
+    if mlx_lm is not None:
+        mlx_lm.metadata["execution_authorized"] = bool(
+            permissions is not None and permissions.is_allowed("llm.mlx_lm")
+        )
+        items.append(mlx_lm)
     if permissions is not None:
         items.extend(MCPFabric(permissions).capability_descriptors())
         items.extend(engineering_capability_descriptors(permissions))
@@ -362,6 +426,9 @@ def headless_local_llm_capabilities() -> list[CapabilityDescriptor]:
     llama_cpp = _llama_cpp_capability()
     if llama_cpp is not None:
         items.append(llama_cpp)
+    mlx_lm = _mlx_lm_capability()
+    if mlx_lm is not None:
+        items.append(mlx_lm)
     return items
 
 
@@ -375,6 +442,7 @@ def headless_node_capabilities(
         "llm.local": "llm.local",
         "llm.ollama": "llm.ollama",
         "llm.llama_cpp": "llm.llama_cpp",
+        "llm.mlx_lm": "llm.mlx_lm",
     }
     for item in local_items:
         permission_name = permission_names.get(item.name)
@@ -595,6 +663,8 @@ class DesktopCapabilityNodeAgent:
                 result_payload = self._execute_ollama(dict(task.get("args") or {}))
             elif capability == "llm.llama_cpp":
                 result_payload = self._execute_llama_cpp(dict(task.get("args") or {}))
+            elif capability == "llm.mlx_lm":
+                result_payload = self._execute_mlx_lm(dict(task.get("args") or {}))
             elif capability in ENGINEERING_CAPABILITIES:
                 result_payload = self._execute_engineering(capability, dict(task.get("args") or {}))
             elif capability in KNOWLEDGE_NODE_CAPABILITIES:
@@ -629,6 +699,59 @@ class DesktopCapabilityNodeAgent:
                 )
             except Exception:
                 return {"ok": False, "error": error}
+
+
+    def _execute_mlx_lm(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Run one bounded MLX-LM adapter trial from the device-owned reviewed bundle."""
+
+        bundle_raw = os.getenv("MARY_MLX_EXPERIMENT_BUNDLE", "").strip()
+        if not bundle_raw:
+            raise RuntimeError("MARY_MLX_EXPERIMENT_BUNDLE is not configured on this device.")
+        from mary.training.adapter_candidate import build_mlx_adapter_candidate_proposal
+
+        bundle = Path(bundle_raw).expanduser().resolve()
+        proposal = build_mlx_adapter_candidate_proposal(bundle)
+        expected_experiment = os.getenv("MARY_MLX_EXPERIMENT_ID", "").strip()
+        requested_experiment = str(args.get("experiment_id") or "").strip()
+        if expected_experiment and requested_experiment != expected_experiment:
+            raise PermissionError("MLX trial does not match the device's reviewed experiment.")
+        raw_messages = list(args.get("messages") or [])
+        if not raw_messages:
+            raise ValueError("llm.mlx_lm task requires messages.")
+        prompt = "\n".join(
+            str(item.get("content") or "").strip()
+            for item in raw_messages
+            if isinstance(item, dict) and str(item.get("content") or "").strip()
+        )[:12000]
+        if not prompt:
+            raise ValueError("llm.mlx_lm task contains no prompt text.")
+        max_tokens = max(1, min(1024, int(args.get("max_tokens", 512) or 512)))
+        temperature = max(0.0, min(1.5, float(args.get("temperature", 0.7) or 0.7)))
+        try:
+            from mlx_lm import generate, load
+        except ImportError as exc:
+            raise RuntimeError("mlx_lm is unavailable on this device.") from exc
+        model, tokenizer = load(proposal.model, adapter_path=str(bundle / "adapter"))
+        output = generate(
+            model,
+            tokenizer,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temp=temperature,
+            verbose=False,
+        )
+        content = str(output or "").strip()
+        if not content:
+            raise RuntimeError("MLX-LM returned an empty experimental response.")
+        return {
+            "content": content[:32000],
+            "provider": "local_device",
+            "runtime": "mlx_lm",
+            "model": proposal.model,
+            "experiment_id": requested_experiment or expected_experiment,
+            "adapter_candidate_id": proposal.candidate_id,
+            "privacy": "generated on selected Apple device; experimental output only",
+        }
 
 
     def _execute_knowledge(self, args: dict[str, Any]) -> dict[str, Any]:
