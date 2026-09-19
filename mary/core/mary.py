@@ -696,6 +696,10 @@ class Mary:
             tools=self.tools,
             emotion=self.emotion,
             node_registry=self.node_registry,
+            competence=self.competence,
+            knowledge_fabric=self.knowledge_fabric,
+            procedural_skills=self.procedural_skills,
+            world_model=self.world_model,
         )
 
         # ============================================================
