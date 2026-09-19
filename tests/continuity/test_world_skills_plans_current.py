@@ -305,3 +305,28 @@ def test_world_reconciliation_retires_competitors_without_deleting_history(tmp_p
     assert old.status == "retired"
     assert old.valid_to is not None
     assert world.current_beliefs(subject="Mary Core", predicate="active_instance")[0].id == second.id
+
+
+def test_skill_revision_queue_surfaces_failure_pressure_without_mutation(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-pressure.json")
+    approved = skills.approve(skills.register_candidate(
+        name="search local corpus",
+        description="Search a bounded local knowledge pack.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search enabled pack",),
+    ).id)
+
+    skills.record_outcome(approved.id, success=False, result="citation missing", evidence_ids=("e1",))
+    skills.record_outcome(approved.id, success=True, result="resolved", evidence_ids=("e2",))
+    skills.record_outcome(approved.id, success=False, result="stale index", evidence_ids=("e3",))
+
+    queue = skills.revision_queue(minimum_attempts=3, minimum_failure_rate=0.25)
+
+    assert len(queue) == 1
+    assert queue[0]["skill_id"] == approved.id
+    assert queue[0]["failures"] == 2
+    assert queue[0]["mutation_performed"] is False
+    assert skills.get(approved.id).status == "approved"
+    assert skills.status()["revision_attention"] == 1
