@@ -337,12 +337,6 @@ class CompetenceLedger:
             "capabilities": len({item.capability for item in rows}),
             "nodes": len({item.node_id for item in rows if item.node_id}),
             "skills": len({item.skill_id for item in rows if item.skill_id}),
-            "implementation_bound_records": sum(
-                1 for item in rows if item.implementation_fingerprint
-            ),
-            "legacy_unbound_records": sum(
-                1 for item in rows if not item.implementation_fingerprint
-            ),
             "authority": (
                 "durable operational evidence only; does not grant permission, "
                 "select a model/node, or define Mary identity"
