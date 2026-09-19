@@ -9,6 +9,8 @@ measured/configured per-role accelerator-memory footprint; absent that hint,
 fit remains unknown and existing selection behavior is preserved.
 13.55 records one bounded content-free adaptive routing explanation for
 observability; prompts, task args, results, and credentials are never retained.
+13.56 binds live benchmark and durable competence hints to a capability's
+execution-relevant implementation fingerprint when one is advertised.
 """
 from __future__ import annotations
 
@@ -46,7 +48,7 @@ class BenchmarkBook:
     """
 
     VERSION = "13.11"
-    ROUTING_REVISION = "13.55"
+    ROUTING_REVISION = "13.56"
 
     def __init__(self, *, max_samples_per_key: int = 12) -> None:
         self.max_samples_per_key = max(3, min(50, int(max_samples_per_key)))
@@ -61,7 +63,7 @@ class BenchmarkBook:
             str(sample.operation).strip().lower(),
             str(sample.implementation_fingerprint or "").strip().lower()[:64],
         )
-        if not all(key):
+        if not all(key[:3]):
             raise ValueError("benchmark sample requires node, capability, and operation")
         with self._lock:
             items = self._samples.setdefault(key, [])
@@ -155,6 +157,9 @@ class BenchmarkBook:
                     "success_rate": benchmark.get("success_rate"),
                     "median_latency_ms": benchmark.get("median_latency_ms"),
                     "median_throughput": benchmark.get("median_throughput"),
+                    "implementation_fingerprint": benchmark.get(
+                        "implementation_fingerprint", ""
+                    ),
                     "authority": "operational_hint_only",
                 },
             })
@@ -348,12 +353,16 @@ class HomeComputeScheduler:
                 if str(row.get("node_id") or "") == str(node_id)
             ]
             if not exact and str(operation or "general").casefold() != "general":
-                rows = list(summary(
-                    capability,
-                    operation="general",
-                    node_ids=(node_id,),
-                    limit=8,
-                ) or [])
+                general_kwargs: dict[str, Any] = {
+                    "operation": "general",
+                    "node_ids": (node_id,),
+                    "limit": 8,
+                }
+                if implementation_fingerprint:
+                    general_kwargs["implementation_fingerprint"] = (
+                        implementation_fingerprint
+                    )
+                rows = list(summary(capability, **general_kwargs) or [])
                 exact = [
                     dict(row) for row in rows
                     if str(row.get("node_id") or "") == str(node_id)
@@ -382,6 +391,30 @@ class HomeComputeScheduler:
                 dict(row) for row in rows
                 if str(row.get("node_id") or "") == str(node_id)
             ]
+            if not exact and str(operation or "general").casefold() != "general":
+                try:
+                    rows = list(summary(
+                        capability,
+                        operation="general",
+                        node_ids=(node_id,),
+                        limit=8,
+                    ) or [])
+                except Exception:
+                    rows = []
+                if implementation_fingerprint:
+                    rows = [
+                        row
+                        for row in rows
+                        if isinstance(row, dict)
+                        and str(
+                            row.get("implementation_fingerprint") or ""
+                        ).casefold()
+                        == implementation_fingerprint
+                    ]
+                exact = [
+                    dict(row) for row in rows
+                    if str(row.get("node_id") or "") == str(node_id)
+                ]
         except Exception:
             return empty
 
