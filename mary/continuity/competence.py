@@ -376,10 +376,13 @@ class CompetenceLedger:
         verified_successes = sum(item.verified_successes for item in rows)
         reliability, evidence_strength = self._posterior(successes, failures)
         evidence_ids = _tuple(
-            evidence_id
-            for item in rows
-            for evidence_id in item.evidence_ids
-        , limit=48)
+            [
+                evidence_id
+                for item in rows
+                for evidence_id in item.evidence_ids
+            ],
+            limit=48,
+        )
         ordered = sorted(
             rows,
             key=lambda item: item.last_observed_at,
