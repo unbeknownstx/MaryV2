@@ -159,6 +159,25 @@ def capabilities_from_environment(environment: Any) -> list[CapabilityDescriptor
                     metadata={"runtime": "llama.cpp"},
                 )
             )
+        if profile.apple_silicon:
+            try:
+                import importlib.util
+                mlx_ready = importlib.util.find_spec("mlx") is not None and importlib.util.find_spec("mlx_lm") is not None
+            except (ImportError, AttributeError, ValueError):
+                mlx_ready = False
+            if mlx_ready:
+                output.append(
+                    CapabilityDescriptor(
+                        name="llm.mlx_lm", available=True, private=True, local=True,
+                        cost="local", latency="interactive",
+                        metadata={
+                            "runtime": "mlx_lm",
+                            "apple_silicon": True,
+                            "adapter_loading": True,
+                            "execution_authorized": False,
+                        },
+                    )
+                )
     except Exception:
         pass
 
