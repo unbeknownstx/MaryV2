@@ -24,7 +24,24 @@ def test_doctor_reports_presentation_readiness_without_requiring_body_assets(tmp
     (tmp_path / ".env.example").write_text("", encoding="utf-8")
     (tmp_path / "desktop").mkdir()
     (tmp_path / "desktop" / "package-lock.json").write_text("{}", encoding="utf-8")
-    (tmp_path / "desktop" / "package.json").write_text('{"dependencies":{"@pixiv/three-vrm":"3.5.5"}}', encoding="utf-8")
+    (tmp_path / "desktop" / "package.json").write_text(
+        '{"dependencies":{"@pixiv/three-vrm":"3.5.5","@pixiv/three-vrm-animation":"3.5.5"}}',
+        encoding="utf-8",
+    )
+    desktop_src = tmp_path / "desktop" / "src"
+    desktop_src.mkdir()
+    (desktop_src / "main.js").write_text("VRMAnimationLoaderPlugin", encoding="utf-8")
+    (desktop_src / "companion-window.css").write_text(
+        'html[data-window-mode="companion"]{}',
+        encoding="utf-8",
+    )
+    desktop_motions = tmp_path / "desktop" / "public" / "motions"
+    desktop_motions.mkdir(parents=True)
+    (desktop_motions / "manifest.json").write_text('{"motions":[]}', encoding="utf-8")
+
+    desktop_host = tmp_path / "mary" / "desktop"
+    desktop_host.mkdir(parents=True)
+    (desktop_host / "window.py").write_text("WindowStaysOnTopHint", encoding="utf-8")
 
     expression = tmp_path / "mary" / "expression"
     expression.mkdir(parents=True)
@@ -51,4 +68,7 @@ def test_doctor_reports_presentation_readiness_without_requiring_body_assets(tmp
     assert "PASS  Surface performance projection" in output
     assert "PASS  PWA performance consumer" in output
     assert "PASS  Native iPhone performance stage" in output
+    assert "PASS  Desktop VRMA runtime" in output
+    assert "PASS  Desktop motion manifest" in output
+    assert "PASS  Desktop companion window" in output
     assert "WARN  Desktop Mary VRM" in output
