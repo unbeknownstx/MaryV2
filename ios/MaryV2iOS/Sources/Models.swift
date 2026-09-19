@@ -40,6 +40,38 @@ enum JSONValue: Codable, Hashable {
         case .null: try c.encodeNil()
         }
     }
+
+    var foundationValue: Any {
+        switch self {
+        case .string(let value): return value
+        case .number(let value): return value
+        case .bool(let value): return value
+        case .object(let value):
+            return value.mapValues { $0.foundationValue }
+        case .array(let value):
+            return value.map { $0.foundationValue }
+        case .null:
+            return NSNull()
+        }
+    }
+}
+
+extension TurnResponse {
+    var displayHints: [String: Any] {
+        (display_hints ?? [:]).mapValues { $0.foundationValue }
+    }
+
+    var deliveryPlan: [String: Any] {
+        CoreProjection.dict(displayHints["delivery_plan"])
+    }
+
+    var performancePacket: [String: Any] {
+        CoreProjection.dict(displayHints["performance_packet"])
+    }
+
+    var surfacePerformance: [String: Any] {
+        CoreProjection.dict(displayHints["surface_performance"])
+    }
 }
 
 enum ConversationMode: String, CaseIterable, Identifiable {
