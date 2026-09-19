@@ -65,12 +65,14 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
     )
     assert exact.benchmark_verified is True
     assert exact.trial_ready is True
-    assert ledger.advertisement_overlay(
+    overlay = ledger.advertisement_overlay(
         exact.id,
         runtime="mlx_lm",
         artifact_fingerprint=exact.artifact_fingerprint,
         node_id="mac",
-    )["model_experiment_trial_ready"] is True
+    )
+    assert overlay["model_experiment_trial_ready"] is True
+    assert overlay["model_experiment_bundle_lineage_fingerprint"] == "0" * 64
     assert ledger.advertisement_overlay(
         exact.id,
         runtime="llama.cpp",
