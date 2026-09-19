@@ -5,5 +5,6 @@ explicitly select and configure one.
 """
 
 from .elevenlabs import ElevenLabsTextToSpeechProvider
+from .gpt_sovits import GPTSoVITSLocalTextToSpeechProvider
 
-__all__ = ["ElevenLabsTextToSpeechProvider"]
+__all__ = ["ElevenLabsTextToSpeechProvider", "GPTSoVITSLocalTextToSpeechProvider"]
