@@ -248,7 +248,17 @@ struct WorkspaceDetailView: View {
         GlassCard { VStack(alignment: .leading, spacing: 9) {
             Eyebrow(text: "Local knowledge")
             Text("\(CoreProjection.int(app.liveData["enabled"])) of \(CoreProjection.int(app.liveData["packs"])) packs enabled").font(.title2.bold())
+            let substrate = CoreProjection.dict(app.liveData["substrate"])
+            let counts = CoreProjection.dict(substrate["counts"])
             DataRow(label: "Indexed chunks", value: "\(CoreProjection.int(app.liveData["indexed_documents"]))")
+            DataRow(
+                label: "Knowledge tiers",
+                value: "\(CoreProjection.int(counts["active_local"]))/\(CoreProjection.int(counts["offline_reference"]))/\(CoreProjection.int(counts["semantic_derivative"]))"
+            )
+            DataRow(
+                label: "Knowledge attention",
+                value: CoreProjection.bool(substrate["attention_required"]) ? "Review" : "Clear"
+            )
             DataRow(label: "Disabled documents", value: "\(CoreProjection.int(app.liveData["disabled_documents"]))")
             Text("Local documents, Kiwix and optional vector indexes are evidence sources. They never become memory or truth just because retrieval found them.").font(.caption).foregroundStyle(MaryTheme.muted)
         }}
