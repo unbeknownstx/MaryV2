@@ -16,7 +16,8 @@ from datetime import datetime
 from time import monotonic, sleep
 from typing import Any
 
-from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QObject, QThread, Qt, Signal, Slot, QUrl
+from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QImage
 from PySide6.QtWidgets import QFileDialog
 
