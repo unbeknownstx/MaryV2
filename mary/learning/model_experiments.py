@@ -69,6 +69,8 @@ class ModelExperimentRecord:
     scores: dict[str, float] | None = None
     mary_fit: float | None = None
     latency_ms: float | None = None
+    benchmark_fingerprint: str = ""
+    benchmark_case_count: int = 0
     benchmark_verified: bool = False
     trial_ready: bool = False
     missing_scores: tuple[str, ...] = ()
@@ -247,6 +249,8 @@ class ModelExperimentLedger:
         scores: dict[str, float],
         latency_ms: float | None = None,
         benchmark_source: str = "marybench",
+        benchmark_fingerprint: str = "",
+        benchmark_case_count: int = 0,
     ) -> ModelExperimentRecord:
         current = self.get(experiment_id)
         clean_scores: dict[str, float] = {}
@@ -279,12 +283,19 @@ class ModelExperimentLedger:
         clean_latency = None
         if latency_ms is not None:
             clean_latency = round(max(0.0, min(3_600_000.0, float(latency_ms))), 2)
+        clean_benchmark_fingerprint = _text(benchmark_fingerprint, 160)
+        try:
+            clean_case_count = max(0, min(100_000, int(benchmark_case_count or 0)))
+        except (TypeError, ValueError):
+            clean_case_count = 0
         updates = {
             "status": "benchmarked" if exact_artifact else "benchmark_mismatch",
             "node_id": _text(node_id, 180),
             "scores": clean_scores,
             "mary_fit": mary_fit,
             "latency_ms": clean_latency,
+            "benchmark_fingerprint": clean_benchmark_fingerprint,
+            "benchmark_case_count": clean_case_count,
             "benchmark_verified": exact_artifact,
             "trial_ready": trial_ready,
             "missing_scores": list(missing),
@@ -298,6 +309,8 @@ class ModelExperimentLedger:
             {
                 "node_id": _text(node_id, 180),
                 "benchmark_source": _text(benchmark_source, 80) or "marybench",
+                "benchmark_fingerprint": clean_benchmark_fingerprint,
+                "benchmark_case_count": clean_case_count,
                 "artifact_match": exact_artifact,
                 "artifact_fingerprint": _text(artifact_fingerprint, 64).lower(),
                 "mary_fit": mary_fit,
@@ -391,6 +404,8 @@ class ModelExperimentLedger:
             "model_experiment_trial_ready": ready,
             "model_experiment_mary_fit": item.mary_fit,
             "model_experiment_latency_ms": item.latency_ms,
+            "model_experiment_benchmark_fingerprint": item.benchmark_fingerprint,
+            "model_experiment_benchmark_case_count": item.benchmark_case_count,
             "model_experiment_benchmark_verified": item.benchmark_verified,
             "model_experiment_authority": "evidence_only_no_promotion",
         }
@@ -418,6 +433,8 @@ class ModelExperimentLedger:
                 "scores": dict(item.scores or {}),
                 "mary_fit": item.mary_fit,
                 "latency_ms": item.latency_ms,
+                "benchmark_fingerprint": item.benchmark_fingerprint,
+                "benchmark_case_count": item.benchmark_case_count,
                 "benchmark_verified": item.benchmark_verified,
                 "trial_ready": item.trial_ready,
                 "missing_scores": list(item.missing_scores),
@@ -555,6 +572,8 @@ class ModelExperimentLedger:
                     scores=scores,
                     latency_ms=clean_latency,
                     benchmark_source="portable_creator_import",
+                    benchmark_fingerprint=_text(benchmark.get("benchmark_fingerprint"), 160),
+                    benchmark_case_count=benchmark.get("benchmark_case_count", 0),
                 )
                 benchmark_changed = True
 
