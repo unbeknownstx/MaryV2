@@ -76,11 +76,15 @@ class _Competence:
 
 
 class _StatusOwner:
-    def __init__(self, payload):
+    def __init__(self, payload, substrate=None):
         self.payload = payload
+        self.substrate = substrate or {}
 
     def status(self):
         return dict(self.payload)
+
+    def substrate_profile(self):
+        return dict(self.substrate)
 
 
 def _introspection(*, web: bool = True, registry=None, substrate: bool = False):
@@ -91,7 +95,20 @@ def _introspection(*, web: bool = True, registry=None, substrate: bool = False):
     value.autonomy = SimpleNamespace()
     value.competence = _Competence() if substrate else None
     value.knowledge_fabric = (
-        _StatusOwner({"packs": 4, "enabled": 2, "indexed_documents": 1200})
+        _StatusOwner(
+            {"packs": 4, "enabled": 2, "indexed_documents": 1200},
+            {
+                "counts": {
+                    "active_local": 2,
+                    "offline_reference": 1,
+                    "semantic_derivative": 1,
+                    "catalog_candidates": 0,
+                },
+                "enabled_retrieval_modes": ["fts", "direct", "vector"],
+                "attention_required": True,
+                "stale_derivatives": [{"pack_id": "vectors"}],
+            },
+        )
         if substrate else None
     )
     value.procedural_skills = (
@@ -124,12 +141,16 @@ def test_capability_introspection_projects_competence_and_local_substrates():
 
     assert live["nodes"]["competence_records"] == 2
     assert live["nodes"]["demonstrated_competence"]["llm.ollama"][0]["attempts"] == 8
-    assert live["knowledge_substrate"] == {
-        "packs": 4,
-        "enabled": 2,
-        "indexed_documents": 1200,
-        "available": True,
-    }
+    assert live["knowledge_substrate"]["packs"] == 4
+    assert live["knowledge_substrate"]["enabled"] == 2
+    assert live["knowledge_substrate"]["indexed_documents"] == 1200
+    assert live["knowledge_substrate"]["available"] is True
+    assert live["knowledge_substrate"]["tiers"]["active_local"] == 2
+    assert live["knowledge_substrate"]["enabled_retrieval_modes"] == [
+        "fts", "direct", "vector"
+    ]
+    assert live["knowledge_substrate"]["attention_required"] is True
+    assert live["knowledge_substrate"]["stale_derivatives"] == 1
     assert live["procedural_memory"]["approved"] == 5
     assert live["procedural_memory"]["revision_attention"] == 1
     assert live["world_model"]["reconciliation_groups"] == 2
