@@ -52,7 +52,7 @@ Riko's public development notes describe Mixamo/layered animation and improved a
 - lip-sync alignment;
 - procedural semantic-pose fallback.
 
-Next renderer milestone is real licensed/local VRMA/FBX playback behind the same semantic motion IDs. Binary motion assets stay outside Core authority.
+Mary Desktop now includes the official MIT three-vrm VRMA runtime behind those same semantic motion IDs. A local allowlisted motion manifest resolves creator-owned/licensed .vrma clips, crossfades them through one AnimationMixer, and falls back to Mary's layered procedural pose system when an asset is absent or fails. Actual motion binaries remain optional/local and outside Core authority. FBX/Mixamo ingestion/retargeting remains future work.
 
 ### 4. Character Studio
 
@@ -60,11 +60,14 @@ Riko's photo/pose workflow and lighting sandbox are high-value presentation idea
 
 - local expression preview;
 - semantic pose/motion preview;
-- full/portrait/close framing;
+- full/portrait/close framing plus orbit/elevation camera controls;
 - key/fill/rim sliders;
 - balanced/soft/neon/dramatic light presets;
+- transparent/void/studio/neon local scene presets;
+- a minimal procedural 3D studio/neon room that scales to the current VRM;
 - transparent WebGL PNG capture;
-- copyable presentation-only stage setup JSON.
+- copyable presentation-only stage setup JSON;
+- an opt-in transparent always-on-top companion window (Ctrl+Shift+P).
 
 These controls operate only on the renderer. They cannot write memory, relationship, identity, emotion authority or cognition.
 
@@ -107,6 +110,9 @@ scripts/doctor.py now reports:
 - per-surface projection contract;
 - semantic motion catalog/policy;
 - Three-VRM renderer dependency;
+- official three-vrm-animation / VRMA runtime;
+- local motion manifest;
+- transparent companion-window support;
 - optional local Mary VRM body presence;
 - PWA packet consumption;
 - native iPhone presentation linkage.
@@ -117,11 +123,11 @@ Missing optional body assets remain warnings rather than Core startup failures.
 
 These are worthwhile, but not ready to claim as implemented:
 
-- real VRMA/FBX/Mixamo clip playback;
+- creator-owned/licensed VRMA clip *assets* beyond the empty local slots (the runtime itself is integrated);
+- FBX/Mixamo ingestion and retargeting;
 - drag-to-position 3D lights;
 - arbitrary imported 3D rooms;
 - locomotion/navigation through rooms;
-- full transparent desktop companion overlay;
 - native Quest/VR body;
 - surface-negotiated capture/scene APIs;
 - a complete animation asset browser/retargeter.
