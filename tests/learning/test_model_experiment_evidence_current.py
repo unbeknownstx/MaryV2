@@ -83,6 +83,30 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
     assert ledger.snapshot()["event_count"] == 3
     assert ledger.snapshot()["promotion_performed"] is False
 
+    ledger.record_trial_dispatch(
+        exact.id,
+        task_id="capability_task_trial",
+        node_id="mac",
+        capability="llm.mlx_lm",
+    )
+    ledger.record_trial_outcome(
+        exact.id,
+        task_id="capability_task_trial",
+        node_id="mac",
+        status="completed",
+        provider="mlx_lm",
+        model="mlx-community/Qwen3-1.7B-4bit",
+    )
+    events = ledger.lineage(exact.id)
+    assert [item["event_type"] for item in events[-2:]] == [
+        "trial_dispatched",
+        "trial_outcome",
+    ]
+    assert events[-1]["details"]["status"] == "completed"
+    assert "prompt" not in events[-1]["details"]
+    assert "content" not in events[-1]["details"]
+    assert ledger.snapshot()["event_count"] == 5
+
 
 def test_verified_stack_fingerprint_includes_base_and_adapter_hashes(tmp_path: Path):
     manifest = tmp_path / "candidates.json"
