@@ -1626,14 +1626,35 @@ class MaryCoreService:
                 ),
                 task_id=str(getattr(task, "task_id", "") or ""),
             )
+            competence_node_id = str(
+                getattr(task, "selected_node_id", "") or ""
+            )
+            implementation_fingerprint = ""
+            try:
+                from mary.distributed.capabilities import (
+                    capability_implementation_fingerprint,
+                )
+
+                node = self.mary.node_registry.get(competence_node_id)
+                descriptor = (
+                    node.capabilities.get(capability.casefold())
+                    if node is not None
+                    else None
+                )
+                implementation_fingerprint = (
+                    capability_implementation_fingerprint(descriptor)
+                )
+            except Exception:
+                implementation_fingerprint = ""
             self.mary.competence.record(
                 capability=capability,
                 operation=str(getattr(task, "operation", "") or "general"),
-                node_id=str(getattr(task, "selected_node_id", "") or ""),
+                node_id=competence_node_id,
                 success=success,
                 verified=success,
                 evidence_ids=(str(getattr(task, "task_id", "") or ""),),
                 result=summary,
+                implementation_fingerprint=implementation_fingerprint,
             )
             # Terminal capability work is the natural low-frequency trigger
             # for replay consolidation. It may create review candidates, never
@@ -1671,6 +1692,23 @@ class MaryCoreService:
             or (f"{capability} completed" if success else f"{capability} ended as {status}")
         )[:1200]
         evidence = (task_id,)
+        implementation_fingerprint = ""
+        try:
+            from mary.distributed.capabilities import (
+                capability_implementation_fingerprint,
+            )
+
+            node = self.mary.node_registry.get(node_id)
+            descriptor = (
+                node.capabilities.get(capability.casefold())
+                if node is not None
+                else None
+            )
+            implementation_fingerprint = (
+                capability_implementation_fingerprint(descriptor)
+            )
+        except Exception:
+            implementation_fingerprint = ""
 
         skill_id = str(link.get("skill_id") or "")
         if skill_id:
@@ -1693,6 +1731,7 @@ class MaryCoreService:
                     verified=success,
                     evidence_ids=evidence,
                     result=summary,
+                    implementation_fingerprint=implementation_fingerprint,
                 )
             except Exception:
                 pass
