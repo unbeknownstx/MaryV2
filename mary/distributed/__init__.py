@@ -1,6 +1,7 @@
 """Distributed-runtime primitives for MaryV2."""
 from .capabilities import CapabilityDescriptor, capabilities_from_environment
 from .nodes import NodeDescriptor, NodeRegistry
+from .node_intelligence import build_node_intelligence
 from .mcp_fabric import (
     MCP_CAPABILITIES,
     MCP_SERVER_CAPABILITIES,
@@ -109,6 +110,7 @@ __all__ = [
     "CapabilityDescriptor",
     "NodeDescriptor",
     "NodeRegistry",
+    "build_node_intelligence",
     "CapabilityTaskPlan",
     "DeviceCapabilityTask",
     "DeviceTaskBroker",
