@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable
+from uuid import uuid4
 
 from mary.continuity.storage import AtomicJsonStore
 from .adapter_lab import AdapterEvaluation
@@ -86,13 +87,13 @@ class ModelExperimentRecord:
 
 
 class ModelExperimentLedger:
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path).expanduser()
         self._store = AtomicJsonStore(
             self.path,
-            default={"version": self.VERSION, "records": []},
+            default={"version": self.VERSION, "records": [], "events": []},
         )
 
     @staticmethod
@@ -215,6 +216,22 @@ class ModelExperimentLedger:
                 row.pop("promotion_performed", None)
                 row.pop("authority", None)
             data["records"] = rows[-500:]
+            events = list(data.get("events") or [])
+            events.append({
+                "id": f"model_event_{uuid4().hex}",
+                "experiment_id": experiment_id,
+                "event_type": "reviewed_registered",
+                "occurred_at": now,
+                "details": {
+                    "candidate_id": candidate_id,
+                    "runtime": runtime,
+                    "artifact_fingerprint": artifact_fingerprint,
+                    "dataset_fingerprint": dataset_fingerprint,
+                    "reviewed_by": record.reviewed_by,
+                    "source": record.source,
+                },
+            })
+            data["events"] = events[-4000:]
             data["version"] = self.VERSION
 
         self._store.mutate(mutate)
@@ -274,6 +291,22 @@ class ModelExperimentLedger:
             "updated_at": _now(),
         }
         self._update(current.id, updates)
+        self._record_event(
+            current.id,
+            "benchmark_recorded",
+            {
+                "node_id": _text(node_id, 180),
+                "benchmark_source": _text(benchmark_source, 80) or "marybench",
+                "artifact_match": exact_artifact,
+                "artifact_fingerprint": _text(artifact_fingerprint, 64).lower(),
+                "mary_fit": mary_fit,
+                "latency_ms": clean_latency,
+                "trial_ready": trial_ready,
+                "missing_scores": list(missing),
+                "failed_scores": list(failed),
+                "score_keys": sorted(clean_scores)[:64],
+            },
+        )
         return self.get(current.id)
 
     def advertisement_overlay(
@@ -318,16 +351,81 @@ class ModelExperimentLedger:
                 return self._decode(row)
         raise KeyError(experiment_id)
 
+    def lineage(self, experiment_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return content-free append-only evidence for one experiment."""
+        key = _text(experiment_id, 180)
+        if not key:
+            return []
+        rows = [
+            dict(row)
+            for row in list(self._store.snapshot().get("events") or [])
+            if str(row.get("experiment_id") or "") == key
+        ]
+        return rows[-max(1, min(500, int(limit))):]
+
     def snapshot(self) -> dict[str, Any]:
-        records = [self._decode(row) for row in list(self._store.snapshot().get("records") or [])]
+        data = self._store.snapshot()
+        records = [self._decode(row) for row in list(data.get("records") or [])]
+        events = [dict(row) for row in list(data.get("events") or [])]
         return {
             "version": self.VERSION,
             "records": [item.to_dict() for item in records[-100:]],
             "count": len(records),
             "trial_ready": sum(1 for item in records if item.trial_ready),
+            "event_count": len(events),
+            "recent_events": events[-100:],
             "promotion_performed": False,
             "authority": "experiment_evidence_only",
         }
+
+    def _record_event(
+        self,
+        experiment_id: str,
+        event_type: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        clean_id = _text(experiment_id, 180)
+        clean_type = _text(event_type, 80).casefold()
+        if not clean_id or not clean_type:
+            return
+        safe_details: dict[str, Any] = {}
+        for key, value in list(dict(details or {}).items())[:32]:
+            name = _text(key, 80)
+            if not name:
+                continue
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                safe_details[name] = _text(value, 500) if isinstance(value, str) else value
+            elif isinstance(value, (list, tuple)):
+                safe_details[name] = [
+                    _text(item, 160)
+                    for item in list(value)[:64]
+                    if _text(item, 160)
+                ]
+            elif isinstance(value, dict):
+                safe_details[name] = {
+                    _text(k, 80): (
+                        _text(v, 160) if isinstance(v, str) else v
+                    )
+                    for k, v in list(value.items())[:32]
+                    if _text(k, 80)
+                    and isinstance(v, (str, int, float, bool))
+                }
+            else:
+                safe_details[name] = _text(value, 300)
+
+        def mutate(data: dict[str, Any]) -> None:
+            events = list(data.get("events") or [])
+            events.append({
+                "id": f"model_event_{uuid4().hex}",
+                "experiment_id": clean_id,
+                "event_type": clean_type,
+                "occurred_at": _now(),
+                "details": safe_details,
+            })
+            data["events"] = events[-4000:]
+            data["version"] = self.VERSION
+
+        self._store.mutate(mutate)
 
     def _update(self, experiment_id: str, changes: dict[str, Any]) -> None:
         found = False
