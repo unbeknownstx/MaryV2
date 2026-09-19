@@ -89,6 +89,11 @@ Bundled preferred art remains:
 - added native haptics and accessibility labels;
 - advanced native app metadata to 0.5 (build 5).
 
-## Deliberate follow-up
+## Current relational mutation contract
 
-The next Core-side change should add authenticated, bounded relational runtime actions (`relationship.set_mode`, `shared_activity.start/note/complete/cancel`) through the existing single-writer Core action boundary. Once that exists, the native controls can mutate canonical relationship/shared-activity state without any direct file write or second authority path.
+Authenticated bounded runtime actions now expose `relationship.set_mode` and
+`shared_activity.start/note/complete/cancel` through the existing single-writer
+Core boundary. The native Together controls call those actions only; they never
+write relationship files or own a second relationship state. Active activities
+remain ephemeral until explicit completion records the shared experience through
+the canonical `RelationshipManager`.

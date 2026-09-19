@@ -186,9 +186,79 @@ final class AppState: ObservableObject {
     }
 
     func prepareSharedActivity(_ activity: SharedLifeActivity) {
-        draft = activity.prompt
-        selectedTab = .chat
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        Task { await beginSharedActivity(activity) }
+    }
+
+    func beginSharedActivity(_ activity: SharedLifeActivity) async {
+        guard let client else {
+            lastError = "Connect Mary Core first."
+            return
+        }
+        do {
+            _ = try await client.runtimeAction(
+                "shared_activity.start",
+                args: [
+                    "activity_type": activity.rawValue,
+                    "title": activity.title,
+                    "context": activity.prompt,
+                ]
+            )
+            draft = activity.prompt
+            selectedTab = .chat
+            lastError = nil
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            await refreshHome()
+        } catch {
+            lastError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    func completeSharedActivity() async {
+        guard let client else { return }
+        let current = relationship.activeActivityTitle
+        do {
+            _ = try await client.runtimeAction(
+                "shared_activity.complete",
+                args: [
+                    "summary": current.isEmpty
+                        ? "Mary and her creator completed shared time together."
+                        : "Mary and her creator completed: \(current)",
+                    "importance": 0.8,
+                ]
+            )
+            lastError = nil
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await refreshHome()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func cancelSharedActivity() async {
+        guard let client else { return }
+        do {
+            _ = try await client.runtimeAction("shared_activity.cancel")
+            lastError = nil
+            await refreshHome()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setRelationshipMode(_ mode: String) async {
+        guard let client else { return }
+        do {
+            _ = try await client.runtimeAction(
+                "relationship.set_mode",
+                args: ["mode": mode]
+            )
+            lastError = nil
+            UISelectionFeedbackGenerator().selectionChanged()
+            await refreshHome()
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func openChat(with prompt: String = "") {

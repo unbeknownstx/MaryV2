@@ -106,6 +106,26 @@ struct TogetherView: View {
                     }
                     .buttonStyle(MarySecondaryButtonStyle())
                 }
+
+                if !relationship.activeActivityTitle.isEmpty {
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await app.completeSharedActivity() }
+                        } label: {
+                            Label("Save moment", systemImage: "checkmark.circle.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(MaryPrimaryButtonStyle())
+
+                        Button {
+                            Task { await app.cancelSharedActivity() }
+                        } label: {
+                            Label("Cancel", systemImage: "xmark.circle")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(MarySecondaryButtonStyle())
+                    }
+                }
             }
         }
     }
@@ -161,7 +181,12 @@ struct TogetherView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Opens Talk with a suggested shared activity prompt")
+                    .disabled(!relationship.activeActivityTitle.isEmpty)
+                    .accessibilityHint(
+                        relationship.activeActivityTitle.isEmpty
+                            ? "Starts this shared activity in Mary Core and opens Talk"
+                            : "Finish or cancel the current shared activity first"
+                    )
                 }
             }
         }
@@ -179,12 +204,36 @@ struct TogetherView: View {
                         .foregroundStyle(MaryTheme.pink2)
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Private presence")
                         .font(.headline)
                     Text(privatePresenceText)
                         .font(.caption)
                         .foregroundStyle(MaryTheme.muted)
+
+                    if !app.performanceMode.isPublic {
+                        HStack(spacing: 6) {
+                            ForEach(["friend", "close", "romantic", "partner"], id: \.self) { mode in
+                                Button {
+                                    Task { await app.setRelationshipMode(mode) }
+                                } label: {
+                                    Text(mode.capitalized)
+                                        .font(.caption2.weight(.bold))
+                                        .padding(.horizontal, 8)
+                                        .frame(minHeight: 32)
+                                        .background(
+                                            relationship.mode == mode
+                                                ? MaryTheme.pink.opacity(0.22)
+                                                : MaryTheme.panel2,
+                                            in: Capsule()
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.white)
+                                .accessibilityLabel("Set relationship mode to \(mode)")
+                            }
+                        }
+                    }
                 }
                 Spacer()
             }

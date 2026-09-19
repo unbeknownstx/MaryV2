@@ -2897,6 +2897,85 @@ class MaryCoreService:
                     "authority": "environment_context_only",
                 })
 
+            if action.action == "relationship.status":
+                relational = self.mary.performance_hardening.relational_presence
+                return _json_safe({
+                    **relational.snapshot(),
+                    "authority": (
+                        "canonical relationship history plus bounded ephemeral "
+                        "shared-activity state"
+                    ),
+                })
+
+            if action.action == "relationship.set_mode":
+                relational = self.mary.performance_hardening.relational_presence
+                result = relational.set_relationship_mode(
+                    str(values.get("mode") or ""),
+                    source=f"creator_surface:{action.device_id}",
+                )
+                return _json_safe({
+                    "ok": True,
+                    **result,
+                    "relationship": relational.snapshot(),
+                    "authority": "canonical_relationship_owner",
+                })
+
+            if action.action == "shared_activity.start":
+                relational = self.mary.performance_hardening.relational_presence
+                activity = relational.start_activity(
+                    str(values.get("activity_type") or "shared"),
+                    str(values.get("title") or ""),
+                    context=str(values.get("context") or ""),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "activity": activity,
+                    "relationship": relational.snapshot(),
+                    "durable_write_performed": False,
+                    "authority": "ephemeral_shared_activity",
+                })
+
+            if action.action == "shared_activity.note":
+                relational = self.mary.performance_hardening.relational_presence
+                activity = relational.note_activity(
+                    str(values.get("note") or "")
+                )
+                return _json_safe({
+                    "ok": True,
+                    "activity": activity,
+                    "relationship": relational.snapshot(),
+                    "durable_write_performed": False,
+                    "authority": "ephemeral_shared_activity",
+                })
+
+            if action.action == "shared_activity.complete":
+                relational = self.mary.performance_hardening.relational_presence
+                event = relational.complete_activity(
+                    summary=str(values.get("summary") or ""),
+                    importance=max(
+                        0.0,
+                        min(1.0, float(values.get("importance", 0.8))),
+                    ),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "event": event,
+                    "relationship": relational.snapshot(),
+                    "durable_write_performed": True,
+                    "authority": "canonical_relationship_owner",
+                })
+
+            if action.action == "shared_activity.cancel":
+                relational = self.mary.performance_hardening.relational_presence
+                activity = relational.cancel_activity()
+                return _json_safe({
+                    "ok": True,
+                    "cancelled_activity": activity,
+                    "relationship": relational.snapshot(),
+                    "durable_write_performed": False,
+                    "authority": "ephemeral_shared_activity",
+                })
+
             if action.action == "perception.browser.observe":
                 from mary.perception import BrowserContext
                 raw_metadata = values.get("metadata")

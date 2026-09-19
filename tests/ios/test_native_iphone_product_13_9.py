@@ -20,23 +20,31 @@ def test_native_iphone_has_five_primary_product_destinations_and_preserves_focus
     assert "ForEach(MainTab.primaryTabs)" in root
 
 
-def test_together_surface_projects_core_relationship_without_owning_it():
+def test_together_surface_mutates_relationship_only_through_authenticated_core_actions():
     together = _text("TogetherView.swift")
+    state = _text("AppState.swift")
     projection = _text("CoreProjection.swift")
     assert "CoreProjection.relationalSnapshot(app.dashboardData)" in together
     assert 'hardening["relational_presence"]' in projection
     assert 'presence["relationship_mode"]' in projection
-    assert "relationship.set_mode" not in together
+    assert 'runtimeAction(' in state
+    assert '"relationship.set_mode"' in state
     assert "relationship.json" not in together
     assert "not another persona" in together
 
 
-def test_shared_life_actions_are_conversation_first_until_core_write_action_exists():
+def test_shared_life_actions_start_and_finish_through_canonical_core():
     state = _text("AppState.swift")
     models = _text("Models.swift")
+    together = _text("TogetherView.swift")
     assert "func prepareSharedActivity" in state
+    assert "func beginSharedActivity" in state
+    assert '"shared_activity.start"' in state
+    assert '"shared_activity.complete"' in state
+    assert '"shared_activity.cancel"' in state
     assert "draft = activity.prompt" in state
     assert "selectedTab = .chat" in state
+    assert 'Text("Save moment")' in together
     for activity in ("watch", "game", "create", "study", "work", "music", "date", "unwind"):
         assert activity in models
 
