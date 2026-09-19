@@ -43,6 +43,27 @@ def test_turn_envelope_filters_unknown_metadata_and_sanitizes_identifiers():
     assert "secret" not in envelope
 
 
+def test_turn_envelope_carries_only_known_boolean_presentation_affordances():
+    envelope = build_turn_envelope({
+        "surface": "desktop",
+        "surface_id": "desktop-session",
+        "presentation_capabilities": {
+            "expression_cues": True,
+            "motion_assets": True,
+            "vr": False,
+            "arbitrary_shell_access": True,
+            "capture": "yes",
+        },
+    })
+
+    assert envelope["surface_id"] == "desktop-session"
+    assert envelope["presentation_capabilities"] == {
+        "expression_cues": True,
+        "motion_assets": True,
+        "vr": False,
+    }
+
+
 def test_attach_turn_envelope_merges_with_existing_runtime_context():
     context = {
         "mind_state": {
@@ -261,6 +282,7 @@ def test_native_ios_turn_projects_trusted_current_surface_into_turn_mind(tmp_pat
         assert current["surface_kind"] == "native_ios_app"
         assert current["device_id"] == "iphone-native-test"
         assert current["transport"] == "core"
+        assert current["presentation_capabilities"] == {}
         assert current["state_authority"] == "canonical_mary_core"
         assert current["authority"] == "ephemeral_runtime_fact"
         assert current["persistence"] == "none"
