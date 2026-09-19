@@ -38,6 +38,8 @@ def test_desktop_projects_existing_performance_without_becoming_authority():
     assert "gaze_cues" in projected["supported_channels"]
     assert "semantic_motion" in projected["supported_channels"]
     assert projected["capabilities"]["lip_sync"] is True
+    assert projected["capabilities"]["lighting_control"] is True
+    assert projected["capabilities"]["capture"] is True
     assert projected["capabilities"]["motion_assets"] is False
     assert packet["text"] == "Seriously? Fine, show me."
 
