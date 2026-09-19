@@ -70,6 +70,7 @@ let currentScreen = 'chat';
 let selectedCreativeFile = '';
 let creatorLabState = { previewDataUrl: '', description: '', draft: '', busy: false };
 let modelExperimentTrialState = { experimentId: '', prompt: 'Give a concise character-consistent response to this held-out trial prompt.', taskId: '', status: '', result: '', provider: '', model: '', busy: false };
+let fabricGovernanceState = { loaded: false, loading: false, world: {}, skills: {} };
 let busy = false;
 let conversationState = 'idle';
 let activeSpeechAudio = null;
@@ -1803,6 +1804,23 @@ function renderFabric() {
   const trialResult = modelExperimentTrialState.result
     ? `<div class="workspace-panel" style="margin-top:10px"><div class="data-row"><span>Provider</span><strong>${escapeHtml(modelExperimentTrialState.provider || 'local')}</strong></div><div class="data-row"><span>Model</span><strong>${escapeHtml(modelExperimentTrialState.model || selectedExperiment.model || 'reviewed experiment')}</strong></div><p>${escapeHtml(modelExperimentTrialState.result)}</p><small>Experimental output only · never injected into Mary's production response or memory.</small></div>`
     : '';
+  const worldReview = fabricGovernanceState.world || {};
+  const contradictions = Array.isArray(worldReview.contradictions) ? worldReview.contradictions : [];
+  const skillReview = fabricGovernanceState.skills || {};
+  const skillCandidates = Array.isArray(skillReview.candidates) ? skillReview.candidates : [];
+  const approvedSkills = Array.isArray(skillReview.approved) ? skillReview.approved : [];
+  const contradictionCards = contradictions.length
+    ? contradictions.slice(0, 12).map((item) => {
+        const value = typeof item.value === 'string' ? item.value : JSON.stringify(item.value);
+        return `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(item.subject || 'Unknown')}</span><strong>${escapeHtml(item.predicate || 'claim')}</strong></div><p>${escapeHtml(value || '—')}</p><small>${escapeHtml(item.source || 'unknown source')} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence · ${escapeHtml(item.verification || 'unverified')}</small><button class="action-button" data-world-reconcile="${escapeHtml(item.id || '')}" style="margin-top:8px"><strong>Keep this as current</strong><small>Retire competing claims as history</small></button></div>`;
+      }).join('')
+    : '<div class="workspace-empty">No contested current beliefs require review.</div>';
+  const skillCandidateCards = skillCandidates.length
+    ? skillCandidates.slice(0, 12).map((item) => `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(item.name || 'Procedure')}</span><strong>v${escapeHtml(item.version || 0)}</strong></div><p>${escapeHtml(item.description || '')}</p><small>${escapeHtml((item.steps || []).join(' → ') || 'No steps supplied')} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence</small><div class="button-row" style="margin-top:8px"><button class="action-button primary" data-skill-approve="${escapeHtml(item.id || '')}"><strong>Approve</strong><small>Guidance only</small></button><button class="action-button" data-skill-reject="${escapeHtml(item.id || '')}"><strong>Reject</strong><small>Keep current procedure unchanged</small></button></div></div>`).join('')
+    : '<div class="workspace-empty">No procedure candidates are waiting for review.</div>';
+  const approvedSkillCards = approvedSkills.length
+    ? approvedSkills.slice(0, 8).map((item) => `<div class="data-row"><span>${escapeHtml(item.name || 'Procedure')} · v${escapeHtml(item.version || 0)}</span><button class="action-button" data-skill-revise="${escapeHtml(item.id || '')}"><strong>Propose revision</strong></button></div>`).join('')
+    : '<div class="workspace-empty">No approved reusable procedures yet.</div>';
   return `
     <div class="workspace-grid three">
       <div class="workspace-panel accent"><h3>One Mary Core</h3><div class="data-row"><span>Architecture</span><strong>${integration.healthy ? 'Connected' : 'Degraded'}</strong></div><div class="data-row"><span>Operational</span><strong>${integration.operational ? 'Yes' : 'No'}</strong></div><div class="data-row"><span>Connected nodes</span><strong>${nodes.connected ?? nodes.connected_nodes ?? 0}</strong></div><p>PC, Mac, PWA and iPhone are surfaces or workers around the same canonical identity and state.</p></div>
@@ -1817,6 +1835,10 @@ function renderFabric() {
       <button class="action-button primary" id="model-exp-run" ${readyExperiments.length && !modelExperimentTrialState.busy ? '' : 'disabled'}><strong>${modelExperimentTrialState.busy ? 'Experiment running…' : 'Run bounded trial'}</strong><small>Exact lineage + benchmark + node permission required</small></button>
       <p id="model-exp-status"><small>${escapeHtml(modelExperimentTrialState.status || (readyExperiments.length ? 'Ready for an explicit trial.' : 'No reviewed experiment currently satisfies the trial gate.'))}</small></p>
       ${trialResult}
+    </div>
+    <div class="workspace-grid two" style="margin-top:12px">
+      <div class="workspace-panel"><h3>World Reconciliation</h3><p>Choose only when competing current evidence should be resolved. The other claims are retired as history, not erased.</p>${fabricGovernanceState.loading ? '<div class="workspace-empty">Loading bounded world evidence…</div>' : contradictionCards}</div>
+      <div class="workspace-panel"><h3>Procedure Review</h3><p>Approve or reject learned procedure candidates. Approval never grants tool or node permission.</p>${fabricGovernanceState.loading ? '<div class="workspace-empty">Loading governed skills…</div>' : skillCandidateCards}<h4 style="margin-top:14px">Approved procedures</h4>${approvedSkillCards}</div>
     </div>`;
 }
 
@@ -2130,6 +2152,28 @@ function bindCreatorLabActions() {
   });
 }
 
+function refreshFabricGovernance({ force = false } = {}) {
+  if (fabricGovernanceState.loading || (fabricGovernanceState.loaded && !force)) return;
+  if (!bridge?.getWorldReviewState || !bridge?.getSkillReviewState) return;
+  fabricGovernanceState.loading = true;
+  let pending = 2;
+  const done = () => {
+    pending -= 1;
+    if (pending > 0) return;
+    fabricGovernanceState.loading = false;
+    fabricGovernanceState.loaded = true;
+    if (currentScreen === 'fabric') renderWorkspace('fabric');
+  };
+  bridge.getWorldReviewState((raw) => {
+    fabricGovernanceState.world = parsePayload(raw);
+    done();
+  });
+  bridge.getSkillReviewState((raw) => {
+    fabricGovernanceState.skills = parsePayload(raw);
+    done();
+  });
+}
+
 function pollModelExperimentTask(taskId, attempt = 0) {
   if (!taskId || !bridge?.getCapabilityTaskStatus) return;
   if (attempt >= 120) {
@@ -2160,6 +2204,75 @@ function pollModelExperimentTask(taskId, attempt = 0) {
     }
     modelExperimentTrialState.status = status ? `Trial ${status} on the selected node…` : 'Waiting for the selected node…';
     if (currentScreen === 'fabric') {
+    refreshFabricGovernance();
+    $('[data-world-reconcile]').forEach((button) => button.addEventListener('click', () => {
+      if (!bridge?.reconcileWorldBelief) return;
+      button.disabled = true;
+      bridge.reconcileWorldBelief(button.dataset.worldReconcile, (raw) => {
+        const result = parsePayload(raw);
+        if (result.ok === false) {
+          toast(result.error || 'World reconciliation failed.', 'error');
+          button.disabled = false;
+          return;
+        }
+        toast('Current world belief reconciled; competing evidence remains historical.');
+        fabricGovernanceState.loaded = false;
+        refreshFabricGovernance({ force: true });
+      });
+    }));
+    $('[data-skill-approve]').forEach((button) => button.addEventListener('click', () => {
+      if (!bridge?.approveSkillCandidate) return;
+      button.disabled = true;
+      bridge.approveSkillCandidate(button.dataset.skillApprove, (raw) => {
+        const result = parsePayload(raw);
+        if (result.ok === false) {
+          toast(result.error || 'Skill approval failed.', 'error');
+          button.disabled = false;
+          return;
+        }
+        toast('Procedure approved. Execution permission is unchanged.');
+        fabricGovernanceState.loaded = false;
+        refreshFabricGovernance({ force: true });
+      });
+    }));
+    $('[data-skill-reject]').forEach((button) => button.addEventListener('click', () => {
+      if (!bridge?.rejectSkillCandidate) return;
+      button.disabled = true;
+      bridge.rejectSkillCandidate(button.dataset.skillReject, (raw) => {
+        const result = parsePayload(raw);
+        if (result.ok === false) {
+          toast(result.error || 'Skill rejection failed.', 'error');
+          button.disabled = false;
+          return;
+        }
+        toast('Procedure candidate rejected.');
+        fabricGovernanceState.loaded = false;
+        refreshFabricGovernance({ force: true });
+      });
+    }));
+    $('[data-skill-revise]').forEach((button) => button.addEventListener('click', () => {
+      if (!bridge?.reviseApprovedSkill) return;
+      const skillId = button.dataset.skillRevise;
+      const current = (fabricGovernanceState.skills?.approved || []).find((item) => String(item.id || '') === String(skillId || '')) || {};
+      const reason = window.prompt('Why should this approved procedure change?', current.revision_reason || '');
+      if (!reason?.trim()) return;
+      const existingSteps = Array.isArray(current.steps) ? current.steps : [];
+      const edited = window.prompt('Procedure steps — one per line:', existingSteps.join('\n'));
+      if (edited === null) return;
+      const steps = edited.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 32);
+      button.disabled = true;
+      bridge.reviseApprovedSkill(skillId, reason.trim(), JSON.stringify(steps), (raw) => {
+        const result = parsePayload(raw);
+        if (result.ok === false) {
+          toast(result.error || 'Could not create the revision candidate.', 'error');
+          button.disabled = false;
+          return;
+        }
+        toast('Revision candidate created. The approved predecessor remains active until review.');
+        fabricGovernanceState.loaded = false;
+        refreshFabricGovernance({ force: true });
+      });
+    }));
       const statusNode = $('#model-exp-status');
       if (statusNode) statusNode.innerHTML = `<small>${escapeHtml(modelExperimentTrialState.status)}</small>`;
     }
