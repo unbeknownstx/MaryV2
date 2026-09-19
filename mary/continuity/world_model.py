@@ -516,6 +516,72 @@ class WorldModel:
         )
         return matches[: max(1, min(100, int(limit)))]
 
+    def reconciliation_queue(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Group unresolved competing current beliefs for explicit review.
+
+        The queue is read-only. It does not choose a winner, change verification,
+        retire history, or override canonical owners.
+        """
+
+        groups: dict[tuple[str, str], list[BeliefClaim]] = {}
+        for belief in self.current_beliefs():
+            key = (belief.subject.casefold(), belief.predicate.casefold())
+            groups.setdefault(key, []).append(belief)
+
+        output: list[dict[str, Any]] = []
+        for (_, _), beliefs in groups.items():
+            value_keys = {self._value_key(item.value) for item in beliefs}
+            contested = any(
+                item.status == "contested" or item.contradiction_ids
+                for item in beliefs
+            )
+            if len(value_keys) <= 1 and not contested:
+                continue
+            beliefs.sort(
+                key=lambda item: (
+                    item.verification == "verified",
+                    item.authority in {"canonical", "creator"},
+                    item.confidence,
+                    item.observed_at,
+                ),
+                reverse=True,
+            )
+            output.append({
+                "subject": beliefs[0].subject,
+                "predicate": beliefs[0].predicate,
+                "candidate_count": len(beliefs),
+                "belief_ids": [item.id for item in beliefs[:16]],
+                "candidates": [
+                    {
+                        "belief_id": item.id,
+                        "value": item.value,
+                        "status": item.status,
+                        "verification": item.verification,
+                        "authority": item.authority,
+                        "confidence": item.confidence,
+                        "source": item.source,
+                        "observed_at": item.observed_at,
+                        "evidence_ids": list(item.evidence_ids[:16]),
+                    }
+                    for item in beliefs[:16]
+                ],
+                "review_required": True,
+                "resolution_performed": False,
+                "policy": (
+                    "explicit reconciliation only; selecting a winner retires "
+                    "competing current beliefs as history rather than deleting them"
+                ),
+            })
+        output.sort(
+            key=lambda item: (
+                int(item["candidate_count"]),
+                str(item["subject"]),
+                str(item["predicate"]),
+            ),
+            reverse=True,
+        )
+        return output[: max(1, min(200, int(limit)))]
+
     def contradictions(self, *, limit: int = 100) -> list[BeliefClaim]:
         rows = [
             belief
@@ -552,6 +618,7 @@ class WorldModel:
                 if row.get("valid_to") is None and row.get("status") != "retired"
             ),
             "epistemic": self.epistemic_summary(),
+            "reconciliation_groups": len(self.reconciliation_queue(limit=200)),
             "authority": "evidence/belief coordination only; canonical owners remain authoritative",
             "policy": (
                 "observations and inferences may be stored with provenance; "
