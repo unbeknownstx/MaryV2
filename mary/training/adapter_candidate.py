@@ -95,11 +95,17 @@ def build_mlx_adapter_candidate_proposal(
     if not clean_id:
         raise ValueError("candidate_id is invalid")
 
+    mary_dataset = dict(manifest.get("mary_dataset") or {})
     dataset_fingerprint = str(
         manifest.get("dataset_fingerprint")
         or manifest.get("source_dataset_fingerprint")
+        or mary_dataset.get("fingerprint")
         or ""
     )[:160]
+    if not dataset_fingerprint:
+        raise ValueError(
+            "MLX adapter bundle is missing Mary Dataset fingerprint lineage"
+        )
 
     return MlxAdapterCandidateProposal(
         version="mary-mlx-adapter-candidate-v1",
