@@ -2204,6 +2204,16 @@ function pollModelExperimentTask(taskId, attempt = 0) {
     }
     modelExperimentTrialState.status = status ? `Trial ${status} on the selected node…` : 'Waiting for the selected node…';
     if (currentScreen === 'fabric') {
+      const statusNode = $('#model-exp-status');
+      if (statusNode) statusNode.innerHTML = `<small>${escapeHtml(modelExperimentTrialState.status)}</small>`;
+    }
+    setTimeout(() => pollModelExperimentTask(taskId, attempt + 1), 500);
+  });
+}
+
+function bindWorkspaceActions() {
+  if (currentScreen === 'gallery') bindCreatorLabActions();
+  if (currentScreen === 'fabric') {
     refreshFabricGovernance();
     $('[data-world-reconcile]').forEach((button) => button.addEventListener('click', () => {
       if (!bridge?.reconcileWorldBelief) return;
@@ -2273,16 +2283,6 @@ function pollModelExperimentTask(taskId, attempt = 0) {
         refreshFabricGovernance({ force: true });
       });
     }));
-      const statusNode = $('#model-exp-status');
-      if (statusNode) statusNode.innerHTML = `<small>${escapeHtml(modelExperimentTrialState.status)}</small>`;
-    }
-    setTimeout(() => pollModelExperimentTask(taskId, attempt + 1), 500);
-  });
-}
-
-function bindWorkspaceActions() {
-  if (currentScreen === 'gallery') bindCreatorLabActions();
-  if (currentScreen === 'fabric') {
     $('#model-exp-select')?.addEventListener('change', (event) => {
       modelExperimentTrialState.experimentId = String(event.target.value || '');
     });
