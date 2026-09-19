@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import base64
+import hashlib
 import json
 import math
 import mimetypes
@@ -56,6 +58,8 @@ from mary.experience import build_experience_snapshot
 
 MOBILE_PROTOCOL_VERSION = "4"
 MAX_REQUEST_BYTES = 256_000
+MAX_CREATOR_IMAGE_REQUEST_BYTES = 2_359_296
+MAX_CREATOR_IMAGE_BYTES = 1_500_000
 MAX_AUDIO_REQUEST_BYTES = 12_000_000
 _SAFE_TRACE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
 _MOBILE_TRACE_TIMING_FIELDS = {
@@ -1341,6 +1345,82 @@ class MaryRemoteMobileRuntime:
             filename=filename,
             content_type=content_type,
         )
+
+    def describe_creator_image(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        encoded = str(payload.get("image_base64") or "").strip()
+        if not encoded:
+            raise ValueError("Creator image payload is required.")
+        if len(encoded) > int(MAX_CREATOR_IMAGE_BYTES * 1.38) + 16:
+            raise ValueError("Creator image exceeds the bounded size limit.")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise ValueError("Creator image must be valid base64.") from exc
+        if not raw or len(raw) > MAX_CREATOR_IMAGE_BYTES:
+            raise ValueError("Creator image is empty or exceeds the bounded size limit.")
+        mime_type = str(payload.get("mime_type") or "image/jpeg").strip().casefold()
+        if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise ValueError("Creator image must be JPEG, PNG, or WebP.")
+        digest = hashlib.sha256(raw).hexdigest()
+
+        registered = self.client.runtime_action(
+            "perception.asset.register",
+            {
+                "kind": "image",
+                "mime_type": mime_type,
+                "content_sha256": digest,
+                "byte_count": len(raw),
+            },
+        )
+        asset = dict(registered.get("asset") or {})
+        asset_id = str(asset.get("asset_id") or "")
+        if not asset_id:
+            raise RuntimeError("Mary Core did not register the creator image.")
+
+        dispatched = self.client.dispatch_capability_task(
+            "sensor.image_describe",
+            "Describe one creator-selected image as factual creative evidence for Mary.",
+            {
+                "image_base64": encoded,
+                "mime_type": mime_type,
+                "mode": "creative",
+                "asset_id": asset_id,
+            },
+        )
+        task = dict(dispatched.get("task") or {})
+        task_id = str(task.get("task_id") or "")
+        if not task_id:
+            raise RuntimeError("Mary Core did not create a visual-description task.")
+
+        deadline = monotonic() + 45.0
+        while monotonic() < deadline:
+            current = self.client.capability_task_status(task_id)
+            task = dict(current.get("task") or {})
+            status = str(task.get("status") or "").casefold()
+            if status == "completed":
+                result = dict(task.get("result") or {})
+                description = " ".join(str(result.get("description") or "").split())[:12_000]
+                if not description:
+                    raise RuntimeError("The vision node completed without a usable description.")
+                return {
+                    "ok": True,
+                    "asset_id": asset_id,
+                    "task_id": task_id,
+                    "description": description,
+                    "provider": str(result.get("provider") or "")[:80],
+                    "model": str(result.get("model") or "")[:180],
+                    "source_sha256": str(result.get("source_sha256") or "")[:64],
+                    "raw_media_stored": False,
+                    "authority": "ephemeral_perception_evidence",
+                }
+            if status in {"failed", "rejected", "expired"}:
+                error = str(task.get("error") or "").strip()
+                raise RuntimeError(error or f"Vision task ended as {status}.")
+            sleep(0.35)
+        raise RuntimeError("Vision task did not finish within the bounded wait.")
 
     def bridge_call(
         self,
@@ -3097,6 +3177,20 @@ class MaryMobileRuntime:
                 source="mobile_stt",
             )
 
+    def describe_creator_image(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "error": (
+                "Creator image vision requires the canonical remote Core capability fabric "
+                "so device permission and node routing remain authoritative."
+            ),
+            "status": "remote_core_required",
+            "raw_media_stored": False,
+        }
+
     def _publish(
         self,
         event_type: PresenceEventType,
@@ -4669,6 +4763,8 @@ class MaryMobileRequestHandler(
 
     def _read_json(
         self,
+        *,
+        maximum: int = MAX_REQUEST_BYTES,
     ) -> dict[str, Any]:
         try:
             length = int(
@@ -4686,7 +4782,7 @@ class MaryMobileRequestHandler(
         if length <= 0:
             return {}
 
-        if length > MAX_REQUEST_BYTES:
+        if length > maximum:
             raise OverflowError(
                 "Request body is too large."
             )
@@ -4968,6 +5064,14 @@ class MaryMobileRequestHandler(
                     }
                 )
 
+                return
+
+            if path == "/api/creator-image/describe":
+                body = self._read_json(
+                    maximum=MAX_CREATOR_IMAGE_REQUEST_BYTES
+                )
+                payload = self.mary_server.runtime.describe_creator_image(body)
+                self._send_json({"ok": bool(payload.get("ok", True)), **payload})
                 return
 
             body = (
