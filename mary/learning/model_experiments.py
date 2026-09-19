@@ -90,7 +90,7 @@ class ModelExperimentRecord:
 
 
 class ModelExperimentLedger:
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path).expanduser()
