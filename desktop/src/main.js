@@ -2602,6 +2602,8 @@ function renderVoice() {
       </div>
       <div class="section-title" style="margin-top:14px">CAMERA</div>
       <div class="action-grid"><button class="action-button" data-avatar-frame="full"><strong>Full</strong><small>Whole-character framing</small></button><button class="action-button" data-avatar-frame="portrait"><strong>Portrait</strong><small>Default companion framing</small></button><button class="action-button" data-avatar-frame="close"><strong>Close</strong><small>Face / upper body</small></button></div>
+      <label class="form-field" style="margin-top:10px"><span>Orbit · <b id="stage-yaw-value">${Math.round(stageCameraYaw)}°</b></span><input id="stage-camera-yaw" type="range" min="-45" max="45" step="1" value="${stageCameraYaw}"></label>
+      <label class="form-field"><span>Elevation · <b id="stage-elevation-value">${stageCameraElevation.toFixed(2)}</b></span><input id="stage-camera-elevation" type="range" min="-0.3" max="0.3" step="0.01" value="${stageCameraElevation}"></label>
     </div>
     <div class="section-title">CHARACTER STUDIO</div>
     <div class="workspace-grid">
@@ -3064,27 +3066,41 @@ function bindWorkspaceActions() {
     setScreen('chat');
     submitPrompt(button.dataset.prompt);
   }));
-  $('#workspace-body [data-avatar-frame]').forEach((button) => button.addEventListener('click', () => {
+  $$('#workspace-body [data-avatar-frame]').forEach((button) => button.addEventListener('click', () => {
     setAvatarFraming(button.dataset.avatarFrame);
     toast(`Avatar framing: ${titleCase(button.dataset.avatarFrame)}`);
   }));
-  $('#workspace-body [data-stage-expression]').forEach((button) => button.addEventListener('click', () => {
+  $('#stage-camera-yaw')?.addEventListener('input', (event) => {
+    stageCameraYaw = Math.max(-45, Math.min(45, Number(event.target.value) || 0));
+    localStorage.setItem('mary.stageCameraYaw', String(stageCameraYaw));
+    const label = $('#stage-yaw-value');
+    if (label) label.textContent = `${Math.round(stageCameraYaw)}°`;
+    setAvatarFraming(avatarFraming);
+  });
+  $('#stage-camera-elevation')?.addEventListener('input', (event) => {
+    stageCameraElevation = Math.max(-.3, Math.min(.3, Number(event.target.value) || 0));
+    localStorage.setItem('mary.stageCameraElevation', String(stageCameraElevation));
+    const label = $('#stage-elevation-value');
+    if (label) label.textContent = stageCameraElevation.toFixed(2);
+    setAvatarFraming(avatarFraming);
+  });
+  $$('#workspace-body [data-stage-expression]').forEach((button) => button.addEventListener('click', () => {
     const expression = String(button.dataset.stageExpression || 'neutral');
     applyAvatarState({ expression, emotion_intensity: expression === 'neutral' ? .08 : .56 });
     toast(`Stage preview: ${titleCase(expression)}`);
   }));
-  $('#workspace-body [data-stage-motion]').forEach((button) => button.addEventListener('click', () => {
+  $$('#workspace-body [data-stage-motion]').forEach((button) => button.addEventListener('click', () => {
     const motionId = String(button.dataset.stageMotion || '');
     studioMotionCue = motionId ? { motion_id: motionId } : null;
     if (!motionId && currentVrm) applyRelaxedStandingPose(currentVrm);
     toast(motionId ? `Motion preview: ${titleCase(motionId)}` : 'Motion preview reset.');
   }));
-  $('#workspace-body [data-stage-lighting]').forEach((button) => button.addEventListener('click', () => {
+  $$('#workspace-body [data-stage-lighting]').forEach((button) => button.addEventListener('click', () => {
     applyStageLightingPreset(button.dataset.stageLighting);
     renderWorkspace('voice');
     toast(`Lighting: ${titleCase(button.dataset.stageLighting)}`);
   }));
-  $('#workspace-body [data-stage-scene]').forEach((button) => button.addEventListener('click', () => {
+  $$('#workspace-body [data-stage-scene]').forEach((button) => button.addEventListener('click', () => {
     applyStageScenePreset(button.dataset.stageScene);
     renderWorkspace('voice');
     toast(`Scene: ${titleCase(button.dataset.stageScene)}`);
