@@ -233,3 +233,33 @@ def test_portable_experiment_evidence_rejects_tampering(tmp_path: Path):
     core = ModelExperimentLedger(tmp_path / "core.json")
     with pytest.raises(ValueError, match="fingerprint mismatch"):
         core.import_portable_evidence(evidence)
+
+
+
+def test_mlx_review_rejects_malformed_bundle_lineage_digest(tmp_path: Path):
+    import pytest
+
+    ledger = ModelExperimentLedger(tmp_path / "experiments.json")
+    base = {
+        "version": "mary-mlx-adapter-candidate-v1",
+        "status": "review_required",
+        "candidate_id": "mary-m1-light-adapter",
+        "runtime": "mlx_lm",
+        "model": "mlx-community/Qwen3-1.7B-4bit",
+        "upstream_base": "Qwen/Qwen3-1.7B",
+        "adapter_config_sha256": "a" * 64,
+        "adapter_weights_sha256": "b" * 64,
+        "dataset_fingerprint": "dataset-1",
+    }
+
+    with pytest.raises(ValueError, match="exact SHA256"):
+        ledger.register_mlx_proposal({
+            **base,
+            "bundle_lineage_fingerprint": "0" * 65,
+        })
+
+    with pytest.raises(ValueError, match="exact SHA256"):
+        ledger.register_mlx_proposal({
+            **base,
+            "bundle_lineage_fingerprint": "z" * 64,
+        })
