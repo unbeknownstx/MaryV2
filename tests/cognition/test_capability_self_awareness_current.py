@@ -65,6 +65,8 @@ class _Competence:
             return []
         return [{
             "node_id": "desktop-ready",
+            "skill_id": "skill-good",
+            "implementation_fingerprint": "impl-ollama",
             "attempts": 8,
             "verified_successes": 7,
             "reliability": 0.88,
@@ -73,6 +75,33 @@ class _Competence:
             "last_success": True,
             "last_observed_at": "2026-09-18T00:00:00+00:00",
         }]
+
+    def skill_summary(self, skill_id, *, capability="", node_ids=()):
+        if skill_id == "skill-good":
+            return {
+                "attempts": 8,
+                "successes": 7,
+                "failures": 1,
+                "verified_successes": 7,
+                "reliability": 0.8,
+                "evidence_strength": 0.63,
+                "demonstrated": True,
+                "last_success": True,
+                "last_observed_at": "2026-09-18T00:00:00+00:00",
+            }
+        if skill_id == "skill-degrading":
+            return {
+                "attempts": 5,
+                "successes": 2,
+                "failures": 3,
+                "verified_successes": 2,
+                "reliability": 0.43,
+                "evidence_strength": 0.46,
+                "demonstrated": True,
+                "last_success": False,
+                "last_observed_at": "2026-09-18T01:00:00+00:00",
+            }
+        return {}
 
 
 class _StatusOwner:
@@ -85,6 +114,34 @@ class _StatusOwner:
 
     def substrate_profile(self):
         return dict(self.substrate)
+
+
+class _Procedures(_StatusOwner):
+    def __init__(self):
+        super().__init__({"approved": 5, "candidates": 2, "revision_attention": 1})
+
+    def approved(self):
+        return [
+            SimpleNamespace(
+                id="skill-good",
+                name="stable local inference",
+                version=2,
+                required_capabilities=("llm.ollama",),
+            ),
+            SimpleNamespace(
+                id="skill-degrading",
+                name="fragile screen workflow",
+                version=1,
+                required_capabilities=("sensor.screen_describe",),
+            ),
+        ]
+
+    def revision_queue(self, *, limit=200):
+        return [{
+            "skill_id": "skill-degrading",
+            "revision_pressure": 0.48,
+            "failure_rate": 0.6,
+        }]
 
 
 class _ExperimentLedger:
@@ -160,10 +217,7 @@ def _introspection(
         )
         if substrate else None
     )
-    value.procedural_skills = (
-        _StatusOwner({"approved": 5, "candidates": 2, "revision_attention": 1})
-        if substrate else None
-    )
+    value.procedural_skills = _Procedures() if substrate else None
     value.world_model = (
         _StatusOwner({"current_beliefs": 11, "reconciliation_groups": 2})
         if substrate else None
@@ -204,6 +258,11 @@ def test_capability_introspection_projects_competence_and_local_substrates():
     assert live["knowledge_substrate"]["stale_local_indexes"] == 1
     assert live["procedural_memory"]["approved"] == 5
     assert live["procedural_memory"]["revision_attention"] == 1
+    assert live["procedural_memory"]["demonstrated"] == 2
+    assert live["procedural_memory"]["degrading"] == 1
+    assert live["procedural_memory"]["procedures"][0]["state"] == "degrading"
+    assert live["capability_improvement"]["llm.ollama"]["demonstrated"] is True
+    assert live["capability_improvement"]["sensor.screen_describe"]["evidence_needed"]
     assert live["world_model"]["reconciliation_groups"] == 2
     assert "advertised capability is separate from demonstrated competence" in evidence["fallback_response"]
 
@@ -282,6 +341,19 @@ def test_model_experiment_question_reports_evidence_without_claiming_training_or
     assert model_lab["benchmark_mismatch"] == 1
     assert model_lab["benchmark_verified"] == 1
     assert model_lab["trial_ready"] == 1
+    assert model_lab["experimental_records"] == 3
+    assert all(item["experimental"] is True for item in model_lab["records"])
+    assert all(item["production_authority"] is False for item in model_lab["records"])
+    reviewed = next(
+        item for item in model_lab["records"]
+        if item["id"] == "exp-reviewed"
+    )
+    assert any("naturalism" in item for item in reviewed["evidence_needed"])
+    ready = next(
+        item for item in model_lab["records"]
+        if item["id"] == "exp-ready"
+    )
+    assert any("trial outcomes" in item for item in ready["evidence_needed"])
     assert model_lab["training_readiness_claimed"] is False
     assert model_lab["automatic_training"] is False
     assert model_lab["automatic_promotion"] is False
@@ -292,3 +364,32 @@ def test_model_experiment_question_reports_evidence_without_claiming_training_or
     assert "does not mean production promotion" in answer
     assert "host/package preflight" in answer
     assert "training is never automatic" in answer
+
+def test_procedure_self_awareness_reports_demonstrated_degrading_and_needed_evidence():
+    evidence = _introspection(
+        registry=_Registry(),
+        substrate=True,
+        experiments=True,
+    )._capabilities(
+        "What procedures are you good at, what is degrading, and what evidence do you need to improve?"
+    )
+
+    live = evidence["live_capabilities"]
+    procedures = live["procedural_memory"]
+
+    assert procedures["demonstrated"] == 2
+    assert procedures["degrading"] == 1
+    degrading = next(
+        item for item in procedures["procedures"]
+        if item["skill_id"] == "skill-degrading"
+    )
+    assert degrading["state"] == "degrading"
+    assert degrading["revision_pressure"] == 0.48
+    assert any("creator review" in item for item in degrading["evidence_needed"])
+
+    answer = evidence["fallback_response"]
+    assert "verified successful evidence" in answer
+    assert "degradation/revision review" in answer
+    assert "never approves, binds, authorizes, or executes" in answer
+    assert "evidence gaps" in answer
+
