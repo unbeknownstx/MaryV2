@@ -90,6 +90,9 @@ let currentDeliveryPlan = { ...BASE_DELIVERY_PLAN };
 let currentPerformanceBeatIndex = -1;
 let currentPerformancePacket = {};
 let currentMotionCue = null;
+let semanticMotionLastCue = null;
+let semanticMotionId = '';
+let semanticMotionBlend = 0;
 let ambientAvatarState = { expression: 'neutral', emotion_intensity: 0 };
 let preReactionCue = null;
 let preReactionUntil = 0;
@@ -681,10 +684,59 @@ function motionPoseForCue(cue, elapsed, energy = .35) {
   };
 }
 
-function applySemanticMotionPose(cue, elapsed, energy) {
+function blendPoseRotation(baseRotation, targetRotation, weight) {
+  const base = new THREE.Quaternion(...baseRotation);
+  const target = new THREE.Quaternion(...targetRotation);
+  base.slerp(target, clamp(weight));
+  return [base.x, base.y, base.z, base.w];
+}
+
+function applySemanticMotionLayer(cue, elapsed, energy, delta) {
   const humanoid = currentVrm?.humanoid;
   if (!humanoid?.setNormalizedPose) return;
-  humanoid.setNormalizedPose(motionPoseForCue(cue, elapsed, energy));
+
+  const nextId = String(cue?.motion_id || '');
+  if (cue) {
+    if (nextId && nextId !== semanticMotionId) {
+      // Pull toward the base pose briefly on clip/semantic changes so a new
+      // gesture reads as a transition instead of a skeleton snap.
+      semanticMotionBlend = Math.min(semanticMotionBlend, .24);
+      semanticMotionId = nextId;
+    }
+    semanticMotionLastCue = cue;
+  }
+
+  const targetWeight = cue ? clamp(.34 + energy * .58, .24, .92) : 0;
+  const seconds = cue ? .16 : .30;
+  const response = Math.min(1, Math.max(.02, delta / seconds));
+  semanticMotionBlend += (targetWeight - semanticMotionBlend) * response;
+
+  if (!semanticMotionLastCue) return;
+  if (!cue && semanticMotionBlend < .008) {
+    semanticMotionBlend = 0;
+    semanticMotionId = '';
+    semanticMotionLastCue = null;
+    humanoid.setNormalizedPose(RELAXED_STANDING_POSE);
+    return;
+  }
+
+  const targetPose = motionPoseForCue(
+    semanticMotionLastCue,
+    elapsed,
+    energy,
+  );
+  const layeredPose = {};
+  for (const [bone, base] of Object.entries(RELAXED_STANDING_POSE)) {
+    const target = targetPose[bone] || base;
+    layeredPose[bone] = {
+      rotation: blendPoseRotation(
+        base.rotation,
+        target.rotation || base.rotation,
+        semanticMotionBlend,
+      ),
+    };
+  }
+  humanoid.setNormalizedPose(layeredPose);
 }
 
 function updatePerformanceBeat() {
@@ -872,7 +924,7 @@ function animate(now = performance.now()) {
     const semanticCue = currentMotionCue
       || ((!activeSpeechAudio && currentScreen === 'voice' && studioMotionCue) ? studioMotionCue : null)
       || (conversationState === 'listening' ? { motion_id: 'listen_attentive' } : null);
-    if (semanticCue) applySemanticMotionPose(semanticCue, elapsed, gestureEnergy);
+    applySemanticMotionLayer(semanticCue, elapsed, gestureEnergy, delta);
 
     const speakingBoost = conversationState === 'speaking' ? .55 + gestureEnergy * .65 : .45;
     const bounceGain = ['animated','celebrate'].includes(gestureStyle) ? 1.65 : gestureStyle === 'firm' ? .58 : gestureStyle === 'soft' ? .72 : 1.0;
