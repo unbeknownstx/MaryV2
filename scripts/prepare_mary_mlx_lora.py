@@ -19,6 +19,12 @@ def main() -> int:
     )
     parser.add_argument("--profile", choices=sorted(PROFILES), default="m1-light")
     parser.add_argument("--feedback", type=Path, default=None)
+    parser.add_argument(
+        "--novel-review",
+        type=Path,
+        default=None,
+        help="Optional creator-approved novel behavior abstraction review JSON.",
+    )
     args = parser.parse_args()
 
     feedback = args.feedback
@@ -31,6 +37,7 @@ def main() -> int:
         output_dir=args.output,
         profile_id=args.profile,
         feedback_path=feedback,
+        novel_review_path=args.novel_review,
     )
     print("MARY MLX ADAPTER BUNDLE")
     print("=" * 64)
