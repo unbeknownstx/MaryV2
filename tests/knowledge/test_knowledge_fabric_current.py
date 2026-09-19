@@ -46,6 +46,8 @@ def test_local_document_pack_builds_rebuildable_fts_evidence(tmp_path: Path):
 
     assert result["indexed"] == 1
     assert result["content_fingerprint"]
+    assert len(result["pipeline_fingerprint"]) == 64
+    assert len(result["derivative_fingerprint"]) == 64
     hits = fabric.search("broadcast domains", pack_ids=(pack.id,), limit=5)
     assert hits
     assert hits[0].pack_id == pack.id
@@ -257,8 +259,12 @@ def test_local_corpus_refresh_plan_is_change_aware_and_policy_scoped(tmp_path: P
 
     indexed = fabric.index_local_pack(pack.id)
     assert indexed["files_seen"] == 1
+    assert len(indexed["pipeline_fingerprint"]) == 64
+    assert len(indexed["derivative_fingerprint"]) == 64
     assert [row["locator"] for row in fabric.documents(pack.id)] == ["public.md"]
-    assert fabric.local_refresh_plan(pack.id)["has_changes"] is False
+    current = fabric.local_refresh_plan(pack.id)
+    assert current["pipeline_changed"] is False
+    assert current["has_changes"] is False
 
     (docs / "public.md").write_text("version two reference", encoding="utf-8")
     (docs / "new.md").write_text("new source", encoding="utf-8")
@@ -384,3 +390,50 @@ def test_substrate_profile_maps_active_reference_and_derivative_tiers_without_sc
     assert profile["attention_required"] is True
     assert profile["automatic_scan_performed"] is False
     assert profile["automatic_rebuild_performed"] is False
+
+
+
+def test_local_corpus_pipeline_change_requires_explicit_reindex(tmp_path: Path):
+    import json
+
+    docs = tmp_path / "pipeline-corpus"
+    docs.mkdir()
+    (docs / "manual.md").write_text(
+        "Stable source text whose bytes do not change.",
+        encoding="utf-8",
+    )
+    fabric = KnowledgeFabric(
+        tmp_path / "knowledge" / "pipeline.json",
+        index_path=tmp_path / "knowledge" / "pipeline.sqlite3",
+    )
+    pack = fabric.register(
+        pack_id="pipeline",
+        title="Pipeline corpus",
+        kind="local_files",
+        location=str(docs),
+        query_mode="fts",
+    )
+    indexed = fabric.index_local_pack(pack.id)
+    baseline = fabric.local_index_lineage(pack.id)
+    assert baseline["current"] is True
+    assert baseline["derivative_fingerprint"] == indexed["derivative_fingerprint"]
+
+    manifest_path = fabric._source_manifest_path(pack.id)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pipeline_fingerprint"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    plan = fabric.local_refresh_plan(pack.id)
+    assert plan["added"] == []
+    assert plan["changed"] == []
+    assert plan["removed"] == []
+    assert plan["pipeline_changed"] is True
+    assert plan["has_changes"] is True
+    assert plan["recommended_action"] == "explicit_index"
+    assert fabric.local_index_lineage(pack.id)["current"] is False
+    assert fabric.derivative_source_fingerprint(pack.id) == ""
+
+    report = fabric.curation_report(pack.id)
+    assert report["packs"][0]["refresh"]["pipeline_changed"] is True
+    assert "explicit_refresh" in report["packs"][0]["recommendations"]
+    assert report["automatic_mutation_performed"] is False
