@@ -33,6 +33,7 @@ class SelfIntrospection:
         autonomy: Any,
         tools: Any,
         emotion: Any,
+        node_registry: Any | None = None,
     ) -> None:
         self.identity = identity
         self.self_model = self_model
@@ -47,6 +48,7 @@ class SelfIntrospection:
         self.autonomy = autonomy
         self.tools = tools
         self.emotion = emotion
+        self.node_registry = node_registry
 
     def build(
         self,
@@ -825,17 +827,115 @@ class SelfIntrospection:
         return entries
 
     def _capabilities(self) -> dict[str, Any]:
+        """Project Mary's live capability graph instead of model self-knowledge.
+
+        Availability and authorization are deliberately separate. A registered
+        tool or advertised node capability is evidence that Mary can route to a
+        capability; it is never evidence that execution is already authorized.
+        """
+        try:
+            tool_status = dict(self.tools.status() or {})
+        except Exception:
+            tool_status = {}
+
+        node_snapshot: dict[str, Any] = {}
+        snapshot = getattr(self.node_registry, "snapshot", None)
+        if callable(snapshot):
+            try:
+                node_snapshot = dict(snapshot() or {})
+            except Exception:
+                node_snapshot = {}
+
+        live_nodes: list[dict[str, Any]] = []
+        capability_names: set[str] = set()
+        execution_ready: set[str] = set()
+        for raw_node in list(node_snapshot.get("nodes") or [])[:32]:
+            if not isinstance(raw_node, dict) or not bool(raw_node.get("connected")):
+                continue
+            caps = raw_node.get("capabilities")
+            if not isinstance(caps, dict):
+                caps = {}
+            compact_caps: list[dict[str, Any]] = []
+            for raw_name, raw_cap in list(caps.items())[:64]:
+                name = str(raw_name or "").strip().lower()
+                if not name:
+                    continue
+                cap = dict(raw_cap) if isinstance(raw_cap, dict) else {}
+                available = bool(cap.get("available", True))
+                readiness = str(cap.get("readiness") or ("ready" if available else "unavailable"))
+                metadata = dict(cap.get("metadata") or {}) if isinstance(cap.get("metadata"), dict) else {}
+                authorized = metadata.get("execution_authorized") is True
+                if available and readiness != "unavailable":
+                    capability_names.add(name)
+                if available and readiness == "ready" and authorized:
+                    execution_ready.add(name)
+                compact_caps.append({
+                    "name": name,
+                    "available": available,
+                    "readiness": readiness,
+                    "execution_authorized": authorized,
+                })
+            live_nodes.append({
+                "node_id": str(raw_node.get("node_id") or "")[:120],
+                "display_name": str(raw_node.get("display_name") or raw_node.get("node_id") or "")[:120],
+                "platform": str(raw_node.get("platform") or "")[:80],
+                "capabilities": compact_caps,
+            })
+
+        web_search = bool(tool_status.get("web_search_configured"))
+        repository_map = dict(tool_status.get("repository_map") or {})
+        facts = {
+            "core_self_inspection": True,
+            "web_search": {
+                "available": web_search,
+                "provider": str(tool_status.get("web_search_provider") or "")[:120],
+            },
+            "workspace": {
+                "available": bool(tool_status.get("workspace_root")),
+                "root_present": bool(tool_status.get("workspace_root")),
+            },
+            "repository_map": {
+                "registered": bool(repository_map.get("registered")),
+                "execution": bool(repository_map.get("execution")),
+                "mutation": bool(repository_map.get("mutation")),
+            },
+            "nodes": {
+                "connected": len(live_nodes),
+                "registered": int(node_snapshot.get("registered") or len(node_snapshot.get("nodes") or [])),
+                "live": live_nodes,
+                "advertised_capabilities": sorted(capability_names),
+                "execution_ready_capabilities": sorted(execution_ready),
+            },
+        }
+
+        if web_search:
+            search_sentence = "Web search is configured through my registered tool layer."
+        else:
+            search_sentence = "Web search is not currently configured in my registered tool layer."
+        if live_nodes:
+            node_sentence = (
+                f"I currently have {len(live_nodes)} connected capability node"
+                f"{'s' if len(live_nodes) != 1 else ''}; I should use only the capabilities "
+                "they actually advertise and still respect their execution permissions."
+            )
+        else:
+            node_sentence = "I do not currently have a connected capability node to claim device execution from."
+
         return {
             "agency_status": self.agency.status(),
-            "tool_status": self.tools.status(),
+            "tool_status": tool_status,
+            "live_capabilities": facts,
             "autonomy_type": type(self.autonomy).__name__,
+            "authority": (
+                "live Core/tool/node state is authoritative for capability claims; "
+                "provider model priors are not capability evidence"
+            ),
             "fallback_response": (
                 "I can inspect my own Core/runtime state and analyze problems directly. "
-                "When a permitted workspace or code capability is connected, I can also read "
-                "bounded source files, diagnose them, and prepare controlled code-change "
-                "proposals. I cannot silently rewrite or redeploy myself: applying a source "
-                "change still needs the registered mutation path, the required creator "
-                "approval, and a host/node that actually has file access. If those capabilities "
-                "are not connected, I should say so instead of pretending I edited anything."
+                + search_sentence + " " + node_sentence + " "
+                "A capability being present is separate from permission to execute it. "
+                "I cannot silently rewrite or redeploy myself, and I should never claim "
+                "a tool, device action, browse, file, vision, voice, or model capability "
+                "unless the live capability graph says it is available."
             ),
         }
