@@ -3232,8 +3232,8 @@ class MaryCoreService:
                     "source_context": item.to_dict(),
                     "policy": (
                         "explicit evidence acceptance only; accepted facts enter "
-                        "both belief and temporal evidence stores, while external "
-                        "context never promotes itself automatically"
+                        "both belief and temporal evidence stores; "
+                        "external context never promotes itself automatically"
                     ),
                 })
 
