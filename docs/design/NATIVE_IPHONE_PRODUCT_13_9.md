@@ -54,7 +54,7 @@ It may display:
 
 It may not directly edit `relationship.json`, manufacture memories, or pretend an activity was canonically started when Core did not record it.
 
-Until authenticated relational write actions are added to the Core single-writer dispatcher, tapping Watch/Play/Create/Study/Work/Music/Date/Unwind prepares a natural-language activity prompt and moves to Talk. This preserves user intent without bypassing Core authority.
+Tapping Watch/Play/Create/Study/Work/Music/Date/Unwind now starts the bounded shared activity through the authenticated Core single-writer dispatcher, then carries the activity prompt into Talk so the conversation can continue naturally. Completion records the shared experience through the canonical RelationshipManager; cancellation ends only the ephemeral active activity. The iPhone never writes relationship state directly.
 
 ## Assets
 
