@@ -18,6 +18,7 @@ from threading import RLock, Timer
 from typing import Any, Protocol
 
 from mary.distributed import CapabilityDescriptor, NodeDescriptor, preview_capability_task
+from mary.expression.surface_performance import capabilities_for_surface
 from mary.protocol.client import MaryClient
 from mary.protocol.credential_store import CredentialStoreError, NodeCredentialStore
 from mary.runtime.application import MaryApplication
@@ -107,6 +108,10 @@ class MaryRuntimeGateway(Protocol):
         *,
         visible: bool,
         foreground: bool | None = None,
+    ) -> dict[str, Any]: ...
+    def set_presentation_capabilities(
+        self,
+        capabilities: dict[str, bool],
     ) -> dict[str, Any]: ...
     def close(self) -> None: ...
 
@@ -429,6 +434,21 @@ class LocalMaryGateway:
             "foreground": bool(visible if foreground is None else foreground),
         }
 
+    def set_presentation_capabilities(
+        self,
+        capabilities: dict[str, bool],
+    ) -> dict[str, Any]:
+        normalized = {
+            str(key): bool(value)
+            for key, value in dict(capabilities or {}).items()
+        }
+        return {
+            "state": "LOCAL",
+            "surface": self.surface,
+            "presentation_capabilities": normalized,
+            "authority": self.authority,
+        }
+
     def close(self) -> None:
         return None
 
@@ -462,6 +482,12 @@ class RemoteMaryGateway:
         self._surface_connected = False
         self._surface_visible = True
         self._surface_foreground = True
+        defaults = capabilities_for_surface(self.surface).to_dict()
+        defaults.pop("surface", None)
+        self._presentation_capabilities = {
+            str(key): bool(value)
+            for key, value in defaults.items()
+        }
         self._closed = False
 
     def _new_surface_id(self) -> str:
@@ -485,6 +511,7 @@ class RemoteMaryGateway:
                     visible=self._surface_visible,
                     foreground=self._surface_foreground,
                     lease_seconds=self._lease_seconds,
+                    presentation_capabilities=self._presentation_capabilities,
                 )
                 or {}
             )
@@ -516,6 +543,7 @@ class RemoteMaryGateway:
                     visible=self._surface_visible,
                     foreground=self._surface_foreground,
                     activity=False,
+                    presentation_capabilities=self._presentation_capabilities,
                 )
             except Exception:
                 try:
@@ -524,10 +552,49 @@ class RemoteMaryGateway:
                         visible=self._surface_visible,
                         foreground=self._surface_foreground,
                         lease_seconds=self._lease_seconds,
+                        presentation_capabilities=self._presentation_capabilities,
                     )
                 except Exception:
                     pass
             self._schedule_surface_renewal_locked()
+
+    def set_presentation_capabilities(
+        self,
+        capabilities: dict[str, bool],
+    ) -> dict[str, Any]:
+        """Renew the current lease with renderer-reported affordances only."""
+
+        normalized = capabilities_for_surface(
+            self.surface,
+            dict(capabilities or {}),
+        ).to_dict()
+        normalized.pop("surface", None)
+        with self._surface_lock:
+            if self._closed:
+                raise RuntimeError("Remote Mary gateway is closed.")
+            self._presentation_capabilities = {
+                str(key): bool(value)
+                for key, value in normalized.items()
+            }
+            if not self.creator_surface or not self._surface_connected:
+                return {
+                    "state": "PENDING",
+                    "surface_id": self._surface_id,
+                    "presentation_capabilities": dict(
+                        self._presentation_capabilities
+                    ),
+                }
+            return dict(
+                self.client.surface_renew(
+                    surface_id=self._surface_id,
+                    visible=self._surface_visible,
+                    foreground=self._surface_foreground,
+                    activity=False,
+                    lease_seconds=self._lease_seconds,
+                    presentation_capabilities=self._presentation_capabilities,
+                )
+                or {}
+            )
 
     def set_surface_visibility(
         self,
@@ -606,6 +673,7 @@ class RemoteMaryGateway:
                 turn_kwargs["client_local_time"] = client_local_time
             if turn_id is not None:
                 turn_kwargs["turn_id"] = turn_id
+            turn_kwargs["surface_id"] = self._surface_id
             response = self.client.turn(
                 text,
                 **turn_kwargs,
