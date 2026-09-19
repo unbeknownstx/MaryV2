@@ -117,6 +117,8 @@ let studioMotionCue = null;
 let windowPresentationMode = document.documentElement.dataset.windowMode || 'standard';
 let stageScenePreset = localStorage.getItem('mary.stageScenePreset') || 'transparent';
 let stageSceneBeforeCompanion = stageScenePreset;
+let stageCameraYaw = Number(localStorage.getItem('mary.stageCameraYaw') || 0);
+let stageCameraElevation = Number(localStorage.getItem('mary.stageCameraElevation') || 0);
 let stageLighting = {
   key: Number(localStorage.getItem('mary.stageLight.key') || 2.35),
   fill: Number(localStorage.getItem('mary.stageLight.fill') || 1.25),
@@ -399,6 +401,29 @@ stageGround.visible = false;
 stageGround.receiveShadow = true;
 scene.add(stageGround);
 
+const stageRoom = new THREE.Group();
+const stageRoomWallMaterial = new THREE.MeshStandardMaterial({ color: 0x111521, roughness: .9, metalness: 0 });
+const stageRoomWall = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.8), stageRoomWallMaterial);
+stageRoomWall.position.set(0, 1.4, -1.15);
+stageRoomWall.receiveShadow = true;
+stageRoom.add(stageRoomWall);
+const stageRoomBarMaterialA = new THREE.MeshBasicMaterial({ color: 0x7aa5ff, transparent: true, opacity: .78 });
+const stageRoomBarMaterialB = new THREE.MeshBasicMaterial({ color: 0xff4fa6, transparent: true, opacity: .72 });
+const stageRoomBarA = new THREE.Mesh(new THREE.BoxGeometry(.035, 1.8, .025), stageRoomBarMaterialA);
+const stageRoomBarB = new THREE.Mesh(new THREE.BoxGeometry(.035, 1.5, .025), stageRoomBarMaterialB);
+stageRoomBarA.position.set(-1.3, 1.42, -1.08);
+stageRoomBarA.rotation.z = -.14;
+stageRoomBarB.position.set(1.28, 1.15, -1.08);
+stageRoomBarB.rotation.z = .16;
+stageRoom.add(stageRoomBarA, stageRoomBarB);
+const stageRoomAccentA = new THREE.PointLight(0x7aa5ff, .8, 4.5, 2);
+const stageRoomAccentB = new THREE.PointLight(0xff4fa6, .7, 4.5, 2);
+stageRoomAccentA.position.set(-1.1, 1.7, .1);
+stageRoomAccentB.position.set(1.1, 1.25, .1);
+stageRoom.add(stageRoomAccentA, stageRoomAccentB);
+stageRoom.visible = false;
+scene.add(stageRoom);
+
 function applyStageScenePreset(name = stageScenePreset) {
   const normalized = ['transparent', 'void', 'studio', 'neon'].includes(name) ? name : 'transparent';
   stageScenePreset = normalized;
@@ -407,20 +432,38 @@ function applyStageScenePreset(name = stageScenePreset) {
   if (normalized === 'transparent') {
     renderer.setClearColor(0x000000, 0);
     stageGround.visible = false;
+    stageRoom.visible = false;
   } else if (normalized === 'void') {
     renderer.setClearColor(0x050611, 1);
+    stageRoom.visible = false;
     stageGroundMaterial.color.setHex(0x101522);
     stageGroundMaterial.emissive.setHex(0x000000);
     stageGroundMaterial.opacity = .66;
     stageGround.visible = true;
   } else if (normalized === 'studio') {
     renderer.setClearColor(0x111521, 1);
+    stageRoom.visible = true;
+    stageRoomWallMaterial.color.setHex(0x28303c);
+    stageRoomWallMaterial.emissive.setHex(0x000000);
+    stageRoomWallMaterial.emissiveIntensity = 0;
+    stageRoomBarA.visible = false;
+    stageRoomBarB.visible = false;
+    stageRoomAccentA.visible = false;
+    stageRoomAccentB.visible = false;
     stageGroundMaterial.color.setHex(0x252b38);
     stageGroundMaterial.emissive.setHex(0x000000);
     stageGroundMaterial.opacity = .82;
     stageGround.visible = true;
   } else {
     renderer.setClearColor(0x03050e, 1);
+    stageRoom.visible = true;
+    stageRoomWallMaterial.color.setHex(0x0d0a18);
+    stageRoomWallMaterial.emissive.setHex(0x090316);
+    stageRoomWallMaterial.emissiveIntensity = .18;
+    stageRoomBarA.visible = true;
+    stageRoomBarB.visible = true;
+    stageRoomAccentA.visible = true;
+    stageRoomAccentB.visible = true;
     stageGroundMaterial.color.setHex(0x130d22);
     stageGroundMaterial.emissive.setHex(0x24082a);
     stageGroundMaterial.emissiveIntensity = .34;
@@ -481,6 +524,8 @@ function copyStageSetup() {
     framing: avatarFraming,
     lighting: { ...stageLighting },
     scene: stageScenePreset,
+    camera_yaw: stageCameraYaw,
+    camera_elevation: stageCameraElevation,
     vrma_assets: motionManifestStatus.count,
     vrma_active_motion: vrmaActiveMotionId,
     expression: String(ambientAvatarState.expression || 'neutral'),
@@ -559,8 +604,14 @@ function setAvatarFraming(mode = 'portrait') {
   const horizontalDistance = (width / 2) / Math.tan(horizontalFov / 2);
   const distance = Math.max(verticalDistance, horizontalDistance) * padding;
 
-  camera.position.set(center.x, targetY, center.z + distance);
-  camera.lookAt(center.x, targetY, center.z);
+  const yaw = THREE.MathUtils.degToRad(Math.max(-45, Math.min(45, stageCameraYaw)));
+  const elevation = Math.max(-.3, Math.min(.3, stageCameraElevation));
+  camera.position.set(
+    center.x + Math.sin(yaw) * distance,
+    targetY + elevation,
+    center.z + Math.cos(yaw) * distance,
+  );
+  camera.lookAt(center.x, targetY + elevation * .28, center.z);
 }
 
 async function loadMaryVrm() {
@@ -593,6 +644,9 @@ async function loadMaryVrm() {
     modelBaseY = vrm.scene.position.y;
     stageGround.position.set(center.x, box.min.y + .006, center.z);
     stageGround.scale.setScalar(Math.max(.75, Math.min(1.65, size.x * 1.4)));
+    const roomScale = Math.max(.78, Math.min(1.55, size.y / 1.68));
+    stageRoom.scale.setScalar(roomScale);
+    stageRoom.position.set(center.x, box.min.y, center.z - size.z * .18);
     avatarLoadError = '';
     setAvatarFraming(avatarFraming);
     // Qt may settle the stage geometry one frame after the model finishes loading.
