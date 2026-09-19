@@ -60,6 +60,12 @@ class _Competence:
     def status(self):
         return {"records": 2}
 
+    def find(self, *, limit=500, **_kwargs):
+        return [
+            SimpleNamespace(capability="llm.ollama"),
+            SimpleNamespace(capability="sensor.screen_describe"),
+        ][:limit]
+
     def summary_for(self, capability, *, node_ids=(), limit=4):
         if capability != "llm.ollama":
             return []
@@ -265,6 +271,24 @@ def test_capability_introspection_projects_competence_and_local_substrates():
     assert live["capability_improvement"]["sensor.screen_describe"]["evidence_needed"]
     assert live["world_model"]["reconciliation_groups"] == 2
     assert "advertised capability is separate from demonstrated competence" in evidence["fallback_response"]
+
+
+def test_disconnected_capability_keeps_historical_competence_but_loses_current_availability():
+    evidence = _introspection(
+        registry=None,
+        substrate=True,
+    )._capabilities(
+        "what capabilities have you demonstrated even if a node is offline?"
+    )
+    live = evidence["live_capabilities"]
+
+    assert live["nodes"]["advertised_capabilities"] == []
+    assert "llm.ollama" in live["nodes"]["known_competence_capabilities"]
+    assert live["nodes"]["historical_demonstrated_competence"]["llm.ollama"][0]["attempts"] == 8
+    improvement = live["capability_improvement"]["llm.ollama"]
+    assert improvement["demonstrated"] is True
+    assert improvement["currently_advertised"] is False
+    assert improvement["execution_authorized"] is False
 
 
 def test_capability_introspection_does_not_invent_browse_or_device_execution():
