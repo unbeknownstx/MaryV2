@@ -140,6 +140,21 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     continuity = _status(getattr(mary, "experiential_continuity", None), "status")
     knowledge = _status(getattr(mary, "knowledge_fabric", None), "status")
     nodes = _status(getattr(mary, "node_registry", None), "snapshot")
+    try:
+        from mary.distributed import build_node_intelligence
+        node_intelligence = build_node_intelligence(
+            getattr(mary, "node_registry", None),
+            getattr(mary, "competence", None),
+        )
+    except Exception as exc:
+        node_intelligence = {
+            "available": False,
+            "nodes": [],
+            "registered": 0,
+            "connected": 0,
+            "error_type": type(exc).__name__,
+            "authority": "read_only_projection_no_execution_authority",
+        }
     adapter_lab = _status(getattr(ecosystem, "adapter_lab", None), "snapshot")
     candidates = _candidate_summary(getattr(ecosystem, "model_candidates", None))
     experiments = _model_experiment_summary(mary)
@@ -215,7 +230,11 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "experiments": experiments,
             "policy": "model/adapters are replaceable capabilities; benchmark and creator promotion remain explicit",
         },
-        "compute": {"nodes": nodes, **compute},
+        "compute": {
+            "nodes": nodes,
+            "node_intelligence": node_intelligence,
+            **compute,
+        },
         "training": {
             "feedback": training,
             "character_evaluation": character_eval,
@@ -227,6 +246,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "temporal_history": "historical_or_superseded_is_not_current_truth",
             "skills": "creator_approval_required",
             "competence": "routing_hint_only_after_hard_eligibility",
+            "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
         },
     }
