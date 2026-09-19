@@ -16,6 +16,9 @@ struct WorkspaceDetailView: View {
     @State private var skillRevisionID = ""
     @State private var skillRevisionReason = ""
     @State private var skillRevisionSteps = ""
+    @State private var skillRevisionID = ""
+    @State private var skillRevisionReason = ""
+    @State private var skillRevisionSteps = ""
 
     var body: some View {
         ScrollView {
@@ -196,6 +199,33 @@ struct WorkspaceDetailView: View {
                 }}
             }
 
+            if !contradictions.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: "Reconcile contested beliefs")
+                    Text("Choosing one claim retires competing claims as history; it does not erase the evidence.")
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
+                    ForEach(Array(contradictions.prefix(8).enumerated()), id: \.offset) { _, item in
+                        let row = CoreProjection.dict(item)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("\(CoreProjection.string(row["subject"])) · \(CoreProjection.string(row["predicate"]))")
+                                .font(.subheadline.bold())
+                            Text(CoreProjection.string(row["value"]))
+                                .font(.caption)
+                            Button("Keep this as current") {
+                                Task {
+                                    _ = await app.reconcileWorldBelief(
+                                        CoreProjection.string(row["id"])
+                                    )
+                                }
+                            }
+                            .buttonStyle(MarySecondaryButtonStyle())
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }}
+            }
+
             if !recent.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Current external context")
@@ -231,139 +261,85 @@ struct WorkspaceDetailView: View {
         let replay = CoreProjection.dict(app.liveData["replay"])
         let competence = CoreProjection.dict(app.liveData["competence"])
         let review = CoreProjection.dict(app.liveData["review"])
-        let candidates = CoreProjection.array(review["candidates"])
-        let approved = CoreProjection.array(review["approved"])
+        let candidates = CoreProjection.array(review["candidates"]).map {
+            CoreProjection.dict($0)
+        }
+        let approved = CoreProjection.array(review["approved"]).map {
+            CoreProjection.dict($0)
+        }
 
         return VStack(spacing: 12) {
             GlassCard { VStack(alignment: .leading, spacing: 9) {
                 Eyebrow(text: "Procedural continuity")
-                Text("\(CoreProjection.int(skills["approved"])) approved skills")
-                    .font(.title2.bold())
+                Text("\(CoreProjection.int(skills["approved"])) approved skills").font(.title2.bold())
                 DataRow(label: "Skill candidates", value: "\(CoreProjection.int(skills["candidates"]))")
                 DataRow(label: "Active plans", value: "\(CoreProjection.int(plans["active_plans"]))")
                 DataRow(label: "Replay lessons", value: "\(CoreProjection.int(replay["lessons"]))")
                 DataRow(label: "Competence records", value: "\(CoreProjection.int(competence["records"]))")
-                Text("Replay may suggest procedures, but approval and execution permissions remain explicit.")
-                    .font(.caption)
-                    .foregroundStyle(MaryTheme.muted)
+                Text("Replay may suggest procedures, but approval and execution permissions remain explicit.").font(.caption).foregroundStyle(MaryTheme.muted)
             }}
 
-            GlassCard { VStack(alignment: .leading, spacing: 10) {
-                Eyebrow(text: "Procedure review")
-                Text("Approval changes reusable guidance only. It never grants tool, model, filesystem, or node permission.")
-                    .font(.caption)
-                    .foregroundStyle(MaryTheme.muted)
-
-                if candidates.isEmpty {
-                    Text("No procedure candidates are waiting for review.")
-                        .foregroundStyle(MaryTheme.muted)
-                } else {
-                    ForEach(Array(candidates.prefix(12).enumerated()), id: \.offset) { _, item in
-                        let row = CoreProjection.dict(item)
-                        let skillID = CoreProjection.string(row["id"])
-
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text(
-                                CoreProjection.string(row["name"])
-                                + " · v"
-                                + String(CoreProjection.int(row["version"]))
-                            )
-                            .font(.headline)
-                            Text(CoreProjection.string(row["description"]))
-                                .font(.subheadline)
+            if !candidates.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: "Procedure review")
+                    ForEach(Array(candidates.prefix(10).enumerated()), id: \.offset) { _, item in
+                        let skillID = CoreProjection.string(item["id"])
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(CoreProjection.string(item["name"]).isEmpty ? "Procedure candidate" : CoreProjection.string(item["name"]))
+                                .font(.subheadline.bold())
+                            Text(CoreProjection.string(item["description"]))
+                                .font(.caption)
                                 .foregroundStyle(MaryTheme.muted)
-                            HStack(spacing: 8) {
+                            HStack {
                                 Button("Approve") {
-                                    Task {
-                                        _ = await app.approveSkillCandidate(skillID)
-                                    }
+                                    Task { _ = await app.approveSkillCandidate(skillID) }
                                 }
                                 .buttonStyle(MaryPrimaryButtonStyle())
-                                .disabled(skillID.isEmpty)
-
                                 Button("Reject") {
-                                    Task {
-                                        _ = await app.rejectSkillCandidate(skillID)
-                                    }
+                                    Task { _ = await app.rejectSkillCandidate(skillID) }
                                 }
                                 .buttonStyle(MarySecondaryButtonStyle())
-                                .disabled(skillID.isEmpty)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
                     }
-                }
-            }}
+                }}
+            }
 
-            GlassCard { VStack(alignment: .leading, spacing: 10) {
-                Eyebrow(text: "Approved procedures")
-                if approved.isEmpty {
-                    Text("No approved reusable procedures yet.")
-                        .foregroundStyle(MaryTheme.muted)
-                } else {
+            if !approved.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: "Approved procedures")
                     ForEach(Array(approved.prefix(8).enumerated()), id: \.offset) { _, item in
-                        let row = CoreProjection.dict(item)
-                        let skillID = CoreProjection.string(row["id"])
-                        let steps = CoreProjection.array(row["steps"])
-                            .map { CoreProjection.string($0) }
-                            .filter { !$0.isEmpty }
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(
-                                    CoreProjection.string(row["name"])
-                                    + " · v"
-                                    + String(CoreProjection.int(row["version"]))
-                                )
+                        let skillID = CoreProjection.string(item["id"])
+                        let steps = CoreProjection.array(item["steps"]).map {
+                            CoreProjection.string($0)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(CoreProjection.string(item["name"]).isEmpty ? "Approved procedure" : CoreProjection.string(item["name"]))
                                 .font(.subheadline.bold())
-                                Text(steps.prefix(3).joined(separator: " → "))
-                                    .font(.caption)
-                                    .foregroundStyle(MaryTheme.muted)
-                                    .lineLimit(2)
-                            }
-                            Spacer()
-                            Button("Revise") {
+                            Button("Propose revision") {
                                 skillRevisionID = skillID
                                 skillRevisionReason = ""
                                 skillRevisionSteps = steps.joined(separator: "\n")
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(skillID.isEmpty)
+                            .buttonStyle(MarySecondaryButtonStyle())
                         }
                     }
-                }
 
-                if !skillRevisionID.isEmpty {
-                    Divider().overlay(MaryTheme.hairline)
-                    TextField(
-                        "Why should this procedure change?",
-                        text: $skillRevisionReason,
-                        axis: .vertical
-                    )
-                    .lineLimit(2...4)
-                    .padding(10)
-                    .background(
-                        MaryTheme.panel2,
-                        in: RoundedRectangle(cornerRadius: 12)
-                    )
-
-                    TextField(
-                        "Procedure steps — one per line",
-                        text: $skillRevisionSteps,
-                        axis: .vertical
-                    )
-                    .lineLimit(3...8)
-                    .padding(10)
-                    .background(
-                        MaryTheme.panel2,
-                        in: RoundedRectangle(cornerRadius: 12)
-                    )
-
-                    HStack(spacing: 8) {
+                    if !skillRevisionID.isEmpty {
+                        Divider().overlay(MaryTheme.hairline)
+                        TextField("Why should this procedure change?", text: $skillRevisionReason, axis: .vertical)
+                            .lineLimit(2...4)
+                            .padding(12)
+                            .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
+                        TextField("One procedure step per line", text: $skillRevisionSteps, axis: .vertical)
+                            .lineLimit(3...8)
+                            .padding(12)
+                            .background(MaryTheme.panel2, in: RoundedRectangle(cornerRadius: 14))
                         Button("Create revision candidate") {
                             let steps = skillRevisionSteps
-                                .components(separatedBy: .newlines)
+                                .split(whereSeparator: \.isNewline)
+                                .map { String($0) }
                             Task {
                                 if await app.reviseApprovedSkill(
                                     skillRevisionID,
@@ -378,20 +354,13 @@ struct WorkspaceDetailView: View {
                         }
                         .buttonStyle(MaryPrimaryButtonStyle())
                         .disabled(
-                            skillRevisionReason
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                                .isEmpty
+                            skillRevisionReason.trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            ).isEmpty
                         )
-
-                        Button("Cancel") {
-                            skillRevisionID = ""
-                            skillRevisionReason = ""
-                            skillRevisionSteps = ""
-                        }
-                        .buttonStyle(MarySecondaryButtonStyle())
                     }
-                }
-            }}
+                }}
+            }
         }
     }
 
@@ -426,7 +395,7 @@ struct WorkspaceDetailView: View {
                 Eyebrow(text: "Explicit model trial")
                 Text(candidateID.isEmpty ? "No trial-ready experiment" : candidateID)
                     .font(.headline)
-                Text("Runs only an already-reviewed, benchmarked experiment on the exact authorized llama.cpp node. The output never becomes Mary's production response, memory, or routing policy.")
+                Text("Runs only an already-reviewed, benchmarked experiment on the exact authorized local experiment node. The output never becomes Mary's production response, memory, or routing policy.")
                     .font(.caption)
                     .foregroundStyle(MaryTheme.muted)
 
