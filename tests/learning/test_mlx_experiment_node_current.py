@@ -86,3 +86,42 @@ def test_mlx_executor_stays_bounded_to_reviewed_bundle_and_experiment():
     assert '"experiment_id": experiment_id' in core
     assert '"production_route_changed": False' in core
     assert '"promotion_performed": False' in core
+
+
+def test_locally_ready_mlx_node_is_not_runnable_until_core_knows_experiment():
+    capability = CapabilityDescriptor(
+        name="llm.mlx_lm",
+        private=True,
+        local=True,
+        cost="local",
+        metadata={
+            "runtime": "mlx_lm",
+            "configured_model": "mlx-community/Qwen3-1.7B-4bit",
+            "artifact_fingerprint": "mlx-artifact-exact",
+            "model_experiment_id": "model_exp_node_only",
+            "model_experiment_trial_ready": True,
+            "model_experiment_benchmark_verified": True,
+            "model_experiment_runtime_match": True,
+            "model_experiment_artifact_match": True,
+            "model_experiment_node_match": True,
+            "execution_authorized": True,
+        },
+    )
+    node = SimpleNamespace(
+        node_id="MAC-MARY",
+        capabilities={"llm.mlx_lm": capability},
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        node_registry=SimpleNamespace(available=lambda: [node])
+    )
+    service._model_experiment_ledger = lambda: SimpleNamespace(
+        get=lambda experiment_id: (_ for _ in ()).throw(KeyError(experiment_id))
+    )
+
+    row = service._model_experiment_trial_nodes("model_exp_node_only")[0]
+    assert row["node_trial_ready"] is True
+    assert row["core_registered"] is False
+    assert row["core_trial_ready"] is False
+    assert row["registration_required"] is True
+    assert row["runnable"] is False
