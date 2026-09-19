@@ -88,11 +88,45 @@ def _model_experiment_summary(mary: Any) -> dict[str, Any]:
             "missing_scores": list(raw.get("missing_scores") or [])[:16],
             "failed_scores": list(raw.get("failed_scores") or [])[:16],
         })
+    recent_events = []
+    for raw in list(snapshot.get("recent_events") or [])[-32:]:
+        if not isinstance(raw, dict):
+            continue
+        details = _mapping(raw.get("details"))
+        recent_events.append({
+            "id": str(raw.get("id") or "")[:160],
+            "experiment_id": str(raw.get("experiment_id") or "")[:160],
+            "event_type": str(raw.get("event_type") or "")[:80],
+            "occurred_at": str(raw.get("occurred_at") or "")[:80],
+            "details": {
+                key: value
+                for key, value in details.items()
+                if key in {
+                    "candidate_id",
+                    "runtime",
+                    "artifact_fingerprint",
+                    "dataset_fingerprint",
+                    "reviewed_by",
+                    "source",
+                    "node_id",
+                    "benchmark_source",
+                    "artifact_match",
+                    "mary_fit",
+                    "latency_ms",
+                    "trial_ready",
+                    "missing_scores",
+                    "failed_scores",
+                    "score_keys",
+                }
+            },
+        })
     return {
         "version": snapshot.get("version"),
         "count": int(snapshot.get("count", len(records)) or 0),
         "trial_ready": int(snapshot.get("trial_ready", 0) or 0),
+        "event_count": int(snapshot.get("event_count", len(recent_events)) or 0),
         "records": records,
+        "recent_events": recent_events,
         "promotion_performed": False,
         "authority": "experiment_evidence_only",
     }
@@ -149,11 +183,27 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
         "world": {
             "beliefs": _mapping(continuity.get("world_model")),
             "temporal": _mapping(continuity.get("temporal")),
+            "review": {
+                "reconciliation_groups": int(
+                    _mapping(continuity.get("world_model")).get("reconciliation_groups", 0)
+                    or 0
+                ),
+            },
         },
         "continuity": {
             "experience": _mapping(continuity.get("experience")),
             "replay": _mapping(continuity.get("replay")),
             "skills": _mapping(continuity.get("skills")),
+            "procedure_review": {
+                "revision_attention": int(
+                    _mapping(continuity.get("skills")).get("revision_attention", 0)
+                    or 0
+                ),
+                "revision_candidates": int(
+                    _mapping(continuity.get("skills")).get("revision_candidates", 0)
+                    or 0
+                ),
+            },
             "plans": _mapping(continuity.get("plans")),
             "workflows": _mapping(continuity.get("workflows")),
             "verification": _mapping(continuity.get("verification")),
