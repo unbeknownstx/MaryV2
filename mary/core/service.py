@@ -2519,7 +2519,7 @@ class MaryCoreService:
                 ))
                 execution_authorized = metadata.get("execution_authorized") is True
                 runtime = str(metadata.get("runtime") or "")[:80]
-                model = str(metadata.get("configured_model") or metadata.get("model") or "")[:180]
+                model = str(metadata.get("configured_model") or metadata.get("model") or "")[:300]
                 artifact_fingerprint = str(metadata.get("artifact_fingerprint") or "")[:64].lower()
 
                 canonical = None
