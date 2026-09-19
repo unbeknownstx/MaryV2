@@ -13,7 +13,7 @@ This ledger prevents research from becoming architecture sprawl. A borrowed idea
 | Riko V2 model-directed acting | PerformancePacket + `expression.surface_performance` | INTEGRATED PARTIAL | Canonical packet owns expression/gaze/head/motion intent; Desktop/PWA/iPhone consume it. Real motion-asset playback remains renderer work. |
 | Riko one-character/many-bodies presentation | `expression.surface_performance` + Core surface grounding | INTEGRATED | Surfaces advertise truthful render affordances and degrade unsupported cues without becoming Mary authority. |
 | Riko setup/component diagnostics | `scripts/doctor.py` | INTEGRATED PARTIAL | Doctor now checks presentation contracts/renderers/body asset readiness without making optional assets startup requirements. |
-| Riko photo/pose/lighting studio | Creator Lab + future Character Studio | DEFERRED | Build on Mary-owned scene/presentation state; do not create a second character state owner. |
+| Riko photo/pose/lighting studio | Desktop Character Studio + Creator Lab | INTEGRATED PARTIAL | Local expression/semantic-pose preview, framing, key/fill/rim lighting, transparent PNG capture and presentation-only stage JSON are live; richer animation/scene asset browsing remains future renderer work. |
 | Riko room/VR movement | LiveScene + future Mary World capability | DEFERRED | Scene/body/VR stay replaceable surfaces over canonical Core. |
 | OLLVT false-barge-in hardening | `realtime.report_voice_activity` | INTEGRATED | Confirmed speech required before interruption. |
 | Truthful node capability readiness | `distributed.capabilities` + NodeRegistry | INTEGRATED | ready/degraded/start/unavailable affects routing. |
