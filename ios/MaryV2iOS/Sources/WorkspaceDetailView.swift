@@ -109,6 +109,9 @@ struct WorkspaceDetailView: View {
         let epistemic = CoreProjection.dict(beliefs["epistemic"])
         let temporal = CoreProjection.dict(app.liveData["temporal"])
         let contradictions = CoreProjection.array(app.liveData["contradictions"])
+        let reconciliationGroups = CoreProjection.array(
+            app.liveData["reconciliation_queue"]
+        ).map { CoreProjection.dict($0) }
         let recent = CoreProjection.array(context["recent"])
         let due = CoreProjection.array(pulse["due"])
 
@@ -122,26 +125,73 @@ struct WorkspaceDetailView: View {
                 DataRow(label: "Contested beliefs", value: "\(CoreProjection.int(epistemic["contested"]))")
                 DataRow(label: "Temporal relations", value: "\(CoreProjection.int(temporal["relations"]))")
                 DataRow(label: "Contradictions", value: "\(contradictions.count)")
+                DataRow(label: "Reconciliation groups", value: "\(reconciliationGroups.count)")
                 Text("World Pulse only plans refreshes. External context expires and cannot promote itself into Mary truth; acceptance and reconciliation remain explicit Core actions.")
                     .font(.caption)
                     .foregroundStyle(MaryTheme.muted)
             }}
 
-            if !contradictions.isEmpty {
+            if !reconciliationGroups.isEmpty {
                 GlassCard { VStack(alignment: .leading, spacing: 12) {
                     Eyebrow(text: "World reconciliation")
-                    Text("Select a current claim only when competing evidence should be resolved. Other claims are retired as history, not erased.")
+                    Text("Claims are grouped by subject and predicate. Selecting one retires competing current claims as history without deleting their evidence.")
                         .font(.caption)
                         .foregroundStyle(MaryTheme.muted)
 
+                    ForEach(Array(reconciliationGroups.prefix(10).enumerated()), id: \.offset) { _, group in
+                        let candidates = CoreProjection.array(group["candidates"]).map {
+                            CoreProjection.dict($0)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(
+                                CoreProjection.string(group["subject"])
+                                + " · "
+                                + CoreProjection.string(group["predicate"])
+                            )
+                            .font(.subheadline.bold())
+                            Text("\(CoreProjection.int(group["candidate_count"])) competing current claim(s)")
+                                .font(.caption)
+                                .foregroundStyle(MaryTheme.muted)
+
+                            ForEach(Array(candidates.prefix(8).enumerated()), id: \.offset) { _, row in
+                                let beliefID = CoreProjection.string(row["belief_id"])
+                                let rawValue = row["value"]
+                                let value = CoreProjection.string(rawValue).isEmpty
+                                    ? String(describing: rawValue ?? "—")
+                                    : CoreProjection.string(rawValue)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(value).font(.subheadline)
+                                    Text(
+                                        (CoreProjection.string(row["source"]).isEmpty
+                                            ? "unknown source"
+                                            : CoreProjection.string(row["source"]))
+                                        + " · "
+                                        + CoreProjection.string(row["verification"])
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(MaryTheme.muted)
+                                    Button("Keep this as current") {
+                                        Task {
+                                            _ = await app.reconcileWorldBelief(beliefID)
+                                        }
+                                    }
+                                    .buttonStyle(MarySecondaryButtonStyle())
+                                    .disabled(beliefID.isEmpty)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }}
+            } else if !contradictions.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow(text: "World reconciliation")
+                    Text("Legacy contradiction view; explicit reconciliation remains required.")
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
                     ForEach(Array(contradictions.prefix(12).enumerated()), id: \.offset) { _, item in
                         let row = CoreProjection.dict(item)
                         let beliefID = CoreProjection.string(row["id"])
-                        let rawValue = row["value"]
-                        let value = CoreProjection.string(rawValue).isEmpty
-                            ? String(describing: rawValue ?? "—")
-                            : CoreProjection.string(rawValue)
-
                         VStack(alignment: .leading, spacing: 7) {
                             Text(
                                 CoreProjection.string(row["subject"])
@@ -149,33 +199,12 @@ struct WorkspaceDetailView: View {
                                 + CoreProjection.string(row["predicate"])
                             )
                             .font(.subheadline.bold())
-                            Text(value)
-                                .font(.subheadline)
-                            Text(
-                                (CoreProjection.string(row["source"]).isEmpty
-                                    ? "unknown source"
-                                    : CoreProjection.string(row["source"]))
-                                + " · "
-                                + CoreProjection.string(row["verification"])
-                            )
-                            .font(.caption)
-                            .foregroundStyle(MaryTheme.muted)
-
-                            Button {
-                                Task {
-                                    _ = await app.reconcileWorldBelief(beliefID)
-                                }
-                            } label: {
-                                Label(
-                                    "Keep this as current",
-                                    systemImage: "checkmark.seal.fill"
-                                )
+                            Button("Keep this as current") {
+                                Task { _ = await app.reconcileWorldBelief(beliefID) }
                             }
                             .buttonStyle(MarySecondaryButtonStyle())
                             .disabled(beliefID.isEmpty)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
                     }
                 }}
             }
@@ -264,6 +293,9 @@ struct WorkspaceDetailView: View {
         let approved = CoreProjection.array(review["approved"]).map {
             CoreProjection.dict($0)
         }
+        let revisionQueue = CoreProjection.array(review["revision_queue"]).map {
+            CoreProjection.dict($0)
+        }
 
         return VStack(spacing: 12) {
             GlassCard { VStack(alignment: .leading, spacing: 9) {
@@ -273,6 +305,7 @@ struct WorkspaceDetailView: View {
                 DataRow(label: "Active plans", value: "\(CoreProjection.int(plans["active_plans"]))")
                 DataRow(label: "Replay lessons", value: "\(CoreProjection.int(replay["lessons"]))")
                 DataRow(label: "Competence records", value: "\(CoreProjection.int(competence["records"]))")
+                DataRow(label: "Revision attention", value: "\(revisionQueue.count)")
                 Text("Replay may suggest procedures, but approval and execution permissions remain explicit.").font(.caption).foregroundStyle(MaryTheme.muted)
             }}
 
@@ -299,6 +332,21 @@ struct WorkspaceDetailView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }}
+            }
+
+            if !revisionQueue.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Revision pressure")
+                    Text("Repeated outcome evidence can flag an approved procedure for review, but it cannot rewrite that procedure.")
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
+                    ForEach(Array(revisionQueue.prefix(8).enumerated()), id: \.offset) { _, item in
+                        DataRow(
+                            label: CoreProjection.string(item["name"]),
+                            value: "\(Int((CoreProjection.double(item["failure_rate"]) * 100).rounded()))% failure"
+                        )
                     }
                 }}
             }
@@ -376,12 +424,25 @@ struct WorkspaceDetailView: View {
         let candidateID = CoreProjection.string(
             selected["candidate_id"] ?? selected["id"]
         )
+        let nodeIntelligence = CoreProjection.dict(app.liveData["node_intelligence"])
+        let intelligenceNodes = CoreProjection.array(nodeIntelligence["nodes"]).map {
+            CoreProjection.dict($0)
+        }
+        let authorizedCapabilities = intelligenceNodes.reduce(0) { total, node in
+            total + CoreProjection.int(CoreProjection.dict(node["counts"])["authorized"])
+        }
+        let demonstratedCapabilities = intelligenceNodes.reduce(0) { total, node in
+            total + CoreProjection.int(CoreProjection.dict(node["counts"])["demonstrated"])
+        }
 
         return VStack(spacing: 12) {
             GlassCard { VStack(alignment: .leading, spacing: 9) {
                 Eyebrow(text: "Model lab")
                 Text("\(CoreProjection.int(candidates["count"])) reviewed candidates").font(.title2.bold())
                 DataRow(label: "Trial-ready experiments", value: "\(CoreProjection.int(experiments["trial_ready"]))")
+                DataRow(label: "Lineage events", value: "\(CoreProjection.int(experiments["event_count"]))")
+                DataRow(label: "Authorized node capabilities", value: "\(authorizedCapabilities)")
+                DataRow(label: "Demonstrated capabilities", value: "\(demonstratedCapabilities)")
                 DataRow(label: "Configurations", value: "\(CoreProjection.array(lab["configurations"]).count)")
                 DataRow(label: "Evaluations", value: "\(CoreProjection.array(lab["evaluations"]).count)")
                 DataRow(label: "Promotion", value: "Creator-reviewed")
