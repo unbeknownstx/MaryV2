@@ -920,17 +920,57 @@ class SelfIntrospection:
                 competence_status = {}
 
         demonstrated: dict[str, list[dict[str, Any]]] = {}
+        historical_demonstrated: dict[str, list[dict[str, Any]]] = {}
+        known_competence_capabilities: set[str] = set()
+        find_competence = getattr(competence_owner, "find", None)
+        if callable(find_competence):
+            try:
+                known_competence_capabilities = {
+                    str(getattr(item, "capability", "") or "")
+                    for item in list(find_competence(limit=500) or [])
+                    if str(getattr(item, "capability", "") or "")
+                }
+            except Exception:
+                known_competence_capabilities = set()
+
         summary_fn = getattr(competence_owner, "summary_for", None)
         if callable(summary_fn):
-            for capability in sorted(capability_names)[:32]:
+            for capability in sorted(capability_names | known_competence_capabilities)[:64]:
+                try:
+                    historical_rows = list(summary_fn(
+                        capability,
+                        node_ids=(),
+                        limit=4,
+                    ) or [])
+                except Exception:
+                    historical_rows = []
                 try:
                     rows = list(summary_fn(
                         capability,
                         node_ids=connected_node_ids,
                         limit=4,
-                    ) or [])
+                    ) or []) if capability in capability_names else []
                 except Exception:
                     rows = []
+                if historical_rows:
+                    historical_demonstrated[capability] = [
+                        {
+                            "node_id": str(item.get("node_id") or "")[:120],
+                            "skill_id": str(item.get("skill_id") or "")[:180],
+                            "implementation_fingerprint": str(
+                                item.get("implementation_fingerprint") or ""
+                            )[:64],
+                            "attempts": int(item.get("attempts") or 0),
+                            "verified_successes": int(item.get("verified_successes") or 0),
+                            "reliability": float(item.get("reliability") or 0.0),
+                            "evidence_strength": float(item.get("evidence_strength") or 0.0),
+                            "mean_latency_ms": item.get("mean_latency_ms"),
+                            "last_success": item.get("last_success"),
+                            "last_observed_at": str(item.get("last_observed_at") or "")[:80],
+                        }
+                        for item in historical_rows[:4]
+                        if isinstance(item, dict)
+                    ]
                 if rows:
                     demonstrated[capability] = [
                         {
@@ -1020,7 +1060,7 @@ class SelfIntrospection:
                         competence_view = dict(skill_summary_fn(
                             skill_id,
                             capability=primary_capability,
-                            node_ids=connected_node_ids,
+                            node_ids=(),
                         ) or {})
                     except Exception:
                         competence_view = {}
@@ -1104,8 +1144,8 @@ class SelfIntrospection:
         )
 
         capability_improvement: dict[str, dict[str, Any]] = {}
-        for capability in sorted(capability_names)[:32]:
-            rows = list(demonstrated.get(capability) or [])
+        for capability in sorted(capability_names | known_competence_capabilities)[:64]:
+            rows = list(historical_demonstrated.get(capability) or [])
             attempts = sum(int(item.get("attempts") or 0) for item in rows)
             verified_successes = sum(
                 int(item.get("verified_successes") or 0) for item in rows
@@ -1144,6 +1184,8 @@ class SelfIntrospection:
                 "strongest_evidence_strength": round(strongest_evidence, 4),
                 "degrading_procedure_ids": degrading_for_capability[:12],
                 "evidence_needed": evidence_needed,
+                "currently_advertised": capability in capability_names,
+                "currently_available": capability in capability_names,
                 "execution_authorized": capability in execution_ready,
                 "authority": (
                     "evidence guidance only; permission and execution remain separate"
@@ -1279,6 +1321,8 @@ class SelfIntrospection:
                 "advertised_capabilities": sorted(capability_names),
                 "execution_ready_capabilities": sorted(execution_ready),
                 "demonstrated_competence": demonstrated,
+                "historical_demonstrated_competence": historical_demonstrated,
+                "known_competence_capabilities": sorted(known_competence_capabilities)[:64],
                 "competence_records": int(competence_status.get("records") or 0),
             },
             "knowledge_substrate": {
