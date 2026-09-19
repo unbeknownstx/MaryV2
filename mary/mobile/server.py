@@ -1523,6 +1523,39 @@ class MaryRemoteMobileRuntime:
         if name == "getAdapterLabState":
             return self.client.runtime_action("model.adapter.status")
 
+        if name == "getModelExperimentStatus":
+            values = list(args or [])
+            experiment_id = str(values[0] if values else "").strip()[:160]
+            return self.client.runtime_action(
+                "model.experiment.status",
+                {"experiment_id": experiment_id},
+            )
+
+        if name == "runModelExperiment":
+            values = list(args or [])
+            experiment_id = str(values[0] if values else "").strip()[:160]
+            prompt = str(values[1] if len(values) > 1 else "").strip()[:12_000]
+            if not experiment_id:
+                raise ValueError("Model experiment ID is required.")
+            if not prompt:
+                raise ValueError("Model experiment prompt is required.")
+            return self.client.runtime_action(
+                "model.experiment.dispatch",
+                {
+                    "experiment_id": experiment_id,
+                    "prompt": prompt,
+                    "max_tokens": int(values[2]) if len(values) > 2 else 512,
+                    "temperature": float(values[3]) if len(values) > 3 else 0.7,
+                },
+            )
+
+        if name == "getCapabilityTaskStatus":
+            values = list(args or [])
+            task_id = str(values[0] if values else "").strip()[:180]
+            if not task_id:
+                raise ValueError("Capability task ID is required.")
+            return self.client.capability_task_status(task_id)
+
         if name == "requestMarySpeech":
             values = list(args or [])
             return self.client.runtime_action(
