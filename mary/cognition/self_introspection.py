@@ -838,6 +838,16 @@ class SelfIntrospection:
             entries.append(data)
         return entries
 
+    def capability_evidence(self) -> dict[str, Any]:
+        """Return Mary-owned live capability/procedure/model evidence only.
+
+        This is the reusable machine-readable projection used by shared
+        surfaces. It intentionally excludes the conversational fallback text.
+        """
+
+        payload = self._capabilities("")
+        return dict(payload.get("live_capabilities") or {})
+
     def _capabilities(self, query: str = "") -> dict[str, Any]:
         """Project Mary's live capability graph instead of model self-knowledge.
 
