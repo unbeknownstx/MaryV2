@@ -39,6 +39,8 @@ def main() -> int:
     sub.add_parser("status")
     sub.add_parser("list")
     sub.add_parser("seed-candidates")
+    curate = sub.add_parser("curation-report")
+    curate.add_argument("--pack", default="")
 
     register = sub.add_parser("register-files")
     register.add_argument("pack_id")
@@ -150,6 +152,14 @@ def main() -> int:
     if args.command == "list":
         print(json.dumps(
             [pack.to_dict() for pack in fabric.packs()],
+            indent=2,
+            ensure_ascii=False,
+        ))
+        return 0
+
+    if args.command == "curation-report":
+        print(json.dumps(
+            fabric.curation_report(args.pack),
             indent=2,
             ensure_ascii=False,
         ))
