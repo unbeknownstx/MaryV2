@@ -1467,23 +1467,42 @@ class CognitiveOrchestrator:
         # that figurative phrases such as "can you see why" remain conversation.
         capability_subject_markers = (
             "my screen", "the screen", "screen right now", "my desktop",
-            "see my app", "see the app", "an image", "images", "a picture",
-            "pictures", "a photo", "photos", "my microphone", "microphone",
-            "audio", "hear me", "listen to me", "browse the web",
-            "search the web", "use the internet", "local knowledge",
-            "knowledge search", "offline library", "your tools", "your nodes",
-            "capability nodes",
+            "see my app", "see the app", "my microphone", "microphone",
+            "hear me", "listen to me", "browse the web", "search the web",
+            "use the internet", "local knowledge", "knowledge search",
+            "offline library", "your tools", "your nodes", "capability nodes",
         )
         capability_action_context = bool(
             runtime_tokens.intersection({
-                "can", "could", "do", "does", "have", "use", "access",
-                "see", "hear", "browse", "search", "read",
+                "can", "could", "have", "use", "access", "see", "hear",
+                "browse", "search", "read", "inspect", "describe",
+            })
+        )
+        media_subject = bool(
+            runtime_tokens.intersection({
+                "image", "images", "picture", "pictures", "photo", "photos",
+                "audio", "recording", "recordings",
+            })
+        )
+        media_action_context = bool(
+            runtime_tokens.intersection({
+                "can", "could", "use", "access", "see", "view", "look",
+                "analyze", "analyse", "inspect", "describe", "read", "hear",
+                "listen", "transcribe",
             })
         )
         if (
             looks_like_question(text)
-            and capability_action_context
-            and any(marker in normalized for marker in capability_subject_markers)
+            and (
+                (
+                    capability_action_context
+                    and any(
+                        marker in normalized
+                        for marker in capability_subject_markers
+                    )
+                )
+                or (media_subject and media_action_context)
+            )
         ):
             return self_intent("capabilities")
 
