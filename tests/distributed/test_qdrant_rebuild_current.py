@@ -97,7 +97,10 @@ def test_qdrant_rebuild_upserts_before_stale_delete_and_records_build(
     updated = fabric.get("vector")
     build = updated.metadata["vector_build"]
     assert build["source_pack_id"] == "source"
-    assert build["source_fingerprint"] == source.content_fingerprint
+    assert build["source_fingerprint"] == fabric.derivative_source_fingerprint(
+        source.id
+    )
+    assert build["source_fingerprint"] != source.content_fingerprint
     assert build["vectors"] == 2
 
 
@@ -193,3 +196,24 @@ def test_qdrant_reconciliation_reports_healthy_exact_generation(tmp_path: Path):
     assert report["state"] == "healthy"
     assert report["actual_vectors"] == expected
     assert report["repair"] == "none"
+
+
+
+def test_qdrant_rebuild_refuses_stale_local_ingestion_pipeline(tmp_path: Path):
+    import json
+    import pytest
+
+    fabric, source, vector = _fabric(tmp_path)
+    manifest_path = fabric._source_manifest_path(source.id)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pipeline_fingerprint"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    indexer = QdrantKnowledgeIndexer(
+        embedding_client_factory=lambda _model: _EmbeddingClient(),
+        write_json=lambda _method, _url, _payload: {"status": "ok"},
+    )
+    with pytest.raises(RuntimeError, match="current indexed ingestion pipeline"):
+        indexer.rebuild(vector, fabric, source_pack_id=source.id)
+
+    assert fabric.derivative_source_fingerprint(source.id) == ""
