@@ -284,3 +284,45 @@ def test_legacy_pack_without_ingest_policy_decodes_as_manual(tmp_path: Path):
     )
     pack = KnowledgeFabric(registry).get("legacy")
     assert pack.ingest_policy == "manual"
+
+
+def test_curation_report_detects_duplicates_and_drift_without_mutation(tmp_path: Path):
+    docs_a = tmp_path / "a"
+    docs_b = tmp_path / "b"
+    docs_a.mkdir()
+    docs_b.mkdir()
+    shared = "same canonical reference body"
+    (docs_a / "one.md").write_text(shared, encoding="utf-8")
+    (docs_b / "copy.md").write_text(shared, encoding="utf-8")
+
+    fabric = KnowledgeFabric(
+        tmp_path / "knowledge" / "curation.json",
+        index_path=tmp_path / "knowledge" / "curation.sqlite3",
+    )
+    a = fabric.register(
+        pack_id="a",
+        title="A",
+        kind="local_files",
+        location=str(docs_a),
+        query_mode="fts",
+    )
+    b = fabric.register(
+        pack_id="b",
+        title="B",
+        kind="local_files",
+        location=str(docs_b),
+        query_mode="fts",
+    )
+    fabric.index_local_pack(a.id)
+    fabric.index_local_pack(b.id)
+
+    clean = fabric.curation_report()
+    assert clean["duplicate_content_group_count"] == 1
+    assert clean["automatic_mutation_performed"] is False
+    assert all(row["recommendations"] == ["none"] for row in clean["packs"])
+
+    (docs_a / "one.md").write_text("changed reference body", encoding="utf-8")
+    drift = fabric.curation_report("a")
+    assert drift["packs"][0]["refresh"]["has_changes"] is True
+    assert "explicit_refresh" in drift["packs"][0]["recommendations"]
+    assert fabric.search("same canonical reference body", pack_ids=(a.id,))
