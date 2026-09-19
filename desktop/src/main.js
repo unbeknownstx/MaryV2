@@ -1829,7 +1829,7 @@ function renderFabric() {
     </div>
     <div class="workspace-panel" style="margin-top:12px">
       <h3>Explicit Model Trial</h3>
-      <p>Run one already-reviewed, benchmarked experiment on the exact authorized llama.cpp node. The output stays in the lab and cannot replace Mary's production route.</p>
+      <p>Run one already-reviewed, benchmarked experiment on the exact authorized local experiment node. The output stays in the lab and cannot replace Mary's production route.</p>
       <label class="field-label"><span>TRIAL-READY EXPERIMENT</span><select id="model-exp-select" ${readyExperiments.length ? '' : 'disabled'}>${experimentOptions || '<option>No trial-ready experiment</option>'}</select></label>
       <label class="field-label"><span>HELD-OUT PROMPT</span><textarea id="model-exp-prompt" rows="3" ${readyExperiments.length ? '' : 'disabled'}>${escapeHtml(modelExperimentTrialState.prompt)}</textarea></label>
       <button class="action-button primary" id="model-exp-run" ${readyExperiments.length && !modelExperimentTrialState.busy ? '' : 'disabled'}><strong>${modelExperimentTrialState.busy ? 'Experiment running…' : 'Run bounded trial'}</strong><small>Exact lineage + benchmark + node permission required</small></button>
