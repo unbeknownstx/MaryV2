@@ -733,14 +733,26 @@ class DesktopCapabilityNodeAgent:
         except ImportError as exc:
             raise RuntimeError("mlx_lm is unavailable on this device.") from exc
         model, tokenizer = load(proposal.model, adapter_path=str(bundle / "adapter"))
-        output = generate(
-            model,
-            tokenizer,
-            prompt=prompt,
-            max_tokens=max_tokens,
-            temp=temperature,
-            verbose=False,
-        )
+        try:
+            output = generate(
+                model,
+                tokenizer,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temp=temperature,
+                verbose=False,
+            )
+        except TypeError:
+            # Newer MLX-LM releases moved sampling controls into a sampler.
+            from mlx_lm.sample_utils import make_sampler
+            output = generate(
+                model,
+                tokenizer,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                sampler=make_sampler(temp=temperature),
+                verbose=False,
+            )
         content = str(output or "").strip()
         if not content:
             raise RuntimeError("MLX-LM returned an empty experimental response.")
