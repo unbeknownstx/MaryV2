@@ -68,6 +68,7 @@ _PROFILES: dict[str, SurfacePerformanceCapabilities] = {
         voice_direction=True,
         scene_context=True,
         lighting_control=True,
+        transparent_overlay=True,
         capture=True,
     ),
     "mobile_web": SurfacePerformanceCapabilities(
