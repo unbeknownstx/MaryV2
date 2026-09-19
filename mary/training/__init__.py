@@ -6,6 +6,7 @@ from .dataset_audit import MaryDatasetAuditReport, MaryDatasetV1Auditor
 from .corpus_mining import MaryCorpusMiner, MaryCorpusMiningReport
 from .novel_miner import NovelSceneCandidate, mine_mary_scenes, read_paragraphs, write_mining_bundle
 from .mlx_bundle import MlxTrainingProfile, PROFILES as MLX_TRAINING_PROFILES, prepare_mlx_bundle
+from .bundle_lineage import MlxBundleLineage, build_mlx_bundle_lineage
 from .mlx_preflight import MlxBundlePreflight, inspect_mlx_bundle
 from .adapter_candidate import MlxAdapterCandidateProposal, build_mlx_adapter_candidate_proposal
 from .marybench_experiment import (
@@ -22,6 +23,7 @@ __all__ = [
     "MaryCorpusMiner", "MaryCorpusMiningReport",
     "NovelSceneCandidate", "mine_mary_scenes", "read_paragraphs", "write_mining_bundle",
     "MlxTrainingProfile", "MLX_TRAINING_PROFILES", "prepare_mlx_bundle",
+    "MlxBundleLineage", "build_mlx_bundle_lineage",
     "MlxBundlePreflight", "inspect_mlx_bundle",
     "MlxAdapterCandidateProposal", "build_mlx_adapter_candidate_proposal",
     "REQUIRED_MODEL_SCORE_DIMENSIONS", "comparison_scorecard",
