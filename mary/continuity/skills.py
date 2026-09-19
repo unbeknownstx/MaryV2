@@ -366,6 +366,60 @@ class SkillLibrary:
             raise KeyError(skill_id)
         return self.get(skill_id)
 
+    def revision_queue(
+        self,
+        *,
+        minimum_attempts: int = 3,
+        minimum_failure_rate: float = 0.25,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Surface approved procedures whose outcome evidence deserves review.
+
+        This is read-only review pressure. It never creates a revision, changes
+        the approved procedure, widens permissions, or grants execution.
+        """
+
+        min_attempts = max(1, int(minimum_attempts))
+        failure_floor = max(0.0, min(1.0, float(minimum_failure_rate)))
+        rows: list[dict[str, Any]] = []
+        for raw in list(self._store.snapshot().get("skills") or []):
+            skill = self._decode(raw)
+            if skill.status != "approved":
+                continue
+            attempts = skill.success_count + skill.failure_count
+            if attempts < min_attempts:
+                continue
+            failure_rate = skill.failure_count / max(1, attempts)
+            if failure_rate < failure_floor:
+                continue
+            rows.append({
+                "skill_id": skill.id,
+                "name": skill.name,
+                "version": skill.version,
+                "attempts": attempts,
+                "successes": skill.success_count,
+                "failures": skill.failure_count,
+                "failure_rate": round(failure_rate, 4),
+                "confidence": skill.confidence,
+                "last_used_at": skill.last_used_at,
+                "last_result": skill.last_result,
+                "origin_experience_ids": list(skill.origin_experience_ids[-16:]),
+                "review_reason": (
+                    f"observed failure rate {failure_rate:.0%} across {attempts} "
+                    "recorded use(s); inspect evidence before proposing a revision"
+                ),
+                "mutation_performed": False,
+            })
+        rows.sort(
+            key=lambda item: (
+                float(item["failure_rate"]),
+                int(item["failures"]),
+                str(item.get("last_used_at") or ""),
+            ),
+            reverse=True,
+        )
+        return rows[: max(1, min(200, int(limit)))]
+
     def candidates(self) -> list[SkillRecord]:
         return [
             self._decode(row)
@@ -394,6 +448,7 @@ class SkillLibrary:
                 1 for row in rows
                 if row.get("status") == "candidate" and row.get("supersedes")
             ),
+            "revision_attention": len(self.revision_queue()),
             "execution": "descriptive only; ToolManager/device capability fabric retains execution authority",
         }
 
