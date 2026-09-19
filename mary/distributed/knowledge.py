@@ -13,7 +13,7 @@ from mary.distributed.qdrant_knowledge import (
 )
 
 
-KNOWLEDGE_NODE_CAPABILITIES = frozenset({"knowledge.search"})
+KNOWLEDGE_NODE_CAPABILITIES = frozenset({"knowledge.search", "knowledge.curation"})
 
 
 def node_knowledge_paths() -> tuple[Path, Path]:
@@ -34,61 +34,111 @@ def node_knowledge_fabric() -> KnowledgeFabric:
 def knowledge_capability_descriptors(permissions: Any) -> list[CapabilityDescriptor]:
     fabric = node_knowledge_fabric()
     status = dict(fabric.status() or {})
-    packs = list(fabric.packs(enabled_only=True))
-    if not packs:
+    all_packs = list(fabric.packs())
+    enabled_packs = [pack for pack in all_packs if pack.enabled]
+    if not all_packs:
         return []
-    vector_packs = sum(
-        1 for pack in packs
-        if pack.kind in {"qdrant", "qdrant_edge"}
-        and pack.query_mode in {"vector", "hybrid"}
-    )
-    lexical_packs = sum(
-        1 for pack in packs
-        if pack.kind == "local_files"
-        and pack.query_mode in {"fts", "hybrid"}
-    )
-    direct_packs = sum(
-        1 for pack in packs
-        if pack.kind == "kiwix"
-        and pack.query_mode in {"direct", "hybrid"}
-    )
-    topics = sorted({
-        str(topic)
-        for pack in packs
-        for topic in list(pack.topics or ())
-        if str(topic).strip()
-    })[:80]
-    return [
-        CapabilityDescriptor(
-            name="knowledge.search",
-            available=True,
-            private=True,
-            local=True,
-            cost="local",
-            latency="interactive",
-            metadata={
-                "execution_authorized": bool(permissions.is_allowed("knowledge.search")),
-                "packs": len(packs),
-                "indexed_documents": int(status.get("indexed_documents", 0) or 0),
-                "lexical_packs": lexical_packs,
-                "direct_packs": direct_packs,
-                "vector_packs": vector_packs,
-                "pack_titles": [str(pack.title)[:120] for pack in packs[:20]],
-                "topics": topics,
-                "authority": "retrieval evidence only; not Mary memory/identity",
-                "raw_files_leave_node": False,
-            },
+
+    descriptors: list[CapabilityDescriptor] = []
+    if enabled_packs:
+        vector_packs = sum(
+            1 for pack in enabled_packs
+            if pack.kind in {"qdrant", "qdrant_edge"}
+            and pack.query_mode in {"vector", "hybrid"}
         )
-    ]
+        lexical_packs = sum(
+            1 for pack in enabled_packs
+            if pack.kind == "local_files"
+            and pack.query_mode in {"fts", "hybrid"}
+        )
+        direct_packs = sum(
+            1 for pack in enabled_packs
+            if pack.kind == "kiwix"
+            and pack.query_mode in {"direct", "hybrid"}
+        )
+        topics = sorted({
+            str(topic)
+            for pack in enabled_packs
+            for topic in list(pack.topics or ())
+            if str(topic).strip()
+        })[:80]
+        descriptors.append(
+            CapabilityDescriptor(
+                name="knowledge.search",
+                available=True,
+                private=True,
+                local=True,
+                cost="local",
+                latency="interactive",
+                metadata={
+                    "execution_authorized": bool(
+                        permissions.is_allowed("knowledge.search")
+                    ),
+                    "packs": len(enabled_packs),
+                    "indexed_documents": int(
+                        status.get("indexed_documents", 0) or 0
+                    ),
+                    "lexical_packs": lexical_packs,
+                    "direct_packs": direct_packs,
+                    "vector_packs": vector_packs,
+                    "pack_titles": [
+                        str(pack.title)[:120] for pack in enabled_packs[:20]
+                    ],
+                    "topics": topics,
+                    "authority": "retrieval evidence only; not Mary memory/identity",
+                    "raw_files_leave_node": False,
+                },
+            )
+        )
+
+    local_packs = [pack for pack in all_packs if pack.kind == "local_files"]
+    if local_packs:
+        descriptors.append(
+            CapabilityDescriptor(
+                name="knowledge.curation",
+                available=True,
+                private=True,
+                local=True,
+                cost="local",
+                latency="interactive",
+                metadata={
+                    "execution_authorized": bool(
+                        permissions.is_allowed("knowledge.curation")
+                    ),
+                    "local_file_packs": len(local_packs),
+                    "enabled_local_file_packs": sum(
+                        1 for pack in local_packs if pack.enabled
+                    ),
+                    "disabled_documents": sum(
+                        len(pack.disabled_documents) for pack in local_packs
+                    ),
+                    "pack_ids": [str(pack.id)[:160] for pack in local_packs[:32]],
+                    "pack_titles": [
+                        str(pack.title)[:120] for pack in local_packs[:32]
+                    ],
+                    "authority": (
+                        "read-only corpus hygiene evidence only; "
+                        "no indexing or source mutation"
+                    ),
+                    "raw_files_leave_node": False,
+                },
+            )
+        )
+    return descriptors
 
 
 def sanitize_knowledge_task_args(
     capability: str,
     args: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    if str(capability or "").strip().lower() != "knowledge.search":
-        raise ValueError(f"Unsupported knowledge capability: {capability}")
+    name = str(capability or "").strip().lower()
     values = dict(args or {})
+    if name == "knowledge.curation":
+        pack_id = str(values.get("pack_id") or "").strip()[:160]
+        return {"pack_id": pack_id}
+    if name != "knowledge.search":
+        raise ValueError(f"Unsupported knowledge capability: {capability}")
+
     query = " ".join(str(values.get("query") or "").split())[:500]
     if not query:
         raise ValueError("knowledge.search requires a query")
@@ -119,9 +169,87 @@ def sanitize_knowledge_result(
     capability: str,
     result: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    if str(capability or "").strip().lower() != "knowledge.search":
-        return {}
+    name = str(capability or "").strip().lower()
     values = dict(result or {})
+    if name == "knowledge.curation":
+        packs: list[dict[str, Any]] = []
+        for raw in list(values.get("packs") or [])[:64]:
+            if not isinstance(raw, dict):
+                continue
+            refresh = dict(raw.get("refresh") or {})
+            drift = dict(raw.get("drift") or {})
+            packs.append({
+                "pack_id": str(raw.get("pack_id") or "")[:160],
+                "title": str(raw.get("title") or "")[:240],
+                "collection": str(raw.get("collection") or "default")[:160],
+                "enabled": bool(raw.get("enabled")),
+                "documents": max(0, int(raw.get("documents", 0) or 0)),
+                "indexed_sources": max(
+                    0, int(raw.get("indexed_sources", 0) or 0)
+                ),
+                "disabled_documents": max(
+                    0, int(raw.get("disabled_documents", 0) or 0)
+                ),
+                "refresh": {
+                    "added": max(0, int(refresh.get("added", 0) or 0)),
+                    "changed": max(0, int(refresh.get("changed", 0) or 0)),
+                    "removed": max(0, int(refresh.get("removed", 0) or 0)),
+                    "skipped": max(0, int(refresh.get("skipped", 0) or 0)),
+                    "has_changes": bool(refresh.get("has_changes")),
+                },
+                "drift": {
+                    key: [
+                        str(item)[:500]
+                        for item in list(drift.get(key) or [])[:200]
+                        if str(item).strip()
+                    ]
+                    for key in (
+                        "manifest_only",
+                        "index_only",
+                        "disabled_missing",
+                    )
+                },
+                "recommendations": [
+                    str(item)[:120]
+                    for item in list(raw.get("recommendations") or [])[:16]
+                    if str(item).strip()
+                ],
+            })
+        duplicate_groups: list[dict[str, Any]] = []
+        for raw in list(values.get("duplicate_content_groups") or [])[:200]:
+            if not isinstance(raw, dict):
+                continue
+            copies = []
+            for item in list(raw.get("copies") or [])[:50]:
+                if not isinstance(item, dict):
+                    continue
+                copies.append({
+                    "pack_id": str(item.get("pack_id") or "")[:160],
+                    "locator": str(item.get("locator") or "")[:500],
+                })
+            if len(copies) > 1:
+                duplicate_groups.append({
+                    "content_hash": str(raw.get("content_hash") or "")[:128],
+                    "copies": copies,
+                })
+        return {
+            "ok": bool(values.get("ok", True)),
+            "version": max(0, int(values.get("version", 1) or 1)),
+            "pack_id": str(values.get("pack_id") or "")[:160],
+            "packs": packs,
+            "duplicate_content_groups": duplicate_groups,
+            "duplicate_content_group_count": len(duplicate_groups),
+            "automatic_mutation_performed": False,
+            "recommended_policy": str(
+                values.get("recommended_policy") or ""
+            )[:500],
+            "authority": "node-local read-only corpus curation evidence",
+            "raw_files_leave_node": False,
+        }
+
+    if name != "knowledge.search":
+        return {}
+
     hits: list[dict[str, Any]] = []
     for raw in list(values.get("hits") or [])[:20]:
         if not isinstance(raw, dict):
@@ -131,7 +259,9 @@ def sanitize_knowledge_result(
             "title": str(raw.get("title") or "")[:240],
             "snippet": str(raw.get("snippet") or "")[:1200],
             "source": str(raw.get("source") or "")[:300],
-            "score": max(0.0, min(1000.0, float(raw.get("score", 0.0) or 0.0))),
+            "score": max(
+                0.0, min(1000.0, float(raw.get("score", 0.0) or 0.0))
+            ),
             "locator": str(raw.get("locator") or "")[:500],
             "content_hash": str(raw.get("content_hash") or "")[:128],
             "collection": str(raw.get("collection") or "default")[:160],
@@ -154,6 +284,17 @@ def sanitize_knowledge_result(
         ],
         "authority": "node-local knowledge evidence only",
     }
+
+
+def execute_knowledge_curation(args: dict[str, Any]) -> dict[str, Any]:
+    """Return sanitized, read-only corpus hygiene evidence from this node."""
+
+    values = sanitize_knowledge_task_args("knowledge.curation", args)
+    report = node_knowledge_fabric().curation_report(values["pack_id"])
+    return sanitize_knowledge_result(
+        "knowledge.curation",
+        {"ok": True, **report},
+    )
 
 
 def execute_knowledge_search(
