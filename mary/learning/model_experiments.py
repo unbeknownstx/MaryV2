@@ -27,6 +27,15 @@ def _text(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
+def _sha256_hex(value: Any, *, field: str, optional: bool = True) -> str:
+    clean = str(value or "").strip().lower()
+    if not clean and optional:
+        return ""
+    if len(clean) != 64 or any(ch not in "0123456789abcdef" for ch in clean):
+        raise ValueError(f"{field} must be an exact SHA256 hex digest")
+    return clean
+
+
 def _tuple(values: Iterable[Any], *, limit: int = 16, item_limit: int = 160) -> tuple[str, ...]:
     return tuple(
         dict.fromkeys(
@@ -126,11 +135,10 @@ class ModelExperimentLedger:
             raise ValueError("MLX candidate proposal is incomplete")
         if len(config_sha) != 64 or len(weights_sha) != 64:
             raise ValueError("MLX candidate proposal requires exact SHA256 evidence")
-        bundle_lineage = _text(
-            raw.get("bundle_lineage_fingerprint"), 64
-        ).lower()
-        if bundle_lineage and len(bundle_lineage) != 64:
-            raise ValueError("MLX candidate bundle lineage fingerprint must be SHA256")
+        bundle_lineage = _sha256_hex(
+            raw.get("bundle_lineage_fingerprint"),
+            field="MLX candidate bundle lineage fingerprint",
+        )
         artifact = self._artifact_fingerprint(config_sha, weights_sha)
         return self._register(
             candidate_id=candidate_id,
@@ -492,7 +500,11 @@ class ModelExperimentLedger:
         raw = dict(evidence or {})
         if str(raw.get("version") or "") != "mary-model-experiment-evidence-v1":
             raise ValueError("unsupported model experiment evidence bundle")
-        expected_fingerprint = _text(raw.get("fingerprint"), 64).lower()
+        expected_fingerprint = _sha256_hex(
+            raw.get("fingerprint"),
+            field="model experiment evidence fingerprint",
+            optional=False,
+        )
         unsigned = dict(raw)
         unsigned.pop("fingerprint", None)
         canonical = json.dumps(
@@ -517,6 +529,10 @@ class ModelExperimentLedger:
         runtime = _text(experiment.get("runtime"), 80).casefold()
         model = _text(experiment.get("model"), 300)
         artifact = _text(experiment.get("artifact_fingerprint"), 64).lower()
+        bundle_lineage = _sha256_hex(
+            experiment.get("bundle_lineage_fingerprint"),
+            field="portable model bundle lineage fingerprint",
+        )
         if not candidate_id or not runtime or not model or not artifact:
             raise ValueError("portable model experiment evidence is incomplete")
         stable = sha256(
@@ -539,9 +555,7 @@ class ModelExperimentLedger:
                 "adapter_candidate_ids": _tuple(experiment.get("adapter_candidate_ids") or ()),
                 "artifact_fingerprint": artifact,
                 "dataset_fingerprint": _text(experiment.get("dataset_fingerprint"), 160),
-                "bundle_lineage_fingerprint": _text(
-                    experiment.get("bundle_lineage_fingerprint"), 64
-                ).lower(),
+                "bundle_lineage_fingerprint": bundle_lineage,
             }
             for name, value in immutable.items():
                 if getattr(current, name) != value:
@@ -558,9 +572,7 @@ class ModelExperimentLedger:
                 adapter_candidate_ids=_tuple(experiment.get("adapter_candidate_ids") or ()),
                 artifact_fingerprint=artifact,
                 dataset_fingerprint=_text(experiment.get("dataset_fingerprint"), 160),
-                bundle_lineage_fingerprint=_text(
-                    experiment.get("bundle_lineage_fingerprint"), 64
-                ).lower(),
+                bundle_lineage_fingerprint=bundle_lineage,
                 reviewed_by=_text(reviewed_by, 160) or "creator",
                 source=(
                     "portable_import:"
