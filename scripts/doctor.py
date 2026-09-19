@@ -123,6 +123,36 @@ def main() -> int:
             "@pixiv/three-vrm dependency",
         ),
         (
+            "Desktop VRMA runtime",
+            (
+                _text_contains(
+                    ROOT / "desktop" / "package.json",
+                    "@pixiv/three-vrm-animation",
+                )
+                and _text_contains(
+                    ROOT / "desktop" / "src" / "main.js",
+                    "VRMAnimationLoaderPlugin",
+                )
+            ),
+            "@pixiv/three-vrm-animation + VRMA loader",
+        ),
+        (
+            "Desktop motion manifest",
+            (ROOT / "desktop" / "public" / "motions" / "manifest.json").exists(),
+            "desktop/public/motions/manifest.json",
+        ),
+        (
+            "Desktop companion window",
+            (
+                _text_contains(
+                    ROOT / "mary" / "desktop" / "window.py",
+                    "WindowStaysOnTopHint",
+                )
+                and (ROOT / "desktop" / "src" / "companion-window.css").exists()
+            ),
+            "native transparent/always-on-top presentation mode",
+        ),
+        (
             "Desktop Mary VRM",
             (ROOT / "desktop" / "public" / "models" / "MaryCosma.vrm").exists(),
             "desktop/public/models/MaryCosma.vrm (optional local body asset)",
