@@ -64,6 +64,8 @@ def test_explicit_trial_targets_exact_node_and_utility_lane():
     assert result["promotion_performed"] is False
     call=core.device_tasks.calls[0]
     assert call["preferred_node_id"]=="mac-m1"
+    assert call["capability"]=="llm.llama_cpp"
+    assert call["args"]["experiment_id"]=="model_exp_exact"
     assert call["args"]["role"]=="utility"
     assert "canonical Mary" in call["args"]["messages"][0]["content"]
 
