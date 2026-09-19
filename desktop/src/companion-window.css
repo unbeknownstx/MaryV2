@@ -114,7 +114,7 @@ html[data-window-mode="companion"] .avatar-fallback .fallback-art {
   mask-image: linear-gradient(to bottom, #000 0 78%, transparent 100%);
 }
 
-html[data-window-mode="companion"] .avatar-fallback-caption {
+html[data-window-mode="companion"] .fallback-caption {
   display:none !important;
 }
 
