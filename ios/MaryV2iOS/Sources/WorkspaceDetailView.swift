@@ -259,6 +259,14 @@ struct WorkspaceDetailView: View {
                 label: "Knowledge attention",
                 value: CoreProjection.bool(substrate["attention_required"]) ? "Review" : "Clear"
             )
+            DataRow(
+                label: "Stale local indexes",
+                value: "\(CoreProjection.array(substrate["stale_local_indexes"]).count)"
+            )
+            DataRow(
+                label: "Stale semantic derivatives",
+                value: "\(CoreProjection.array(substrate["stale_derivatives"]).count)"
+            )
             DataRow(label: "Disabled documents", value: "\(CoreProjection.int(app.liveData["disabled_documents"]))")
             Text("Local documents, Kiwix and optional vector indexes are evidence sources. They never become memory or truth just because retrieval found them.").font(.caption).foregroundStyle(MaryTheme.muted)
         }}
