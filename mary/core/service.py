@@ -1716,6 +1716,41 @@ class MaryCoreService:
             except Exception:
                 implementation_fingerprint = ""
 
+        plan_id = str(link.get("plan_id") or "")
+        step_id = str(link.get("step_id") or "")
+        verification_required = False
+        if plan_id and step_id:
+            try:
+                linked_step = self.mary.executive_plans.get_step(plan_id, step_id)
+                verification_required = bool(
+                    list(getattr(linked_step, "verification", ()) or ())
+                )
+            except Exception:
+                verification_required = False
+
+        explicit_verification = result.get("verification_passed")
+        if not isinstance(explicit_verification, bool):
+            explicit_verification = result.get("verified")
+        if not isinstance(explicit_verification, bool):
+            raw_verification = result.get("verification")
+            if isinstance(raw_verification, dict):
+                verdict = str(
+                    raw_verification.get("verdict")
+                    or raw_verification.get("status")
+                    or ""
+                ).strip().casefold()
+                if verdict in {"confirmed", "verified", "passed", "pass"}:
+                    explicit_verification = True
+                elif verdict in {"failed", "rejected", "uncertain"}:
+                    explicit_verification = False
+        verification_confirmed = bool(
+            success
+            and (
+                explicit_verification is True
+                or (not verification_required and explicit_verification is not False)
+            )
+        )
+
         skill_id = str(link.get("skill_id") or "")
         if skill_id:
             try:
@@ -1734,7 +1769,7 @@ class MaryCoreService:
                     node_id=node_id,
                     skill_id=skill_id,
                     success=success,
-                    verified=success,
+                    verified=verification_confirmed,
                     evidence_ids=evidence,
                     result=summary,
                     implementation_fingerprint=implementation_fingerprint,
@@ -1742,8 +1777,6 @@ class MaryCoreService:
             except Exception:
                 pass
 
-        plan_id = str(link.get("plan_id") or "")
-        step_id = str(link.get("step_id") or "")
         if plan_id and step_id:
             try:
                 if success:
