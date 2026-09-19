@@ -688,6 +688,7 @@ class MaryDesktopBridge(QObject):
     maximizeRequested = Signal()
     closeRequested = Signal()
     windowMoveRequested = Signal()
+    windowPresentationRequested = Signal(str)
 
     def __init__(
         self,
@@ -2636,6 +2637,22 @@ class MaryDesktopBridge(QObject):
         self,
     ) -> None:  # noqa: N802
         self.windowMoveRequested.emit()
+
+    @Slot(str)
+    def setWindowPresentationMode(
+        self,
+        mode: str,
+    ) -> None:  # noqa: N802
+        """Request a native presentation-only window mode.
+
+        This signal controls the host window only. It cannot change Mary Core,
+        memory, relationship state, provider routing, or capability authority.
+        """
+
+        normalized = str(mode or "standard").strip().lower()
+        if normalized not in {"standard", "companion"}:
+            normalized = "standard"
+        self.windowPresentationRequested.emit(normalized)
 
     def _emit_dashboard_state(
         self,
