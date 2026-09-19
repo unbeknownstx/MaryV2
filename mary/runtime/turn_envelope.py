@@ -20,6 +20,7 @@ _IDENTIFIER_LIMITS = {
     "transport": 64,
     "conversation_id": 160,
     "device_id": 160,
+    "surface_id": 160,
     "requested_mode": 32,
     "turn_id": 160,
     "initiated_by": 48,
@@ -60,6 +61,23 @@ def _safe_identifier(
     return text[:limit]
 
 
+_PRESENTATION_CAPABILITIES = {
+    "expression_cues",
+    "gaze_cues",
+    "head_motion",
+    "semantic_motion",
+    "motion_assets",
+    "lip_sync",
+    "voice_direction",
+    "scene_context",
+    "lighting_control",
+    "transparent_overlay",
+    "capture",
+    "locomotion",
+    "vr",
+}
+
+
 def build_turn_envelope(
     metadata: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -97,6 +115,17 @@ def build_turn_envelope(
                 "voice_input"
             )
         )
+
+    raw_capabilities = source.get("presentation_capabilities")
+    if isinstance(raw_capabilities, Mapping):
+        capabilities = {
+            str(name): bool(enabled)
+            for name, enabled in raw_capabilities.items()
+            if str(name) in _PRESENTATION_CAPABILITIES
+            and isinstance(enabled, bool)
+        }
+        if capabilities:
+            envelope["presentation_capabilities"] = capabilities
 
     # Surface-local time is ephemeral observation only. The protocol validates
     # it before remote Core receives it; direct/local callers still get a tight
