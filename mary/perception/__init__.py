@@ -12,6 +12,7 @@ from .director import PerceptionDirector, PerceptionObservation
 from .browser import BrowserContext, BrowserContextSensor
 from .sensory import SensoryAttentionController, SensoryPolicy
 from .assets import PerceptionAsset, PerceptionAssetRegistry, sha256_bytes
+from .media_timeline import MediaObservation, MediaObservationTimeline, build_media_observation_timeline, context_window
 
 __all__ = [
     "Event",
@@ -30,4 +31,8 @@ __all__ = [
     "PerceptionAsset",
     "PerceptionAssetRegistry",
     "sha256_bytes",
+    "MediaObservation",
+    "MediaObservationTimeline",
+    "build_media_observation_timeline",
+    "context_window",
 ]
