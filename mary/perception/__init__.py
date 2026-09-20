@@ -13,6 +13,7 @@ from .browser import BrowserContext, BrowserContextSensor
 from .sensory import SensoryAttentionController, SensoryPolicy
 from .assets import PerceptionAsset, PerceptionAssetRegistry, sha256_bytes
 from .media_timeline import MediaObservation, MediaObservationTimeline, build_media_observation_timeline, context_window
+from .media_sessions import MediaSessionRegistry
 
 __all__ = [
     "Event",
@@ -35,4 +36,5 @@ __all__ = [
     "MediaObservationTimeline",
     "build_media_observation_timeline",
     "context_window",
+    "MediaSessionRegistry",
 ]
