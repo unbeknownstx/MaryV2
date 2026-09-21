@@ -819,6 +819,35 @@ class SkillLibrary:
             "authority": "explicit creator revision decisions only",
         }
 
+    def latest_revision_review(self, skill_id: str) -> dict[str, Any]:
+        """Return the latest content-free creator review for one revision."""
+
+        clean_id = str(skill_id or "").strip()
+        if not clean_id:
+            return {}
+        rows = [
+            dict(item)
+            for item in list(self._store.snapshot().get("revision_reviews") or [])
+            if isinstance(item, dict)
+            and str(item.get("candidate_id") or "") == clean_id
+        ]
+        if not rows:
+            return {}
+        latest = rows[-1]
+        comparison = dict(latest.get("comparison") or {})
+        return {
+            "id": str(latest.get("id") or "")[:180],
+            "candidate_id": clean_id[:180],
+            "predecessor_id": str(latest.get("predecessor_id") or "")[:180],
+            "decision": str(latest.get("decision") or "")[:40],
+            "reviewed_by": str(latest.get("reviewed_by") or "")[:160],
+            "reviewed_at": str(latest.get("reviewed_at") or "")[:80],
+            "comparison_state": str(comparison.get("state") or "")[:80],
+            "comparison_review_ready": bool(comparison.get("review_ready")),
+            "automatic_decision": False,
+            "authority": "creator review provenance only",
+        }
+
     def candidates(self) -> list[SkillRecord]:
         return [
             self._decode(row)
