@@ -3858,6 +3858,9 @@ class MaryCoreService:
                         limit=100,
                         competence=self.mary.competence,
                     ),
+                    "revision_review_history": self.mary.procedural_skills.revision_review_history(
+                        limit=100,
+                    ),
                     "execution_performed": False,
                 })
 
@@ -3898,23 +3901,51 @@ class MaryCoreService:
 
             if action.action == "continuity.skill.approve":
                 skill_id = str(values.get("skill_id") or "").strip()
-                skill = self.mary.procedural_skills.approve(
-                    skill_id,
-                    approved_by=f"protocol:{action.device_id}",
-                )
+                candidate = self.mary.procedural_skills.get(skill_id)
+                if str(getattr(candidate, "supersedes", "") or "").strip():
+                    reviewed = self.mary.procedural_skills.review_revision(
+                        skill_id,
+                        decision="approve",
+                        reviewed_by=f"protocol:{action.device_id}",
+                        reason=str(values.get("reason") or "")[:800],
+                        competence=self.mary.competence,
+                    )
+                    skill = reviewed["skill"]
+                    review = dict(reviewed["review"])
+                else:
+                    skill = self.mary.procedural_skills.approve(
+                        skill_id,
+                        approved_by=f"protocol:{action.device_id}",
+                    )
+                    review = {}
                 return _json_safe({
                     "ok": True,
                     "skill": self._skill_view(skill),
+                    "revision_review": review,
                     "execution_performed": False,
                     "authority": "explicit creator approval",
                 })
 
             if action.action == "continuity.skill.reject":
                 skill_id = str(values.get("skill_id") or "").strip()
-                skill = self.mary.procedural_skills.reject(skill_id)
+                candidate = self.mary.procedural_skills.get(skill_id)
+                if str(getattr(candidate, "supersedes", "") or "").strip():
+                    reviewed = self.mary.procedural_skills.review_revision(
+                        skill_id,
+                        decision="reject",
+                        reviewed_by=f"protocol:{action.device_id}",
+                        reason=str(values.get("reason") or "")[:800],
+                        competence=self.mary.competence,
+                    )
+                    skill = reviewed["skill"]
+                    review = dict(reviewed["review"])
+                else:
+                    skill = self.mary.procedural_skills.reject(skill_id)
+                    review = {}
                 return _json_safe({
                     "ok": True,
                     "skill": self._skill_view(skill),
+                    "revision_review": review,
                     "execution_performed": False,
                     "authority": "explicit creator rejection",
                 })

@@ -641,6 +641,12 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
                 "revision_lineage": _mapping(
                     procedure_intelligence.get("revision_lineage")
                 ),
+                "revision_review_history": _mapping(
+                    procedure_intelligence.get("revision_review_history")
+                ),
+                "review_decisions": int(
+                    procedure_intelligence.get("review_decisions", 0) or 0
+                ),
                 "authority": (
                     "read-only evidence projection; review, approval, binding "
                     "and execution remain explicit"
@@ -682,6 +688,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "procedure_selection": "approved_demonstrated_non_degrading_ephemeral_only",
             "procedure_revision": "version_lineage_visible_creator_approval_required",
             "procedure_comparison": "bounded_verified_evidence_creator_review_no_superiority_claim",
+            "procedure_review_decision": "explicit_creator_decision_with_content_free_comparison_snapshot",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
             "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",
