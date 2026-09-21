@@ -107,6 +107,18 @@ class _Competence:
                 "last_success": False,
                 "last_observed_at": "2026-09-18T01:00:00+00:00",
             }
+        if skill_id == "skill-revision":
+            return {
+                "attempts": 4,
+                "successes": 3,
+                "failures": 1,
+                "verified_successes": 3,
+                "reliability": 0.67,
+                "evidence_strength": 0.39,
+                "demonstrated": True,
+                "last_success": True,
+                "last_observed_at": "2026-09-18T02:00:00+00:00",
+            }
         return {}
 
 
@@ -160,7 +172,7 @@ class _Procedures(_StatusOwner):
             "failure_rate": 0.6,
         }]
 
-    def revision_lineage(self, *, limit=100):
+    def revision_lineage(self, *, limit=100, competence=None):
         return {
             "version": "13.78",
             "revisions": 1,
@@ -180,10 +192,33 @@ class _Procedures(_StatusOwner):
                 "attempts": 0,
                 "successes": 0,
                 "failures": 0,
-                "candidate_trial_observed": False,
+                "candidate_trial_observed": True,
+                "comparison": {
+                    "state": "review_ready",
+                    "review_ready": True,
+                    "capability": "sensor.screen_describe",
+                    "candidate": {
+                        "attempts": 4,
+                        "verified_successes": 3,
+                        "reliability": 0.67,
+                        "evidence_strength": 0.39,
+                    },
+                    "predecessor": {
+                        "attempts": 5,
+                        "verified_successes": 2,
+                        "reliability": 0.43,
+                        "evidence_strength": 0.46,
+                    },
+                    "reliability_delta": 0.24,
+                    "evidence_needed": [
+                        "creator review of the bounded comparison before any approval decision"
+                    ],
+                    "superiority_claimed": False,
+                    "automatic_approval": False,
+                },
                 "evidence_needed": [
-                    "bounded candidate trial outcomes before claiming the revision is demonstrated",
                     "explicit creator review before this revision can supersede the approved predecessor",
+                    "creator review of the bounded comparison before any approval decision",
                 ],
                 "approval_required": True,
                 "automatic_approval": False,
@@ -334,6 +369,10 @@ def test_capability_introspection_projects_competence_and_local_substrates():
     assert lineage["candidate_id"] == "skill-revision"
     assert lineage["predecessor_id"] == "skill-degrading"
     assert lineage["automatic_approval"] is False
+    assert lineage["comparison"]["state"] == "review_ready"
+    assert lineage["comparison"]["review_ready"] is True
+    assert lineage["comparison"]["reliability_delta"] == 0.24
+    assert lineage["comparison"]["superiority_claimed"] is False
     assert live["capability_improvement"]["llm.ollama"]["demonstrated"] is True
     assert live["capability_improvement"]["sensor.screen_describe"]["evidence_needed"]
     assert live["world_model"]["reconciliation_groups"] == 2
@@ -475,6 +514,7 @@ def test_procedure_self_awareness_reports_demonstrated_degrading_and_needed_evid
 
     assert procedures["demonstrated"] == 2
     assert procedures["degrading"] == 1
+    assert procedures["comparison_ready"] == 1
     degrading = next(
         item for item in procedures["procedures"]
         if item["skill_id"] == "skill-degrading"
@@ -488,4 +528,6 @@ def test_procedure_self_awareness_reports_demonstrated_degrading_and_needed_evid
     assert "degradation/revision review" in answer
     assert "never approves, binds, authorizes, or executes" in answer
     assert "evidence gaps" in answer
+    assert "ready for creator review" in answer
+    assert "not a superiority claim" in answer
 
