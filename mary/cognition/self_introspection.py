@@ -1040,7 +1040,10 @@ class SelfIntrospection:
         lineage_fn = getattr(procedural_owner, "revision_lineage", None)
         if callable(lineage_fn):
             try:
-                revision_lineage = dict(lineage_fn(limit=100) or {})
+                revision_lineage = dict(lineage_fn(
+                    limit=100,
+                    competence=competence_owner,
+                ) or {})
             except Exception:
                 revision_lineage = {}
         world_status = safe_status(getattr(self, "world_model", None))
@@ -1427,6 +1430,12 @@ class SelfIntrospection:
                 "candidates": int(skills_status.get("candidates") or 0),
                 "revision_attention": int(skills_status.get("revision_attention") or 0),
                 "revision_lineage": revision_lineage,
+                "comparison_ready": sum(
+                    1
+                    for item in list(revision_lineage.get("rows") or [])[:100]
+                    if isinstance(item, dict)
+                    and bool(dict(item.get("comparison") or {}).get("review_ready"))
+                ),
                 "demonstrated": sum(
                     1 for item in procedure_rows
                     if bool(item.get("demonstrated"))
@@ -1630,6 +1639,20 @@ class SelfIntrospection:
                         for item in missing
                     )
                     + "."
+                )
+            lineage = dict(procedure_state.get("revision_lineage") or {})
+            comparison_ready = [
+                item
+                for item in list(lineage.get("rows") or [])[:32]
+                if isinstance(item, dict)
+                and bool(dict(item.get("comparison") or {}).get("review_ready"))
+            ]
+            if comparison_ready:
+                requested_sentences.append(
+                    f"{len(comparison_ready)} procedure revision comparison"
+                    f"{'s are' if len(comparison_ready) != 1 else ' is'} ready for creator review. "
+                    "That means both versions have enough bounded verified operational evidence "
+                    "to compare; it is not a superiority claim and does not approve the revision."
                 )
 
         if asks_model_experiments:
