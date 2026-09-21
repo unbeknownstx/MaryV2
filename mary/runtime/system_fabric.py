@@ -393,6 +393,38 @@ def _improvement_agenda(
             "automatic_action": False,
         })
 
+    adoption_evidence = _mapping(
+        procedure_intelligence.get("revision_adoption_evidence")
+    )
+    for row in list(adoption_evidence.get("rows") or [])[:32]:
+        if not isinstance(row, dict):
+            continue
+        state = str(row.get("state") or "")[:80]
+        needs = [
+            str(item)[:240]
+            for item in list(row.get("evidence_needed") or [])[:8]
+            if str(item).strip()
+        ]
+        if state == "post_adoption_observed_stable" and not needs:
+            continue
+        items.append({
+            "kind": "procedure_adoption",
+            "subject": str(row.get("candidate_id") or "")[:180],
+            "state": state,
+            "attention": (
+                "review"
+                if state == "post_adoption_attention"
+                else "evidence"
+            ),
+            "evidence_needed": needs,
+            "review_id": str(row.get("review_id") or "")[:180],
+            "attempts": int(row.get("attempts") or 0),
+            "verified_successes": int(row.get("verified_successes") or 0),
+            "failure_rate": float(row.get("failure_rate") or 0.0),
+            "automatic_action": False,
+            "automatic_rollback": False,
+        })
+
     for row in list(model_evidence.get("records") or [])[:16]:
         if not isinstance(row, dict):
             continue
@@ -647,6 +679,19 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
                 "review_decisions": int(
                     procedure_intelligence.get("review_decisions", 0) or 0
                 ),
+                "revision_adoption_evidence": _mapping(
+                    procedure_intelligence.get("revision_adoption_evidence")
+                ),
+                "adopted_revisions_with_outcomes": int(
+                    procedure_intelligence.get(
+                        "adopted_revisions_with_outcomes", 0
+                    ) or 0
+                ),
+                "adoption_attention_required": int(
+                    procedure_intelligence.get(
+                        "adoption_attention_required", 0
+                    ) or 0
+                ),
                 "authority": (
                     "read-only evidence projection; review, approval, binding "
                     "and execution remain explicit"
@@ -690,6 +735,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "procedure_revision": "version_lineage_visible_creator_approval_required",
             "procedure_comparison": "bounded_verified_evidence_creator_review_no_superiority_claim",
             "procedure_review_decision": "explicit_creator_decision_with_content_free_comparison_snapshot",
+            "procedure_adoption_evidence": "post_adoption_terminal_evidence_no_automatic_rollback",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
             "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",

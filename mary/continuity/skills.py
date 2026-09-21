@@ -835,6 +835,7 @@ class SkillLibrary:
             return {}
         latest = rows[-1]
         comparison = dict(latest.get("comparison") or {})
+        adoption = self._adoption_view(latest)
         return {
             "id": str(latest.get("id") or "")[:180],
             "candidate_id": clean_id[:180],
@@ -844,8 +845,178 @@ class SkillLibrary:
             "reviewed_at": str(latest.get("reviewed_at") or "")[:80],
             "comparison_state": str(comparison.get("state") or "")[:80],
             "comparison_review_ready": bool(comparison.get("review_ready")),
+            "post_adoption_state": str(adoption.get("state") or "")[:80],
+            "post_adoption_attempts": int(adoption.get("attempts") or 0),
             "automatic_decision": False,
             "authority": "creator review provenance only",
+        }
+
+    def record_revision_adoption_outcome(
+        self,
+        review_id: str,
+        *,
+        success: bool,
+        verified: bool = False,
+        evidence_id: str = "",
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Attach one post-approval terminal outcome to its creator review.
+
+        The record is structural and idempotent by evidence ID. It never changes
+        approval state, supersession, permission, execution, or plan bindings.
+        """
+
+        clean_review_id = str(review_id or "").strip()
+        if not clean_review_id:
+            return {}
+        clean_evidence_id = str(evidence_id or "").strip()[:180]
+        when = str(observed_at or _now())[:80]
+        updated: dict[str, Any] = {}
+
+        def mutate(data: dict[str, Any]) -> None:
+            nonlocal updated
+            for row in list(data.get("revision_reviews") or []):
+                if not isinstance(row, dict) or row.get("id") != clean_review_id:
+                    continue
+                if str(row.get("decision") or "") != "approve":
+                    raise ValueError(
+                        "post-adoption evidence requires an approved revision review"
+                    )
+                evidence_ids = [
+                    str(item)[:180]
+                    for item in list(row.get("adoption_evidence_ids") or [])[:96]
+                    if str(item).strip()
+                ]
+                if clean_evidence_id and clean_evidence_id in evidence_ids:
+                    updated = dict(row)
+                    return
+                attempts = int(row.get("adoption_attempts") or 0) + 1
+                successes = int(row.get("adoption_successes") or 0)
+                failures = int(row.get("adoption_failures") or 0)
+                verified_successes = int(
+                    row.get("adoption_verified_successes") or 0
+                )
+                if success:
+                    successes += 1
+                    if verified:
+                        verified_successes += 1
+                else:
+                    failures += 1
+                if clean_evidence_id:
+                    evidence_ids.append(clean_evidence_id)
+                row["adoption_attempts"] = attempts
+                row["adoption_successes"] = successes
+                row["adoption_failures"] = failures
+                row["adoption_verified_successes"] = verified_successes
+                row["adoption_evidence_ids"] = list(
+                    dict.fromkeys(evidence_ids)
+                )[-96:]
+                row.setdefault("adoption_first_observed_at", when)
+                row["adoption_last_observed_at"] = when
+                updated = dict(row)
+                return
+
+        self._store.mutate(mutate)
+        if not updated:
+            raise KeyError(clean_review_id)
+        return updated
+
+    @staticmethod
+    def _adoption_view(review: dict[str, Any]) -> dict[str, Any]:
+        attempts = int(review.get("adoption_attempts") or 0)
+        successes = int(review.get("adoption_successes") or 0)
+        failures = int(review.get("adoption_failures") or 0)
+        verified_successes = int(
+            review.get("adoption_verified_successes") or 0
+        )
+        failure_rate = failures / max(1, attempts)
+        evidence_needed: list[str] = []
+        if attempts == 0:
+            state = "no_post_adoption_evidence"
+            evidence_needed.append(
+                "a terminal outcome from an explicit task using this adopted revision"
+            )
+        elif verified_successes == 0:
+            state = "post_adoption_unverified"
+            evidence_needed.append(
+                "at least one verified successful post-adoption terminal outcome"
+            )
+        elif attempts < 4:
+            state = "early_post_adoption_evidence"
+            evidence_needed.append(
+                "additional independent post-adoption outcomes before judging stability"
+            )
+        elif failure_rate >= 0.5:
+            state = "post_adoption_attention"
+            evidence_needed.append(
+                "creator review of post-adoption failures before proposing another revision"
+            )
+        else:
+            state = "post_adoption_observed_stable"
+
+        return {
+            "review_id": str(review.get("id") or "")[:180],
+            "candidate_id": str(review.get("candidate_id") or "")[:180],
+            "predecessor_id": str(review.get("predecessor_id") or "")[:180],
+            "reviewed_at": str(review.get("reviewed_at") or "")[:80],
+            "state": state,
+            "attempts": attempts,
+            "successes": successes,
+            "failures": failures,
+            "verified_successes": verified_successes,
+            "failure_rate": round(failure_rate, 4) if attempts else 0.0,
+            "evidence_ids": [
+                str(item)[:180]
+                for item in list(review.get("adoption_evidence_ids") or [])[-48:]
+                if str(item).strip()
+            ],
+            "first_observed_at": str(
+                review.get("adoption_first_observed_at") or ""
+            )[:80],
+            "last_observed_at": str(
+                review.get("adoption_last_observed_at") or ""
+            )[:80],
+            "evidence_needed": evidence_needed,
+            "automatic_rollback": False,
+            "automatic_revision": False,
+            "authority": (
+                "post-adoption operational evidence only; creator review is "
+                "required for any further procedure change"
+            ),
+        }
+
+    def revision_adoption_evidence(self, *, limit: int = 100) -> dict[str, Any]:
+        """Project post-adoption evidence for explicitly approved revisions."""
+
+        reviews = [
+            dict(item)
+            for item in list(self._store.snapshot().get("revision_reviews") or [])
+            if isinstance(item, dict)
+            and str(item.get("decision") or "") == "approve"
+        ]
+        rows = [self._adoption_view(item) for item in reviews]
+        rows.reverse()
+        bounded = rows[: max(1, min(500, int(limit)))]
+        return {
+            "version": "13.83",
+            "adopted_revisions": len(rows),
+            "with_outcomes": sum(
+                1 for row in rows if int(row.get("attempts") or 0) > 0
+            ),
+            "observed_stable": sum(
+                1
+                for row in rows
+                if row.get("state") == "post_adoption_observed_stable"
+            ),
+            "attention_required": sum(
+                1
+                for row in rows
+                if row.get("state") == "post_adoption_attention"
+            ),
+            "rows": bounded,
+            "automatic_rollback": False,
+            "automatic_revision": False,
+            "authority": "read-only post-adoption procedure evidence",
         }
 
     def candidates(self) -> list[SkillRecord]:
@@ -878,6 +1049,9 @@ class SkillLibrary:
             ),
             "revision_attention": len(self.revision_queue()),
             "revision_review_decisions": len(list(self._store.snapshot().get("revision_reviews") or [])),
+            "adopted_revisions_with_outcomes": int(
+                self.revision_adoption_evidence().get("with_outcomes") or 0
+            ),
             "execution": "descriptive only; ToolManager/device capability fabric retains execution authority",
         }
 
