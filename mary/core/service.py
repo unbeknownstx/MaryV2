@@ -3854,6 +3854,7 @@ class MaryCoreService:
                     "candidates": [self._skill_view(item) for item in candidates],
                     "approved": [self._skill_view(item) for item in approved],
                     "revision_queue": self.mary.procedural_skills.revision_queue(limit=50),
+                    "revision_lineage": self.mary.procedural_skills.revision_lineage(limit=100),
                     "execution_performed": False,
                 })
 
