@@ -122,6 +122,17 @@ class _StatusOwner:
         return dict(self.substrate)
 
 
+class _KnowledgeEvaluationEvidence:
+    def snapshot(self, *, current_substrate_fingerprint=""):
+        return {
+            "runs": 3,
+            "latest_all_passed": True,
+            "stale": False,
+            "current_substrate_match": True,
+            "content_retained": False,
+        }
+
+
 class _Procedures(_StatusOwner):
     def __init__(self):
         super().__init__({"approved": 5, "candidates": 2, "revision_attention": 1})
@@ -234,6 +245,9 @@ def _introspection(
         )
         if substrate else None
     )
+    value.knowledge_evaluation_evidence = (
+        _KnowledgeEvaluationEvidence() if substrate else None
+    )
     value.procedural_skills = _Procedures() if substrate else None
     value.world_model = (
         _StatusOwner({"current_beliefs": 11, "reconciliation_groups": 2})
@@ -273,6 +287,11 @@ def test_capability_introspection_projects_competence_and_local_substrates():
     assert live["knowledge_substrate"]["attention_required"] is True
     assert live["knowledge_substrate"]["stale_derivatives"] == 1
     assert live["knowledge_substrate"]["stale_local_indexes"] == 1
+    assert live["knowledge_substrate"]["evaluation_runs"] == 3
+    assert live["knowledge_substrate"]["latest_evaluation_passed"] is True
+    assert live["knowledge_substrate"]["evaluation_stale"] is False
+    assert live["knowledge_substrate"]["evaluation_current_substrate_match"] is True
+    assert live["knowledge_substrate"]["evaluation_content_retained"] is False
     assert live["procedural_memory"]["approved"] == 5
     assert live["procedural_memory"]["revision_attention"] == 1
     assert live["procedural_memory"]["demonstrated"] == 2

@@ -6,6 +6,9 @@ from mary.knowledge import (
     KnowledgeEvaluationCase,
     KnowledgeFabric,
     KnowledgeFabricEvaluator,
+    KnowledgeEvaluationEvidenceStore,
+    knowledge_case_set_fingerprint,
+    knowledge_substrate_fingerprint,
 )
 
 
@@ -119,3 +122,42 @@ def test_evaluator_summary_is_non_promoting(tmp_path: Path):
     assert summary["passed"] == 2
     assert "no LLM judge" in summary["policy"]
     assert "automatic" in summary["policy"]
+
+
+def test_content_free_evaluation_evidence_tracks_current_and_stale_substrate(tmp_path: Path):
+    fabric = _fabric(tmp_path)
+    cases = [KnowledgeEvaluationCase(
+        case_id="manual-evidence",
+        query="nebularouter",
+        expected_pack_ids=("beta",),
+        expected_locators=("manual.md",),
+    )]
+    summary = KnowledgeFabricEvaluator(fabric).evaluate(cases)
+    store = KnowledgeEvaluationEvidenceStore(tmp_path / "runtime" / "knowledge_eval.json")
+    current = knowledge_substrate_fingerprint(fabric)
+    recorded = store.record(
+        summary,
+        substrate_fingerprint=current,
+        case_set_fingerprint=knowledge_case_set_fingerprint(cases),
+    )
+
+    assert recorded["all_passed"] is True
+    assert recorded["queries_retained"] is False
+    assert recorded["retrieved_text_retained"] is False
+    assert "nebularouter" not in str(recorded)
+    assert "manual.md" not in str(recorded)
+
+    snapshot = store.snapshot(current_substrate_fingerprint=current)
+    assert snapshot["runs"] == 1
+    assert snapshot["current_substrate_match"] is True
+    assert snapshot["stale"] is False
+    assert snapshot["latest_all_passed"] is True
+
+    # Changing the substrate invalidates the old evaluation without deleting history.
+    fabric.disable_document("beta", "manual.md")
+    changed = knowledge_substrate_fingerprint(fabric)
+    stale = store.snapshot(current_substrate_fingerprint=changed)
+    assert changed != current
+    assert stale["stale"] is True
+    assert stale["current_substrate_match"] is False
+    assert stale["automatic_promotion"] is False

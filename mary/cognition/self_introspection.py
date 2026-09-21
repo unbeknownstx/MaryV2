@@ -36,6 +36,7 @@ class SelfIntrospection:
         node_registry: Any | None = None,
         competence: Any | None = None,
         knowledge_fabric: Any | None = None,
+        knowledge_evaluation_evidence: Any | None = None,
         procedural_skills: Any | None = None,
         world_model: Any | None = None,
         model_experiments: Any | None = None,
@@ -56,6 +57,7 @@ class SelfIntrospection:
         self.node_registry = node_registry
         self.competence = competence
         self.knowledge_fabric = knowledge_fabric
+        self.knowledge_evaluation_evidence = knowledge_evaluation_evidence
         self.procedural_skills = procedural_skills
         self.world_model = world_model
         self.model_experiments = model_experiments
@@ -1009,6 +1011,29 @@ class SelfIntrospection:
                 knowledge_substrate = dict(substrate_fn() or {})
             except Exception:
                 knowledge_substrate = {}
+        knowledge_evaluation: dict[str, Any] = {}
+        evaluation_owner = getattr(self, "knowledge_evaluation_evidence", None)
+        evaluation_snapshot = getattr(evaluation_owner, "snapshot", None)
+        if callable(evaluation_snapshot):
+            current_fingerprint = ""
+            if knowledge_owner is not None:
+                try:
+                    from mary.knowledge import knowledge_substrate_fingerprint
+                    current_fingerprint = knowledge_substrate_fingerprint(knowledge_owner)
+                except Exception:
+                    # Partial/test knowledge owners can still expose durable
+                    # evaluation evidence even when a full substrate fingerprint
+                    # cannot be derived. The snapshot remains read-only and will
+                    # simply be unable to claim a current fingerprint match.
+                    current_fingerprint = ""
+            try:
+                knowledge_evaluation = dict(
+                    evaluation_snapshot(
+                        current_substrate_fingerprint=current_fingerprint
+                    ) or {}
+                )
+            except Exception:
+                knowledge_evaluation = {}
         procedural_owner = getattr(self, "procedural_skills", None)
         skills_status = safe_status(procedural_owner)
         world_status = safe_status(getattr(self, "world_model", None))
@@ -1377,6 +1402,17 @@ class SelfIntrospection:
                 ),
                 "stale_local_indexes": len(
                     list(knowledge_substrate.get("stale_local_indexes") or [])
+                ),
+                "evaluation_runs": int(knowledge_evaluation.get("runs") or 0),
+                "latest_evaluation_passed": bool(
+                    knowledge_evaluation.get("latest_all_passed")
+                ),
+                "evaluation_stale": bool(knowledge_evaluation.get("stale")),
+                "evaluation_current_substrate_match": bool(
+                    knowledge_evaluation.get("current_substrate_match")
+                ),
+                "evaluation_content_retained": bool(
+                    knowledge_evaluation.get("content_retained", False)
                 ),
             },
             "procedural_memory": {

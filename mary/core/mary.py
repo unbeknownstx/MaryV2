@@ -106,7 +106,7 @@ from mary.tools.manager import ToolManager
 from mary.tools.registry import PermissionLevel
 
 from mary.knowledge.manager import KnowledgeManager
-from mary.knowledge import KnowledgeFabric
+from mary.knowledge import KnowledgeFabric, KnowledgeEvaluationEvidenceStore
 
 from mary.memory.manager import MemoryManager
 
@@ -438,6 +438,9 @@ class Mary:
             self.config.paths.knowledge / "knowledge_fabric.json",
             index_path=self.config.paths.knowledge / "knowledge_fabric.sqlite3",
         )
+        self.knowledge_evaluation_evidence = KnowledgeEvaluationEvidenceStore(
+            self.config.paths.runtime / "knowledge_evaluation_evidence.json"
+        )
 
         # Reviewed model/adapter evidence is durable lab state, not identity or
         # routing authority. Multiple readers may inspect the same atomic ledger;
@@ -707,6 +710,7 @@ class Mary:
             node_registry=self.node_registry,
             competence=self.competence,
             knowledge_fabric=self.knowledge_fabric,
+            knowledge_evaluation_evidence=self.knowledge_evaluation_evidence,
             procedural_skills=self.procedural_skills,
             world_model=self.world_model,
             model_experiments=self.model_experiments,

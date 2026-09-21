@@ -1,7 +1,15 @@
 from .world_context import WorldContextItem, WorldContextStore
 from .world_pulse import WorldPulseLane, WorldPulsePlanner
 from .fabric import KnowledgeFabric, KnowledgeHit, KnowledgePack
-from .evaluation import KnowledgeEvaluationCase, KnowledgeEvaluationResult, KnowledgeFabricEvaluator, load_knowledge_evaluation_cases
+from .evaluation import (
+    KnowledgeEvaluationCase,
+    KnowledgeEvaluationResult,
+    KnowledgeFabricEvaluator,
+    KnowledgeEvaluationEvidenceStore,
+    knowledge_substrate_fingerprint,
+    knowledge_case_set_fingerprint,
+    load_knowledge_evaluation_cases,
+)
 
 __all__ = [
     "WorldContextItem",
@@ -14,6 +22,9 @@ __all__ = [
     "KnowledgeEvaluationCase",
     "KnowledgeEvaluationResult",
     "KnowledgeFabricEvaluator",
+    "KnowledgeEvaluationEvidenceStore",
+    "knowledge_substrate_fingerprint",
+    "knowledge_case_set_fingerprint",
     "load_knowledge_evaluation_cases",
 ]
 

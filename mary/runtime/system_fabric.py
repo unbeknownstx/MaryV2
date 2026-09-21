@@ -214,12 +214,17 @@ def _capability_contract(capability_improvement: dict[str, Any]) -> dict[str, An
     }
 
 
-def _knowledge_evaluation_readiness(knowledge: dict[str, Any], substrate: dict[str, Any]) -> dict[str, Any]:
+def _knowledge_evaluation_readiness(
+    knowledge: dict[str, Any],
+    substrate: dict[str, Any],
+    evaluation_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Summarize whether the local substrate is ready for deterministic regression evaluation."""
     enabled = int(knowledge.get("enabled") or substrate.get("enabled") or 0)
     indexed = int(knowledge.get("indexed_documents") or substrate.get("indexed_chunks") or 0)
     stale_derivatives = list(substrate.get("stale_derivatives") or [])
     stale_local = list(substrate.get("stale_local_indexes") or [])
+    observed = dict(evaluation_evidence or {})
     evidence_needed: list[str] = []
     if enabled <= 0:
         evidence_needed.append("enable at least one reviewed local knowledge pack")
@@ -229,13 +234,32 @@ def _knowledge_evaluation_readiness(knowledge: dict[str, Any], substrate: dict[s
         evidence_needed.append("rebuild stale local indexes before treating evaluation as current")
     if stale_derivatives:
         evidence_needed.append("rebuild stale semantic derivatives from their current source fingerprints")
+    if not int(observed.get("runs") or 0):
+        evidence_needed.append("run the deterministic retrieval regression suite and retain content-free evidence")
+    elif bool(observed.get("stale")):
+        evidence_needed.append("rerun deterministic retrieval regression against the current substrate fingerprint")
+    elif not bool(observed.get("latest_all_passed")):
+        evidence_needed.append("resolve failing retrieval regression cases before claiming evaluated health")
     return {
-        "version": "13.74",
+        "version": "13.77",
         "enabled_packs": enabled,
         "indexed_chunks": indexed,
         "stale_local_indexes": len(stale_local),
         "stale_derivatives": len(stale_derivatives),
         "ready_for_regression": bool(enabled > 0 and indexed > 0 and not stale_local and not stale_derivatives),
+        "evaluation_runs": int(observed.get("runs") or 0),
+        "latest_evaluation_passed": bool(observed.get("latest_all_passed")),
+        "evaluation_stale": bool(observed.get("stale")),
+        "current_substrate_match": bool(observed.get("current_substrate_match")),
+        "evaluated_health_current": bool(
+            enabled > 0
+            and indexed > 0
+            and not stale_local
+            and not stale_derivatives
+            and int(observed.get("runs") or 0) > 0
+            and bool(observed.get("latest_all_passed"))
+            and not bool(observed.get("stale"))
+        ),
         "retrieval_can_decline": True,
         "citation_evidence_required": True,
         "deterministic_evaluator": "KnowledgeFabricEvaluator",
@@ -299,7 +323,7 @@ def _improvement_agenda(
             "automatic_action": False,
         })
 
-    if not bool(knowledge_evaluation.get("ready_for_regression")):
+    if not bool(knowledge_evaluation.get("evaluated_health_current")):
         needs = [
             str(item)[:240]
             for item in list(knowledge_evaluation.get("evidence_needed") or [])[:8]
@@ -408,6 +432,23 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     knowledge_owner = getattr(mary, "knowledge_fabric", None)
     knowledge = _status(knowledge_owner, "status")
     knowledge_intelligence = _status(knowledge_owner, "substrate_profile")
+    knowledge_evaluation_evidence: dict[str, Any] = {}
+    evaluation_owner = getattr(mary, "knowledge_evaluation_evidence", None)
+    snapshot = getattr(evaluation_owner, "snapshot", None)
+    if callable(snapshot):
+        current_fingerprint = ""
+        if knowledge_owner is not None:
+            try:
+                from mary.knowledge import knowledge_substrate_fingerprint
+                current_fingerprint = knowledge_substrate_fingerprint(knowledge_owner)
+            except Exception:
+                current_fingerprint = ""
+        try:
+            knowledge_evaluation_evidence = dict(snapshot(
+                current_substrate_fingerprint=current_fingerprint
+            ) or {})
+        except Exception:
+            knowledge_evaluation_evidence = {}
     nodes = _status(getattr(mary, "node_registry", None), "snapshot")
     try:
         from mary.distributed import build_node_intelligence
@@ -450,6 +491,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     knowledge_evaluation = _knowledge_evaluation_readiness(
         knowledge,
         knowledge_intelligence,
+        knowledge_evaluation_evidence,
     )
     live_scene = _live_scene_summary(ecosystem)
     embodiment = _embodiment_projection(live_scene)
@@ -523,6 +565,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             **knowledge,
             "substrate": knowledge_intelligence,
             "evaluation_readiness": knowledge_evaluation,
+            "evaluation_evidence": knowledge_evaluation_evidence,
         },
         "world": {
             "beliefs": _mapping(continuity.get("world_model")),

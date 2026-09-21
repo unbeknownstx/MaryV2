@@ -5,13 +5,29 @@ class _Owner:
     def __init__(self, payload): self.payload = payload
     def status(self): return dict(self.payload)
     def snapshot(self): return dict(self.payload)
+    def substrate_profile(self): return dict(self.payload)
     def capability_evidence(self): return dict(self.payload)
+
+class _EvaluationOwner:
+    def snapshot(self, *, current_substrate_fingerprint=""):
+        return {
+            "runs": 2,
+            "latest_all_passed": True,
+            "stale": False,
+            "current_substrate_match": True,
+            "content_retained": False,
+            "queries_retained": False,
+            "retrieved_text_retained": False,
+            "automatic_promotion": False,
+            "authority": "deterministic retrieval evaluation evidence only",
+        }
 
 def test_system_fabric_projection_is_structural_and_authority_safe():
     continuity = _Owner({"world_model":{"current_beliefs":3,"reconciliation_groups":2},"temporal":{"relations":4,"current":2},"experience":{"records":5},"replay":{"lessons":1},"skills":{"approved":2,"candidates":1,"revision_attention":1,"revision_candidates":1},"plans":{"active_plans":1},"workflows":{},"verification":{},"competence":{"records":7}})
     mary = SimpleNamespace(
         experiential_continuity=continuity,
         knowledge_fabric=_Owner({"packs":2,"enabled":1,"indexed_documents":9}),
+        knowledge_evaluation_evidence=_EvaluationOwner(),
         node_registry=_Owner({"registered":1,"connected":1,"nodes":[]}),
         training_feedback=_Owner({"records":4}),
         character_evaluation=_Owner({"cases":12}),
@@ -114,6 +130,12 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["knowledge"]["evaluation_readiness"]["indexed_chunks"] == 9
     assert result["knowledge"]["evaluation_readiness"]["deterministic_evaluator"] == "KnowledgeFabricEvaluator"
     assert result["knowledge"]["evaluation_readiness"]["automatic_rebuild"] is False
+    assert result["knowledge"]["evaluation_readiness"]["evaluation_runs"] == 2
+    assert result["knowledge"]["evaluation_readiness"]["latest_evaluation_passed"] is True
+    assert result["knowledge"]["evaluation_readiness"]["evaluated_health_current"] is True
+    assert result["knowledge"]["evaluation_evidence"]["queries_retained"] is False
+    assert result["knowledge"]["evaluation_evidence"]["retrieved_text_retained"] is False
+    assert result["knowledge"]["evaluation_evidence"]["automatic_promotion"] is False
     assert result["embodiment"]["canonical_score"] == "PerformancePacket"
     assert result["embodiment"]["one_character_many_bodies"] is True
     assert result["embodiment"]["body_identity_authority"] is False

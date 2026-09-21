@@ -358,6 +358,11 @@ def subsystem_integrity_report(
             "knowledge_fabric",
             getattr(mary, "knowledge_fabric", None),
         ),
+        "self_introspection.knowledge_evaluation_evidence": _same(
+            self_introspection,
+            "knowledge_evaluation_evidence",
+            getattr(mary, "knowledge_evaluation_evidence", None),
+        ),
         "self_introspection.procedural_skills": _same(
             self_introspection,
             "procedural_skills",
