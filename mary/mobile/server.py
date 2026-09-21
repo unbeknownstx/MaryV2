@@ -1081,7 +1081,7 @@ class MaryRemoteMobileRuntime:
                     voice_input=bool(
                         voice_input
                     ),
-                    surface_id=self._surface_id,
+                    **({"surface_id": self._surface_id} if isinstance(self.client, MaryClient) else {}),
                 )
             )
 
