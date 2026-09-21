@@ -1555,6 +1555,17 @@ class MaryRemoteMobileRuntime:
         if name == "getSkillReviewState":
             return self.client.runtime_action("continuity.skill.status")
 
+        if name == "proposeImprovement":
+            values = list(args or [])
+            kind = str(values[0] if values else "").strip().lower()[:80]
+            subject = str(values[1] if len(values) > 1 else "").strip()[:180]
+            if not kind or not subject:
+                raise ValueError("Improvement kind and subject are required.")
+            return self.client.runtime_action(
+                "continuity.improvement.propose",
+                {"kind": kind, "subject": subject},
+            )
+
         if name == "approveSkillCandidate":
             values = list(args or [])
             skill_id = str(values[0] if values else "").strip()[:180]
