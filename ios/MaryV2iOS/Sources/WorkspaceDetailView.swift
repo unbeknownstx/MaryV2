@@ -441,6 +441,8 @@ struct WorkspaceDetailView: View {
                 Eyebrow(text: "Model lab")
                 Text("\(CoreProjection.int(candidates["count"])) reviewed candidates").font(.title2.bold())
                 DataRow(label: "Trial-ready experiments", value: "\(CoreProjection.int(experiments["trial_ready"]))")
+                DataRow(label: "Recorded trial outcomes", value: "\(CoreProjection.int(experiments["trial_outcomes"]))")
+                DataRow(label: "Completed bounded trials", value: "\(CoreProjection.int(experiments["completed_trials"]))")
                 DataRow(label: "Lineage events", value: "\(CoreProjection.int(experiments["event_count"]))")
                 DataRow(label: "Authorized node capabilities", value: "\(authorizedCapabilities)")
                 DataRow(label: "Demonstrated capabilities", value: "\(demonstratedCapabilities)")

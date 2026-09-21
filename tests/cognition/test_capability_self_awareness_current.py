@@ -185,6 +185,17 @@ class _ExperimentLedger:
                     "benchmark_verified": True,
                     "trial_ready": True,
                     "mary_fit": 0.91,
+                    "trial_evidence": {
+                        "dispatches": 1,
+                        "attempts": 1,
+                        "completed": 1,
+                        "failed": 0,
+                        "rejected": 0,
+                        "expired": 0,
+                        "completed_trial_observed": True,
+                        "latest_status": "completed",
+                        "last_observed_at": "2026-09-20T23:00:00+00:00",
+                    },
                 },
             ],
         }
@@ -377,7 +388,12 @@ def test_model_experiment_question_reports_evidence_without_claiming_training_or
         item for item in model_lab["records"]
         if item["id"] == "exp-ready"
     )
-    assert any("trial outcomes" in item for item in ready["evidence_needed"])
+    assert ready["trial_evidence"]["attempts"] == 1
+    assert ready["trial_evidence"]["completed"] == 1
+    assert ready["trial_evidence"]["completed_trial_observed"] is True
+    assert ready["trial_evidence"]["quality_verified"] is False
+    assert not any("bounded explicit trial outcomes" in item for item in ready["evidence_needed"])
+    assert any("creator-reviewed comparison" in item for item in ready["evidence_needed"])
     assert model_lab["training_readiness_claimed"] is False
     assert model_lab["automatic_training"] is False
     assert model_lab["automatic_promotion"] is False

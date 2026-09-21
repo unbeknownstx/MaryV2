@@ -1224,6 +1224,16 @@ class SelfIntrospection:
             status = str(item.get("status") or "")[:80]
             benchmark_verified = bool(item.get("benchmark_verified"))
             trial_ready = bool(item.get("trial_ready"))
+            trial_evidence = (
+                dict(item.get("trial_evidence") or {})
+                if isinstance(item.get("trial_evidence"), dict)
+                else {}
+            )
+            trial_attempts = int(trial_evidence.get("attempts") or 0)
+            completed_trials = int(trial_evidence.get("completed") or 0)
+            failed_trials = int(trial_evidence.get("failed") or 0)
+            rejected_trials = int(trial_evidence.get("rejected") or 0)
+            expired_trials = int(trial_evidence.get("expired") or 0)
             evidence_needed: list[str] = []
             if missing_scores:
                 evidence_needed.append(
@@ -1247,6 +1257,14 @@ class SelfIntrospection:
                 evidence_needed.append(
                     "all semantic score floors plus exact artifact, dataset, bundle and node benchmark matches"
                 )
+            elif completed_trials > 0:
+                evidence_needed.append(
+                    "creator-reviewed comparison of completed bounded trial results before any production-routing decision"
+                )
+            elif trial_attempts > 0:
+                evidence_needed.append(
+                    "a completed bounded trial on the exact authorized experiment node before any production-routing decision"
+                )
             else:
                 evidence_needed.append(
                     "bounded explicit trial outcomes before any production-routing decision"
@@ -1263,6 +1281,18 @@ class SelfIntrospection:
                 "mary_fit": item.get("mary_fit"),
                 "missing_scores": missing_scores,
                 "failed_scores": failed_scores,
+                "trial_evidence": {
+                    "attempts": trial_attempts,
+                    "completed": completed_trials,
+                    "failed": failed_trials,
+                    "rejected": rejected_trials,
+                    "expired": expired_trials,
+                    "completed_trial_observed": completed_trials > 0,
+                    "latest_status": str(trial_evidence.get("latest_status") or "")[:40],
+                    "last_observed_at": str(trial_evidence.get("last_observed_at") or "")[:80],
+                    "quality_verified": False,
+                    "authority": "content_free_trial_evidence_only",
+                },
                 "experimental": True,
                 "production_authority": False,
                 "evidence_needed": evidence_needed,
@@ -1289,6 +1319,8 @@ class SelfIntrospection:
                 if bool(item.get("benchmark_verified"))
             ),
             "trial_ready": int(experiment_snapshot.get("trial_ready") or 0),
+            "trial_outcomes": int(experiment_snapshot.get("trial_outcomes") or 0),
+            "completed_trials": int(experiment_snapshot.get("completed_trials") or 0),
             "experimental_records": len(experiment_views),
             "records": experiment_views,
             "training_readiness_claimed": False,

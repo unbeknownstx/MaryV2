@@ -657,15 +657,83 @@ class ModelExperimentLedger:
         ]
         return rows[-max(1, min(500, int(limit))):]
 
+    @staticmethod
+    def _trial_evidence(
+        experiment_id: str,
+        events: Iterable[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Derive content-free trial evidence from append-only lineage events."""
+        key = _text(experiment_id, 180)
+        dispatches = 0
+        outcomes: list[dict[str, Any]] = []
+        for raw in events:
+            if not isinstance(raw, dict) or str(raw.get("experiment_id") or "") != key:
+                continue
+            event_type = str(raw.get("event_type") or "").strip().casefold()
+            if event_type == "trial_dispatched":
+                dispatches += 1
+                continue
+            if event_type != "trial_outcome":
+                continue
+            details = dict(raw.get("details") or {}) if isinstance(raw.get("details"), dict) else {}
+            outcomes.append({
+                "status": _text(details.get("status"), 40).casefold(),
+                "node_id": _text(details.get("node_id"), 180),
+                "provider": _text(details.get("provider"), 120),
+                "model": _text(details.get("model"), 240),
+                "error_class": _text(details.get("error_class"), 120),
+                "occurred_at": _text(raw.get("occurred_at"), 80),
+            })
+
+        counts = {
+            status: sum(1 for row in outcomes if row.get("status") == status)
+            for status in ("completed", "failed", "rejected", "expired")
+        }
+        latest = outcomes[-1] if outcomes else {}
+        return {
+            "dispatches": dispatches,
+            "attempts": len(outcomes),
+            "completed": counts["completed"],
+            "failed": counts["failed"],
+            "rejected": counts["rejected"],
+            "expired": counts["expired"],
+            "completed_trial_observed": counts["completed"] > 0,
+            "latest_status": str(latest.get("status") or ""),
+            "latest_node_id": str(latest.get("node_id") or ""),
+            "latest_provider": str(latest.get("provider") or ""),
+            "latest_model": str(latest.get("model") or ""),
+            "latest_error_class": str(latest.get("error_class") or ""),
+            "last_observed_at": str(latest.get("occurred_at") or ""),
+            "generated_output_retained": False,
+            "prompt_retained": False,
+            "quality_verified": False,
+            "authority": "content_free_trial_evidence_only",
+        }
+
     def snapshot(self) -> dict[str, Any]:
         data = self._store.snapshot()
         records = [self._decode(row) for row in list(data.get("records") or [])]
         events = [dict(row) for row in list(data.get("events") or [])]
+        projected_records = []
+        for item in records[-100:]:
+            row = item.to_dict()
+            row["trial_evidence"] = self._trial_evidence(item.id, events)
+            projected_records.append(row)
+        trial_outcomes = sum(
+            int(dict(row.get("trial_evidence") or {}).get("attempts") or 0)
+            for row in projected_records
+        )
+        completed_trials = sum(
+            int(dict(row.get("trial_evidence") or {}).get("completed") or 0)
+            for row in projected_records
+        )
         return {
             "version": self.VERSION,
-            "records": [item.to_dict() for item in records[-100:]],
+            "records": projected_records,
             "count": len(records),
             "trial_ready": sum(1 for item in records if item.trial_ready),
+            "trial_outcomes": trial_outcomes,
+            "completed_trials": completed_trials,
             "event_count": len(events),
             "recent_events": events[-100:],
             "promotion_performed": False,
