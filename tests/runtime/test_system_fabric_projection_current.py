@@ -48,7 +48,24 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
             "recent_events": [],
         }),
     )
-    ecosystem = SimpleNamespace(adapter_lab=_Owner({"configurations":[],"evaluations":[]}), model_candidates=_Owner({"version":"2","count":1,"candidates":[{"id":"candidate-a","kind":"base_model","runtime":"llama.cpp","roles":["conversation"],"license":"Apache-2.0","repository":"do-not-project","filename":"do-not-project.gguf"}]}))
+    ecosystem = SimpleNamespace(
+        adapter_lab=_Owner({"configurations": [], "evaluations": []}),
+        model_candidates=_Owner({"version":"2","count":1,"candidates":[{"id":"candidate-a","kind":"base_model","runtime":"llama.cpp","roles":["conversation"],"license":"Apache-2.0","repository":"do-not-project","filename":"do-not-project.gguf"}]}),
+        presence=SimpleNamespace(scene=_Owner({
+            "mode": "companion",
+            "activity": "PRIVATE CURRENT ACTIVITY",
+            "project": "PRIVATE PROJECT NAME",
+            "workspace": "PRIVATE WORKSPACE",
+            "selected_asset": "PRIVATE FILE PATH",
+            "floor_owner": "creator",
+            "realtime_phase": "listening",
+            "mary_target": "PRIVATE PERSON",
+            "mary_goal": "PRIVATE GOAL",
+            "participants": {"creator": {}, "mary": {}},
+            "recent_events": [{"summary": "PRIVATE EVENT"}],
+            "updated_at": "2026-09-21T04:00:00+00:00",
+        })),
+    )
     result = build_system_fabric_projection(SimpleNamespace(mary=mary, ecosystem=ecosystem))
     assert result["knowledge"]["indexed_documents"] == 9
     assert result["world"]["temporal"]["current"] == 2
@@ -88,3 +105,17 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["embodiment"]["surfaces"]["vr"]["locomotion"] is False
     assert result["semantics"]["knowledge_evaluation"].startswith("deterministic_regression")
     assert result["semantics"]["embodiment"].startswith("one_character_many_bodies")
+    assert result["embodiment"]["live_scene"]["mode"] == "companion"
+    assert result["embodiment"]["live_scene"]["floor_owner"] == "creator"
+    assert result["embodiment"]["live_scene"]["realtime_phase"] == "listening"
+    assert result["embodiment"]["live_scene"]["participant_count"] == 2
+    assert result["embodiment"]["live_scene"]["recent_event_count"] == 1
+    assert result["embodiment"]["live_scene"]["has_activity"] is True
+    assert result["embodiment"]["live_scene"]["has_project"] is True
+    assert "PRIVATE" not in str(result["embodiment"]["live_scene"])
+    assert result["improvement_agenda"]["open_items"] == 3
+    assert result["improvement_agenda"]["evidence_items"] == 3
+    assert result["improvement_agenda"]["automatic_execution"] is False
+    assert result["improvement_agenda"]["automatic_permission"] is False
+    assert result["improvement_agenda"]["automatic_model_promotion"] is False
+    assert result["semantics"]["improvement_agenda"].startswith("read_only_evidence_gaps")
