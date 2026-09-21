@@ -82,3 +82,8 @@ For a canonical Mary runtime, the intended evidence destination is the runtime d
 ## Validation note
 
 The substrate fingerprint includes retrieval-affecting pack state such as enabled/disabled document policy, so changing document activation invalidates prior regression evidence even when index topology is otherwise unchanged.
+
+
+## Partial substrate owners
+
+Read-only evaluation evidence remains visible when a lightweight/partial knowledge owner cannot produce a full substrate fingerprint. In that case Mary must not claim a current fingerprint match, but she also must not erase already-recorded evaluation history.
