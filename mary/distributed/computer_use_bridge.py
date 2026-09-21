@@ -22,9 +22,9 @@ class ComputerUseDispatch:
 
 
 _READ_ONLY_MAP = {
-    "observe_screen": "sensor.screen_snapshot",
-    "observe_window": "sensor.screen_snapshot",
-    "probe_permissions": "sensor.screen_snapshot",
+    "observe_screen": "sensor.screen_describe",
+    "observe_window": "sensor.screen_describe",
+    "probe_permissions": "sensor.screen_capture",
 }
 
 
@@ -46,6 +46,10 @@ def bridge_computer_use(
             "turn_id": request.turn_id,
             "observation_purpose": request.action,
         }
+        if capability == "sensor.screen_describe":
+            args["mode"] = "ui"
+        else:
+            args.update({"max_width": 1280, "quality": 70, "all_screens": False})
         return ComputerUseDispatch(capability, args, False, request.verify_after)
 
     # Mutating GUI automation is intentionally adapter-defined. Core may only
