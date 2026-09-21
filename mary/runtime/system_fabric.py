@@ -79,6 +79,7 @@ def _model_experiment_summary(mary: Any) -> dict[str, Any]:
     for raw in list(snapshot.get("records") or [])[-24:]:
         if not isinstance(raw, dict):
             continue
+        trial = _mapping(raw.get("trial_evidence"))
         records.append({
             "id": str(raw.get("id") or "")[:160],
             "status": str(raw.get("status") or "")[:80],
@@ -92,6 +93,19 @@ def _model_experiment_summary(mary: Any) -> dict[str, Any]:
             "trial_ready": bool(raw.get("trial_ready")),
             "missing_scores": list(raw.get("missing_scores") or [])[:16],
             "failed_scores": list(raw.get("failed_scores") or [])[:16],
+            "trial_evidence": {
+                "dispatches": int(trial.get("dispatches") or 0),
+                "attempts": int(trial.get("attempts") or 0),
+                "completed": int(trial.get("completed") or 0),
+                "failed": int(trial.get("failed") or 0),
+                "rejected": int(trial.get("rejected") or 0),
+                "expired": int(trial.get("expired") or 0),
+                "completed_trial_observed": bool(trial.get("completed_trial_observed")),
+                "latest_status": str(trial.get("latest_status") or "")[:40],
+                "last_observed_at": str(trial.get("last_observed_at") or "")[:80],
+                "quality_verified": False,
+                "authority": "content_free_trial_evidence_only",
+            },
         })
     recent_events = []
     for raw in list(snapshot.get("recent_events") or [])[-32:]:
@@ -135,6 +149,8 @@ def _model_experiment_summary(mary: Any) -> dict[str, Any]:
         "version": snapshot.get("version"),
         "count": int(snapshot.get("count", len(records)) or 0),
         "trial_ready": int(snapshot.get("trial_ready", 0) or 0),
+        "trial_outcomes": int(snapshot.get("trial_outcomes", 0) or 0),
+        "completed_trials": int(snapshot.get("completed_trials", 0) or 0),
         "event_count": int(snapshot.get("event_count", len(recent_events)) or 0),
         "records": records,
         "recent_events": recent_events,
