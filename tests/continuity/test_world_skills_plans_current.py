@@ -484,3 +484,99 @@ def test_world_reconciliation_queue_groups_conflicts_without_resolving(tmp_path:
     assert world.get_belief(first.id).valid_to is None
     assert world.get_belief(second.id).valid_to is None
     assert world.status()["reconciliation_groups"] == 1
+
+
+def test_revision_review_records_comparison_snapshot_before_creator_approval(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-review-decision.json")
+    predecessor = skills.approve(skills.register_candidate(
+        name="search local corpus",
+        description="Search a bounded local knowledge pack.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search enabled pack",),
+        verification=("citation present",),
+    ).id)
+    candidate = skills.register_revision(
+        predecessor.id,
+        reason="verify citations before returning evidence",
+        steps=("search enabled pack", "verify citation before returning"),
+    )
+    competence = CompetenceLedger(tmp_path / "competence-review-decision.json")
+    for index, success in enumerate((True, True, False, False)):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=predecessor.id,
+            success=success,
+            verified=success,
+            evidence_ids=(f"pred-review-{index}",),
+        )
+    for index, success in enumerate((True, True, True, False)):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=candidate.id,
+            success=success,
+            verified=success,
+            evidence_ids=(f"cand-review-{index}",),
+        )
+
+    reviewed = skills.review_revision(
+        candidate.id,
+        decision="approve",
+        reviewed_by="creator:test",
+        reason="candidate is ready for my explicit replacement decision",
+        competence=competence,
+    )
+
+    assert reviewed["skill"].status == "approved"
+    assert skills.get(predecessor.id).status == "superseded"
+    review = reviewed["review"]
+    assert review["decision"] == "approve"
+    assert review["reviewed_by"] == "creator:test"
+    assert review["comparison"]["state"] == "review_ready"
+    assert review["comparison"]["review_ready"] is True
+    assert review["comparison"]["reliability_delta"] > 0
+    assert review["comparison"]["superiority_claimed"] is False
+    assert review["comparison"]["automatic_decision"] is False
+
+    history = skills.revision_review_history()
+    assert history["decisions"] == 1
+    assert history["approved"] == 1
+    assert history["automatic_decision"] is False
+    lineage = skills.revision_lineage(competence=competence)
+    assert lineage["review_decisions"] == 1
+    assert lineage["rows"][0]["latest_review"]["id"] == review["id"]
+
+
+def test_revision_rejection_records_evidence_without_superseding_predecessor(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-review-reject.json")
+    predecessor = skills.approve(skills.register_candidate(
+        name="bounded lookup",
+        description="Search local knowledge.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+    ).id)
+    candidate = skills.register_revision(
+        predecessor.id,
+        reason="test an alternate step order",
+        steps=("alternate lookup",),
+    )
+
+    reviewed = skills.review_revision(
+        candidate.id,
+        decision="reject",
+        reviewed_by="creator:test",
+        reason="keep the current procedure",
+    )
+
+    assert reviewed["skill"].status == "rejected"
+    assert skills.get(predecessor.id).status == "approved"
+    assert reviewed["review"]["comparison"]["state"] == "unavailable"
+    history = skills.revision_review_history()
+    assert history["rejected"] == 1
+    assert history["rows"][0]["decision"] == "reject"
