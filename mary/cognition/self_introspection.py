@@ -1040,7 +1040,10 @@ class SelfIntrospection:
         lineage_fn = getattr(procedural_owner, "revision_lineage", None)
         if callable(lineage_fn):
             try:
-                revision_lineage = dict(lineage_fn(limit=100) or {})
+                revision_lineage = dict(lineage_fn(
+                    limit=100,
+                    competence=competence_owner,
+                ) or {})
             except Exception:
                 revision_lineage = {}
         world_status = safe_status(getattr(self, "world_model", None))
