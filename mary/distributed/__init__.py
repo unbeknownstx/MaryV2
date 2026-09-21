@@ -93,6 +93,7 @@ from .model_residency import (
     plan_model_residency,
 )
 from .computer_use_bridge import ComputerUseDispatch, bridge_computer_use
+from .computer_use_cycle import ComputerUseCycle, plan_computer_use_cycle
 from .computer_use_contract import (
     ComputerUseGrant,
     ComputerUseRequest,
@@ -192,6 +193,8 @@ __all__ = [
     "plan_model_residency",
     "ComputerUseDispatch",
     "bridge_computer_use",
+    "ComputerUseCycle",
+    "plan_computer_use_cycle",
     "ComputerUseGrant",
     "ComputerUseRequest",
     "authorize_computer_use",
