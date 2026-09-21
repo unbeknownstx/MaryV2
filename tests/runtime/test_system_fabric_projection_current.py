@@ -5,6 +5,7 @@ class _Owner:
     def __init__(self, payload): self.payload = payload
     def status(self): return dict(self.payload)
     def snapshot(self): return dict(self.payload)
+    def capability_evidence(self): return dict(self.payload)
 
 def test_system_fabric_projection_is_structural_and_authority_safe():
     continuity = _Owner({"world_model":{"current_beliefs":3,"reconciliation_groups":2},"temporal":{"relations":4,"current":2},"experience":{"records":5},"replay":{"lessons":1},"skills":{"approved":2,"candidates":1,"revision_attention":1,"revision_candidates":1},"plans":{"active_plans":1},"workflows":{},"verification":{},"competence":{"records":7}})
@@ -14,6 +15,20 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
         node_registry=_Owner({"registered":1,"connected":1,"nodes":[]}),
         training_feedback=_Owner({"records":4}),
         character_evaluation=_Owner({"cases":12}),
+        self_introspection=_Owner({
+            "procedural_memory": {
+                "demonstrated": 2,
+                "degrading": 1,
+                "procedures": [
+                    {"skill_id": "skill-a", "evidence_needed": ["more outcomes"]},
+                    {"skill_id": "skill-b", "evidence_needed": ["review failures", "compare revision"]},
+                ],
+            },
+            "capability_improvement": {
+                "knowledge.search": {"evidence_needed": ["one verified success"]},
+            },
+            "model_experiments": {"count": 1, "trial_ready": 1},
+        }),
         model_experiments=_Owner({
             "version": 4,
             "count": 1,
@@ -49,4 +64,12 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["authority"]["promotion_permission"] is False
     assert result["compute"]["node_intelligence"]["registered"] == 1
     assert result["compute"]["node_intelligence"]["execution_permission_granted"] is False
+    assert result["intelligence_loop"]["terminal_outcomes_feed_competence"] is True
+    assert result["intelligence_loop"]["evidence_selected_dispatch_supported"] is True
+    assert result["intelligence_loop"]["demonstrated_procedures"] == 2
+    assert result["intelligence_loop"]["degrading_procedures"] == 1
+    assert result["intelligence_loop"]["procedure_evidence_gaps"] == 3
+    assert result["intelligence_loop"]["capability_evidence_gaps"] == 1
+    assert result["intelligence_loop"]["automatic_permission"] is False
+    assert result["semantics"]["procedure_selection"] == "approved_demonstrated_non_degrading_ephemeral_only"
     assert result["semantics"]["node_intelligence"].startswith("advertisement_readiness")

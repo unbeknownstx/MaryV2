@@ -2078,6 +2078,76 @@ class MaryCoreService:
         )
         return [item[2] for item in ranked[:bounded_limit]]
 
+    def _select_skill_for_plan_step(
+        self,
+        plan: Any,
+        step: Any,
+    ) -> dict[str, Any]:
+        """Select one already-approved procedure from demonstrated evidence.
+
+        Selection is intentionally conservative and ephemeral. It never approves
+        a candidate, changes the durable plan binding, chooses a node, widens a
+        permission, or dispatches work. The explicit plan dispatch remains the
+        execution boundary. A selection is made only when a procedure has at
+        least one verified success, is not under revision pressure, has enough
+        evidence to clear a minimum score, and is not effectively tied with an
+        alternative.
+        """
+
+        rows = self._recommend_skills_for_plan_step(plan, step, limit=4)
+        eligible = [
+            row for row in rows
+            if bool(row.get("demonstrated"))
+            and not bool(row.get("degrading"))
+            and int(dict(row.get("competence") or {}).get("verified_successes") or 0) > 0
+            and float(row.get("recommendation_score") or 0.0) >= 0.55
+        ]
+        if not eligible:
+            return {
+                "selected": False,
+                "skill_id": "",
+                "reason": "no approved demonstrated non-degrading procedure clears the evidence gate",
+                "candidates": rows[:3],
+                "authority": (
+                    "selection evidence only; explicit dispatch and node-local permission remain required"
+                ),
+            }
+
+        top = eligible[0]
+        runner = eligible[1] if len(eligible) > 1 else None
+        score = float(top.get("recommendation_score") or 0.0)
+        runner_score = (
+            float(runner.get("recommendation_score") or 0.0)
+            if runner is not None
+            else 0.0
+        )
+        margin = round(score - runner_score, 4)
+        if runner is not None and margin < 0.05:
+            return {
+                "selected": False,
+                "skill_id": "",
+                "reason": "top demonstrated procedures are too close to choose automatically",
+                "margin": margin,
+                "candidates": rows[:3],
+                "authority": (
+                    "selection evidence only; creator may bind a procedure explicitly"
+                ),
+            }
+
+        return {
+            "selected": True,
+            "skill_id": str(top.get("id") or ""),
+            "procedure": top,
+            "score": round(score, 4),
+            "margin": margin,
+            "reason": (
+                "highest approved demonstrated non-degrading procedure under the bounded competence policy"
+            ),
+            "authority": (
+                "ephemeral procedure choice for an explicit dispatch only; durable plan binding and permissions are unchanged"
+            ),
+        }
+
     @classmethod
     def _plan_view(cls, plan: Any) -> dict[str, Any]:
         steps = list(getattr(plan, "steps", ()) or ())
@@ -4043,6 +4113,9 @@ class MaryCoreService:
                                     limit=3,
                                 )
                             )
+                            row["procedure_selection"] = (
+                                self._select_skill_for_plan_step(plan, step)
+                            )
                     except Exception:
                         pass
                     enriched.append(row)
@@ -4087,6 +4160,13 @@ class MaryCoreService:
 
                 skill_id = str(step.skill_id or "")
                 skill = None
+                procedure_selection: dict[str, Any] | None = None
+                procedure_source = "explicit_plan_binding" if skill_id else "none"
+                if not skill_id:
+                    procedure_selection = self._select_skill_for_plan_step(plan, step)
+                    if bool(procedure_selection.get("selected")):
+                        skill_id = str(procedure_selection.get("skill_id") or "")
+                        procedure_source = "evidence_selected_for_dispatch"
                 if skill_id:
                     skill = self.mary.procedural_skills.get(skill_id)
                     if skill.status != "approved":
@@ -4129,13 +4209,17 @@ class MaryCoreService:
                         if skill is not None
                         else None
                     ),
+                    "procedure_source": procedure_source,
+                    "procedure_selection": procedure_selection,
                     "execution": {
                         "queued": True,
                         "core_execution_gate_passed": True,
                         "device_permission_enforced": True,
                         "policy": (
-                            "explicit typed plan dispatch; Core sleep/offline gate "
-                            "and selected-node local permission both passed before queueing"
+                            "explicit typed plan dispatch; an unbound step may use only a "
+                            "creator-approved demonstrated non-degrading procedure selected "
+                            "from prior outcome evidence; Core sleep/offline gate and selected-node "
+                            "local permission both pass separately before queueing"
                         ),
                     },
                 })

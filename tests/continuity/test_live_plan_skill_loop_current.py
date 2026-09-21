@@ -281,3 +281,129 @@ def test_plan_recommendation_prefers_demonstrated_approved_procedure(tmp_path: P
     assert rows[1]["evidence_needed"]
     assert "advisory only" in rows[0]["selection_policy"]
 
+
+
+def test_evidence_selector_closes_outcome_to_plan_choice_loop(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-selection.json")
+    alpha = skills.approve(skills.register_candidate(
+        name="project knowledge lookup alpha",
+        description="search local knowledge for project references",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local project knowledge",),
+        verification=("typed result returns",),
+    ).id)
+    beta = skills.approve(skills.register_candidate(
+        name="project knowledge lookup beta",
+        description="search local knowledge for project references",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local project knowledge",),
+        verification=("typed result returns",),
+    ).id)
+
+    competence = CompetenceLedger(tmp_path / "competence-selection.json")
+    for index in range(6):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=alpha.id,
+            success=True,
+            verified=True,
+            evidence_ids=(f"alpha-{index}",),
+        )
+    for index in range(4):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=beta.id,
+            success=True,
+            verified=True,
+            evidence_ids=(f"beta-{index}",),
+        )
+
+    plans = ExecutivePlanGraph(tmp_path / "plans-selection.json")
+    plan = plans.create(objective="Answer from local project knowledge", source="creator")
+    step = plans.add_step(
+        plan.id,
+        title="Search local project knowledge",
+        required_capabilities=("knowledge.search",),
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        procedural_skills=skills,
+        executive_plans=plans,
+        competence=competence,
+        node_registry=SimpleNamespace(
+            snapshot=lambda: {
+                "nodes": [{"node_id": "mac", "connected": True}]
+            }
+        ),
+    )
+
+    first = service._select_skill_for_plan_step(plan, step)
+    assert first["selected"] is True
+    assert first["skill_id"] == alpha.id
+    assert "explicit dispatch" in first["authority"]
+
+    # Repeated terminal failures put the previously preferred approved
+    # procedure under revision pressure. Nothing is rewritten or unapproved,
+    # but the next evidence-based plan choice must stop selecting it.
+    for index in range(3):
+        skills.record_outcome(
+            alpha.id,
+            success=False,
+            result=f"failure {index}",
+            evidence_ids=(f"alpha-failure-{index}",),
+        )
+
+    second = service._select_skill_for_plan_step(plan, step)
+    assert second["selected"] is True
+    assert second["skill_id"] == beta.id
+    assert second["skill_id"] != first["skill_id"]
+
+    ranked = service._recommend_skills_for_plan_step(plan, step, limit=2)
+    alpha_row = next(row for row in ranked if row["id"] == alpha.id)
+    assert alpha_row["degrading"] is True
+    assert alpha_row["revision_pressure"] > 0.0
+    assert any("revision" in item for item in alpha_row["evidence_needed"])
+
+
+def test_evidence_selector_refuses_untested_or_ambiguous_procedure(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-selection-gate.json")
+    candidate = skills.approve(skills.register_candidate(
+        name="untested local lookup",
+        description="search local knowledge",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local knowledge",),
+    ).id)
+    plans = ExecutivePlanGraph(tmp_path / "plans-selection-gate.json")
+    plan = plans.create(objective="Find a local fact", source="creator")
+    step = plans.add_step(
+        plan.id,
+        title="Search local knowledge",
+        required_capabilities=("knowledge.search",),
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        procedural_skills=skills,
+        executive_plans=plans,
+        competence=CompetenceLedger(tmp_path / "competence-selection-gate.json"),
+        node_registry=SimpleNamespace(
+            snapshot=lambda: {
+                "nodes": [{"node_id": "mac", "connected": True}]
+            }
+        ),
+    )
+
+    selection = service._select_skill_for_plan_step(plan, step)
+    assert selection["selected"] is False
+    assert selection["skill_id"] == ""
+    assert selection["candidates"][0]["id"] == candidate.id
+    assert selection["candidates"][0]["evidence_needed"]

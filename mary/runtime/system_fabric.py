@@ -180,6 +180,40 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
         self_evidence.get("capability_improvement")
     )
     model_evidence = _mapping(self_evidence.get("model_experiments"))
+    procedure_rows = list(procedure_intelligence.get("procedures") or [])[:32]
+    evidence_gap_count = sum(
+        len(list(_mapping(item).get("evidence_needed") or []))
+        for item in procedure_rows
+    )
+    capability_gap_count = sum(
+        len(list(_mapping(item).get("evidence_needed") or []))
+        for item in capability_improvement.values()
+        if isinstance(item, dict)
+    )
+    intelligence_loop = {
+        "version": "13.73",
+        "terminal_outcomes_feed_competence": True,
+        "competence_feeds_procedure_ranking": True,
+        "procedure_failures_feed_revision_pressure": True,
+        "evidence_selected_dispatch_supported": True,
+        "durable_auto_binding": False,
+        "automatic_permission": False,
+        "automatic_model_promotion": False,
+        "demonstrated_procedures": int(
+            procedure_intelligence.get("demonstrated", 0) or 0
+        ),
+        "degrading_procedures": int(
+            procedure_intelligence.get("degrading", 0) or 0
+        ),
+        "procedure_evidence_gaps": int(evidence_gap_count),
+        "capability_evidence_gaps": int(capability_gap_count),
+        "selection_policy": (
+            "explicit plan dispatch may ephemerally choose only an approved, "
+            "demonstrated, non-degrading procedure that clears bounded score "
+            "and ambiguity gates; node permission remains separate"
+        ),
+        "authority": "read_only_convergence_projection",
+    }
     training = _status(getattr(mary, "training_feedback", None), "status")
     character_eval = _status(getattr(mary, "character_evaluation", None), "snapshot")
 
@@ -275,6 +309,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "capability_improvement": capability_improvement,
             **compute,
         },
+        "intelligence_loop": intelligence_loop,
         "training": {
             "feedback": training,
             "character_evaluation": character_eval,
@@ -286,6 +321,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "temporal_history": "historical_or_superseded_is_not_current_truth",
             "skills": "creator_approval_required",
             "competence": "routing_and_procedure-ranking_evidence_only_after_hard_eligibility",
+            "procedure_selection": "approved_demonstrated_non_degrading_ephemeral_only",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
         },
