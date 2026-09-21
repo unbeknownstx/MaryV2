@@ -8,9 +8,13 @@ or model authority.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
 import json
 from pathlib import Path
 from typing import Any, Iterable
+
+from mary.runtime.persistence import atomic_write_json, load_json_recovering
 
 from mary.mind.context_governor import ContextEvidenceGovernor
 from .fabric import KnowledgeFabric
@@ -197,3 +201,102 @@ def load_knowledge_evaluation_cases(path: str | Path) -> list[KnowledgeEvaluatio
             raise ValueError(f"knowledge evaluation line {number} must be an object")
         output.append(KnowledgeEvaluationCase.from_mapping(raw))
     return output
+
+
+def knowledge_substrate_fingerprint(fabric: KnowledgeFabric) -> str:
+    """Hash structural substrate metadata without retaining source/query text."""
+    profile = dict(fabric.substrate_profile() or {})
+    canonical = json.dumps(profile, ensure_ascii=False, sort_keys=True, default=str)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def knowledge_case_set_fingerprint(cases: Iterable[KnowledgeEvaluationCase]) -> str:
+    """Fingerprint exact regression cases while retaining no query body in evidence."""
+    payload = [asdict(case) for case in list(cases)]
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class KnowledgeEvaluationEvidenceStore:
+    """Content-free durable evidence that deterministic retrieval regression ran.
+
+    This is evaluation lineage only. It never stores queries, retrieved snippets,
+    locators, prompts, source bodies, or model output and grants no truth/memory
+    authority.
+    """
+
+    VERSION = 1
+
+    def __init__(self, path: str | Path, *, capacity: int = 24) -> None:
+        self.path = Path(path)
+        self.capacity = max(4, min(128, int(capacity)))
+
+    def _load(self) -> dict[str, Any]:
+        if not self.path.exists():
+            return {"version": self.VERSION, "runs": []}
+        payload, _source = load_json_recovering(self.path, backup_generations=2)
+        if not isinstance(payload, dict):
+            return {"version": self.VERSION, "runs": []}
+        return payload
+
+    def record(
+        self,
+        summary: dict[str, Any],
+        *,
+        substrate_fingerprint: str,
+        case_set_fingerprint: str,
+    ) -> dict[str, Any]:
+        cases = []
+        for raw in list(summary.get("results") or [])[:500]:
+            if not isinstance(raw, dict):
+                continue
+            cases.append({
+                "case_id": str(raw.get("case_id") or "")[:160],
+                "passed": bool(raw.get("passed")),
+                "failure_count": len(list(raw.get("failures") or [])),
+                "raw_hits": int(raw.get("raw_hits") or 0),
+                "model_context_hits": int(raw.get("model_context_hits") or 0),
+                "citation_coverage": float(raw.get("citation_coverage") or 0.0),
+            })
+        run = {
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+            "substrate_fingerprint": str(substrate_fingerprint or "")[:128],
+            "case_set_fingerprint": str(case_set_fingerprint or "")[:128],
+            "passed": int(summary.get("passed") or 0),
+            "failed": int(summary.get("failed") or 0),
+            "cases": int(summary.get("cases") or len(cases)),
+            "all_passed": bool(summary.get("all_passed")),
+            "case_results": cases,
+            "content_retained": False,
+            "queries_retained": False,
+            "retrieved_text_retained": False,
+            "automatic_promotion": False,
+        }
+        payload = self._load()
+        runs = [item for item in list(payload.get("runs") or []) if isinstance(item, dict)]
+        runs.append(run)
+        payload = {"version": self.VERSION, "runs": runs[-self.capacity:]}
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(self.path, payload, backup_generations=2, indent=2)
+        return dict(run)
+
+    def snapshot(self, *, current_substrate_fingerprint: str = "") -> dict[str, Any]:
+        payload = self._load()
+        runs = [dict(item) for item in list(payload.get("runs") or []) if isinstance(item, dict)]
+        latest = dict(runs[-1]) if runs else {}
+        recorded = str(latest.get("substrate_fingerprint") or "")
+        current = str(current_substrate_fingerprint or "")
+        stale = bool(latest and current and recorded != current)
+        return {
+            "version": self.VERSION,
+            "runs": len(runs),
+            "latest": latest,
+            "latest_all_passed": bool(latest.get("all_passed")) if latest else False,
+            "stale": stale,
+            "current_substrate_match": bool(latest and current and recorded == current),
+            "content_retained": False,
+            "queries_retained": False,
+            "retrieved_text_retained": False,
+            "automatic_promotion": False,
+            "authority": "deterministic retrieval evaluation evidence only",
+        }
