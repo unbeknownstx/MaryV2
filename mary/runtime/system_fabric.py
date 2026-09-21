@@ -241,7 +241,7 @@ def _knowledge_evaluation_readiness(
     elif not bool(observed.get("latest_all_passed")):
         evidence_needed.append("resolve failing retrieval regression cases before claiming evaluated health")
     return {
-        "version": "13.74",
+        "version": "13.77",
         "enabled_packs": enabled,
         "indexed_chunks": indexed,
         "stale_local_indexes": len(stale_local),
@@ -323,7 +323,7 @@ def _improvement_agenda(
             "automatic_action": False,
         })
 
-    if not bool(knowledge_evaluation.get("ready_for_regression")):
+    if not bool(knowledge_evaluation.get("evaluated_health_current")):
         needs = [
             str(item)[:240]
             for item in list(knowledge_evaluation.get("evidence_needed") or [])[:8]
