@@ -1430,6 +1430,12 @@ class SelfIntrospection:
                 "candidates": int(skills_status.get("candidates") or 0),
                 "revision_attention": int(skills_status.get("revision_attention") or 0),
                 "revision_lineage": revision_lineage,
+                "comparison_ready": sum(
+                    1
+                    for item in list(revision_lineage.get("rows") or [])[:100]
+                    if isinstance(item, dict)
+                    and bool(dict(item.get("comparison") or {}).get("review_ready"))
+                ),
                 "demonstrated": sum(
                     1 for item in procedure_rows
                     if bool(item.get("demonstrated"))
