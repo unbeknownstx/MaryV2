@@ -441,7 +441,12 @@ class SkillLibrary:
         )
         return rows[: max(1, min(200, int(limit)))]
 
-    def revision_lineage(self, *, limit: int = 100) -> dict[str, Any]:
+    def revision_lineage(
+        self,
+        *,
+        limit: int = 100,
+        competence: Any | None = None,
+    ) -> dict[str, Any]:
         """Project procedure version/revision lineage without mutating approval state.
 
         The projection deliberately distinguishes a proposed revision from a
@@ -493,6 +498,137 @@ class SkillLibrary:
                     "explicit creator review before this revision can supersede the approved predecessor"
                 )
 
+            authority_compatible = bool(
+                predecessor is not None
+                and item.required_capabilities == predecessor.required_capabilities
+                and item.required_permissions == predecessor.required_permissions
+            )
+            comparison = {
+                "state": "unavailable",
+                "review_ready": False,
+                "capability": "",
+                "candidate": {},
+                "predecessor": {},
+                "reliability_delta": None,
+                "evidence_needed": [
+                    "operational competence evidence for both procedure versions"
+                ],
+                "superiority_claimed": False,
+                "automatic_approval": False,
+                "authority": "read-only comparison evidence only",
+            }
+            skill_summary = getattr(competence, "skill_summary", None)
+            if predecessor is not None and callable(skill_summary):
+                shared_capability = (
+                    item.required_capabilities[0]
+                    if item.required_capabilities == predecessor.required_capabilities
+                    and len(item.required_capabilities) == 1
+                    else ""
+                )
+                try:
+                    candidate_evidence = dict(skill_summary(
+                        item.id,
+                        capability=shared_capability,
+                        node_ids=(),
+                    ) or {})
+                except Exception:
+                    candidate_evidence = {}
+                try:
+                    predecessor_evidence = dict(skill_summary(
+                        predecessor.id,
+                        capability=shared_capability,
+                        node_ids=(),
+                    ) or {})
+                except Exception:
+                    predecessor_evidence = {}
+
+                comparison_needed: list[str] = []
+                candidate_attempts = int(candidate_evidence.get("attempts") or 0)
+                predecessor_attempts = int(predecessor_evidence.get("attempts") or 0)
+                candidate_verified = int(candidate_evidence.get("verified_successes") or 0)
+                predecessor_verified = int(predecessor_evidence.get("verified_successes") or 0)
+                candidate_strength = float(candidate_evidence.get("evidence_strength") or 0.0)
+                predecessor_strength = float(predecessor_evidence.get("evidence_strength") or 0.0)
+
+                if not authority_compatible:
+                    state = "authority_changed"
+                    comparison_needed.append(
+                        "explicit creator review because the revision changes capability or permission requirements"
+                    )
+                elif candidate_verified <= 0:
+                    state = "candidate_unverified"
+                    comparison_needed.append(
+                        "at least one verified successful candidate terminal outcome"
+                    )
+                elif predecessor_verified <= 0:
+                    state = "predecessor_unverified"
+                    comparison_needed.append(
+                        "verified predecessor evidence before comparing revision quality"
+                    )
+                elif (
+                    candidate_attempts < 3
+                    or predecessor_attempts < 3
+                    or candidate_strength < 0.25
+                    or predecessor_strength < 0.25
+                ):
+                    state = "insufficient_evidence"
+                    if candidate_attempts < 3 or candidate_strength < 0.25:
+                        comparison_needed.append(
+                            "additional independent candidate outcomes to strengthen comparison confidence"
+                        )
+                    if predecessor_attempts < 3 or predecessor_strength < 0.25:
+                        comparison_needed.append(
+                            "additional predecessor outcomes to strengthen comparison confidence"
+                        )
+                else:
+                    state = "review_ready"
+                    comparison_needed.append(
+                        "creator review of the bounded comparison before any approval decision"
+                    )
+
+                review_ready = state == "review_ready"
+                delta = None
+                if review_ready:
+                    delta = round(
+                        float(candidate_evidence.get("reliability") or 0.5)
+                        - float(predecessor_evidence.get("reliability") or 0.5),
+                        4,
+                    )
+                comparison = {
+                    "state": state,
+                    "review_ready": review_ready,
+                    "capability": shared_capability,
+                    "candidate": {
+                        key: candidate_evidence.get(key)
+                        for key in (
+                            "attempts", "successes", "failures",
+                            "verified_successes", "reliability",
+                            "evidence_strength", "last_success",
+                            "last_observed_at",
+                        )
+                    },
+                    "predecessor": {
+                        key: predecessor_evidence.get(key)
+                        for key in (
+                            "attempts", "successes", "failures",
+                            "verified_successes", "reliability",
+                            "evidence_strength", "last_success",
+                            "last_observed_at",
+                        )
+                    },
+                    "reliability_delta": delta,
+                    "evidence_needed": comparison_needed,
+                    "superiority_claimed": False,
+                    "automatic_approval": False,
+                    "authority": (
+                        "bounded competence comparison only; creator review remains required"
+                    ),
+                }
+                evidence_needed.extend(
+                    item for item in comparison_needed
+                    if item not in evidence_needed
+                )
+
             rows.append({
                 "candidate_id": item.id,
                 "candidate_version": int(item.version),
@@ -518,6 +654,7 @@ class SkillLibrary:
                 "successes": int(item.success_count or 0),
                 "failures": int(item.failure_count or 0),
                 "candidate_trial_observed": attempts > 0,
+                "comparison": comparison,
                 "evidence_needed": evidence_needed,
                 "approval_required": item.status == "candidate",
                 "automatic_approval": False,
@@ -533,7 +670,7 @@ class SkillLibrary:
         )
         bounded = rows[: max(1, min(500, int(limit)))]
         return {
-            "version": "13.78",
+            "version": "13.79",
             "revisions": len(rows),
             "pending_review": sum(
                 1 for row in rows if row.get("candidate_status") == "candidate"
