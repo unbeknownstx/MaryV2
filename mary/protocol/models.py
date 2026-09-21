@@ -342,6 +342,7 @@ _ALLOWED_RUNTIME_ACTIONS = {
     "continuity.skill.revise",
     "continuity.skill.approve",
     "continuity.skill.reject",
+    "continuity.improvement.propose",
     "continuity.plan.status",
     "continuity.plan.create",
     "continuity.plan.add_step",
