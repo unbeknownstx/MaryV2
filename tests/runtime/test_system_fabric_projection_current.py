@@ -44,7 +44,20 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
                 "mary_fit": 0.91,
                 "benchmark_verified": True,
                 "trial_ready": True,
+                "trial_evidence": {
+                    "dispatches": 1,
+                    "attempts": 1,
+                    "completed": 1,
+                    "failed": 0,
+                    "rejected": 0,
+                    "expired": 0,
+                    "completed_trial_observed": True,
+                    "latest_status": "completed",
+                    "last_observed_at": "2026-09-20T23:00:00+00:00",
+                },
             }],
+            "trial_outcomes": 1,
+            "completed_trials": 1,
             "recent_events": [],
         }),
     )
@@ -76,6 +89,10 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["models"]["experiments"]["count"] == 1
     assert result["models"]["experiments"]["trial_ready"] == 1
     assert result["models"]["experiments"]["records"][0]["id"] == "model_exp_shared"
+    assert result["models"]["experiments"]["trial_outcomes"] == 1
+    assert result["models"]["experiments"]["completed_trials"] == 1
+    assert result["models"]["experiments"]["records"][0]["trial_evidence"]["completed"] == 1
+    assert result["models"]["experiments"]["records"][0]["trial_evidence"]["quality_verified"] is False
     assert "repository" not in result["models"]["candidates"]["candidates"][0]
     assert result["authority"]["execution_permission"] is False
     assert result["authority"]["promotion_permission"] is False
