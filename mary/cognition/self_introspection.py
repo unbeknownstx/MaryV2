@@ -1015,13 +1015,18 @@ class SelfIntrospection:
         evaluation_owner = getattr(self, "knowledge_evaluation_evidence", None)
         evaluation_snapshot = getattr(evaluation_owner, "snapshot", None)
         if callable(evaluation_snapshot):
+            current_fingerprint = ""
+            if knowledge_owner is not None:
+                try:
+                    from mary.knowledge import knowledge_substrate_fingerprint
+                    current_fingerprint = knowledge_substrate_fingerprint(knowledge_owner)
+                except Exception:
+                    # Partial/test knowledge owners can still expose durable
+                    # evaluation evidence even when a full substrate fingerprint
+                    # cannot be derived. The snapshot remains read-only and will
+                    # simply be unable to claim a current fingerprint match.
+                    current_fingerprint = ""
             try:
-                from mary.knowledge import knowledge_substrate_fingerprint
-                current_fingerprint = (
-                    knowledge_substrate_fingerprint(knowledge_owner)
-                    if knowledge_owner is not None
-                    else ""
-                )
                 knowledge_evaluation = dict(
                     evaluation_snapshot(
                         current_substrate_fingerprint=current_fingerprint
