@@ -527,4 +527,6 @@ def test_procedure_self_awareness_reports_demonstrated_degrading_and_needed_evid
     assert "degradation/revision review" in answer
     assert "never approves, binds, authorizes, or executes" in answer
     assert "evidence gaps" in answer
+    assert "ready for creator review" in answer
+    assert "not a superiority claim" in answer
 
