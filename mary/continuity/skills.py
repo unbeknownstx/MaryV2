@@ -455,10 +455,21 @@ class SkillLibrary:
         approval, permission, or execution authority.
         """
 
+        snapshot = self._store.snapshot()
         records = [
             self._decode(row)
-            for row in list(self._store.snapshot().get("skills") or [])
+            for row in list(snapshot.get("skills") or [])
         ]
+        review_rows = [
+            dict(item)
+            for item in list(snapshot.get("revision_reviews") or [])
+            if isinstance(item, dict)
+        ]
+        latest_review_by_candidate: dict[str, dict[str, Any]] = {}
+        for review in review_rows:
+            candidate_id = str(review.get("candidate_id") or "")
+            if candidate_id:
+                latest_review_by_candidate[candidate_id] = review
         by_id = {item.id: item for item in records}
         rows: list[dict[str, Any]] = []
 
@@ -659,6 +670,7 @@ class SkillLibrary:
                 "approval_required": item.status == "candidate",
                 "automatic_approval": False,
                 "automatic_execution": False,
+                "latest_review": dict(latest_review_by_candidate.get(item.id) or {}),
             })
 
         rows.sort(
@@ -678,11 +690,133 @@ class SkillLibrary:
             "approved_replacements": sum(
                 1 for row in rows if row.get("candidate_status") == "approved"
             ),
+            "review_decisions": len(review_rows),
             "rows": bounded,
             "authority": (
                 "read-only procedure version lineage; creator approval and "
                 "execution permission remain separate"
             ),
+        }
+
+    def review_revision(
+        self,
+        skill_id: str,
+        *,
+        decision: str,
+        reviewed_by: str = "creator",
+        reason: str = "",
+        competence: Any | None = None,
+    ) -> dict[str, Any]:
+        """Record an explicit creator decision with the bounded comparison snapshot.
+
+        This stays inside the canonical SkillLibrary owner. Comparison evidence
+        informs review but never makes the decision: only the explicit caller
+        changes revision approval state.
+        """
+
+        clean_decision = str(decision or "").strip().casefold()
+        if clean_decision not in {"approve", "reject"}:
+            raise ValueError("revision decision must be approve or reject")
+        candidate = self.get(skill_id)
+        predecessor_id = str(candidate.supersedes or "").strip()
+        if not predecessor_id:
+            raise ValueError("review_revision requires a revision candidate")
+        if candidate.status != "candidate":
+            raise ValueError("only a pending revision candidate may be reviewed")
+        predecessor = self.get(predecessor_id)
+        if predecessor.status != "approved":
+            raise ValueError("revision predecessor must still be approved at review time")
+
+        lineage = self.revision_lineage(limit=500, competence=competence)
+        lineage_row = next(
+            (
+                dict(item)
+                for item in list(lineage.get("rows") or [])
+                if isinstance(item, dict)
+                and str(item.get("candidate_id") or "") == skill_id
+            ),
+            {},
+        )
+        comparison = dict(lineage_row.get("comparison") or {})
+        snapshot = {
+            "state": str(comparison.get("state") or "unavailable")[:80],
+            "review_ready": bool(comparison.get("review_ready")),
+            "capability": str(comparison.get("capability") or "")[:160],
+            "reliability_delta": comparison.get("reliability_delta"),
+            "candidate": dict(comparison.get("candidate") or {}),
+            "predecessor": dict(comparison.get("predecessor") or {}),
+            "evidence_needed": [
+                str(item)[:240]
+                for item in list(comparison.get("evidence_needed") or [])[:16]
+                if str(item).strip()
+            ],
+            "superiority_claimed": False,
+            "automatic_decision": False,
+        }
+        review = {
+            "id": f"skill_review_{uuid4().hex}",
+            "candidate_id": candidate.id,
+            "candidate_version": int(candidate.version),
+            "predecessor_id": predecessor.id,
+            "predecessor_version": int(predecessor.version),
+            "decision": clean_decision,
+            "reviewed_by": str(reviewed_by or "creator").strip()[:160] or "creator",
+            "reviewed_at": _now(),
+            "reason": str(reason or "").strip()[:800],
+            "comparison": snapshot,
+            "authority": "explicit creator revision decision",
+        }
+
+        found = False
+        def mutate(data: dict[str, Any]) -> None:
+            nonlocal found
+            rows = list(data.get("skills") or [])
+            target = next((row for row in rows if row.get("id") == skill_id), None)
+            prior = next((row for row in rows if row.get("id") == predecessor_id), None)
+            if target is None or prior is None:
+                return
+            if target.get("status") != "candidate" or prior.get("status") != "approved":
+                raise ValueError("revision state changed before creator review could be recorded")
+            if clean_decision == "approve":
+                target["status"] = "approved"
+                target["approved_at"] = review["reviewed_at"]
+                target["approved_by"] = review["reviewed_by"]
+                prior["status"] = "superseded"
+                prior["superseded_by"] = skill_id
+            else:
+                target["status"] = "rejected"
+            reviews = list(data.get("revision_reviews") or [])
+            reviews.append(review)
+            data["revision_reviews"] = reviews[-500:]
+            data["version"] = self.VERSION
+            found = True
+
+        self._store.mutate(mutate)
+        if not found:
+            raise KeyError(skill_id)
+        return {
+            "skill": self.get(skill_id),
+            "review": review,
+        }
+
+    def revision_review_history(self, *, limit: int = 100) -> dict[str, Any]:
+        """Return content-free creator revision decisions for audit/surfaces."""
+
+        rows = [
+            dict(item)
+            for item in list(self._store.snapshot().get("revision_reviews") or [])
+            if isinstance(item, dict)
+        ]
+        bounded = rows[-max(1, min(500, int(limit))):]
+        bounded.reverse()
+        return {
+            "version": "13.80",
+            "decisions": len(rows),
+            "approved": sum(1 for row in rows if row.get("decision") == "approve"),
+            "rejected": sum(1 for row in rows if row.get("decision") == "reject"),
+            "rows": bounded,
+            "automatic_decision": False,
+            "authority": "explicit creator revision decisions only",
         }
 
     def candidates(self) -> list[SkillRecord]:
@@ -714,6 +848,7 @@ class SkillLibrary:
                 if row.get("status") == "candidate" and row.get("supersedes")
             ),
             "revision_attention": len(self.revision_queue()),
+            "revision_review_decisions": len(list(self._store.snapshot().get("revision_reviews") or [])),
             "execution": "descriptive only; ToolManager/device capability fabric retains execution authority",
         }
 
