@@ -545,3 +545,73 @@ def test_terminal_outcome_keeps_creator_review_id_as_competence_provenance(tmp_p
     assert "task-provenance" in record.evidence_ids
     assert review_id in record.evidence_ids
     assert record.verified_successes == 1
+
+    adoption = skills.revision_adoption_evidence()
+    assert adoption["with_outcomes"] == 1
+    adopted = adoption["rows"][0]
+    assert adopted["review_id"] == review_id
+    assert adopted["attempts"] == 1
+    assert adopted["verified_successes"] == 1
+    assert adopted["state"] == "early_post_adoption_evidence"
+    assert adopted["automatic_rollback"] is False
+
+
+def test_post_adoption_failure_attention_never_rolls_back_revision(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-adoption-attention.json")
+    predecessor = skills.approve(skills.register_candidate(
+        name="reviewed project lookup",
+        description="search project knowledge",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+    ).id)
+    candidate = skills.register_revision(
+        predecessor.id,
+        reason="adopt bounded verification",
+        steps=("search", "verify"),
+    )
+    reviewed = skills.review_revision(
+        candidate.id,
+        decision="approve",
+        reviewed_by="creator:test",
+        reason="explicit adoption",
+    )
+    review_id = reviewed["review"]["id"]
+
+    outcomes = (
+        ("adopt-1", True, True),
+        ("adopt-2", False, False),
+        ("adopt-3", False, False),
+        ("adopt-4", False, False),
+    )
+    for evidence_id, success, verified in outcomes:
+        skills.record_revision_adoption_outcome(
+            review_id,
+            success=success,
+            verified=verified,
+            evidence_id=evidence_id,
+        )
+
+    # Replaying the same evidence ID is idempotent.
+    skills.record_revision_adoption_outcome(
+        review_id,
+        success=False,
+        verified=False,
+        evidence_id="adopt-4",
+    )
+
+    adoption = skills.revision_adoption_evidence()
+    row = adoption["rows"][0]
+    assert row["attempts"] == 4
+    assert row["successes"] == 1
+    assert row["failures"] == 3
+    assert row["verified_successes"] == 1
+    assert row["failure_rate"] == 0.75
+    assert row["state"] == "post_adoption_attention"
+    assert adoption["attention_required"] == 1
+    assert row["automatic_rollback"] is False
+    assert row["automatic_revision"] is False
+
+    # Evidence may request creator attention but cannot mutate the adopted state.
+    assert skills.get(candidate.id).status == "approved"
+    assert skills.get(predecessor.id).status == "superseded"
