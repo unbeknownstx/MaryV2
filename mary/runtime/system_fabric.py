@@ -358,6 +358,30 @@ def _improvement_agenda(
             "automatic_action": False,
         })
 
+    revision_lineage = _mapping(procedure_intelligence.get("revision_lineage"))
+    for row in list(revision_lineage.get("rows") or [])[:32]:
+        if not isinstance(row, dict) or row.get("candidate_status") != "candidate":
+            continue
+        needs = [
+            str(item)[:240]
+            for item in list(row.get("evidence_needed") or [])[:8]
+            if str(item).strip()
+        ]
+        items.append({
+            "kind": "procedure_revision",
+            "subject": str(row.get("candidate_id") or "")[:180],
+            "state": "candidate_review",
+            "attention": (
+                "trial"
+                if not bool(row.get("candidate_trial_observed"))
+                else "evidence"
+            ),
+            "evidence_needed": needs,
+            "predecessor_id": str(row.get("predecessor_id") or "")[:180],
+            "candidate_version": int(row.get("candidate_version") or 0),
+            "automatic_action": False,
+        })
+
     for row in list(model_evidence.get("records") or [])[:16]:
         if not isinstance(row, dict):
             continue
@@ -593,6 +617,9 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
                 "procedures": list(
                     procedure_intelligence.get("procedures") or []
                 )[:16],
+                "revision_lineage": _mapping(
+                    procedure_intelligence.get("revision_lineage")
+                ),
                 "authority": (
                     "read-only evidence projection; review, approval, binding "
                     "and execution remain explicit"
@@ -632,6 +659,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "skills": "creator_approval_required",
             "competence": "routing_and_procedure-ranking_evidence_only_after_hard_eligibility",
             "procedure_selection": "approved_demonstrated_non_degrading_ephemeral_only",
+            "procedure_revision": "version_lineage_visible_creator_approval_required",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
             "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",
