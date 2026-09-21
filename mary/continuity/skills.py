@@ -441,6 +441,113 @@ class SkillLibrary:
         )
         return rows[: max(1, min(200, int(limit)))]
 
+    def revision_lineage(self, *, limit: int = 100) -> dict[str, Any]:
+        """Project procedure version/revision lineage without mutating approval state.
+
+        The projection deliberately distinguishes a proposed revision from a
+        demonstrated replacement. Structural differences and bounded outcome
+        counts are evidence for review only; they never imply superiority,
+        approval, permission, or execution authority.
+        """
+
+        records = [
+            self._decode(row)
+            for row in list(self._store.snapshot().get("skills") or [])
+        ]
+        by_id = {item.id: item for item in records}
+        rows: list[dict[str, Any]] = []
+
+        comparable_fields = (
+            "description",
+            "steps",
+            "verification",
+            "failure_recovery",
+            "preconditions",
+            "inputs",
+            "outputs",
+            "tags",
+        )
+        for item in records:
+            predecessor_id = str(item.supersedes or "").strip()
+            if not predecessor_id:
+                continue
+            predecessor = by_id.get(predecessor_id)
+            changed: list[str] = []
+            if predecessor is not None:
+                for field in comparable_fields:
+                    if getattr(item, field) != getattr(predecessor, field):
+                        changed.append(field)
+
+            attempts = int(item.success_count or 0) + int(item.failure_count or 0)
+            evidence_needed: list[str] = []
+            if attempts == 0:
+                evidence_needed.append(
+                    "bounded candidate trial outcomes before claiming the revision is demonstrated"
+                )
+            elif item.success_count == 0:
+                evidence_needed.append(
+                    "at least one successful candidate trial outcome"
+                )
+            if item.status == "candidate":
+                evidence_needed.append(
+                    "explicit creator review before this revision can supersede the approved predecessor"
+                )
+
+            rows.append({
+                "candidate_id": item.id,
+                "candidate_version": int(item.version),
+                "candidate_status": item.status,
+                "predecessor_id": predecessor_id,
+                "predecessor_version": (
+                    int(predecessor.version) if predecessor is not None else None
+                ),
+                "predecessor_status": (
+                    str(predecessor.status) if predecessor is not None else "missing"
+                ),
+                "revision_reason": str(item.revision_reason or "")[:600],
+                "changed_fields": changed,
+                "required_capabilities_unchanged": bool(
+                    predecessor is not None
+                    and item.required_capabilities == predecessor.required_capabilities
+                ),
+                "required_permissions_unchanged": bool(
+                    predecessor is not None
+                    and item.required_permissions == predecessor.required_permissions
+                ),
+                "attempts": attempts,
+                "successes": int(item.success_count or 0),
+                "failures": int(item.failure_count or 0),
+                "candidate_trial_observed": attempts > 0,
+                "evidence_needed": evidence_needed,
+                "approval_required": item.status == "candidate",
+                "automatic_approval": False,
+                "automatic_execution": False,
+            })
+
+        rows.sort(
+            key=lambda row: (
+                str(row.get("candidate_status") or "") == "candidate",
+                int(row.get("candidate_version") or 0),
+            ),
+            reverse=True,
+        )
+        bounded = rows[: max(1, min(500, int(limit)))]
+        return {
+            "version": "13.78",
+            "revisions": len(rows),
+            "pending_review": sum(
+                1 for row in rows if row.get("candidate_status") == "candidate"
+            ),
+            "approved_replacements": sum(
+                1 for row in rows if row.get("candidate_status") == "approved"
+            ),
+            "rows": bounded,
+            "authority": (
+                "read-only procedure version lineage; creator approval and "
+                "execution permission remain separate"
+            ),
+        }
+
     def candidates(self) -> list[SkillRecord]:
         return [
             self._decode(row)

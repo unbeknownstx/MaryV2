@@ -24,6 +24,7 @@ def test_world_and_skill_governance_remain_core_owned_and_explicit():
     assert "competing beliefs are retired as history rather than deleted" in core
     assert '"reconciliation_queue"' in core
     assert '"revision_queue"' in core
+    assert '"revision_lineage"' in core
     assert "review candidate only" in core
     assert "explicit creator approval" in core
     assert "explicit creator rejection" in core

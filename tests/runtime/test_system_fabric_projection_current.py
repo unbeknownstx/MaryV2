@@ -35,6 +35,24 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
             "procedural_memory": {
                 "demonstrated": 2,
                 "degrading": 1,
+                "revision_lineage": {
+                    "version": "13.78",
+                    "revisions": 1,
+                    "pending_review": 1,
+                    "approved_replacements": 0,
+                    "rows": [{
+                        "candidate_id": "skill-revision",
+                        "candidate_version": 2,
+                        "candidate_status": "candidate",
+                        "predecessor_id": "skill-a",
+                        "predecessor_version": 1,
+                        "predecessor_status": "approved",
+                        "candidate_trial_observed": False,
+                        "evidence_needed": ["run bounded candidate trial"],
+                        "automatic_approval": False,
+                        "automatic_execution": False,
+                    }],
+                },
                 "procedures": [
                     {"skill_id": "skill-a", "evidence_needed": ["more outcomes"]},
                     {"skill_id": "skill-b", "evidence_needed": ["review failures", "compare revision"]},
@@ -100,6 +118,7 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["world"]["temporal"]["current"] == 2
     assert result["continuity"]["skills"]["approved"] == 2
     assert result["continuity"]["procedure_review"]["revision_attention"] == 1
+    assert result["continuity"]["procedure_review"]["revision_lineage"]["pending_review"] == 1
     assert result["world"]["review"]["reconciliation_groups"] == 2
     assert result["models"]["candidates"]["count"] == 1
     assert result["models"]["experiments"]["count"] == 1
@@ -157,4 +176,9 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["improvement_agenda"]["automatic_execution"] is False
     assert result["improvement_agenda"]["automatic_permission"] is False
     assert result["improvement_agenda"]["automatic_model_promotion"] is False
+    revision_items = [item for item in result["improvement_agenda"]["items"] if item["kind"] == "procedure_revision"]
+    assert len(revision_items) == 1
+    assert revision_items[0]["subject"] == "skill-revision"
+    assert revision_items[0]["attention"] == "trial"
+    assert result["semantics"]["procedure_revision"].startswith("version_lineage_visible")
     assert result["semantics"]["improvement_agenda"].startswith("read_only_evidence_gaps")
