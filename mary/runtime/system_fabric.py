@@ -632,6 +632,9 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
                 "degrading": int(
                     procedure_intelligence.get("degrading", 0) or 0
                 ),
+                "comparison_ready": int(
+                    procedure_intelligence.get("comparison_ready", 0) or 0
+                ),
                 "procedures": list(
                     procedure_intelligence.get("procedures") or []
                 )[:16],
