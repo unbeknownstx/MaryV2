@@ -250,6 +250,7 @@ struct WorkspaceDetailView: View {
             Text("\(CoreProjection.int(app.liveData["enabled"])) of \(CoreProjection.int(app.liveData["packs"])) packs enabled").font(.title2.bold())
             let substrate = CoreProjection.dict(app.liveData["substrate"])
             let counts = CoreProjection.dict(substrate["counts"])
+            let evaluation = CoreProjection.dict(app.liveData["evaluation_readiness"])
             DataRow(label: "Indexed chunks", value: "\(CoreProjection.int(app.liveData["indexed_documents"]))")
             DataRow(
                 label: "Knowledge tiers",
@@ -260,6 +261,10 @@ struct WorkspaceDetailView: View {
                 value: CoreProjection.bool(substrate["attention_required"]) ? "Review" : "Clear"
             )
             DataRow(
+                label: "Regression readiness",
+                value: CoreProjection.bool(evaluation["ready_for_regression"]) ? "Ready" : "Needs evidence"
+            )
+            DataRow(
                 label: "Stale local indexes",
                 value: "\(CoreProjection.array(substrate["stale_local_indexes"]).count)"
             )
@@ -267,8 +272,12 @@ struct WorkspaceDetailView: View {
                 label: "Stale semantic derivatives",
                 value: "\(CoreProjection.array(substrate["stale_derivatives"]).count)"
             )
+            DataRow(
+                label: "Evaluation evidence gaps",
+                value: "\(CoreProjection.array(evaluation["evidence_needed"]).count)"
+            )
             DataRow(label: "Disabled documents", value: "\(CoreProjection.int(app.liveData["disabled_documents"]))")
-            Text("Local documents, Kiwix and optional vector indexes are evidence sources. They never become memory or truth just because retrieval found them.").font(.caption).foregroundStyle(MaryTheme.muted)
+            Text("Local documents, Kiwix and optional vector indexes are evidence sources. Deterministic evaluation can prove retrieval behavior, but retrieval never becomes memory or truth automatically.").font(.caption).foregroundStyle(MaryTheme.muted)
         }}
     }
 
@@ -568,10 +577,67 @@ struct WorkspaceDetailView: View {
         else { let task = CoreProjection.string(app.searchResult["task_id"] ?? app.searchResult["status"]); Text(task.isEmpty ? "Search dispatched." : "Search: \(task)").font(.headline); Text("Results stay bounded by the selected device's local permission policy.").font(.caption).foregroundStyle(MaryTheme.muted) }
     }}}
 
-    private var advancedCard: some View { GlassCard { VStack(alignment: .leading, spacing: 9) {
-        Eyebrow(text: "Advanced"); Text("Core diagnostics").font(.title2.bold()); Text("Raw backend state is intentionally hidden from normal app surfaces. Use repository diagnostics and CLI verification for deep inspection.").foregroundStyle(MaryTheme.muted)
-        DataRow(label: "Core", value: app.coreLabel); DataRow(label: "Architecture", value: app.coreVersion.isEmpty ? "unknown" : app.coreVersion); DataRow(label: "Device", value: String(app.deviceID.prefix(20)))
-    }}}
+    private var advancedCard: some View {
+        let agenda = CoreProjection.dict(app.liveData["improvement_agenda"])
+        let agendaItems = CoreProjection.array(agenda["items"]).map { CoreProjection.dict($0) }
+        let embodiment = CoreProjection.dict(app.liveData["embodiment"])
+        let scene = CoreProjection.dict(embodiment["live_scene"])
+        let compute = CoreProjection.dict(app.liveData["compute"])
+        let capabilityContract = CoreProjection.dict(compute["capability_contract"])
+
+        return VStack(spacing: 12) {
+            GlassCard { VStack(alignment: .leading, spacing: 9) {
+                Eyebrow(text: "Intelligence convergence")
+                Text("What Mary can prove next").font(.title2.bold())
+                DataRow(label: "Open evidence items", value: "\(CoreProjection.int(agenda["open_items"]))")
+                DataRow(label: "Recovery items", value: "\(CoreProjection.int(agenda["recovery_items"]))")
+                DataRow(label: "Capability evidence gaps", value: "\(CoreProjection.int(capabilityContract["evidence_gaps"]))")
+                DataRow(label: "Automatic execution", value: CoreProjection.bool(agenda["automatic_execution"]) ? "On" : "Off")
+                DataRow(label: "Automatic model promotion", value: CoreProjection.bool(agenda["automatic_model_promotion"]) ? "On" : "Off")
+                Text("This is a read-only evidence agenda. It can describe what would strengthen a capability, procedure, knowledge substrate, or model experiment, but it cannot grant permission or execute the work.").font(.caption).foregroundStyle(MaryTheme.muted)
+            }}
+
+            if !agendaItems.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: "Evidence agenda")
+                    ForEach(Array(agendaItems.prefix(10).enumerated()), id: \.offset) { _, item in
+                        let needs = CoreProjection.array(item["evidence_needed"]).map { CoreProjection.string($0) }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(
+                                CoreProjection.string(item["kind"]).replacingOccurrences(of: "_", with: " ").capitalized
+                                + " · "
+                                + CoreProjection.string(item["subject"])
+                            )
+                            .font(.subheadline.bold())
+                            Text(needs.isEmpty ? "No additional evidence described." : needs.joined(separator: " · "))
+                                .font(.caption)
+                                .foregroundStyle(MaryTheme.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }}
+            }
+
+            GlassCard { VStack(alignment: .leading, spacing: 9) {
+                Eyebrow(text: "Embodiment + live presence")
+                Text(CoreProjection.string(embodiment["canonical_score"]).isEmpty ? "PerformancePacket" : CoreProjection.string(embodiment["canonical_score"])).font(.title2.bold())
+                DataRow(label: "Scene mode", value: CoreProjection.string(scene["mode"]).isEmpty ? "Companion" : CoreProjection.string(scene["mode"]).capitalized)
+                DataRow(label: "Realtime phase", value: CoreProjection.string(scene["realtime_phase"]).isEmpty ? "Idle" : CoreProjection.string(scene["realtime_phase"]).capitalized)
+                DataRow(label: "Floor owner", value: CoreProjection.string(scene["floor_owner"]).isEmpty ? "None" : CoreProjection.string(scene["floor_owner"]).capitalized)
+                DataRow(label: "Scene participants", value: "\(CoreProjection.int(scene["participant_count"]))")
+                DataRow(label: "Scene persistence", value: "None")
+                Text("The iPhone, Desktop, PWA, stream, and future VR bodies are presentation surfaces for one Mary Core. LiveScene is ephemeral and cannot become identity, memory, relationship, emotion, or world truth.").font(.caption).foregroundStyle(MaryTheme.muted)
+            }}
+
+            GlassCard { VStack(alignment: .leading, spacing: 9) {
+                Eyebrow(text: "Core diagnostics")
+                DataRow(label: "Core", value: app.coreLabel)
+                DataRow(label: "Architecture", value: app.coreVersion.isEmpty ? "unknown" : app.coreVersion)
+                DataRow(label: "Device", value: String(app.deviceID.prefix(20)))
+                Text("Raw backend state remains hidden from normal app surfaces. Repository diagnostics and CLI verification remain the deep-inspection path.").foregroundStyle(MaryTheme.muted)
+            }}
+        }
+    }
 
     private func statusCard(eyebrow: String, title: String, body: String) -> some View { GlassCard { VStack(alignment: .leading, spacing: 8) { Eyebrow(text: eyebrow); Text(title).font(.title2.bold()); Text(body).foregroundStyle(MaryTheme.muted) } } }
 

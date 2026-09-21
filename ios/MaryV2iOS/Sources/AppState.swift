@@ -540,15 +540,21 @@ final class AppState: ObservableObject {
                 let dashboard = try await client.dashboard()
                 dashboardData = dashboard
                 let fabric = CoreProjection.dict(dashboard["system_fabric"])
+                let compute = CoreProjection.dict(fabric["compute"])
                 var models = CoreProjection.dict(fabric["models"])
                 models["node_intelligence"] = CoreProjection.dict(
-                    CoreProjection.dict(fabric["compute"])["node_intelligence"]
+                    compute["node_intelligence"]
+                )
+                models["capability_contract"] = CoreProjection.dict(
+                    compute["capability_contract"]
                 )
                 liveData = models
             case .training:
                 liveData = try await client.runtimeAction("training.feedback.status")
             case .advanced:
-                liveData = try await client.dashboard()
+                let dashboard = try await client.dashboard()
+                dashboardData = dashboard
+                liveData = CoreProjection.dict(dashboard["system_fabric"])
             }
             lastError = nil
         } catch {

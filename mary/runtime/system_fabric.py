@@ -229,7 +229,127 @@ def _knowledge_evaluation_readiness(knowledge: dict[str, Any], substrate: dict[s
     }
 
 
-def _embodiment_projection() -> dict[str, Any]:
+def _live_scene_summary(ecosystem: Any) -> dict[str, Any]:
+    """Project bounded situational presence without leaking scene content."""
+    presence = getattr(ecosystem, "presence", None)
+    scene = getattr(presence, "scene", None)
+    snapshot = _status(scene, "snapshot")
+    participants = _mapping(snapshot.get("participants"))
+    recent_events = [
+        item for item in list(snapshot.get("recent_events") or [])[:16]
+        if isinstance(item, dict)
+    ]
+    return {
+        "version": "13.75",
+        "available": bool(snapshot),
+        "mode": str(snapshot.get("mode") or "")[:40],
+        "floor_owner": str(snapshot.get("floor_owner") or "none")[:40],
+        "realtime_phase": str(snapshot.get("realtime_phase") or "idle")[:40],
+        "participant_count": len(participants),
+        "recent_event_count": len(recent_events),
+        "has_activity": bool(str(snapshot.get("activity") or "").strip()),
+        "has_project": bool(str(snapshot.get("project") or "").strip()),
+        "has_workspace": bool(str(snapshot.get("workspace") or "").strip()),
+        "has_selected_asset": bool(str(snapshot.get("selected_asset") or "").strip()),
+        "has_mary_target": bool(str(snapshot.get("mary_target") or "").strip()),
+        "has_mary_goal": bool(str(snapshot.get("mary_goal") or "").strip()),
+        "updated_at": str(snapshot.get("updated_at") or "")[:80],
+        "persistence": "none",
+        "authority": "ephemeral_context_only",
+    }
+
+
+def _improvement_agenda(
+    capability_contract: dict[str, Any],
+    knowledge_evaluation: dict[str, Any],
+    procedure_intelligence: dict[str, Any],
+    model_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    """Combine existing evidence gaps into one non-executing improvement agenda."""
+    items: list[dict[str, Any]] = []
+
+    for row in list(capability_contract.get("capabilities") or [])[:64]:
+        if not isinstance(row, dict):
+            continue
+        needs = [str(item)[:240] for item in list(row.get("evidence_needed") or [])[:8] if str(item).strip()]
+        if not needs and not bool(row.get("degrading")):
+            continue
+        items.append({
+            "kind": "capability",
+            "subject": str(row.get("capability") or "")[:160],
+            "state": str(row.get("state") or "")[:80],
+            "attention": "recovery" if bool(row.get("degrading")) else "evidence",
+            "evidence_needed": needs,
+            "automatic_action": False,
+        })
+
+    if not bool(knowledge_evaluation.get("ready_for_regression")):
+        needs = [
+            str(item)[:240]
+            for item in list(knowledge_evaluation.get("evidence_needed") or [])[:8]
+            if str(item).strip()
+        ]
+        items.append({
+            "kind": "knowledge",
+            "subject": "local_knowledge_substrate",
+            "state": "attention_required",
+            "attention": (
+                "recovery"
+                if int(knowledge_evaluation.get("stale_local_indexes") or 0)
+                or int(knowledge_evaluation.get("stale_derivatives") or 0)
+                else "evidence"
+            ),
+            "evidence_needed": needs,
+            "automatic_action": False,
+        })
+
+    for row in list(procedure_intelligence.get("procedures") or [])[:32]:
+        if not isinstance(row, dict):
+            continue
+        needs = [str(item)[:240] for item in list(row.get("evidence_needed") or [])[:8] if str(item).strip()]
+        if not needs and not bool(row.get("degrading")):
+            continue
+        items.append({
+            "kind": "procedure",
+            "subject": str(row.get("skill_id") or row.get("name") or "")[:180],
+            "state": str(row.get("state") or "")[:80],
+            "attention": "recovery" if bool(row.get("degrading")) else "evidence",
+            "evidence_needed": needs,
+            "automatic_action": False,
+        })
+
+    for row in list(model_evidence.get("records") or [])[:16]:
+        if not isinstance(row, dict):
+            continue
+        needs = [str(item)[:240] for item in list(row.get("evidence_needed") or [])[:8] if str(item).strip()]
+        if not needs:
+            continue
+        items.append({
+            "kind": "model_experiment",
+            "subject": str(row.get("id") or row.get("candidate_id") or "")[:180],
+            "state": str(row.get("status") or "experimental")[:80],
+            "attention": "trial" if bool(row.get("trial_ready")) else "evidence",
+            "evidence_needed": needs,
+            "automatic_action": False,
+        })
+
+    order = {"recovery": 0, "evidence": 1, "trial": 2}
+    items.sort(key=lambda item: (order.get(str(item.get("attention")), 9), str(item.get("kind")), str(item.get("subject"))))
+    return {
+        "version": "13.75",
+        "open_items": len(items),
+        "recovery_items": sum(1 for item in items if item.get("attention") == "recovery"),
+        "evidence_items": sum(1 for item in items if item.get("attention") == "evidence"),
+        "trial_items": sum(1 for item in items if item.get("attention") == "trial"),
+        "items": items[:48],
+        "automatic_execution": False,
+        "automatic_permission": False,
+        "automatic_model_promotion": False,
+        "authority": "read_only_evidence_agenda",
+    }
+
+
+def _embodiment_projection(live_scene: dict[str, Any] | None = None) -> dict[str, Any]:
     """Project Riko-style one-character/many-bodies readiness without creating a body owner."""
     try:
         from mary.expression.surface_performance import capabilities_for_surface
@@ -245,11 +365,12 @@ def _embodiment_projection() -> dict[str, Any]:
             "authority": "presentation_projection_only",
         }
     return {
-        "version": "13.74",
+        "version": "13.75",
         "canonical_score": "PerformancePacket",
         "voice_direction_owner": "DeliveryPlan",
         "scene_context_owner": "LiveScene",
         "surfaces": surfaces,
+        "live_scene": dict(live_scene or {}),
         "one_character_many_bodies": True,
         "renderer_infers_character": False,
         "body_persistence": False,
@@ -314,7 +435,14 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
         knowledge,
         knowledge_intelligence,
     )
-    embodiment = _embodiment_projection()
+    live_scene = _live_scene_summary(ecosystem)
+    embodiment = _embodiment_projection(live_scene)
+    improvement_agenda = _improvement_agenda(
+        capability_contract,
+        knowledge_evaluation,
+        procedure_intelligence,
+        model_evidence,
+    )
     intelligence_loop = {
         "version": "13.73",
         "terminal_outcomes_feed_competence": True,
@@ -437,6 +565,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             **compute,
         },
         "intelligence_loop": intelligence_loop,
+        "improvement_agenda": improvement_agenda,
         "embodiment": embodiment,
         "training": {
             "feedback": training,
@@ -454,5 +583,6 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "models": "benchmark_and_creator_promotion_required",
             "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",
             "embodiment": "one_character_many_bodies_performance_packet_authoritative",
+            "improvement_agenda": "read_only_evidence_gaps_no_automatic_execution",
         },
     }
