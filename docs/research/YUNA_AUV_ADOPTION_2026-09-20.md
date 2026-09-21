@@ -35,3 +35,11 @@ performance intent.
 
 Yuna AI is MIT licensed. AUV is Apache-2.0. This pass reimplements architectural
 patterns in Mary-native contracts and does not vendor either project.
+
+## 13.71–13.72 convergence
+
+- Added a bounded process-local media-session registry and a bridge that publishes a local temporal window through the existing `PerceptionDirector`. Cognition sees the same non-durable observation contract used by other senses; the timeline never becomes a memory owner.
+- Added an experience-latency tracker that preserves first-visible-reaction and first-audio milestones as derived observability rather than creating another trace authority.
+- Corrected the computer-use bridge to Mary's real sensor capabilities (`sensor.screen_describe` / `sensor.screen_capture`).
+- Added an observe -> typed action -> verify planner. It is plan-only: `DeviceTaskBroker`, `NodeRegistry`, node tokens and local device permissions remain the execution path.
+- No generic desktop mutation capability was invented. A mutating adapter must first exist as an explicitly typed/allowlisted capability before Core can route an action through it.
