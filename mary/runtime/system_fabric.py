@@ -280,7 +280,7 @@ def _live_scene_summary(ecosystem: Any) -> dict[str, Any]:
         if isinstance(item, dict)
     ]
     return {
-        "version": "13.75",
+        "version": "13.79",
         "available": bool(snapshot),
         "mode": str(snapshot.get("mode") or "")[:40],
         "floor_owner": str(snapshot.get("floor_owner") or "none")[:40],
@@ -367,18 +367,29 @@ def _improvement_agenda(
             for item in list(row.get("evidence_needed") or [])[:8]
             if str(item).strip()
         ]
+        comparison = _mapping(row.get("comparison"))
+        comparison_state = str(comparison.get("state") or "unavailable")[:80]
+        review_ready = bool(comparison.get("review_ready"))
         items.append({
             "kind": "procedure_revision",
             "subject": str(row.get("candidate_id") or "")[:180],
-            "state": "candidate_review",
+            "state": "comparison_review_ready" if review_ready else "candidate_review",
             "attention": (
-                "trial"
-                if not bool(row.get("candidate_trial_observed"))
-                else "evidence"
+                "review"
+                if review_ready
+                else (
+                    "trial"
+                    if not bool(row.get("candidate_trial_observed"))
+                    else "evidence"
+                )
             ),
             "evidence_needed": needs,
             "predecessor_id": str(row.get("predecessor_id") or "")[:180],
             "candidate_version": int(row.get("candidate_version") or 0),
+            "comparison_state": comparison_state,
+            "comparison_review_ready": review_ready,
+            "reliability_delta": comparison.get("reliability_delta"),
+            "superiority_claimed": False,
             "automatic_action": False,
         })
 
@@ -397,7 +408,7 @@ def _improvement_agenda(
             "automatic_action": False,
         })
 
-    order = {"recovery": 0, "evidence": 1, "trial": 2}
+    order = {"recovery": 0, "review": 1, "evidence": 2, "trial": 3}
     items.sort(key=lambda item: (order.get(str(item.get("attention")), 9), str(item.get("kind")), str(item.get("subject"))))
     return {
         "version": "13.75",
@@ -405,6 +416,7 @@ def _improvement_agenda(
         "recovery_items": sum(1 for item in items if item.get("attention") == "recovery"),
         "evidence_items": sum(1 for item in items if item.get("attention") == "evidence"),
         "trial_items": sum(1 for item in items if item.get("attention") == "trial"),
+        "review_items": sum(1 for item in items if item.get("attention") == "review"),
         "items": items[:48],
         "automatic_execution": False,
         "automatic_permission": False,
@@ -666,6 +678,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "competence": "routing_and_procedure-ranking_evidence_only_after_hard_eligibility",
             "procedure_selection": "approved_demonstrated_non_degrading_ephemeral_only",
             "procedure_revision": "version_lineage_visible_creator_approval_required",
+            "procedure_comparison": "bounded_verified_evidence_creator_review_no_superiority_claim",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
             "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",
