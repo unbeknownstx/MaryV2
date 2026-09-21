@@ -457,6 +457,100 @@ def _improvement_agenda(
     }
 
 
+def build_improvement_proposal(
+    agenda: dict[str, Any],
+    *,
+    kind: str,
+    subject: str,
+) -> dict[str, Any]:
+    """Turn one read-only evidence gap into a bounded creator-review proposal.
+
+    This function never creates a plan, dispatches a task, grants permission,
+    promotes a model, rebuilds knowledge, or mutates a procedure. It only maps
+    an existing improvement-agenda item to the next explicit control surface.
+    """
+    clean_kind = str(kind or "").strip().lower()[:80]
+    clean_subject = str(subject or "").strip()[:180]
+    if not clean_kind or not clean_subject:
+        raise ValueError("improvement proposal requires kind and subject")
+
+    selected: dict[str, Any] | None = None
+    for raw in list(agenda.get("items") or [])[:64]:
+        if not isinstance(raw, dict):
+            continue
+        if (
+            str(raw.get("kind") or "").strip().lower() == clean_kind
+            and str(raw.get("subject") or "").strip() == clean_subject
+        ):
+            selected = dict(raw)
+            break
+    if selected is None:
+        raise KeyError(f"improvement agenda item not found: {clean_kind}:{clean_subject}")
+
+    attention = str(selected.get("attention") or "evidence")[:40]
+    evidence_needed = [
+        str(item)[:240]
+        for item in list(selected.get("evidence_needed") or [])[:8]
+        if str(item).strip()
+    ]
+    proposal_type = "plan_draft"
+    next_action = "continuity.plan.create"
+    required_capabilities: list[str] = []
+    action_args: dict[str, Any] = {}
+
+    if clean_kind == "capability":
+        required_capabilities = [clean_subject]
+    elif clean_kind in {"procedure", "procedure_adoption"}:
+        proposal_type = "procedure_evidence_plan"
+    elif clean_kind == "procedure_revision" and attention == "review":
+        proposal_type = "creator_review"
+        next_action = "continuity.skill.status"
+        action_args = {"skill_id": clean_subject}
+    elif clean_kind == "model_experiment" and attention == "trial":
+        proposal_type = "model_trial"
+        next_action = "model.experiment.dispatch"
+        action_args = {"experiment_id": clean_subject}
+    elif clean_kind == "knowledge":
+        proposal_type = "knowledge_maintenance_review"
+        next_action = "continuity.plan.create"
+
+    objective = f"Resolve {clean_kind.replace('_', ' ')} evidence gap for {clean_subject}"[:800]
+    step_title = (
+        evidence_needed[0]
+        if evidence_needed
+        else f"Collect bounded evidence for {clean_subject}"
+    )[:800]
+    plan_draft = {
+        "objective": objective,
+        "priority": 0.8 if attention in {"recovery", "review"} else 0.6,
+        "tags": ["improvement-evidence", clean_kind, attention],
+        "steps": [step_title],
+        "step_additions": [{
+            "title": step_title,
+            "required_capabilities": required_capabilities,
+            "verification": evidence_needed[:4],
+        }],
+    }
+
+    return {
+        "version": "13.84",
+        "proposal_type": proposal_type,
+        "source_item": selected,
+        "next_explicit_action": next_action,
+        "next_action_args": action_args,
+        "plan_draft": plan_draft,
+        "plan_created": False,
+        "execution_performed": False,
+        "permission_granted": False,
+        "model_promoted": False,
+        "automatic_action": False,
+        "authority": (
+            "proposal only; creator must explicitly create/review/dispatch through "
+            "the existing typed runtime actions"
+        ),
+    }
+
+
 def _embodiment_projection(live_scene: dict[str, Any] | None = None) -> dict[str, Any]:
     """Project Riko-style one-character/many-bodies readiness without creating a body owner."""
     try:
