@@ -543,10 +543,18 @@ class MaryRemoteMobileRuntime:
         token: str,
         device_id: str = "replit-mobile",
     ) -> None:
-        self.client = MaryClient(
+        client_type = MaryClient
+        self.client = client_type(
             core_url,
             token=token,
             device_id=device_id,
+        )
+        # Track whether this runtime was constructed with the canonical protocol
+        # client. Tests and compatibility adapters may replace MaryClient with a
+        # narrower client that intentionally predates surface_id turn binding.
+        self._turn_supports_surface_id = (
+            client_type.__module__ == "mary.protocol.client"
+            and client_type.__name__ == "MaryClient"
         )
 
         # Keep constructor compatibility for lightweight test/fake clients while
@@ -1081,7 +1089,7 @@ class MaryRemoteMobileRuntime:
                     voice_input=bool(
                         voice_input
                     ),
-                    surface_id=self._surface_id,
+                    **({"surface_id": self._surface_id} if self._turn_supports_surface_id else {}),
                 )
             )
 

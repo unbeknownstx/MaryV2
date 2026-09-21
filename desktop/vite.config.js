@@ -29,8 +29,8 @@ function marySafeRendererPlugin() {
       );
       next = replaceRequired(
         next,
-        `const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });\nrenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));\nrenderer.outputColorSpace = THREE.SRGBColorSpace;\nrenderer.shadowMap.enabled = true;`,
-        `let renderer = null;\nlet rendererFailure = null;\nconst rendererMode = new URLSearchParams(window.location.search).get('mary_renderer') || 'auto';\n\nfunction initializeRenderer() {\n  if (renderer) return true;\n  if (rendererMode === 'portrait') {\n    console.info('[MaryUI] 3D renderer intentionally disabled for this host; using portrait fallback');\n    return false;\n  }\n  try {\n    renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });\n    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));\n    renderer.outputColorSpace = THREE.SRGBColorSpace;\n    renderer.shadowMap.enabled = true;\n    return true;\n  } catch (error) {\n    rendererFailure = error;\n    avatarLoadError = String(error?.message || error || 'WebGL renderer unavailable');\n    renderer = null;\n    console.warn('[MaryUI] WebGL avatar renderer unavailable; using portrait fallback', error);\n    try { canvas?.classList.add('hidden'); } catch (_) {}\n    return false;\n  }\n}`,
+        `const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });\nrenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));\nrenderer.outputColorSpace = THREE.SRGBColorSpace;\nrenderer.shadowMap.enabled = true;`,
+        `let renderer = null;\nlet rendererFailure = null;\nconst rendererMode = new URLSearchParams(window.location.search).get('mary_renderer') || 'auto';\n\nfunction initializeRenderer() {\n  if (renderer) return true;\n  if (rendererMode === 'portrait') {\n    console.info('[MaryUI] 3D renderer intentionally disabled for this host; using portrait fallback');\n    return false;\n  }\n  try {\n    renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });\n    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));\n    renderer.outputColorSpace = THREE.SRGBColorSpace;\n    renderer.shadowMap.enabled = true;\n    return true;\n  } catch (error) {\n    rendererFailure = error;\n    avatarLoadError = String(error?.message || error || 'WebGL renderer unavailable');\n    renderer = null;\n    console.warn('[MaryUI] WebGL avatar renderer unavailable; using portrait fallback', error);\n    try { canvas?.classList.add('hidden'); } catch (_) {}\n    return false;\n  }\n}`,
         'renderer construction'
       );
       next = replaceRequired(
@@ -53,8 +53,8 @@ function marySafeRendererPlugin() {
       );
       next = replaceRequired(
         next,
-        `bootStep(28, 'Loading character renderer…');\nsyncAvatarPresentation();\nloadMaryVrm();`,
-        `bootStep(28, 'Loading character renderer…');\nconst rendererReady = initializeRenderer();\nsyncAvatarPresentation();\nif (rendererReady) {\n  loadMaryVrm();\n} else {\n  bootStep(36, 'Avatar renderer unavailable · using portrait mode…');\n}`,
+        `bootStep(28, 'Loading character renderer…');\nsyncAvatarPresentation();\nloadMotionManifest();\nloadMaryVrm();`,
+        `bootStep(28, 'Loading character renderer…');\nconst rendererReady = initializeRenderer();\nsyncAvatarPresentation();\nloadMotionManifest();\nif (rendererReady) {\n  loadMaryVrm();\n} else {\n  bootStep(36, 'Avatar renderer unavailable · using portrait mode…');\n}`,
         'renderer startup'
       );
 
