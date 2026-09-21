@@ -4048,6 +4048,31 @@ class MaryCoreService:
                     ),
                 })
 
+            if action.action == "continuity.improvement.propose":
+                from mary.runtime.system_fabric import (
+                    build_improvement_proposal,
+                    build_system_fabric_projection,
+                )
+
+                fabric = build_system_fabric_projection(self.application)
+                agenda = dict(fabric.get("improvement_agenda") or {})
+                proposal = build_improvement_proposal(
+                    agenda,
+                    kind=str(values.get("kind") or ""),
+                    subject=str(values.get("subject") or ""),
+                )
+                return _json_safe({
+                    "ok": True,
+                    "proposal": proposal,
+                    "agenda_version": str(agenda.get("version") or ""),
+                    "execution_performed": False,
+                    "plan_created": False,
+                    "authority": (
+                        "proposal only; creator must explicitly choose the next "
+                        "typed runtime action before any durable or executable change"
+                    ),
+                })
+
             if action.action == "continuity.plan.status":
                 self._settle_terminal_continuity_links()
                 plan_id = str(values.get("plan_id") or "").strip()
