@@ -1036,6 +1036,13 @@ class SelfIntrospection:
                 knowledge_evaluation = {}
         procedural_owner = getattr(self, "procedural_skills", None)
         skills_status = safe_status(procedural_owner)
+        revision_lineage: dict[str, Any] = {}
+        lineage_fn = getattr(procedural_owner, "revision_lineage", None)
+        if callable(lineage_fn):
+            try:
+                revision_lineage = dict(lineage_fn(limit=100) or {})
+            except Exception:
+                revision_lineage = {}
         world_status = safe_status(getattr(self, "world_model", None))
 
         revision_rows: list[dict[str, Any]] = []
@@ -1419,6 +1426,7 @@ class SelfIntrospection:
                 "approved": int(skills_status.get("approved") or 0),
                 "candidates": int(skills_status.get("candidates") or 0),
                 "revision_attention": int(skills_status.get("revision_attention") or 0),
+                "revision_lineage": revision_lineage,
                 "demonstrated": sum(
                     1 for item in procedure_rows
                     if bool(item.get("demonstrated"))
