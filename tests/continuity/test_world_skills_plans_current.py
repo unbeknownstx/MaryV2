@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mary.continuity import ExecutivePlanGraph, SkillLibrary, WorldModel
+from mary.continuity import CompetenceLedger, ExecutivePlanGraph, SkillLibrary, WorldModel
 
 
 def test_world_model_keeps_contradictions_visible_until_verified(tmp_path: Path):
@@ -387,6 +387,72 @@ def test_skill_revision_lineage_tracks_candidate_without_claiming_improvement(tm
     assert final["candidate_status"] == "approved"
     assert final["predecessor_status"] == "superseded"
     assert final["approval_required"] is False
+
+
+def test_skill_revision_comparison_becomes_review_ready_only_after_verified_evidence(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-comparison.json")
+    predecessor = skills.approve(skills.register_candidate(
+        name="search local corpus",
+        description="Search a bounded local knowledge pack.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search enabled pack",),
+        verification=("citation present",),
+    ).id)
+    candidate = skills.register_revision(
+        predecessor.id,
+        reason="add explicit citation verification",
+        steps=("search enabled pack", "verify citation before returning"),
+    )
+    competence = CompetenceLedger(tmp_path / "competence-comparison.json")
+
+    before = skills.revision_lineage(competence=competence)["rows"][0]["comparison"]
+    assert before["state"] == "candidate_unverified"
+    assert before["review_ready"] is False
+    assert before["superiority_claimed"] is False
+
+    predecessor_results = (True, True, False, False)
+    candidate_results = (True, True, True, False)
+    for index, success in enumerate(predecessor_results):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=predecessor.id,
+            success=success,
+            verified=success,
+            evidence_ids=(f"pred-{index}",),
+        )
+    for index, success in enumerate(candidate_results):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=candidate.id,
+            success=success,
+            verified=success,
+            evidence_ids=(f"cand-{index}",),
+        )
+        skills.record_outcome(
+            candidate.id,
+            success=success,
+            result=f"candidate outcome {index}",
+            evidence_ids=(f"cand-{index}",),
+        )
+
+    row = skills.revision_lineage(competence=competence)["rows"][0]
+    comparison = row["comparison"]
+    assert comparison["state"] == "review_ready"
+    assert comparison["review_ready"] is True
+    assert comparison["candidate"]["verified_successes"] == 3
+    assert comparison["predecessor"]["verified_successes"] == 2
+    assert comparison["reliability_delta"] > 0
+    assert comparison["superiority_claimed"] is False
+    assert comparison["automatic_approval"] is False
+    assert any("creator review" in item for item in comparison["evidence_needed"])
+    assert skills.get(predecessor.id).status == "approved"
+    assert skills.get(candidate.id).status == "candidate"
 
 
 def test_world_reconciliation_queue_groups_conflicts_without_resolving(tmp_path: Path):

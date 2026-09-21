@@ -35,6 +35,7 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
             "procedural_memory": {
                 "demonstrated": 2,
                 "degrading": 1,
+                "comparison_ready": 1,
                 "revision_lineage": {
                     "version": "13.78",
                     "revisions": 1,
@@ -47,8 +48,16 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
                         "predecessor_id": "skill-a",
                         "predecessor_version": 1,
                         "predecessor_status": "approved",
-                        "candidate_trial_observed": False,
-                        "evidence_needed": ["run bounded candidate trial"],
+                        "candidate_trial_observed": True,
+                        "comparison": {
+                            "state": "review_ready",
+                            "review_ready": True,
+                            "reliability_delta": 0.18,
+                            "evidence_needed": ["creator review of bounded comparison"],
+                            "superiority_claimed": False,
+                            "automatic_approval": False,
+                        },
+                        "evidence_needed": ["creator review of bounded comparison"],
                         "automatic_approval": False,
                         "automatic_execution": False,
                     }],
@@ -118,6 +127,7 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["world"]["temporal"]["current"] == 2
     assert result["continuity"]["skills"]["approved"] == 2
     assert result["continuity"]["procedure_review"]["revision_attention"] == 1
+    assert result["continuity"]["procedure_review"]["comparison_ready"] == 1
     assert result["continuity"]["procedure_review"]["revision_lineage"]["pending_review"] == 1
     assert result["world"]["review"]["reconciliation_groups"] == 2
     assert result["models"]["candidates"]["count"] == 1
@@ -179,6 +189,12 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     revision_items = [item for item in result["improvement_agenda"]["items"] if item["kind"] == "procedure_revision"]
     assert len(revision_items) == 1
     assert revision_items[0]["subject"] == "skill-revision"
-    assert revision_items[0]["attention"] == "trial"
+    assert revision_items[0]["attention"] == "review"
+    assert revision_items[0]["comparison_state"] == "review_ready"
+    assert revision_items[0]["comparison_review_ready"] is True
+    assert revision_items[0]["reliability_delta"] == 0.18
+    assert revision_items[0]["superiority_claimed"] is False
+    assert result["improvement_agenda"]["review_items"] == 1
     assert result["semantics"]["procedure_revision"].startswith("version_lineage_visible")
+    assert result["semantics"]["procedure_comparison"].startswith("bounded_verified_evidence")
     assert result["semantics"]["improvement_agenda"].startswith("read_only_evidence_gaps")
