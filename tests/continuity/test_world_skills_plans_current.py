@@ -336,6 +336,59 @@ def test_skill_revision_queue_surfaces_failure_pressure_without_mutation(tmp_pat
     assert skills.status()["revision_attention"] == 1
 
 
+def test_skill_revision_lineage_tracks_candidate_without_claiming_improvement(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-lineage.json")
+    approved = skills.approve(skills.register_candidate(
+        name="search local corpus",
+        description="Search a bounded local knowledge pack.",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search enabled pack",),
+        verification=("citation present",),
+    ).id)
+
+    candidate = skills.register_revision(
+        approved.id,
+        reason="citation verification needs a second check",
+        steps=("search enabled pack", "verify citation before returning"),
+    )
+    lineage = skills.revision_lineage()
+
+    assert lineage["pending_review"] == 1
+    row = lineage["rows"][0]
+    assert row["candidate_id"] == candidate.id
+    assert row["predecessor_id"] == approved.id
+    assert row["candidate_version"] == approved.version + 1
+    assert row["candidate_status"] == "candidate"
+    assert row["changed_fields"] == ["steps"]
+    assert row["required_capabilities_unchanged"] is True
+    assert row["required_permissions_unchanged"] is True
+    assert row["candidate_trial_observed"] is False
+    assert row["automatic_approval"] is False
+    assert row["automatic_execution"] is False
+    assert any("trial" in item for item in row["evidence_needed"])
+    assert skills.get(approved.id).status == "approved"
+
+    skills.record_outcome(
+        candidate.id,
+        success=True,
+        result="candidate trial passed",
+        evidence_ids=("trial-1",),
+    )
+    observed = skills.revision_lineage()["rows"][0]
+    assert observed["candidate_trial_observed"] is True
+    assert observed["successes"] == 1
+    assert any("creator review" in item for item in observed["evidence_needed"])
+
+    replacement = skills.approve(candidate.id)
+    final = skills.revision_lineage()["rows"][0]
+    assert replacement.status == "approved"
+    assert final["candidate_status"] == "approved"
+    assert final["predecessor_status"] == "superseded"
+    assert final["approval_required"] is False
+
+
 def test_world_reconciliation_queue_groups_conflicts_without_resolving(tmp_path: Path):
     world = WorldModel(tmp_path / "world-queue.json")
     first = world.observe(
