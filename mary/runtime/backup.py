@@ -106,6 +106,12 @@ DURABLE_STATE_FILES: tuple[DurableStateFile, ...] = (
         "node_enrollment",
     ),
     DurableStateFile(
+        "runtime/knowledge_evaluation_evidence.json",
+        "knowledge_evaluation",
+        "KnowledgeEvaluationEvidenceStore",
+        "knowledge_evaluation_evidence",
+    ),
+    DurableStateFile(
         "training/response_feedback.json",
         "training",
         "ResponseFeedbackStore",
