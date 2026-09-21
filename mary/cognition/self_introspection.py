@@ -1053,6 +1053,13 @@ class SelfIntrospection:
                 revision_review_history = dict(review_history_fn(limit=100) or {})
             except Exception:
                 revision_review_history = {}
+        revision_adoption_evidence: dict[str, Any] = {}
+        adoption_fn = getattr(procedural_owner, "revision_adoption_evidence", None)
+        if callable(adoption_fn):
+            try:
+                revision_adoption_evidence = dict(adoption_fn(limit=100) or {})
+            except Exception:
+                revision_adoption_evidence = {}
         world_status = safe_status(getattr(self, "world_model", None))
 
         revision_rows: list[dict[str, Any]] = []
@@ -1439,6 +1446,13 @@ class SelfIntrospection:
                 "revision_lineage": revision_lineage,
                 "revision_review_history": revision_review_history,
                 "review_decisions": int(revision_review_history.get("decisions") or 0),
+                "revision_adoption_evidence": revision_adoption_evidence,
+                "adopted_revisions_with_outcomes": int(
+                    revision_adoption_evidence.get("with_outcomes") or 0
+                ),
+                "adoption_attention_required": int(
+                    revision_adoption_evidence.get("attention_required") or 0
+                ),
                 "comparison_ready": sum(
                     1
                     for item in list(revision_lineage.get("rows") or [])[:100]
