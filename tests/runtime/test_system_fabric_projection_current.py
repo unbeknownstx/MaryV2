@@ -135,6 +135,7 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["knowledge"]["evaluation_readiness"]["evaluated_health_current"] is True
     assert result["knowledge"]["evaluation_evidence"]["queries_retained"] is False
     assert result["knowledge"]["evaluation_evidence"]["retrieved_text_retained"] is False
+    assert result["knowledge"]["evaluation_evidence"]["automatic_promotion"] is False
     assert result["embodiment"]["canonical_score"] == "PerformancePacket"
     assert result["embodiment"]["one_character_many_bodies"] is True
     assert result["embodiment"]["body_identity_authority"] is False
