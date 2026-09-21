@@ -524,7 +524,7 @@ def build_improvement_proposal(
         "objective": objective,
         "priority": 0.8 if attention in {"recovery", "review"} else 0.6,
         "tags": ["improvement-evidence", clean_kind, attention],
-        "steps": [step_title],
+        "steps": [],
         "step_additions": [{
             "title": step_title,
             "required_capabilities": required_capabilities,
@@ -835,5 +835,6 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",
             "embodiment": "one_character_many_bodies_performance_packet_authoritative",
             "improvement_agenda": "read_only_evidence_gaps_no_automatic_execution",
+            "improvement_proposal": "proposal_only_explicit_plan_or_review_action_no_auto_execution",
         },
     }
