@@ -296,6 +296,10 @@ struct WorkspaceDetailView: View {
         let revisionQueue = CoreProjection.array(review["revision_queue"]).map {
             CoreProjection.dict($0)
         }
+        let revisionHistory = CoreProjection.dict(review["revision_review_history"])
+        let revisionDecisions = CoreProjection.array(revisionHistory["rows"]).map {
+            CoreProjection.dict($0)
+        }
 
         return VStack(spacing: 12) {
             GlassCard { VStack(alignment: .leading, spacing: 9) {
@@ -306,6 +310,7 @@ struct WorkspaceDetailView: View {
                 DataRow(label: "Replay lessons", value: "\(CoreProjection.int(replay["lessons"]))")
                 DataRow(label: "Competence records", value: "\(CoreProjection.int(competence["records"]))")
                 DataRow(label: "Revision attention", value: "\(revisionQueue.count)")
+                DataRow(label: "Revision decisions", value: "\(CoreProjection.int(revisionHistory["decisions"]))")
                 Text("Replay may suggest procedures, but approval and execution permissions remain explicit.").font(.caption).foregroundStyle(MaryTheme.muted)
             }}
 
@@ -348,6 +353,42 @@ struct WorkspaceDetailView: View {
                             label: CoreProjection.string(item["name"]),
                             value: "\(Int((failureRate * 100).rounded()))% failure"
                         )
+                    }
+                }}
+            }
+
+            if !revisionDecisions.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 10) {
+                    Eyebrow(text: "Creator revision decisions")
+                    Text("These are explicit creator decisions with the bounded comparison state captured at review time. Evidence never decides automatically.")
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
+                    ForEach(Array(revisionDecisions.prefix(8).enumerated()), id: \.offset) { _, item in
+                        let comparison = CoreProjection.dict(item["comparison"])
+                        let decision = CoreProjection.string(item["decision"])
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(
+                                "Revision v\(CoreProjection.int(item["candidate_version"])) · "
+                                + (decision.isEmpty ? "Reviewed" : decision.capitalized)
+                            )
+                            .font(.subheadline.bold())
+                            Text(
+                                (CoreProjection.string(comparison["state"]).isEmpty
+                                    ? "Unavailable"
+                                    : CoreProjection.string(comparison["state"]).replacingOccurrences(of: "_", with: " ").capitalized)
+                                + " evidence at decision · "
+                                + (CoreProjection.string(item["reviewed_by"]).isEmpty
+                                    ? "creator"
+                                    : CoreProjection.string(item["reviewed_by"]))
+                            )
+                            .font(.caption)
+                            .foregroundStyle(MaryTheme.muted)
+                            if !CoreProjection.string(item["reason"]).isEmpty {
+                                Text(CoreProjection.string(item["reason"]))
+                                    .font(.caption)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }}
             }
