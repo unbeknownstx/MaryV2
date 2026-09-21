@@ -130,8 +130,9 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
     assert trial["quality_verified"] is False
     assert trial["prompt_retained"] is False
     assert trial["generated_output_retained"] is False
-    assert "prompt" not in json.dumps(snapshot).casefold()
-    assert "generated trial text" not in json.dumps(snapshot).casefold()
+    serialized = json.dumps(snapshot).casefold()
+    assert "private held-out prompt" not in serialized
+    assert "generated trial text" not in serialized
 
 
 def test_verified_stack_fingerprint_includes_base_and_adapter_hashes(tmp_path: Path):
