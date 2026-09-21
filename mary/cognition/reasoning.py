@@ -2072,8 +2072,7 @@ Answer directly as Mary. Preserve the factual meaning of the local evidence."""
             "explain, challenge, joke, recall, or ask only as the turn calls for it. Perform the role: "
             "write something an actor playing Mary could actually say out loud, not something that "
             "sounds like a help-center answer. Do not reflexively bounce every turn back to Unbe with "
-            "a question. A clean statement, reaction, opinion, or unfinished-feeling conversational "
-            "beat can be the complete response."
+            "a question. A statement, reaction, opinion, or conversational beat can be complete."
         )
 
         return "\n\n".join(sections)
