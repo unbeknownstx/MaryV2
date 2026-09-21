@@ -433,16 +433,22 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
     knowledge = _status(knowledge_owner, "status")
     knowledge_intelligence = _status(knowledge_owner, "substrate_profile")
     knowledge_evaluation_evidence: dict[str, Any] = {}
-    try:
-        from mary.knowledge import knowledge_substrate_fingerprint
-        evaluation_owner = getattr(mary, "knowledge_evaluation_evidence", None)
-        snapshot = getattr(evaluation_owner, "snapshot", None)
-        if callable(snapshot) and knowledge_owner is not None:
+    evaluation_owner = getattr(mary, "knowledge_evaluation_evidence", None)
+    snapshot = getattr(evaluation_owner, "snapshot", None)
+    if callable(snapshot):
+        current_fingerprint = ""
+        if knowledge_owner is not None:
+            try:
+                from mary.knowledge import knowledge_substrate_fingerprint
+                current_fingerprint = knowledge_substrate_fingerprint(knowledge_owner)
+            except Exception:
+                current_fingerprint = ""
+        try:
             knowledge_evaluation_evidence = dict(snapshot(
-                current_substrate_fingerprint=knowledge_substrate_fingerprint(knowledge_owner)
+                current_substrate_fingerprint=current_fingerprint
             ) or {})
-    except Exception:
-        knowledge_evaluation_evidence = {}
+        except Exception:
+            knowledge_evaluation_evidence = {}
     nodes = _status(getattr(mary, "node_registry", None), "snapshot")
     try:
         from mary.distributed import build_node_intelligence
