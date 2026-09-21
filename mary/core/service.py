@@ -1777,6 +1777,22 @@ class MaryCoreService:
         )
 
         skill_id = str(link.get("skill_id") or "")
+        if review_id:
+            record_adoption = getattr(
+                self.mary.procedural_skills,
+                "record_revision_adoption_outcome",
+                None,
+            )
+            if callable(record_adoption):
+                try:
+                    record_adoption(
+                        review_id,
+                        success=success,
+                        verified=verification_confirmed,
+                        evidence_id=task_id,
+                    )
+                except Exception:
+                    pass
         if skill_id:
             try:
                 self.mary.procedural_skills.record_outcome(
@@ -3879,6 +3895,9 @@ class MaryCoreService:
                         competence=self.mary.competence,
                     ),
                     "revision_review_history": self.mary.procedural_skills.revision_review_history(
+                        limit=100,
+                    ),
+                    "revision_adoption_evidence": self.mary.procedural_skills.revision_adoption_evidence(
                         limit=100,
                     ),
                     "execution_performed": False,
