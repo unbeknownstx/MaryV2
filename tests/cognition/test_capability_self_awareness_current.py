@@ -514,6 +514,7 @@ def test_procedure_self_awareness_reports_demonstrated_degrading_and_needed_evid
 
     assert procedures["demonstrated"] == 2
     assert procedures["degrading"] == 1
+    assert procedures["comparison_ready"] == 1
     degrading = next(
         item for item in procedures["procedures"]
         if item["skill_id"] == "skill-degrading"
