@@ -160,6 +160,38 @@ class _Procedures(_StatusOwner):
             "failure_rate": 0.6,
         }]
 
+    def revision_lineage(self, *, limit=100):
+        return {
+            "version": "13.78",
+            "revisions": 1,
+            "pending_review": 1,
+            "approved_replacements": 0,
+            "rows": [{
+                "candidate_id": "skill-revision",
+                "candidate_version": 2,
+                "candidate_status": "candidate",
+                "predecessor_id": "skill-degrading",
+                "predecessor_version": 1,
+                "predecessor_status": "approved",
+                "revision_reason": "reduce failure rate",
+                "changed_fields": ["steps"],
+                "required_capabilities_unchanged": True,
+                "required_permissions_unchanged": True,
+                "attempts": 0,
+                "successes": 0,
+                "failures": 0,
+                "candidate_trial_observed": False,
+                "evidence_needed": [
+                    "bounded candidate trial outcomes before claiming the revision is demonstrated",
+                    "explicit creator review before this revision can supersede the approved predecessor",
+                ],
+                "approval_required": True,
+                "automatic_approval": False,
+                "automatic_execution": False,
+            }],
+            "authority": "read-only procedure version lineage",
+        }
+
 
 class _ExperimentLedger:
     def snapshot(self):
@@ -297,6 +329,11 @@ def test_capability_introspection_projects_competence_and_local_substrates():
     assert live["procedural_memory"]["demonstrated"] == 2
     assert live["procedural_memory"]["degrading"] == 1
     assert live["procedural_memory"]["procedures"][0]["state"] == "degrading"
+    assert live["procedural_memory"]["revision_lineage"]["pending_review"] == 1
+    lineage = live["procedural_memory"]["revision_lineage"]["rows"][0]
+    assert lineage["candidate_id"] == "skill-revision"
+    assert lineage["predecessor_id"] == "skill-degrading"
+    assert lineage["automatic_approval"] is False
     assert live["capability_improvement"]["llm.ollama"]["demonstrated"] is True
     assert live["capability_improvement"]["sensor.screen_describe"]["evidence_needed"]
     assert live["world_model"]["reconciliation_groups"] == 2
