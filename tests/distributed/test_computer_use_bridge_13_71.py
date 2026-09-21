@@ -10,7 +10,7 @@ from mary.distributed.computer_use_contract import (
 def test_read_only_screen_observation_maps_to_existing_sensor_lane():
     request = make_computer_use_request(node_id="pc", action="observe_screen", turn_id="t", request_id="r")
     dispatch = bridge_computer_use(request)
-    assert dispatch.capability == "sensor.screen_snapshot"
+    assert dispatch.capability == "sensor.screen_describe"\n    assert dispatch.args["mode"] == "ui"
     assert dispatch.mutating is False
 
 
