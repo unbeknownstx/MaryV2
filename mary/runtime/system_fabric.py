@@ -143,6 +143,125 @@ def _model_experiment_summary(mary: Any) -> dict[str, Any]:
     }
 
 
+def _capability_contract(capability_improvement: dict[str, Any]) -> dict[str, Any]:
+    """Normalize live capability evidence into one surface-safe contract."""
+    rows: list[dict[str, Any]] = []
+    for name, raw in sorted(capability_improvement.items()):
+        if not isinstance(raw, dict):
+            continue
+        advertised = bool(raw.get("currently_advertised"))
+        available = bool(raw.get("currently_available"))
+        authorized = bool(raw.get("execution_authorized"))
+        demonstrated = bool(raw.get("demonstrated"))
+        degrading = bool(raw.get("degrading_procedure_ids"))
+        evidence_needed = [
+            str(item)[:240]
+            for item in list(raw.get("evidence_needed") or [])[:12]
+            if str(item).strip()
+        ]
+        if degrading:
+            state = "degrading"
+        elif demonstrated and available and authorized:
+            state = "demonstrated_ready"
+        elif demonstrated and available:
+            state = "demonstrated_permission_required"
+        elif demonstrated:
+            state = "historically_demonstrated_offline"
+        elif advertised or available:
+            state = "advertised_untested"
+        else:
+            state = "evidence_only"
+        rows.append({
+            "capability": str(name)[:160],
+            "state": state,
+            "advertised": advertised,
+            "available": available,
+            "execution_authorized": authorized,
+            "demonstrated": demonstrated,
+            "degrading": degrading,
+            "attempts": int(raw.get("attempts") or 0),
+            "verified_successes": int(raw.get("verified_successes") or 0),
+            "evidence_strength": float(raw.get("strongest_evidence_strength") or 0.0),
+            "evidence_needed": evidence_needed,
+        })
+    return {
+        "version": "13.74",
+        "capabilities": rows[:64],
+        "demonstrated": sum(1 for row in rows if row["demonstrated"]),
+        "execution_ready": sum(1 for row in rows if row["state"] == "demonstrated_ready"),
+        "degrading": sum(1 for row in rows if row["degrading"]),
+        "evidence_gaps": sum(len(row["evidence_needed"]) for row in rows),
+        "authority": (
+            "read-only self-capability evidence; advertisement, competence, permission "
+            "and execution remain separate"
+        ),
+    }
+
+
+def _knowledge_evaluation_readiness(knowledge: dict[str, Any], substrate: dict[str, Any]) -> dict[str, Any]:
+    """Summarize whether the local substrate is ready for deterministic regression evaluation."""
+    enabled = int(knowledge.get("enabled") or substrate.get("enabled") or 0)
+    indexed = int(knowledge.get("indexed_documents") or substrate.get("indexed_chunks") or 0)
+    stale_derivatives = list(substrate.get("stale_derivatives") or [])
+    stale_local = list(substrate.get("stale_local_indexes") or [])
+    evidence_needed: list[str] = []
+    if enabled <= 0:
+        evidence_needed.append("enable at least one reviewed local knowledge pack")
+    if indexed <= 0:
+        evidence_needed.append("index or connect evidence before retrieval regression can prove recall")
+    if stale_local:
+        evidence_needed.append("rebuild stale local indexes before treating evaluation as current")
+    if stale_derivatives:
+        evidence_needed.append("rebuild stale semantic derivatives from their current source fingerprints")
+    return {
+        "version": "13.74",
+        "enabled_packs": enabled,
+        "indexed_chunks": indexed,
+        "stale_local_indexes": len(stale_local),
+        "stale_derivatives": len(stale_derivatives),
+        "ready_for_regression": bool(enabled > 0 and indexed > 0 and not stale_local and not stale_derivatives),
+        "retrieval_can_decline": True,
+        "citation_evidence_required": True,
+        "deterministic_evaluator": "KnowledgeFabricEvaluator",
+        "evidence_needed": evidence_needed,
+        "automatic_rebuild": False,
+        "authority": "evaluation readiness only; retrieval never becomes memory or truth automatically",
+    }
+
+
+def _embodiment_projection() -> dict[str, Any]:
+    """Project Riko-style one-character/many-bodies readiness without creating a body owner."""
+    try:
+        from mary.expression.surface_performance import capabilities_for_surface
+        surfaces = {
+            name: capabilities_for_surface(name).to_dict()
+            for name in ("desktop", "mobile_web", "ios_native", "stream", "vr")
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "surfaces": {},
+            "error_type": type(exc).__name__,
+            "authority": "presentation_projection_only",
+        }
+    return {
+        "version": "13.74",
+        "canonical_score": "PerformancePacket",
+        "voice_direction_owner": "DeliveryPlan",
+        "scene_context_owner": "LiveScene",
+        "surfaces": surfaces,
+        "one_character_many_bodies": True,
+        "renderer_infers_character": False,
+        "body_persistence": False,
+        "body_identity_authority": False,
+        "policy": (
+            "surfaces render or degrade canonical acting/voice/scene cues; renderer state "
+            "does not become identity, memory, relationship, emotion or world truth"
+        ),
+        "authority": "presentation_projection_only",
+    }
+
+
 def build_system_fabric_projection(application: Any, *, service: Any | None = None) -> dict[str, Any]:
     """Return one read-only status contract shared by Desktop/PWA/iPhone."""
 
@@ -190,6 +309,12 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
         for item in capability_improvement.values()
         if isinstance(item, dict)
     )
+    capability_contract = _capability_contract(capability_improvement)
+    knowledge_evaluation = _knowledge_evaluation_readiness(
+        knowledge,
+        knowledge_intelligence,
+    )
+    embodiment = _embodiment_projection()
     intelligence_loop = {
         "version": "13.73",
         "terminal_outcomes_feed_competence": True,
@@ -253,6 +378,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
         "knowledge": {
             **knowledge,
             "substrate": knowledge_intelligence,
+            "evaluation_readiness": knowledge_evaluation,
         },
         "world": {
             "beliefs": _mapping(continuity.get("world_model")),
@@ -307,9 +433,11 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "nodes": nodes,
             "node_intelligence": node_intelligence,
             "capability_improvement": capability_improvement,
+            "capability_contract": capability_contract,
             **compute,
         },
         "intelligence_loop": intelligence_loop,
+        "embodiment": embodiment,
         "training": {
             "feedback": training,
             "character_evaluation": character_eval,
@@ -324,5 +452,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "procedure_selection": "approved_demonstrated_non_degrading_ephemeral_only",
             "node_intelligence": "advertisement_readiness_permission_and_demonstrated_competence_are_distinct",
             "models": "benchmark_and_creator_promotion_required",
+            "knowledge_evaluation": "deterministic_regression_no_automatic_truth_promotion",
+            "embodiment": "one_character_many_bodies_performance_packet_authoritative",
         },
     }
