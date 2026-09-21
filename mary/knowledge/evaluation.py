@@ -204,9 +204,26 @@ def load_knowledge_evaluation_cases(path: str | Path) -> list[KnowledgeEvaluatio
 
 
 def knowledge_substrate_fingerprint(fabric: KnowledgeFabric) -> str:
-    """Hash structural substrate metadata without retaining source/query text."""
-    profile = dict(fabric.substrate_profile() or {})
-    canonical = json.dumps(profile, ensure_ascii=False, sort_keys=True, default=str)
+    """Hash retrieval-affecting substrate state without retaining source/query text."""
+    packs = []
+    for pack in list(fabric.packs())[:512]:
+        packs.append({
+            "id": str(pack.id),
+            "collection": str(pack.collection),
+            "kind": str(pack.kind),
+            "query_mode": str(pack.query_mode),
+            "ingest_policy": str(pack.ingest_policy),
+            "enabled": bool(pack.enabled),
+            "local_only": bool(pack.local_only),
+            "content_fingerprint": str(pack.content_fingerprint or ""),
+            "disabled_documents": list(pack.disabled_documents),
+            "metadata": dict(pack.metadata or {}),
+        })
+    payload = {
+        "profile": dict(fabric.substrate_profile() or {}),
+        "packs": packs,
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
