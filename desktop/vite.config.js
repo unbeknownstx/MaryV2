@@ -53,8 +53,8 @@ function marySafeRendererPlugin() {
       );
       next = replaceRequired(
         next,
-        `bootStep(28, 'Loading character renderer…');\nsyncAvatarPresentation();\nloadMaryVrm();`,
-        `bootStep(28, 'Loading character renderer…');\nconst rendererReady = initializeRenderer();\nsyncAvatarPresentation();\nif (rendererReady) {\n  loadMaryVrm();\n} else {\n  bootStep(36, 'Avatar renderer unavailable · using portrait mode…');\n}`,
+        `bootStep(28, 'Loading character renderer…');\nsyncAvatarPresentation();\nloadMotionManifest();\nloadMaryVrm();`,
+        `bootStep(28, 'Loading character renderer…');\nconst rendererReady = initializeRenderer();\nsyncAvatarPresentation();\nloadMotionManifest();\nif (rendererReady) {\n  loadMaryVrm();\n} else {\n  bootStep(36, 'Avatar renderer unavailable · using portrait mode…');\n}`,
         'renderer startup'
       );
 
