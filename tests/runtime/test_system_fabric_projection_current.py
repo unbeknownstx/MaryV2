@@ -73,3 +73,18 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["intelligence_loop"]["automatic_permission"] is False
     assert result["semantics"]["procedure_selection"] == "approved_demonstrated_non_degrading_ephemeral_only"
     assert result["semantics"]["node_intelligence"].startswith("advertisement_readiness")
+
+    assert result["compute"]["capability_contract"]["capabilities"][0]["capability"] == "knowledge.search"
+    assert result["compute"]["capability_contract"]["evidence_gaps"] == 1
+    assert result["knowledge"]["evaluation_readiness"]["enabled_packs"] == 1
+    assert result["knowledge"]["evaluation_readiness"]["indexed_chunks"] == 9
+    assert result["knowledge"]["evaluation_readiness"]["deterministic_evaluator"] == "KnowledgeFabricEvaluator"
+    assert result["knowledge"]["evaluation_readiness"]["automatic_rebuild"] is False
+    assert result["embodiment"]["canonical_score"] == "PerformancePacket"
+    assert result["embodiment"]["one_character_many_bodies"] is True
+    assert result["embodiment"]["body_identity_authority"] is False
+    assert result["embodiment"]["surfaces"]["desktop"]["semantic_motion"] is True
+    assert result["embodiment"]["surfaces"]["ios_native"]["head_motion"] is True
+    assert result["embodiment"]["surfaces"]["vr"]["locomotion"] is False
+    assert result["semantics"]["knowledge_evaluation"].startswith("deterministic_regression")
+    assert result["semantics"]["embodiment"].startswith("one_character_many_bodies")
