@@ -1715,7 +1715,11 @@ class MaryCoreService:
             or getattr(task, "error", "")
             or (f"{capability} completed" if success else f"{capability} ended as {status}")
         )[:1200]
-        evidence = (task_id,)
+        review_id = str(link.get("review_id") or "").strip()
+        evidence = tuple(
+            item for item in (task_id, review_id)
+            if item
+        )
         implementation_fingerprint = str(
             getattr(task, "implementation_fingerprint", "") or ""
         ).strip().lower()[:64]
@@ -2134,12 +2138,28 @@ class MaryCoreService:
                 ),
             }
 
+        selected_skill_id = str(top.get("id") or "")
+        review_provenance: dict[str, Any] = {}
+        latest_review = getattr(
+            self.mary.procedural_skills,
+            "latest_revision_review",
+            None,
+        )
+        if selected_skill_id and callable(latest_review):
+            try:
+                review_provenance = dict(
+                    latest_review(selected_skill_id) or {}
+                )
+            except Exception:
+                review_provenance = {}
+
         return {
             "selected": True,
-            "skill_id": str(top.get("id") or ""),
+            "skill_id": selected_skill_id,
             "procedure": top,
             "score": round(score, 4),
             "margin": margin,
+            "creator_review_provenance": review_provenance,
             "reason": (
                 "highest approved demonstrated non-degrading procedure under the bounded competence policy"
             ),
@@ -4202,6 +4222,7 @@ class MaryCoreService:
                     if bool(procedure_selection.get("selected")):
                         skill_id = str(procedure_selection.get("skill_id") or "")
                         procedure_source = "evidence_selected_for_dispatch"
+                procedure_review_provenance: dict[str, Any] = {}
                 if skill_id:
                     skill = self.mary.procedural_skills.get(skill_id)
                     if skill.status != "approved":
@@ -4210,6 +4231,18 @@ class MaryCoreService:
                         raise ValueError(
                             "linked skill requires capabilities outside this atomic plan step"
                         )
+                    latest_review = getattr(
+                        self.mary.procedural_skills,
+                        "latest_revision_review",
+                        None,
+                    )
+                    if callable(latest_review):
+                        try:
+                            procedure_review_provenance = dict(
+                                latest_review(skill_id) or {}
+                            )
+                        except Exception:
+                            procedure_review_provenance = {}
 
                 task_args = values.get("args") or {}
                 if not isinstance(task_args, dict):
@@ -4233,6 +4266,9 @@ class MaryCoreService:
                     "plan_id": plan_id,
                     "step_id": step_id,
                     "skill_id": skill_id,
+                    "review_id": str(
+                        procedure_review_provenance.get("id") or ""
+                    ),
                 }
                 return _json_safe({
                     "ok": True,
@@ -4246,6 +4282,7 @@ class MaryCoreService:
                     ),
                     "procedure_source": procedure_source,
                     "procedure_selection": procedure_selection,
+                    "procedure_review_provenance": procedure_review_provenance,
                     "execution": {
                         "queued": True,
                         "core_execution_gate_passed": True,

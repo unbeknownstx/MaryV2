@@ -407,3 +407,141 @@ def test_evidence_selector_refuses_untested_or_ambiguous_procedure(tmp_path: Pat
     assert selection["skill_id"] == ""
     assert selection["candidates"][0]["id"] == candidate.id
     assert selection["candidates"][0]["evidence_needed"]
+
+
+def test_creator_approved_revision_carries_review_provenance_into_future_selection(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-review-provenance.json")
+    predecessor = skills.approve(skills.register_candidate(
+        name="project knowledge lookup",
+        description="search local project knowledge",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+        steps=("search local project knowledge",),
+        verification=("typed result returns",),
+    ).id)
+    candidate = skills.register_revision(
+        predecessor.id,
+        reason="verify references before returning",
+        steps=("search local project knowledge", "verify references"),
+    )
+    competence = CompetenceLedger(tmp_path / "competence-review-provenance.json")
+    for index in range(4):
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=predecessor.id,
+            success=True,
+            verified=True,
+            evidence_ids=(f"pred-prov-{index}",),
+        )
+        competence.record(
+            capability="knowledge.search",
+            operation="search",
+            node_id="mac",
+            skill_id=candidate.id,
+            success=True,
+            verified=True,
+            evidence_ids=(f"cand-prov-{index}",),
+        )
+
+    reviewed = skills.review_revision(
+        candidate.id,
+        decision="approve",
+        reviewed_by="creator:test",
+        reason="use the verified revision",
+        competence=competence,
+    )
+    review_id = reviewed["review"]["id"]
+
+    plans = ExecutivePlanGraph(tmp_path / "plans-review-provenance.json")
+    plan = plans.create(objective="Answer from local project knowledge", source="creator")
+    step = plans.add_step(
+        plan.id,
+        title="Search local project knowledge",
+        required_capabilities=("knowledge.search",),
+    )
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        procedural_skills=skills,
+        executive_plans=plans,
+        competence=competence,
+        node_registry=SimpleNamespace(
+            snapshot=lambda: {
+                "nodes": [{"node_id": "mac", "connected": True}]
+            }
+        ),
+    )
+
+    selection = service._select_skill_for_plan_step(plan, step)
+
+    assert selection["selected"] is True
+    assert selection["skill_id"] == candidate.id
+    provenance = selection["creator_review_provenance"]
+    assert provenance["id"] == review_id
+    assert provenance["decision"] == "approve"
+    assert provenance["candidate_id"] == candidate.id
+    assert provenance["predecessor_id"] == predecessor.id
+    assert provenance["automatic_decision"] is False
+
+
+def test_terminal_outcome_keeps_creator_review_id_as_competence_provenance(tmp_path: Path):
+    skills = SkillLibrary(tmp_path / "skills-outcome-provenance.json")
+    predecessor = skills.approve(skills.register_candidate(
+        name="bounded project lookup",
+        description="search project knowledge",
+        source="creator",
+        required_capabilities=("knowledge.search",),
+        required_permissions=("knowledge.search",),
+    ).id)
+    candidate = skills.register_revision(
+        predecessor.id,
+        reason="add verification",
+        steps=("search", "verify"),
+    )
+    reviewed = skills.review_revision(
+        candidate.id,
+        decision="approve",
+        reviewed_by="creator:test",
+        reason="explicit replacement",
+    )
+    review_id = reviewed["review"]["id"]
+    competence = CompetenceLedger(tmp_path / "competence-outcome-provenance.json")
+
+    service = object.__new__(MaryCoreService)
+    service.mary = SimpleNamespace(
+        procedural_skills=skills,
+        competence=competence,
+        executive_plans=SimpleNamespace(),
+        node_registry=SimpleNamespace(),
+    )
+    service._continuity_task_links = {
+        "task-provenance": {
+            "plan_id": "",
+            "step_id": "",
+            "skill_id": candidate.id,
+            "review_id": review_id,
+        }
+    }
+    task = SimpleNamespace(
+        task_id="task-provenance",
+        capability="knowledge.search",
+        operation="search",
+        selected_node_id="mac",
+        status="completed",
+        result={"ok": True, "verification_passed": True, "summary": "verified"},
+        error="",
+        implementation_fingerprint="abc123",
+    )
+
+    service._settle_continuity_task_link(task)
+
+    record = competence.find(
+        capability="knowledge.search",
+        node_id="mac",
+        skill_id=candidate.id,
+    )[0]
+    assert "task-provenance" in record.evidence_ids
+    assert review_id in record.evidence_ids
+    assert record.verified_successes == 1

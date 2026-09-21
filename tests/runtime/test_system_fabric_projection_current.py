@@ -197,4 +197,5 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["improvement_agenda"]["review_items"] == 1
     assert result["semantics"]["procedure_revision"].startswith("version_lineage_visible")
     assert result["semantics"]["procedure_comparison"].startswith("bounded_verified_evidence")
+    assert result["semantics"]["procedure_selection_provenance"] == "creator_review_id_audit_only_no_execution_authority"
     assert result["semantics"]["improvement_agenda"].startswith("read_only_evidence_gaps")

@@ -686,6 +686,7 @@ def build_system_fabric_projection(application: Any, *, service: Any | None = No
             "skills": "creator_approval_required",
             "competence": "routing_and_procedure-ranking_evidence_only_after_hard_eligibility",
             "procedure_selection": "approved_demonstrated_non_degrading_ephemeral_only",
+            "procedure_selection_provenance": "creator_review_id_audit_only_no_execution_authority",
             "procedure_revision": "version_lineage_visible_creator_approval_required",
             "procedure_comparison": "bounded_verified_evidence_creator_review_no_superiority_claim",
             "procedure_review_decision": "explicit_creator_decision_with_content_free_comparison_snapshot",
