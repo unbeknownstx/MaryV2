@@ -1634,6 +1634,20 @@ class SelfIntrospection:
                     )
                     + "."
                 )
+            lineage = dict(procedure_state.get("revision_lineage") or {})
+            comparison_ready = [
+                item
+                for item in list(lineage.get("rows") or [])[:32]
+                if isinstance(item, dict)
+                and bool(dict(item.get("comparison") or {}).get("review_ready"))
+            ]
+            if comparison_ready:
+                requested_sentences.append(
+                    f"{len(comparison_ready)} procedure revision comparison"
+                    f"{'s are' if len(comparison_ready) != 1 else ' is'} ready for creator review. "
+                    "That means both versions have enough bounded verified operational evidence "
+                    "to compare; it is not a superiority claim and does not approve the revision."
+                )
 
         if asks_model_experiments:
             model_state = facts["model_experiments"]
