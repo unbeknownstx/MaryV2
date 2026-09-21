@@ -113,7 +113,25 @@ def test_mlx_review_and_benchmark_never_promote_and_require_exact_artifact(tmp_p
     assert events[-1]["details"]["status"] == "completed"
     assert "prompt" not in events[-1]["details"]
     assert "content" not in events[-1]["details"]
-    assert ledger.snapshot()["event_count"] == 5
+    snapshot = ledger.snapshot()
+    assert snapshot["event_count"] == 5
+    assert snapshot["trial_outcomes"] == 1
+    assert snapshot["completed_trials"] == 1
+    projected = next(item for item in snapshot["records"] if item["id"] == exact.id)
+    trial = projected["trial_evidence"]
+    assert trial["dispatches"] == 1
+    assert trial["attempts"] == 1
+    assert trial["completed"] == 1
+    assert trial["failed"] == 0
+    assert trial["completed_trial_observed"] is True
+    assert trial["latest_status"] == "completed"
+    assert trial["latest_node_id"] == "mac"
+    assert trial["latest_provider"] == "mlx_lm"
+    assert trial["quality_verified"] is False
+    assert trial["prompt_retained"] is False
+    assert trial["generated_output_retained"] is False
+    assert "prompt" not in json.dumps(snapshot).casefold()
+    assert "generated trial text" not in json.dumps(snapshot).casefold()
 
 
 def test_verified_stack_fingerprint_includes_base_and_adapter_hashes(tmp_path: Path):
