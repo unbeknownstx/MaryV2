@@ -78,3 +78,7 @@ For a canonical Mary runtime, the intended evidence destination is the runtime d
 4. System Fabric projects the same state to all surfaces;
 5. queries, snippets and source locators are absent from the durable evidence;
 6. no automatic truth promotion, rebuild, permission or execution path is introduced.
+
+## Validation note
+
+The substrate fingerprint includes retrieval-affecting pack state such as enabled/disabled document policy, so changing document activation invalidates prior regression evidence even when index topology is otherwise unchanged.
