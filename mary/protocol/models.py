@@ -186,6 +186,7 @@ class TurnRequest:
             conversation_id=conversation_id[:160],
             device_id=device_id[:160],
             surface=surface or "client",
+            surface_id=surface_id,
             voice_input=voice_input,
             requested_mode=mode,
             client_local_time=client_local_time,
