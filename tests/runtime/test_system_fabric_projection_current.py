@@ -179,7 +179,7 @@ def test_system_fabric_projection_is_structural_and_authority_safe():
     assert result["embodiment"]["live_scene"]["has_activity"] is True
     assert result["embodiment"]["live_scene"]["has_project"] is True
     assert "PRIVATE" not in str(result["embodiment"]["live_scene"])
-    assert result["improvement_agenda"]["open_items"] == 3
+    assert result["improvement_agenda"]["open_items"] == 4
     assert result["improvement_agenda"]["evidence_items"] == 3
     assert result["improvement_agenda"]["automatic_execution"] is False
     assert result["improvement_agenda"]["automatic_permission"] is False
