@@ -19,6 +19,7 @@ from mary.relationship.provenance import conversation_profile
 from mary.cognition.continuity import ConversationContinuity
 from mary.cognition.performance import PerformanceDirector
 from mary.personality.voice_exemplars import select_voice_exemplars
+from mary.personality.banter import build_banter_brief
 
 
 def _clamp(value: float) -> float:
@@ -277,6 +278,7 @@ class TurnMindStateBuilder:
             emotion=emotion,
             continuity=continuity,
             disposition=disposition.to_dict(),
+            recent_conversation=recent_conversation or [],
         )
         authored_character_context = self._authored_character_context(input_text)
 
@@ -439,6 +441,7 @@ class TurnMindStateBuilder:
         emotion: dict[str, Any],
         continuity: dict[str, Any],
         disposition: dict[str, Any],
+        recent_conversation: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         """Select the small part of Mary's authored character that matters now.
 
@@ -581,6 +584,22 @@ class TurnMindStateBuilder:
         familiarity = str(relationship.get("familiarity", "new") or "new").lower()
         if familiarity == "familiar" and "moral_boundary" not in selected and "distrust" not in selected:
             selected.append("close_connection")
+
+        # Banter is an opportunity projection, not a quota and not another
+        # personality/memory owner. It can make a light turn playful even when
+        # the creator did not literally say "roast me", but serious character
+        # patterns suppress it before the language provider ever sees the turn.
+        banter = build_banter_brief(
+            input_text,
+            recent_conversation=recent_conversation or (),
+            familiarity=familiarity,
+            drive=drive,
+            playfulness=float(disposition.get("playfulness", 0.5) or 0.5),
+            allow_teasing=bool(disposition.get("allow_teasing", True)),
+            active_patterns=selected,
+        )
+        if banter.active and "playful_banter" not in selected:
+            selected.append("playful_banter")
 
         # Preserve semantic priority and keep the provider projection bounded.
         priority = {
@@ -746,6 +765,7 @@ class TurnMindStateBuilder:
             "drive": drive,
             "social_posture": social_posture,
             "response_goal": response_goal,
+            "banter": banter.to_dict(),
             "active_patterns": active_patterns[:5],
             "active_principles": active_principles[:5],
             "active_values": active_values[:7],
