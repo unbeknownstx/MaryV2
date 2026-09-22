@@ -17,6 +17,7 @@ import re
 from typing import Any, Mapping
 
 from mary.expression.emotion import Emotion, EmotionalState
+from mary.personality.banter import score_banter_candidate
 from .delivery_plan import DeliveryPlan
 
 
@@ -334,6 +335,32 @@ class ExpressionDirector:
                 gaze_style = "direct"
                 head_style = "still"
 
+        banter_score: dict[str, float] = {}
+        if banter_active and response.strip():
+            conversation = (
+                dict(mind.get("conversation", {}) or {})
+                if isinstance(mind.get("conversation", {}), Mapping)
+                else {}
+            )
+            recent_mary_lines = [
+                str(item.get("content") or "")
+                for item in list(conversation.get("recent") or [])[-10:]
+                if isinstance(item, Mapping)
+                and str(item.get("role") or "").strip().lower() == "assistant"
+                and str(item.get("content") or "").strip()
+            ]
+            try:
+                banter_score = score_banter_candidate(
+                    response,
+                    brief=banter,
+                    current_input=input_text,
+                    recent_mary_lines=recent_mary_lines,
+                ).to_dict()
+            except Exception:
+                # Performance must never fail because an evaluation projection
+                # could not score an otherwise-valid spoken response.
+                banter_score = {}
+
         final_profile = profile
         final_energy = _clamp(energy, 0.0, 1.0)
         final_warmth = _clamp(warmth, 0.0, 1.0)
@@ -393,6 +420,8 @@ class ExpressionDirector:
                 "banter_opportunity": str(banter.get("opportunity") or "none")[:40],
                 "banter_techniques": banter_techniques,
                 "banter_callback_scope": str(banter.get("callback_scope") or "none")[:24],
+                "banter_wit_score": banter_score.get("total"),
+                "banter_score": banter_score,
                 "authority": "turn_mind_presentation_projection",
                 "persistence": "none",
             },
