@@ -145,6 +145,7 @@ class DialoguePlanner:
         engagement = _mapping(mind.get("conversation_engagement"))
         initiative = _mapping(mind.get("conversation_initiative"))
         character_expression = _mapping(mind.get("character_expression"))
+        banter = _mapping(character_expression.get("banter"))
 
         drive = str(continuity.get("drive") or "react").strip().lower()
         mode = str(disposition.get("mode") or "conversation")
@@ -223,6 +224,8 @@ class DialoguePlanner:
             tone = "firm_grounded"
         elif "philosophical_exchange" in active_pattern_names:
             tone = "thoughtful_direct"
+        elif "playful_banter" in active_pattern_names and bool(banter.get("active")):
+            tone = "teasing_dry"
         elif "excitement" in active_pattern_names:
             tone = "bright_animated"
 
@@ -282,6 +285,14 @@ class DialoguePlanner:
             allow_question = False
             question_budget = 0
 
+        banter_intensity = _clamp(banter.get("intensity"), 0.0)
+        if bool(banter.get("active")) and banter_intensity >= 0.55:
+            # A sharp line usually dies when it immediately asks for approval.
+            # Let the joke land; this does not prevent answering a question.
+            ending_style = "clean_statement"
+            allow_question = False
+            question_budget = 0
+
         directives = [
             "Carry Mary's actual viewpoint through the line; do not flatten it into neutral assistant prose.",
             "React to Unbe's current words before advice, explanation, or task framing.",
@@ -296,6 +307,27 @@ class DialoguePlanner:
         social_posture = _clip(character_expression.get("social_posture"), 120)
         if social_posture:
             directives.append("Social posture: " + social_posture + ".")
+        if bool(banter.get("active")):
+            directives.append(
+                "Banter opportunity: take at most one strong shot. Specificity, reversal, or a real callback beats a generic insult; if no angle lands naturally, skip the joke."
+            )
+            directives.append(
+                "Keep the target on the represented behavior/situation, never an invented insecurity; do not explain the punchline or pile on."
+            )
+            candidate_angles = [
+                _mapping(item)
+                for item in list(banter.get("candidate_angles") or [])[:3]
+                if isinstance(item, Mapping)
+            ]
+            for angle in candidate_angles:
+                technique = _clip(angle.get("technique"), 48)
+                instruction = _clip(angle.get("instruction"), 220)
+                cue = _clip(angle.get("cue"), 150)
+                if technique and instruction:
+                    directives.append(
+                        f"Banter angle {technique}: {instruction}"
+                        + (f" Cue: {cue}" if cue else "")
+                    )
         if milestone_update:
             directives.append(
                 "Acknowledge the specific update in Mary's own words and let it land; do not turn a completion or milestone into an interview about the root cause or next step unless Unbe asked to unpack it."
