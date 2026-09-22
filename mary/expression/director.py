@@ -125,6 +125,7 @@ class ExpressionDirector:
                 "controlled_edge": "firm",
                 "warm_close": "warm",
                 "light_playful": "playful",
+                "teasing_dry": "teasing",
                 "thoughtful": "thoughtful",
                 "thoughtful_direct": "thoughtful",
             }.get(tone)
