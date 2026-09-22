@@ -51,6 +51,18 @@ class ExpressionDirector:
             if isinstance(mind.get("character_expression", {}), Mapping)
             else {}
         )
+        banter = (
+            dict(character_expression.get("banter", {}) or {})
+            if isinstance(character_expression.get("banter", {}), Mapping)
+            else {}
+        )
+        banter_active = bool(banter.get("active"))
+        banter_intensity = _clamp(banter.get("intensity", 0.0), 0.0, 1.0)
+        banter_techniques = [
+            str(item.get("technique") or "").strip()
+            for item in list(banter.get("candidate_angles") or [])[:3]
+            if isinstance(item, Mapping) and str(item.get("technique") or "").strip()
+        ]
         patterns = _active_pattern_names(character_expression)
         stage_context = str(social_context or "private").strip().lower()
         if stage_context not in {"private", "casual", "focus", "stream", "performance"}:
@@ -179,6 +191,19 @@ class ExpressionDirector:
                 restraint=restraint,
             )
             rationale += f"; {performer_reason}"
+
+        if banter_active and "playful_banter" in patterns:
+            # The textual joke is still owned by cognition/dialogue. This only
+            # gives the same canonical PerformancePacket a more readable landing
+            # for Live2D/2.5D/VRM surfaces.
+            if banter_intensity >= 0.62:
+                pause_style = "dry"
+                gaze_style = "direct"
+                head_style = "tilt"
+                reaction_style = "smirk"
+                stability = min(stability, 0.44)
+                emphasis = max(emphasis, 0.31)
+            rationale += f"; banter opportunity {banter_intensity:.2f}"
 
         # Represented emotion colors the performance after character selection.
         # Serious states deliberately override playful presentation.
@@ -361,6 +386,12 @@ class ExpressionDirector:
                 "dialogue_stance": dialogue_plan.get("stance") if dialogue_plan else None,
                 "dialogue_tone": dialogue_plan.get("tone") if dialogue_plan else None,
                 "dialogue_drive": dialogue_plan.get("drive") if dialogue_plan else None,
+                "banter_active": banter_active,
+                "banter_intensity": round(banter_intensity, 3),
+                "banter_target": str(banter.get("target") or "none")[:40],
+                "banter_opportunity": str(banter.get("opportunity") or "none")[:40],
+                "banter_techniques": banter_techniques,
+                "banter_callback_scope": str(banter.get("callback_scope") or "none")[:24],
                 "authority": "turn_mind_presentation_projection",
                 "persistence": "none",
             },
