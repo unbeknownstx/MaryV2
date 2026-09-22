@@ -70,6 +70,16 @@ _EXPLAINS_JOKE_RE = re.compile(
     r"\b(?:just kidding|that was a joke|i'm joking|i am joking|get it\?)\b",
     re.IGNORECASE,
 )
+_CRUELTY_RE = re.compile(
+    r"\b(?:worthless|ugly|fat(?:ty)?|nobody likes you|everyone hates you|"
+    r"kill yourself|kys|your trauma|your depression|pathetic human)\b",
+    re.IGNORECASE,
+)
+_SURPRISE_RE = re.compile(
+    r"\b(?:apparently|somehow|technically|bold|congratulations|congrats|"
+    r"meanwhile|emotionally|plot twist|at least|impressive)\b",
+    re.IGNORECASE,
+)
 _WORD_RE = re.compile(r"[a-z0-9']+", re.IGNORECASE)
 
 
@@ -146,10 +156,12 @@ class BanterScore:
     specificity: float
     brevity: float
     callback_strength: float
+    surprise: float
     character_match: float
     genericness_penalty: float
     repetition_penalty: float
     explanation_penalty: float
+    unnecessary_cruelty_penalty: float
 
     def to_dict(self) -> dict[str, float]:
         return {
@@ -302,7 +314,7 @@ def build_banter_brief(
 
     unique: list[BanterAngle] = []
     seen: set[str] = set()
-    for angle in angles:
+    for angle in sorted(angles, key=lambda item: item.prior, reverse=True):
         if angle.technique in seen:
             continue
         seen.add(angle.technique)
@@ -403,6 +415,14 @@ def score_banter_candidate(
     genericness_penalty = 1.0 if _GENERIC_INSULT_RE.search(value) else 0.0
     assistant_penalty = 0.8 if _ASSISTANTY_RE.search(value) else 0.0
     explanation_penalty = 1.0 if _EXPLAINS_JOKE_RE.search(value) else 0.0
+    unnecessary_cruelty_penalty = 1.0 if _CRUELTY_RE.search(value) else 0.0
+    surprise = 0.38
+    if _SURPRISE_RE.search(value):
+        surprise = min(1.0, surprise + 0.34)
+    if word_count <= 18 and any(mark in value for mark in ("—", ";", ":")):
+        surprise = min(1.0, surprise + 0.10)
+    if callback_strength >= 0.4:
+        surprise = min(1.0, surprise + 0.08)
 
     normalized = " ".join(value.casefold().split())
     repetition_penalty = 0.0
@@ -421,18 +441,21 @@ def score_banter_candidate(
     character_match -= 0.45 * genericness_penalty
     character_match -= 0.45 * assistant_penalty
     character_match -= 0.30 * explanation_penalty
+    character_match -= 0.60 * unnecessary_cruelty_penalty
     if not active:
         character_match = min(character_match, 0.45)
     character_match = max(0.0, min(1.0, character_match))
 
     total = (
-        0.28 * specificity
-        + 0.20 * brevity
-        + 0.12 * callback_strength
-        + 0.40 * character_match
+        0.24 * specificity
+        + 0.16 * brevity
+        + 0.10 * callback_strength
+        + 0.14 * surprise
+        + 0.36 * character_match
         - 0.20 * genericness_penalty
         - 0.14 * repetition_penalty
         - 0.12 * explanation_penalty
+        - 0.30 * unnecessary_cruelty_penalty
     )
     total = max(0.0, min(1.0, total))
 
@@ -441,8 +464,10 @@ def score_banter_candidate(
         specificity=specificity,
         brevity=brevity,
         callback_strength=callback_strength,
+        surprise=surprise,
         character_match=character_match,
         genericness_penalty=genericness_penalty,
         repetition_penalty=repetition_penalty,
         explanation_penalty=explanation_penalty,
+        unnecessary_cruelty_penalty=unnecessary_cruelty_penalty,
     )
