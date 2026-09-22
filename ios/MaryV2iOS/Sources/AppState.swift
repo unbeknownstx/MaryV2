@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     @Published var dashboardData: [String: Any] = [:]
     @Published var workspaceData: [String: Any] = [:]
     @Published var liveData: [String: Any] = [:]
+    @Published var improvementProposalData: [String: Any] = [:]
     @Published var searchResult: [String: Any] = [:]
     @Published var socialStatusData: [String: Any] = [:]
     @Published var socialProposalData: [String: Any] = [:]
@@ -812,6 +813,31 @@ final class AppState: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
         } catch {
+            lastError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
+    }
+
+    func proposeImprovement(kind: String, subject: String) async -> Bool {
+        guard let client else { return false }
+        let cleanKind = kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanKind.isEmpty, !cleanSubject.isEmpty else { return false }
+        do {
+            let result = try await client.runtimeAction(
+                "continuity.improvement.propose",
+                args: [
+                    "kind": String(cleanKind.prefix(80)),
+                    "subject": String(cleanSubject.prefix(180)),
+                ]
+            )
+            improvementProposalData = CoreProjection.dict(result["proposal"])
+            lastError = nil
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            return true
+        } catch {
+            improvementProposalData = [:]
             lastError = error.localizedDescription
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return false

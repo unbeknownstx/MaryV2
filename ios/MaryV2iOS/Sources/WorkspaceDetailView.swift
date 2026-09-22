@@ -627,6 +627,8 @@ struct WorkspaceDetailView: View {
         let scene = CoreProjection.dict(embodiment["live_scene"])
         let compute = CoreProjection.dict(app.liveData["compute"])
         let capabilityContract = CoreProjection.dict(compute["capability_contract"])
+        let improvementProposal = app.improvementProposalData
+        let improvementDraft = CoreProjection.dict(improvementProposal["plan_draft"])
 
         return VStack(spacing: 12) {
             GlassCard { VStack(alignment: .leading, spacing: 9) {
@@ -655,9 +657,39 @@ struct WorkspaceDetailView: View {
                             Text(needs.isEmpty ? "No additional evidence described." : needs.joined(separator: " · "))
                                 .font(.caption)
                                 .foregroundStyle(MaryTheme.muted)
+                            Button("Propose next step") {
+                                Task {
+                                    _ = await app.proposeImprovement(
+                                        kind: CoreProjection.string(item["kind"]),
+                                        subject: CoreProjection.string(item["subject"])
+                                    )
+                                }
+                            }
+                            .buttonStyle(MarySecondaryButtonStyle())
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                }}
+            }
+
+            if !improvementProposal.isEmpty {
+                GlassCard { VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Proposal only")
+                    Text(
+                        CoreProjection.string(improvementDraft["objective"]).isEmpty
+                            ? CoreProjection.string(improvementProposal["next_explicit_action"])
+                            : CoreProjection.string(improvementDraft["objective"])
+                    )
+                    .font(.headline)
+                    DataRow(
+                        label: "Next explicit action",
+                        value: CoreProjection.string(improvementProposal["next_explicit_action"])
+                    )
+                    DataRow(label: "Plan created", value: CoreProjection.bool(improvementProposal["plan_created"]) ? "Yes" : "No")
+                    DataRow(label: "Execution performed", value: CoreProjection.bool(improvementProposal["execution_performed"]) ? "Yes" : "No")
+                    Text("This is guidance from current evidence. Nothing is created, permitted, promoted, or executed until you explicitly choose the next typed action.")
+                        .font(.caption)
+                        .foregroundStyle(MaryTheme.muted)
                 }}
             }
 

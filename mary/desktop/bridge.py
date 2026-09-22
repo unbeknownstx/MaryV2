@@ -1440,6 +1440,28 @@ class MaryDesktopBridge(QObject):
         except Exception as exc:
             return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
+    @Slot(str, str, result=str)
+    def proposeImprovement(
+        self,
+        kind: str,
+        subject: str,
+    ) -> str:  # noqa: N802 - JS-facing API
+        clean_kind = str(kind or "").strip().lower()[:80]
+        clean_subject = str(subject or "").strip()[:180]
+        if not clean_kind or not clean_subject:
+            return _json({"ok": False, "error": "Improvement kind and subject are required."})
+        if getattr(self.application, "authority", "") != "remote_mary_core":
+            return _json({"ok": False, "error": "Improvement proposals require canonical remote Mary Core."})
+        try:
+            return _json(
+                self.application.gateway.runtime_action(
+                    "continuity.improvement.propose",
+                    {"kind": clean_kind, "subject": clean_subject},
+                )
+            )
+        except Exception as exc:
+            return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
     @Slot(str, result=str)
     def approveSkillCandidate(
         self,

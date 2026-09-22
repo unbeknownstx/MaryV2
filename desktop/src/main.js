@@ -2444,7 +2444,7 @@ function renderFabric() {
       }).join('')
     : '<div class="workspace-empty">No creator revision decisions recorded yet.</div>';
   const improvementCards = improvementItems.length
-    ? improvementItems.slice(0, 10).map((item) => `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(titleCase(item.kind || 'evidence'))} · ${escapeHtml(item.subject || 'unknown')}</span><strong>${escapeHtml(titleCase(item.attention || item.state || 'review'))}</strong></div><small>${escapeHtml((item.evidence_needed || []).join(' · ') || 'No additional evidence described')}</small></div>`).join('')
+    ? improvementItems.slice(0, 10).map((item) => `<div class="workspace-panel" style="margin-top:8px"><div class="data-row"><span>${escapeHtml(titleCase(item.kind || 'evidence'))} · ${escapeHtml(item.subject || 'unknown')}</span><strong>${escapeHtml(titleCase(item.attention || item.state || 'review'))}</strong></div><small>${escapeHtml((item.evidence_needed || []).join(' · ') || 'No additional evidence described')}</small><button class="action-button" data-improvement-kind="${escapeHtml(item.kind || '')}" data-improvement-subject="${escapeHtml(item.subject || '')}" style="margin-top:8px"><strong>Propose next step</strong><small>Proposal only · no execution</small></button></div>`).join('')
     : '<div class="workspace-empty">No current evidence gaps require attention.</div>';
   return `
     <div class="workspace-grid three">
@@ -2996,6 +2996,24 @@ function bindWorkspaceActions() {
         toast('Current world belief reconciled; competing evidence remains historical.');
         fabricGovernanceState.loaded = false;
         refreshFabricGovernance({ force: true });
+      });
+    }));
+    document.querySelectorAll('[data-improvement-kind]').forEach((button) => button.addEventListener('click', () => {
+      if (!bridge?.proposeImprovement) return;
+      const kind = String(button.dataset.improvementKind || '');
+      const subject = String(button.dataset.improvementSubject || '');
+      button.disabled = true;
+      bridge.proposeImprovement(kind, subject, (raw) => {
+        const result = parsePayload(raw);
+        button.disabled = false;
+        if (result.ok === false) {
+          toast(result.error || 'Could not build an evidence proposal.', 'error');
+          return;
+        }
+        const proposal = result.proposal || {};
+        const draft = proposal.plan_draft || {};
+        const label = draft.objective || proposal.next_explicit_action || 'Proposal ready';
+        toast(`Proposal ready · ${label}. Nothing was created or executed.`);
       });
     }));
     document.querySelectorAll('[data-skill-approve]').forEach((button) => button.addEventListener('click', () => {
