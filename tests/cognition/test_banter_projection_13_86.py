@@ -80,6 +80,8 @@ def test_dialogue_and_performance_consume_same_banter_projection():
     assert delivery.metadata["banter_intensity"] >= 0.8
     assert delivery.metadata["banter_techniques"]
     assert delivery.metadata["banter_callback_scope"] == "session_only"
+    assert delivery.metadata["banter_wit_score"] is not None
+    assert delivery.metadata["banter_score"]["genericness_penalty"] == 0.0
     assert delivery.performance_beats
 
 
