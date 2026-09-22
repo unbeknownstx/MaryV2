@@ -1542,6 +1542,24 @@ class SelfIntrospection:
                 "trial-ready",
             )
         )
+        asks_self_model_evidence = any(
+            term in lowered_query
+            for term in (
+                "what have you demonstrated",
+                "what have you proven",
+                "what are you good at",
+                "what are you getting worse at",
+                "what is degrading",
+                "what needs improvement",
+                "what evidence",
+                "what should you test",
+                "what should you improve",
+                "experimental models",
+                "which models are experimental",
+                "self model evidence",
+                "your evidence",
+            )
+        )
         if any(term in lowered_query for term in ("web", "browse", "internet")):
             requested_groups.append(("web search", ()))
 
@@ -1676,6 +1694,70 @@ class SelfIntrospection:
                     f"{'s are' if len(comparison_ready) != 1 else ' is'} ready for creator review. "
                     "That means both versions have enough bounded verified operational evidence "
                     "to compare; it is not a superiority claim and does not approve the revision."
+                )
+
+        if asks_self_model_evidence:
+            procedure_state = facts["procedural_memory"]
+            model_state = facts["model_experiments"]
+            demonstrated_rows = [
+                item
+                for item in list(procedure_state.get("procedures") or [])
+                if isinstance(item, dict) and bool(item.get("demonstrated"))
+            ]
+            degrading_rows = [
+                item
+                for item in list(procedure_state.get("procedures") or [])
+                if isinstance(item, dict) and bool(item.get("degrading"))
+            ]
+            untested_rows = [
+                item
+                for item in list(procedure_state.get("procedures") or [])
+                if isinstance(item, dict)
+                and str(item.get("state") or "") in {"approved_untested", "observed_unverified"}
+            ]
+            experimental_rows = [
+                item
+                for item in list(model_state.get("records") or [])
+                if isinstance(item, dict) and bool(item.get("experimental", True))
+            ]
+            requested_sentences.append(
+                "My current self-evidence distinguishes what exists from what I have actually "
+                "demonstrated. I project "
+                f"{len(demonstrated_rows)} demonstrated approved procedure"
+                f"{'s' if len(demonstrated_rows) != 1 else ''}, "
+                f"{len(degrading_rows)} degrading procedure"
+                f"{'s' if len(degrading_rows) != 1 else ''}, "
+                f"{len(untested_rows)} approved-but-not-yet-demonstrated procedure"
+                f"{'s' if len(untested_rows) != 1 else ''}, and "
+                f"{len(experimental_rows)} experimental model record"
+                f"{'s' if len(experimental_rows) != 1 else ''}. "
+                "Those are evidence states, not confidence theater: permission, availability, "
+                "competence, and production promotion remain separate."
+            )
+            attention_rows = degrading_rows + untested_rows
+            if attention_rows:
+                requested_sentences.append(
+                    "The procedure evidence that would most improve my self-model is: "
+                    + "; ".join(
+                        f"{str(item.get('name') or item.get('skill_id') or 'procedure')}: "
+                        + ", ".join(list(item.get("evidence_needed") or [])[:2])
+                        for item in attention_rows[:3]
+                    )
+                    + "."
+                )
+            model_attention = [
+                item for item in experimental_rows
+                if list(item.get("evidence_needed") or [])
+            ][:2]
+            if model_attention:
+                requested_sentences.append(
+                    "For experimental models, the next missing evidence is: "
+                    + "; ".join(
+                        f"{str(item.get('candidate_id') or item.get('id') or 'model')}: "
+                        + ", ".join(list(item.get("evidence_needed") or [])[:2])
+                        for item in model_attention
+                    )
+                    + "."
                 )
 
         if asks_model_experiments:
