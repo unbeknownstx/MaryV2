@@ -1,5 +1,16 @@
 # Changelog
 
+## 13.86 — 2026-09-21 — Banter / Wit Engine
+
+- Added a deterministic banter opportunity layer under Mary's existing authored character/TurnMind stack rather than a second persona or dialogue owner.
+- Light competitive moments, harmless self-owns, shared laughter, explicit roast invitations and familiar game/stream banter can now expose up to three specific comedic angles; serious contexts suppress optional banter.
+- Added bounded session-only callback cues with sensitive-context filtering and no durable-memory write.
+- Sharpened playful-banter canon around specific observations, reversals and earned callbacks instead of generic insults, catchphrases or pile-ons.
+- Dialogue planning now lets a strong joke land without a reflexive follow-up question and preserves a one-punchline budget.
+- Existing expression/performance projection now carries dry-pause, direct-gaze, head-tilt and smirk metadata for Live2D/2.5D/VRM surfaces.
+- Added deterministic wit scoring for specificity, brevity, callback strength, surprise, character match, repetition, genericness, joke-explanation and unnecessary-cruelty penalties; scoring is observability only and adds no model call.
+- Added pure-engine and TurnMind-to-embodiment regression coverage plus the 13.86 architecture/authority guide.
+
 ## Unreleased — 2026-09-19 — Presence & presentation convergence
 
 - Mined current official public Riko V2 presentation patterns without using redistributed/private Patreon source code.
